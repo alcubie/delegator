@@ -1,0 +1,4 @@
+/dg
+/dist/
+*.test
+coverage.out
