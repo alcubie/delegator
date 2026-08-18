@@ -59,4 +59,25 @@ func TestLoadReadsTheFields(t *testing.T) {
 	if want := time.Date(2026, 8, 17, 9, 30, 0, 0, time.UTC); !tk.Created.Equal(want) {
 		t.Errorf("Created = %v, want %v", tk.Created, want)
 	}
+
+	if tk.Body != "" {
+		t.Errorf("Body = %q, want <empty string>", tk.Body)
+	}
+}
+
+func TestLoadReadsTheBody(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", validYAML)
+
+	const body = "Line one\n\nLine two\n"
+	write(t, dir, "ticket.md", body)
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
+	if tk.Body != body {
+		t.Errorf("Body = %q, want %q", tk.Body, body)
+	}
 }

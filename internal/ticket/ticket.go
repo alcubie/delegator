@@ -3,6 +3,8 @@
 package ticket
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -23,6 +25,7 @@ type Ticket struct {
 	Result   string    `yaml:"result"`
 	Flags    string    `yaml:"flags"`
 	Created  time.Time `yaml:"created"`
+	Body     string    `yaml:"-"`
 }
 
 // Load reads the ticket that is in one directory.
@@ -35,5 +38,12 @@ func Load(dir string) (*Ticket, error) {
 	if err := yaml.Unmarshal(data, t); err != nil {
 		return nil, err
 	}
+
+	body, err := os.ReadFile(filepath.Join(dir, "ticket.md"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+
+	t.Body = string(body)
 	return t, nil
 }
