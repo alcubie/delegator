@@ -11,35 +11,19 @@ title: Fix the login redirect
 title: Remove staging was the old title.
 `
 
-func TestParseReadsTheTitle(t *testing.T) {
+func TestParseReadsTheHeader(t *testing.T) {
 	tk, err := Parse([]byte(validTicket))
 	if err != nil {
 		t.Fatalf("Parse returned an error: %v", err)
+	}
+	if tk.Schema != 1 {
+		t.Errorf("Schema = %d, want %d", tk.Schema, 1)
+	}
+	if tk.ID != 2 {
+		t.Errorf("Id = %d, want %d", tk.ID, 2)
 	}
 	if tk.Title != "Fix the login redirect" {
 		t.Errorf("Title = %q, want %q", tk.Title, "Fix the login redirect")
-	}
-}
-
-func TestParseReadsTheSchema(t *testing.T) {
-	tk, err := Parse([]byte(validTicket))
-	if err != nil {
-		t.Fatalf("Parse returned an error: %v", err)
-	}
-	expected := 1
-	if tk.Schema != expected {
-		t.Errorf("Schema = %d, want %d", tk.Schema, expected)
-	}
-}
-
-func TestParseReadsTheId(t *testing.T) {
-	tk, err := Parse([]byte(validTicket))
-	if err != nil {
-		t.Fatalf("Parse returned an error: %v", err)
-	}
-	expected := 2
-	if tk.ID != expected {
-		t.Errorf("Id = %d, want %d", tk.ID, expected)
 	}
 }
 
