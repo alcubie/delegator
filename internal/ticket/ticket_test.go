@@ -133,3 +133,20 @@ func TestLoadNoSchema(t *testing.T) {
 		t.Errorf("Ticket = %+v, want nil", tk)
 	}
 }
+
+func TestLoadNoResultOrFlags(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml",
+		"schema: 1\nid: 4\ntitle: A ticket in the queue\nstate: queued\n")
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+	if tk.Result != "" {
+		t.Errorf("Result = %q, want an empty string", tk.Result)
+	}
+	if tk.Flags != "" {
+		t.Errorf("Flags = %q, want an empty string", tk.Flags)
+	}
+}
