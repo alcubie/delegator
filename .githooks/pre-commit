@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run the checks before each commit.
+#
+# This examines the working tree, and not only the staged changes. To commit
+# with no check, use "git commit --no-verify".
+exec make check
