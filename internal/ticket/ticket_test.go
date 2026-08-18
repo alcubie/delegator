@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -207,5 +208,51 @@ func TestSaveFieldsDoesNotWriteTheProse(t *testing.T) {
 	}
 	if string(got) != prose {
 		t.Errorf("ticket.md = %q, want %q", got, prose)
+	}
+}
+
+func TestSaveFieldsRefusesALongResult(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "ready"}
+
+	// The limit is the limit, so a result of exactly MaxResult is permitted.
+	tk.Result = strings.Repeat("x", MaxResult)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields refused a result of %d characters: %v", MaxResult, err)
+	}
+
+	tk.Result = strings.Repeat("x", MaxResult+1)
+	err := tk.SaveFields(dir)
+	if err == nil {
+		t.Fatal("SaveFields gave no error for a result that is too long")
+	}
+	if !errors.Is(err, ErrTooLong) {
+		t.Errorf("error = %v, want an error that matches ErrTooLong", err)
+	}
+
+	// A character is not a byte. Each of these is 2 bytes, so a limit that
+	// counts bytes would refuse a result that the person sees as short.
+	tk.Result = strings.Repeat("é", MaxResult)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Errorf("SaveFields refused %d characters that are 2 bytes each: %v", MaxResult, err)
+	}
+}
+
+func TestSaveFieldsRefusesLongFlags(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "ready"}
+
+	tk.Flags = strings.Repeat("x", MaxFlags)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields refused flags of %d characters: %v", MaxFlags, err)
+	}
+
+	tk.Flags = strings.Repeat("x", MaxFlags+1)
+	err := tk.SaveFields(dir)
+	if err == nil {
+		t.Fatal("SaveFields gave no error for flags that are too long")
+	}
+	if !errors.Is(err, ErrTooLong) {
+		t.Errorf("error = %v, want an error that matches ErrTooLong", err)
 	}
 }

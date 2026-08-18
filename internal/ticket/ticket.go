@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
 )
@@ -16,8 +17,19 @@ import (
 // CurrentSchema is the version of the format that this program writes.
 const CurrentSchema = 1
 
+// MaxResult and MaxFlags are the limits, in characters, on the two fields that
+// the agent writes. Section 6.4 gives the reason: a limit in a prompt to the
+// agent does not operate.
+const (
+	MaxResult = 160
+	MaxFlags  = 240
+)
+
 // ErrUnknownSchema shows that a ticket comes from a later version of delegator.
 var ErrUnknownSchema = errors.New("unknown schema")
+
+// ErrTooLong shows that a field from the agent is longer than its limit.
+var ErrTooLong = errors.New("field is too long")
 
 // Ticket is one item of work.
 type Ticket struct {
@@ -63,9 +75,26 @@ func Load(dir string) (*Ticket, error) {
 // ticket.md. Only the command that makes a ticket, and the command that adds
 // prose to one, write that file.
 func (t *Ticket) SaveFields(dir string) error {
+	if err := checkLength("result", t.Result, MaxResult); err != nil {
+		return err
+	}
+	if err := checkLength("flags", t.Flags, MaxFlags); err != nil {
+		return err
+	}
+
 	data, err := yaml.Marshal(t)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "ticket.yaml"), data, 0o644)
+}
+
+// checkLength refuses a value that is longer than its limit. It counts
+// characters, and not bytes, because the limit is what the person reads.
+func checkLength(name, value string, limit int) error {
+	if n := utf8.RuneCountInString(value); n > limit {
+		return fmt.Errorf("%w: %s has %d characters, and the limit is %d",
+			ErrTooLong, name, n, limit)
+	}
+	return nil
 }
