@@ -59,9 +59,10 @@ func Load(dir string) (*Ticket, error) {
 	return t, nil
 }
 
-// Save writes the fields of the ticket to ticket.yaml. It does not write
-// ticket.md, because the person writes the prose.
-func (t *Ticket) Save(dir string) error {
+// SaveFields writes the fields of the ticket to ticket.yaml. It does not write
+// ticket.md. Only the command that makes a ticket, and the command that adds
+// prose to one, write that file.
+func (t *Ticket) SaveFields(dir string) error {
 	data, err := yaml.Marshal(t)
 	if err != nil {
 		return err

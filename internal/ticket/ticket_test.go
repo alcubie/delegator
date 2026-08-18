@@ -151,7 +151,7 @@ func TestLoadNoResultOrFlags(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoadGiveTheSameTicket(t *testing.T) {
+func TestSaveFieldsAndLoadGiveTheSameTicket(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "ticket.md", "Line one\n\nLine two\n")
 
@@ -171,8 +171,8 @@ func TestSaveAndLoadGiveTheSameTicket(t *testing.T) {
 		Body:    "Line one\n\nLine two\n",
 	}
 
-	if err := want.Save(dir); err != nil {
-		t.Fatalf("Save returned an error: %v", err)
+	if err := want.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
 	}
 	got, err := Load(dir)
 	if err != nil {
@@ -186,6 +186,26 @@ func TestSaveAndLoadGiveTheSameTicket(t *testing.T) {
 	}
 	got.Created, want.Created = time.Time{}, time.Time{}
 	if *got != *want {
-		t.Errorf("Load after Save =\n%+v\nwant\n%+v", got, want)
+		t.Errorf("Load after SaveFields =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+func TestSaveFieldsDoesNotWriteTheProse(t *testing.T) {
+	dir := t.TempDir()
+	const prose = "The prose of the person.\n"
+	write(t, dir, "ticket.md", prose)
+
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued",
+		Body: "Text that SaveFields must not write.\n"}
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "ticket.md"))
+	if err != nil {
+		t.Fatalf("read ticket.md: %v", err)
+	}
+	if string(got) != prose {
+		t.Errorf("ticket.md = %q, want %q", got, prose)
 	}
 }

@@ -361,11 +361,15 @@ Remove the staging app, the volume, the DNS records, the monitor and the
 secrets.
 ```
 
-**Why there are two files.** Delegator writes `ticket.yaml` only. After it makes the
-ticket, no command of delegator writes `ticket.md`. A person can therefore change the
-prose with an editor at any time, and no command can damage the text. The two files also
-make the code more simple. The file `ticket.yaml` is YAML, and the file `ticket.md` is
-text. No program must find the end of a header, and the prose needs no escape characters.
+**Which command writes `ticket.md`.** Only two commands write `ticket.md`. The command
+`dg ticket` makes the file. The command `dg revise` adds new prose to the end of it. No
+command removes text from the file, and no command writes the file again from memory. A
+person can therefore change the prose with an editor at any time.
+
+**Why there are two files.** Delegator writes the fields to `ticket.yaml`, and no command
+of delegator can damage the prose. The two files also make the code more simple. The file
+`ticket.yaml` is YAML, and the file `ticket.md` is text. No program must find the end of a
+header, and the prose needs no escape characters.
 
 **The title.** The command `dg ticket` with no arguments opens `$EDITOR`. The first line
 becomes the field `title`, and the other lines become `ticket.md`. The title is a field,
@@ -491,7 +495,7 @@ installer.
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop a run. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |
-| `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. |
+| `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run <id>` | The supervisor. Delegator starts this, and a person does not. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
