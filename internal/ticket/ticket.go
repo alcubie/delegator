@@ -12,6 +12,7 @@ type Ticket struct {
 	Schema int
 	ID     int
 	Title  string
+	Flags  string
 	Body   string
 }
 
@@ -20,13 +21,20 @@ type Ticket struct {
 func Parse(data []byte) (*Ticket, error) {
 	t := &Ticket{}
 	lines := strings.Split(string(data), "\n")
+
+	headerEnd := len(lines)
 	for i := 1; i < len(lines); i++ {
-		line := lines[i]
-		if line == "---" {
-			rest := strings.Join(lines[i+1:], "\n")
-			t.Body = strings.TrimLeft(rest, "\n")
+		if lines[i] == "---" {
+			headerEnd = i
 			break
 		}
+	}
+	if headerEnd < len(lines) {
+		rest := strings.Join(lines[headerEnd+1:], "\n")
+		t.Body = strings.TrimLeft(rest, "\n")
+	}
+
+	for _, line := range unfold(lines[1:headerEnd]) {
 		key, value, found := strings.Cut(line, ": ")
 		if !found {
 			continue
@@ -39,10 +47,27 @@ func Parse(data []byte) (*Ticket, error) {
 			t.ID, err = strconv.Atoi(value)
 		case "title":
 			t.Title = value
+		case "flags":
+			t.Flags = value
 		}
 		if err != nil {
 			return nil, err
 		}
 	}
 	return t, nil
+}
+
+// unfold joins each continuation line to the line above it. A continuation line
+// starts with a space and has no key of its own.
+func unfold(lines []string) []string {
+	var out []string
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if len(out) > 0 && trimmed != "" && trimmed != line {
+			out[len(out)-1] += " " + trimmed
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
 }
