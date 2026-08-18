@@ -1,6 +1,8 @@
 package ticket
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,5 +81,20 @@ func TestLoadReadsTheBody(t *testing.T) {
 
 	if tk.Body != body {
 		t.Errorf("Body = %q, want %q", tk.Body, body)
+	}
+}
+
+func TestLoadNoFieldsFile(t *testing.T) {
+	dir := t.TempDir()
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error, but ticket.yaml is not present")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("error = %v, want an error that matches fs.ErrNotExist", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
 	}
 }
