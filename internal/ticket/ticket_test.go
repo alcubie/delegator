@@ -4,6 +4,7 @@ import "testing"
 
 const validTicket = `---
 schema: 1
+id: 2
 title: Fix the login redirect
 ---
 
@@ -28,6 +29,17 @@ func TestParseReadsTheSchema(t *testing.T) {
 	expected := 1
 	if tk.Schema != expected {
 		t.Errorf("Schema = %d, want %d", tk.Schema, expected)
+	}
+}
+
+func TestParseReadsTheId(t *testing.T) {
+	tk, err := Parse([]byte(validTicket))
+	if err != nil {
+		t.Fatalf("Parse returned an error: %v", err)
+	}
+	expected := 2
+	if tk.ID != expected {
+		t.Errorf("Id = %d, want %d", tk.ID, expected)
 	}
 }
 

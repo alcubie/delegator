@@ -10,6 +10,7 @@ import (
 // Ticket is one item of work.
 type Ticket struct {
 	Schema int
+	ID     int
 	Title  string
 	Body   string
 }
@@ -20,20 +21,27 @@ func Parse(data []byte) (*Ticket, error) {
 	t := &Ticket{}
 	lines := strings.Split(string(data), "\n")
 	for i := 1; i < len(lines); i++ {
-		if lines[i] == "---" {
+		line := lines[i]
+		if line == "---" {
 			rest := strings.Join(lines[i+1:], "\n")
 			t.Body = strings.TrimLeft(rest, "\n")
 			break
 		}
-		if value, found := strings.CutPrefix(lines[i], "schema: "); found {
-			num, err := strconv.Atoi(value)
-			if err != nil {
-				return nil, err
-			}
-			t.Schema = num
+		key, value, found := strings.Cut(line, ": ")
+		if !found {
+			continue
 		}
-		if value, found := strings.CutPrefix(lines[i], "title: "); found {
+		var err error
+		switch key {
+		case "schema":
+			t.Schema, err = strconv.Atoi(value)
+		case "id":
+			t.ID, err = strconv.Atoi(value)
+		case "title":
 			t.Title = value
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	return t, nil
