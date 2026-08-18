@@ -1,63 +1,62 @@
 package ticket
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
 
-// The body starts with "title: " on purpose. Parse must stop at the "---", so a
-// line of the body cannot overwrite a field of the header.
-const validTicket = `---
-schema: 1
-id: 2
-title: Fix the login redirect
----
-
-title: Remove staging was the old title.
+const validYAML = `schema: 1
+id: 4
+title: Remove staging infrastructure
+state: ready
+project: /home/person/projects/web-api
+branch: delegator/4-remove-staging-infrastructure
+worktree: /home/person/.local/share/delegator/projects/web-api-4f2a91/worktrees/0004
+session: e55e382e-2c88-4de7-a31d-ab8763a0fb5a
+result: Staging infra removed. Gate green, 433 tests.
+flags: terraform apply is blocked, the token in .env is invalid.
+created: 2026-08-17T09:30:00Z
 `
 
-func TestParseReadsTheHeader(t *testing.T) {
-	tk, err := Parse([]byte(validTicket))
-	if err != nil {
-		t.Fatalf("Parse returned an error: %v", err)
+// write puts one file in the directory of a ticket.
+func write(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
 	}
+}
+
+func TestLoadReadsTheFields(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", validYAML)
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
 	if tk.Schema != 1 {
 		t.Errorf("Schema = %d, want 1", tk.Schema)
 	}
-	if tk.ID != 2 {
-		t.Errorf("ID = %d, want 2", tk.ID)
+	if tk.ID != 4 {
+		t.Errorf("ID = %d, want 4", tk.ID)
 	}
-	if tk.Title != "Fix the login redirect" {
-		t.Errorf("Title = %q, want %q", tk.Title, "Fix the login redirect")
+	for _, c := range []struct{ name, got, want string }{
+		{"Title", tk.Title, "Remove staging infrastructure"},
+		{"State", tk.State, "ready"},
+		{"Project", tk.Project, "/home/person/projects/web-api"},
+		{"Branch", tk.Branch, "delegator/4-remove-staging-infrastructure"},
+		{"Session", tk.Session, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"},
+		{"Result", tk.Result, "Staging infra removed. Gate green, 433 tests."},
+		{"Flags", tk.Flags, "terraform apply is blocked, the token in .env is invalid."},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+		}
 	}
-}
-
-func TestParseReadsTheBody(t *testing.T) {
-	tk, err := Parse([]byte(validTicket))
-	if err != nil {
-		t.Fatalf("Parse returned an error: %v", err)
-	}
-	want := "title: Remove staging was the old title.\n"
-	if tk.Body != want {
-		t.Errorf("Body = %q, want %q", tk.Body, want)
-	}
-}
-
-// A long value can continue on the next line, with an indent and no key of its
-// own. Section 7 of the technical document has this example.
-const foldedTicket = `---
-id: 4
-flags: terraform apply is blocked, the token in .env is invalid. Do not destroy
-  the app first, because DNS points at it.
-created: 2026-08-17T09:30:00Z
----
-`
-
-func TestParseReadsAFoldedValue(t *testing.T) {
-	tk, err := Parse([]byte(foldedTicket))
-	if err != nil {
-		t.Fatalf("Parse returned an error: %v", err)
-	}
-	want := "terraform apply is blocked, the token in .env is invalid. " +
-		"Do not destroy the app first, because DNS points at it."
-	if tk.Flags != want {
-		t.Errorf("Flags = %q, want %q", tk.Flags, want)
+	if want := time.Date(2026, 8, 17, 9, 30, 0, 0, time.UTC); !tk.Created.Equal(want) {
+		t.Errorf("Created = %v, want %v", tk.Created, want)
 	}
 }
