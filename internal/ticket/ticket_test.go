@@ -150,3 +150,42 @@ func TestLoadNoResultOrFlags(t *testing.T) {
 		t.Errorf("Flags = %q, want an empty string", tk.Flags)
 	}
 }
+
+func TestSaveAndLoadGiveTheSameTicket(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.md", "Line one\n\nLine two\n")
+
+	want := &Ticket{
+		Schema:   1,
+		ID:       4,
+		Title:    "Remove staging infrastructure",
+		State:    "ready",
+		Project:  "/home/person/projects/web-api",
+		Branch:   "delegator/4-remove-staging-infrastructure",
+		Worktree: "/home/person/.local/share/delegator/projects/web-api-4f2a91/worktrees/0004",
+		Session:  "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+		Result:   "Staging infra removed. Gate green, 433 tests.",
+		Flags: "terraform apply is blocked, the token in .env is invalid. " +
+			"Do not destroy the app first, because DNS points at it.",
+		Created: time.Date(2026, 8, 17, 9, 30, 0, 0, time.UTC),
+		Body:    "Line one\n\nLine two\n",
+	}
+
+	if err := want.Save(dir); err != nil {
+		t.Fatalf("Save returned an error: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
+	// Two times can be equal and not identical, so Created is compared on its
+	// own and then removed from the comparison of the two structs.
+	if !got.Created.Equal(want.Created) {
+		t.Errorf("Created = %v, want %v", got.Created, want.Created)
+	}
+	got.Created, want.Created = time.Time{}, time.Time{}
+	if *got != *want {
+		t.Errorf("Load after Save =\n%+v\nwant\n%+v", got, want)
+	}
+}

@@ -26,11 +26,11 @@ type Ticket struct {
 	Title    string    `yaml:"title"`
 	State    string    `yaml:"state"`
 	Project  string    `yaml:"project"`
-	Branch   string    `yaml:"branch"`
-	Worktree string    `yaml:"worktree"`
-	Session  string    `yaml:"session"`
-	Result   string    `yaml:"result"`
-	Flags    string    `yaml:"flags"`
+	Branch   string    `yaml:"branch,omitempty"`
+	Worktree string    `yaml:"worktree,omitempty"`
+	Session  string    `yaml:"session,omitempty"`
+	Result   string    `yaml:"result,omitempty"`
+	Flags    string    `yaml:"flags,omitempty"`
 	Created  time.Time `yaml:"created"`
 	Body     string    `yaml:"-"`
 }
@@ -57,4 +57,14 @@ func Load(dir string) (*Ticket, error) {
 
 	t.Body = string(body)
 	return t, nil
+}
+
+// Save writes the fields of the ticket to ticket.yaml. It does not write
+// ticket.md, because the person writes the prose.
+func (t *Ticket) Save(dir string) error {
+	data, err := yaml.Marshal(t)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "ticket.yaml"), data, 0o644)
 }
