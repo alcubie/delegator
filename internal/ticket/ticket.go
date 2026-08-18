@@ -4,6 +4,7 @@ package ticket
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/goccy/go-yaml"
 )
+
+// CurrentSchema is the version of the format that this program writes.
+const CurrentSchema = 1
+
+// ErrUnknownSchema shows that a ticket comes from a later version of delegator.
+var ErrUnknownSchema = errors.New("unknown schema")
 
 // Ticket is one item of work.
 type Ticket struct {
@@ -37,6 +44,10 @@ func Load(dir string) (*Ticket, error) {
 	t := &Ticket{}
 	if err := yaml.Unmarshal(data, t); err != nil {
 		return nil, err
+	}
+	if t.Schema < 1 || t.Schema > CurrentSchema {
+		return nil, fmt.Errorf("%w %d: this version of delegator knows schema 1 to %d",
+			ErrUnknownSchema, t.Schema, CurrentSchema)
 	}
 
 	body, err := os.ReadFile(filepath.Join(dir, "ticket.md"))

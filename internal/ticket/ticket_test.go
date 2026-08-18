@@ -98,3 +98,38 @@ func TestLoadNoFieldsFile(t *testing.T) {
 		t.Errorf("Ticket = %+v, want nil", tk)
 	}
 }
+
+// The schema below is a literal, and not CurrentSchema+1. When the schema of
+// delegator becomes 2, this test must fail, because that is the moment to give
+// schema 1 a read path.
+func TestLoadUnknownSchema(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", "schema: 2\nid: 4\ntitle: From a later version\n")
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error for a schema that this version does not know")
+	}
+	if !errors.Is(err, ErrUnknownSchema) {
+		t.Errorf("error = %v, want an error that matches ErrUnknownSchema", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
+	}
+}
+
+func TestLoadNoSchema(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", "id: 4\ntitle: A ticket with no schema\n")
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error for a ticket with no schema")
+	}
+	if !errors.Is(err, ErrUnknownSchema) {
+		t.Errorf("error = %v, want an error that matches ErrUnknownSchema", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
+	}
+}
