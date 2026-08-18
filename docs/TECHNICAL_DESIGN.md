@@ -41,7 +41,7 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | session | One conversation with an agent, which the agent can continue later. |
 | state | The condition of a ticket. |
 | supervisor | The short program that operates one run and then stops. |
-| ticket | One item of work, kept in one Markdown file. |
+| ticket | One item of work, kept in one directory with two files. |
 | timeout | A time limit. After the limit, the supervisor stops the run. |
 | TUI | Terminal User Interface. Version 1 does not have one. |
 | variables | The four items that connect a ticket to its work: the ticket file, the worktree, the branch and the session. |
@@ -288,7 +288,9 @@ $XDG_DATA_HOME/delegator/
     web-api-4f2a91/
       project.toml                  the full path and the default branch
       tickets/
-        0004-remove-staging.md
+        0004-remove-staging/
+          ticket.yaml             the fields. Delegator writes this file.
+          ticket.md               the prose. The person writes this file.
       worktrees/
         0004-remove-staging/
       runs/
@@ -332,10 +334,12 @@ no tickets does no damage.
 lock protects it. The command `dg show 4` is therefore not ambiguous, and the inbox can
 show all projects together.
 
-**The format of a ticket.** Each ticket is Markdown, with a header:
+**The format of a ticket.** Each ticket is one directory with two files. The file
+`ticket.yaml` holds the fields, and delegator writes it. The file `ticket.md` holds the
+prose, and the person writes it.
 
-```markdown
----
+```yaml
+# ticket.yaml
 schema: 1
 id: 4
 title: Remove staging infrastructure
@@ -348,11 +352,25 @@ result: Staging infra removed. Gate green, 433 tests, 100% branch coverage.
 flags: terraform apply is blocked, the token in .env is invalid. Do not destroy
   the app first, because DNS points at it.
 created: 2026-08-17T09:30:00Z
----
+```
 
+The file `ticket.md` holds the prose only:
+
+```markdown
 Remove the staging app, the volume, the DNS records, the monitor and the
 secrets.
 ```
+
+**Why there are two files.** Delegator writes `ticket.yaml` only. After it makes the
+ticket, no command of delegator writes `ticket.md`. A person can therefore change the
+prose with an editor at any time, and no command can damage the text. The two files also
+make the code more simple. The file `ticket.yaml` is YAML, and the file `ticket.md` is
+text. No program must find the end of a header, and the prose needs no escape characters.
+
+**The title.** The command `dg ticket` with no arguments opens `$EDITOR`. The first line
+becomes the field `title`, and the other lines become `ticket.md`. The title is a field,
+and not the first line of the prose, because delegator makes the row of the inbox, the
+name of the branch and the name of the directory from it.
 
 **Upgrades.** The field `schema` is the complete answer to the problem of upgrades. A new
 version of delegator reads each older schema, and writes the new schema. If a file
@@ -414,7 +432,7 @@ $ dg show 4
             points at it.
   result    Staging infra removed. Gate green, 433 tests.
 
-  ticket    …/projects/web-api-4f2a91/tickets/0004-remove-staging.md
+  ticket    …/projects/web-api-4f2a91/tickets/0004-remove-staging/
   worktree  …/projects/web-api-4f2a91/worktrees/0004-remove-staging
   branch    delegator/4-remove-staging-infrastructure
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
@@ -449,7 +467,8 @@ window = false
 ```
 
 The variables are `{ticket}`, `{worktree}`, `{branch}`, `{base}`, `{session}` and
-`{project}`. The command `dg open diff 4` starts the command with the name `diff` for
+`{project}`. The variable `{ticket}` gives the path of `ticket.md`, because the person
+changes the prose and not the fields. The command `dg open diff 4` starts the command with the name `diff` for
 ticket 4. A command with `window = true` opens in a new terminal window.
 
 This removes the detection of tools and of terminals from delegator. It also lets each
