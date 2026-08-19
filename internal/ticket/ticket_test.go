@@ -286,25 +286,29 @@ func TestSaveFieldsKeepsTheOldFileWhenTheWriteFails(t *testing.T) {
 	}
 }
 
-func TestSaveFieldsLeavesNoOtherFile(t *testing.T) {
+func TestSaveFieldsRemovesItsTemporaryFileAfterAnError(t *testing.T) {
 	dir := t.TempDir()
+	// A directory with the name of the target makes the rename fail, after the
+	// temporary file is made. This is the path on which the cleanup operates.
+	if err := os.Mkdir(filepath.Join(dir, "ticket.yaml"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
 	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued", Project: "/p"}
-	for i := 0; i < 3; i++ {
-		if err := tk.SaveFields(dir); err != nil {
-			t.Fatalf("SaveFields returned an error: %v", err)
-		}
+	if err := tk.SaveFields(dir); err == nil {
+		t.Fatal("SaveFields gave no error, but ticket.yaml is a directory")
 	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "ticket.yaml" {
-		var names []string
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		t.Errorf("the directory holds %v, want only ticket.yaml", names)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "ticket.yaml" {
+		t.Errorf("the directory holds %v, want no temporary file", names)
 	}
 }
 
