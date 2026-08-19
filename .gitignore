@@ -3,3 +3,4 @@
 *.test
 coverage.out
 __debug_bin*
+coverage.html
