@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -47,4 +48,28 @@ const keyHashLength = 6
 func Key(root string) string {
 	sum := sha256.Sum256([]byte(root))
 	return filepath.Base(root) + "-" + hex.EncodeToString(sum[:])[:keyHashLength]
+}
+
+// dirPerm gives the permission of each directory that delegator makes. Section
+// 11 says that a ticket can contain private data, so only its person can read
+// it. A directory that gives no permission to a group stops a read of the names
+// of the files below it.
+const dirPerm = 0o700
+
+// projectDirs are the directories that each project has. The tickets hold the
+// work, the worktrees hold the copy of the repository for each ticket, and the
+// runs hold the log of the agent.
+var projectDirs = []string{"tickets", "worktrees", "runs"}
+
+// Create makes the directory of one project below dataDir, and the directories
+// below it. It gives the path of the directory of the project. Create makes a
+// directory that is already present again, and this causes no error.
+func Create(dataDir, root string) (string, error) {
+	dir := filepath.Join(dataDir, "projects", Key(root))
+	for _, name := range projectDirs {
+		if err := os.MkdirAll(filepath.Join(dir, name), dirPerm); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
 }
