@@ -99,31 +99,17 @@ func TestCreateMakesTheDirectories(t *testing.T) {
 		t.Fatalf("dir = %q, want %q", dir, want)
 	}
 
-	for _, name := range []string{"tickets", "worktrees", "runs"} {
-		info, err := os.Stat(filepath.Join(dir, name))
-		if err != nil {
-			t.Errorf("%s: %v", name, err)
-			continue
-		}
-		if !info.IsDir() {
-			t.Errorf("%s is not a directory", name)
-		}
-	}
-}
-
-// The permission below is a literal, and not dirPerm. A test that reads the
-// same constant as the code agrees with a change of that constant to 0755.
-func TestCreateMakesPrivateDirectories(t *testing.T) {
-	data := t.TempDir()
-	dir, err := Create(data, "/home/person/projects/alcubi/delegator")
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	// The empty name is the directory of the project. The permission 0700 comes
+	// from section 11, and it is a literal here: a test that reads the constant
+	// dirPerm agrees with a change of that constant to 0755.
 	for _, name := range []string{"", "tickets", "worktrees", "runs"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("%q: %v", name, err)
+			continue
+		}
+		if !info.IsDir() {
+			t.Errorf("%q is not a directory", name)
 		}
 		if got := info.Mode().Perm(); got != 0o700 {
 			t.Errorf("%q permission = %o, want 700", name, got)
