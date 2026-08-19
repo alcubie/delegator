@@ -554,6 +554,9 @@ the date and the symptom. Do this before the correction goes in.
 - Delegator keeps no credentials. The agent keeps its own.
 - Ticket files can contain private data. They stay in the data directory of the person,
   outside each git repository, so a commit cannot send them away.
+- Delegator writes each file with the permission 0600, and each directory with the
+  permission 0700. Only the person who made the data can read it. This applies to each
+  file in §7: the tickets, the queue, the counter, `project.toml` and each log.
 
 ## 12. Repository, tools and installation
 
