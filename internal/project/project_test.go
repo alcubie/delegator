@@ -89,7 +89,7 @@ func TestKeyForAKnownPath(t *testing.T) {
 
 func TestCreateMakesTheDirectories(t *testing.T) {
 	data := t.TempDir()
-	dir, err := Create(data, "/home/person/projects/alcubi/delegator")
+	dir, err := Create(data, "/home/person/projects/alcubi/delegator", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +113,43 @@ func TestCreateMakesTheDirectories(t *testing.T) {
 		}
 		if got := info.Mode().Perm(); got != 0o700 {
 			t.Errorf("%q permission = %o, want 700", name, got)
+		}
+	}
+}
+
+func TestCreateWritesProjectToml(t *testing.T) {
+	// Two branches, because one value cannot show that Create reads its
+	// argument. A Create that always writes "main" passes a test that only
+	// ever gives it "main".
+	for _, branch := range []string{"main", "trunk"} {
+		data := t.TempDir()
+		dir, err := Create(data, "/home/person/projects/alcubi/delegator", branch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		path := filepath.Join(dir, "project.toml")
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The content is a literal. A test that reads the file with the library
+		// that wrote it agrees with a change of the name of a field.
+		want := "path = \"/home/person/projects/alcubi/delegator\"\n" +
+			"default_branch = \"" + branch + "\"\n"
+		if string(got) != want {
+			t.Errorf("project.toml = %q, want %q", got, want)
+		}
+
+		// Section 11 names project.toml, so only its person can read it. The
+		// permission is a literal, and not filePerm.
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("permission = %o, want 600", perm)
 		}
 	}
 }
