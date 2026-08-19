@@ -256,3 +256,73 @@ func TestSaveFieldsRefusesLongFlags(t *testing.T) {
 		t.Errorf("error = %v, want an error that matches ErrTooLong", err)
 	}
 }
+
+func TestSaveFieldsKeepsTheOldFileWhenTheWriteFails(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root does not obey the permissions of a directory")
+	}
+	dir := t.TempDir()
+	const old = "schema: 1\nid: 4\ntitle: The old ticket\nstate: queued\nproject: /p\n"
+	write(t, dir, "ticket.yaml", old)
+
+	// A directory that does not permit a write stops a new file, but it does not
+	// stop a write to a file that is already in it.
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	tk := &Ticket{Schema: 1, ID: 4, Title: "The new ticket", State: "ready", Project: "/p"}
+	if err := tk.SaveFields(dir); err == nil {
+		t.Fatal("SaveFields gave no error, but the directory does not permit a new file")
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "ticket.yaml"))
+	if err != nil {
+		t.Fatalf("read ticket.yaml: %v", err)
+	}
+	if string(got) != old {
+		t.Errorf("ticket.yaml = %q, want the old file %q", got, old)
+	}
+}
+
+func TestSaveFieldsLeavesNoOtherFile(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued", Project: "/p"}
+	for i := 0; i < 3; i++ {
+		if err := tk.SaveFields(dir); err != nil {
+			t.Fatalf("SaveFields returned an error: %v", err)
+		}
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "ticket.yaml" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("the directory holds %v, want only ticket.yaml", names)
+	}
+}
+
+func TestSaveFieldsWritesAPrivateFile(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued", Project: "/p"}
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
+	}
+
+	// Section 11: a ticket can contain private data.
+	info, err := os.Stat(filepath.Join(dir, "ticket.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The permission is a literal, and not filePerm. A test that reads the same
+	// constant as the code agrees with a change of that constant to 0644.
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("permission = %o, want 600", got)
+	}
+}
