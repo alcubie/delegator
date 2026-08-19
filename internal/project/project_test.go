@@ -74,3 +74,15 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 		t.Errorf("result = %s, want = %s", result, spaceDir)
 	}
 }
+
+// The key below is a literal. A test that does the hash again agrees with an
+// error in the code that it examines. The value comes from the shell:
+//
+//	printf '%s' '/home/person/projects/alcubi/delegator' | sha256sum | cut -c1-6
+func TestKeyForAKnownPath(t *testing.T) {
+	got := Key("/home/person/projects/alcubi/delegator")
+	want := "delegator-b2fb4a"
+	if got != want {
+		t.Errorf("Key = %q, want %q", got, want)
+	}
+}

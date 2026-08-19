@@ -1,8 +1,11 @@
 package project
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,4 +33,18 @@ func Root(path string) (string, error) {
 	}
 
 	return strings.TrimSuffix(string(gitDir), "\n"), nil
+}
+
+// keyHashLength is the number of characters that the key takes from the hash.
+// Section 7 gives the value.
+const keyHashLength = 6
+
+// Key gives the name of the directory that holds the data of one project. It is
+// the name of the root directory, and then 6 characters from the SHA-256 hash of
+// the full path. The name alone is not unique, because many repositories have
+// the name "backend". Section 7 gives the reason, and project.toml holds the
+// full path, so the key is reversible.
+func Key(root string) string {
+	sum := sha256.Sum256([]byte(root))
+	return filepath.Base(root) + "-" + hex.EncodeToString(sum[:])[:keyHashLength]
 }
