@@ -1,0 +1,332 @@
+package ticket
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+const validYAML = `schema: 1
+id: 4
+title: Remove staging infrastructure
+state: ready
+project: /home/person/projects/web-api
+branch: delegator/4-remove-staging-infrastructure
+worktree: /home/person/.local/share/delegator/projects/web-api-4f2a91/worktrees/0004
+session: e55e382e-2c88-4de7-a31d-ab8763a0fb5a
+result: Staging infra removed. Gate green, 433 tests.
+flags: terraform apply is blocked, the token in .env is invalid.
+created: 2026-08-17T09:30:00Z
+`
+
+// write puts one file in the directory of a ticket.
+func write(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+func TestLoadReadsTheFields(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", validYAML)
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
+	if tk.Schema != 1 {
+		t.Errorf("Schema = %d, want 1", tk.Schema)
+	}
+	if tk.ID != 4 {
+		t.Errorf("ID = %d, want 4", tk.ID)
+	}
+	for _, c := range []struct{ name, got, want string }{
+		{"Title", tk.Title, "Remove staging infrastructure"},
+		{"State", tk.State, "ready"},
+		{"Project", tk.Project, "/home/person/projects/web-api"},
+		{"Branch", tk.Branch, "delegator/4-remove-staging-infrastructure"},
+		{"Session", tk.Session, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"},
+		{"Result", tk.Result, "Staging infra removed. Gate green, 433 tests."},
+		{"Flags", tk.Flags, "terraform apply is blocked, the token in .env is invalid."},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+		}
+	}
+	if want := time.Date(2026, 8, 17, 9, 30, 0, 0, time.UTC); !tk.Created.Equal(want) {
+		t.Errorf("Created = %v, want %v", tk.Created, want)
+	}
+
+	if tk.Body != "" {
+		t.Errorf("Body = %q, want <empty string>", tk.Body)
+	}
+}
+
+func TestLoadReadsTheBody(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", validYAML)
+
+	const body = "Line one\n\nLine two\n"
+	write(t, dir, "ticket.md", body)
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
+	if tk.Body != body {
+		t.Errorf("Body = %q, want %q", tk.Body, body)
+	}
+}
+
+func TestLoadNoFieldsFile(t *testing.T) {
+	dir := t.TempDir()
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error, but ticket.yaml is not present")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("error = %v, want an error that matches fs.ErrNotExist", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
+	}
+}
+
+// The schema below is a literal, and not CurrentSchema+1. When the schema of
+// delegator becomes 2, this test must fail, because that is the moment to give
+// schema 1 a read path.
+func TestLoadUnknownSchema(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", "schema: 2\nid: 4\ntitle: From a later version\n")
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error for a schema that this version does not know")
+	}
+	if !errors.Is(err, ErrUnknownSchema) {
+		t.Errorf("error = %v, want an error that matches ErrUnknownSchema", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
+	}
+}
+
+func TestLoadNoSchema(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml", "id: 4\ntitle: A ticket with no schema\n")
+
+	tk, err := Load(dir)
+	if err == nil {
+		t.Fatal("Load gave no error for a ticket with no schema")
+	}
+	if !errors.Is(err, ErrUnknownSchema) {
+		t.Errorf("error = %v, want an error that matches ErrUnknownSchema", err)
+	}
+	if tk != nil {
+		t.Errorf("Ticket = %+v, want nil", tk)
+	}
+}
+
+func TestLoadNoResultOrFlags(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.yaml",
+		"schema: 1\nid: 4\ntitle: A ticket in the queue\nstate: queued\n")
+
+	tk, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+	if tk.Result != "" {
+		t.Errorf("Result = %q, want an empty string", tk.Result)
+	}
+	if tk.Flags != "" {
+		t.Errorf("Flags = %q, want an empty string", tk.Flags)
+	}
+}
+
+func TestSaveFieldsAndLoadGiveTheSameTicket(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "ticket.md", "Line one\n\nLine two\n")
+
+	want := &Ticket{
+		Schema:   1,
+		ID:       4,
+		Title:    "Remove staging infrastructure",
+		State:    "ready",
+		Project:  "/home/person/projects/web-api",
+		Branch:   "delegator/4-remove-staging-infrastructure",
+		Worktree: "/home/person/.local/share/delegator/projects/web-api-4f2a91/worktrees/0004",
+		Session:  "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+		Result:   "Staging infra removed. Gate green, 433 tests.",
+		Flags: "terraform apply is blocked, the token in .env is invalid. " +
+			"Do not destroy the app first, because DNS points at it.",
+		Created: time.Date(2026, 8, 17, 9, 30, 0, 0, time.UTC),
+		Body:    "Line one\n\nLine two\n",
+	}
+
+	if err := want.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+
+	// Two times can be equal and not identical, so Created is compared on its
+	// own and then removed from the comparison of the two structs.
+	if !got.Created.Equal(want.Created) {
+		t.Errorf("Created = %v, want %v", got.Created, want.Created)
+	}
+	got.Created, want.Created = time.Time{}, time.Time{}
+	if *got != *want {
+		t.Errorf("Load after SaveFields =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+func TestSaveFieldsDoesNotWriteTheProse(t *testing.T) {
+	dir := t.TempDir()
+	const prose = "The prose of the person.\n"
+	write(t, dir, "ticket.md", prose)
+
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued",
+		Body: "Text that SaveFields must not write.\n"}
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "ticket.md"))
+	if err != nil {
+		t.Fatalf("read ticket.md: %v", err)
+	}
+	if string(got) != prose {
+		t.Errorf("ticket.md = %q, want %q", got, prose)
+	}
+}
+
+func TestSaveFieldsRefusesALongResult(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "ready"}
+
+	// The limit is the limit, so a result of exactly MaxResult is permitted.
+	tk.Result = strings.Repeat("x", MaxResult)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields refused a result of %d characters: %v", MaxResult, err)
+	}
+
+	tk.Result = strings.Repeat("x", MaxResult+1)
+	err := tk.SaveFields(dir)
+	if err == nil {
+		t.Fatal("SaveFields gave no error for a result that is too long")
+	}
+	if !errors.Is(err, ErrTooLong) {
+		t.Errorf("error = %v, want an error that matches ErrTooLong", err)
+	}
+
+	// A character is not a byte. Each of these is 2 bytes, so a limit that
+	// counts bytes would refuse a result that the person sees as short.
+	tk.Result = strings.Repeat("é", MaxResult)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Errorf("SaveFields refused %d characters that are 2 bytes each: %v", MaxResult, err)
+	}
+}
+
+func TestSaveFieldsRefusesLongFlags(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "ready"}
+
+	tk.Flags = strings.Repeat("x", MaxFlags)
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields refused flags of %d characters: %v", MaxFlags, err)
+	}
+
+	tk.Flags = strings.Repeat("x", MaxFlags+1)
+	err := tk.SaveFields(dir)
+	if err == nil {
+		t.Fatal("SaveFields gave no error for flags that are too long")
+	}
+	if !errors.Is(err, ErrTooLong) {
+		t.Errorf("error = %v, want an error that matches ErrTooLong", err)
+	}
+}
+
+func TestSaveFieldsKeepsTheOldFileWhenTheWriteFails(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root does not obey the permissions of a directory")
+	}
+	dir := t.TempDir()
+	const old = "schema: 1\nid: 4\ntitle: The old ticket\nstate: queued\nproject: /p\n"
+	write(t, dir, "ticket.yaml", old)
+
+	// A directory that does not permit a write stops a new file, but it does not
+	// stop a write to a file that is already in it.
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	tk := &Ticket{Schema: 1, ID: 4, Title: "The new ticket", State: "ready", Project: "/p"}
+	if err := tk.SaveFields(dir); err == nil {
+		t.Fatal("SaveFields gave no error, but the directory does not permit a new file")
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "ticket.yaml"))
+	if err != nil {
+		t.Fatalf("read ticket.yaml: %v", err)
+	}
+	if string(got) != old {
+		t.Errorf("ticket.yaml = %q, want the old file %q", got, old)
+	}
+}
+
+func TestSaveFieldsRemovesItsTemporaryFileAfterAnError(t *testing.T) {
+	dir := t.TempDir()
+	// A directory with the name of the target makes the rename fail, after the
+	// temporary file is made. This is the path on which the cleanup operates.
+	if err := os.Mkdir(filepath.Join(dir, "ticket.yaml"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued", Project: "/p"}
+	if err := tk.SaveFields(dir); err == nil {
+		t.Fatal("SaveFields gave no error, but ticket.yaml is a directory")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "ticket.yaml" {
+		t.Errorf("the directory holds %v, want no temporary file", names)
+	}
+}
+
+func TestSaveFieldsWritesAPrivateFile(t *testing.T) {
+	dir := t.TempDir()
+	tk := &Ticket{Schema: 1, ID: 4, Title: "A ticket", State: "queued", Project: "/p"}
+	if err := tk.SaveFields(dir); err != nil {
+		t.Fatalf("SaveFields returned an error: %v", err)
+	}
+
+	// Section 11: a ticket can contain private data.
+	info, err := os.Stat(filepath.Join(dir, "ticket.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The permission is a literal, and not filePerm. A test that reads the same
+	// constant as the code agrees with a change of that constant to 0644.
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("permission = %o, want 600", got)
+	}
+}
