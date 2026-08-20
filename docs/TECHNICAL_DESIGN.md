@@ -281,9 +281,9 @@ There is no database. Files are the data, and the person can read each one.
 $XDG_CONFIG_HOME/delegator/config.toml
 
 $XDG_DATA_HOME/delegator/
-  queue                             ordered ticket ids, one on each line
-  next-id                           the counter for ticket ids
-  lock                              the file for the exclusive lock
+  .queue                             ordered ticket ids, one on each line
+  .next-id                           the counter for ticket ids
+  .lock                              the file for the exclusive lock
   projects/
     web-api-4f2a91/
       project.toml                  the full path and the default branch
