@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/alcubie/delegator/internal/atomicfile"
 )
 
 // ErrGitNotOnPath shows that git is not installed on the PATH.
@@ -63,10 +65,6 @@ const dirPerm = 0o700
 // runs hold the log of the agent.
 var projectDirs = []string{"tickets", "worktrees", "runs"}
 
-// filePerm gives the permission of each file that delegator writes. Section 11
-// names project.toml, so only its person can read it.
-const filePerm = 0o600
-
 // Project holds the fields of project.toml. The path makes the key reversible,
 // and the default branch is the start of the branch of each run. Section 6.5
 // gives the reason.
@@ -96,7 +94,7 @@ func Create(dataDir, root, defaultBranch string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "project.toml"), data, filePerm); err != nil {
+	if err := atomicfile.Write(filepath.Join(dir, "project.toml"), data, atomicfile.Perm); err != nil {
 		return "", err
 	}
 	return dir, nil
