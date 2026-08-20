@@ -324,8 +324,10 @@ func TestSaveFieldsWritesAPrivateFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The permission is a literal, and not filePerm. A test that reads the same
-	// constant as the code agrees with a change of that constant to 0644.
+	// The test compares against the literal 0600, and not against
+	// atomicfile.Perm. A test that read that constant would stay green after a
+	// change of it to 0644, because that one change moves the value that the
+	// test wants at the same time.
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Errorf("permission = %o, want 600", got)
 	}

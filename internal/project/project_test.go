@@ -75,8 +75,9 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 	}
 }
 
-// The key below is a literal. A test that does the hash again agrees with an
-// error in the code that it examines. The value comes from the shell:
+// The key below is a literal. A test that did the hash a second time would stay
+// green with an error in the code that it examines, because the test would make
+// the same error. The value therefore comes from the shell:
 //
 //	printf '%s' '/home/person/projects/alcubi/delegator' | sha256sum | cut -c1-6
 func TestKeyForAKnownPath(t *testing.T) {
@@ -100,8 +101,10 @@ func TestCreateMakesTheDirectories(t *testing.T) {
 	}
 
 	// The empty name is the directory of the project. The permission 0700 comes
-	// from section 11, and it is a literal here: a test that reads the constant
-	// dirPerm agrees with a change of that constant to 0755.
+	// from section 11, and the test says it a second time as a literal. A test
+	// that read dirPerm would stay green after a change of dirPerm to 0755,
+	// because that one change moves the value that the test wants at the same
+	// time.
 	for _, name := range []string{"", "tickets", "worktrees", "runs"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
@@ -134,8 +137,10 @@ func TestCreateWritesProjectToml(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// The content is a literal. A test that reads the file with the library
-		// that wrote it agrees with a change of the name of a field.
+		// The content is a literal. A test that read the file back with the
+		// library that wrote it would stay green after a change of the name of
+		// a field: repo_path would go out and come back, and the format of the
+		// file would still be wrong.
 		want := "path = \"/home/person/projects/alcubi/delegator\"\n" +
 			"default_branch = \"" + branch + "\"\n"
 		if string(got) != want {
@@ -143,7 +148,8 @@ func TestCreateWritesProjectToml(t *testing.T) {
 		}
 
 		// Section 11 names project.toml, so only its person can read it. The
-		// permission is a literal, and not filePerm.
+		// test says the permission a second time as a literal, and does not read
+		// the constant that the code gives to the write.
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)
