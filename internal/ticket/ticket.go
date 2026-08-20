@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/alcubie/delegator/internal/atomicfile"
 )
 
 // CurrentSchema is the version of the format that this program writes.
@@ -27,10 +29,6 @@ const (
 
 // ErrUnknownSchema shows that a ticket comes from a later version of delegator.
 var ErrUnknownSchema = errors.New("unknown schema")
-
-// filePerm gives the permission of each file that delegator writes. Section 11
-// says that a ticket can contain private data, so only its person can read it.
-const filePerm = 0o600
 
 // ErrTooLong shows that a field from the agent is longer than its limit.
 var ErrTooLong = errors.New("field is too long")
@@ -90,7 +88,7 @@ func (t *Ticket) SaveFields(dir string) error {
 	if err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(dir, "ticket.yaml"), data)
+	return atomicfile.Write(filepath.Join(dir, "ticket.yaml"), data, atomicfile.Perm)
 }
 
 // checkLength refuses a value that is longer than its limit. It counts
@@ -101,37 +99,4 @@ func checkLength(name, value string, limit int) error {
 			ErrTooLong, name, n, limit)
 	}
 	return nil
-}
-
-// writeAtomic writes to a temporary file in the same directory, and then gives
-// it the name of the target. A rename in one directory cannot occur in part, so
-// a write that stops leaves the old file. The temporary file is in the same
-// directory because a rename between two file systems is not possible.
-func writeAtomic(path string, data []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	// This removes the temporary file after an error. After a rename that
-	// operates, the name is not in use and the removal does nothing.
-	defer os.Remove(tmp)
-
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	// Sync puts the data on the disk before the rename. Without it, a loss of
-	// power can leave a file that has the new name and no contents.
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, filePerm); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }
