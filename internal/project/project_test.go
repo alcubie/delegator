@@ -2,12 +2,17 @@ package project
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
+
+const testRoot = "/project/delegator"
 
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
@@ -80,10 +85,10 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 // green with an error in the code that it examines, because the test would make
 // the same error. The value therefore comes from the shell:
 //
-//	printf '%s' '/home/person/projects/alcubi/delegator' | sha256sum | cut -c1-6
+//	printf '%s' '/project/delegator' | sha256sum | cut -c1-6
 func TestKeyForAKnownPath(t *testing.T) {
-	got := Key("/home/person/projects/alcubi/delegator")
-	want := "delegator-b2fb4a"
+	got := Key(testRoot)
+	want := "delegator-f5dfd0"
 	if got != want {
 		t.Errorf("Key = %q, want %q", got, want)
 	}
@@ -91,12 +96,12 @@ func TestKeyForAKnownPath(t *testing.T) {
 
 func TestCreateMakesTheDirectories(t *testing.T) {
 	data := t.TempDir()
-	dir, err := Create(data, "/home/person/projects/alcubi/delegator", "main")
+	dir, err := Create(data, testRoot, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := filepath.Join(data, "projects", "delegator-b2fb4a")
+	want := filepath.Join(data, "projects", "delegator-f5dfd0")
 	if dir != want {
 		t.Fatalf("dir = %q, want %q", dir, want)
 	}
@@ -127,7 +132,8 @@ func TestCreateWritesProjectToml(t *testing.T) {
 	// ever gives it "main".
 	for _, branch := range []string{"main", "trunk"} {
 		dataDir := t.TempDir()
-		path := createProject(t, dataDir, branch)
+		projectDir := createProject(t, dataDir, testRoot, branch)
+		path := filepath.Join(projectDir, "project.toml")
 
 		got, err := os.ReadFile(path)
 		if err != nil {
@@ -138,7 +144,7 @@ func TestCreateWritesProjectToml(t *testing.T) {
 		// library that wrote it would stay green after a change of the name of
 		// a field: repo_path would go out and come back, and the format of the
 		// file would still be wrong.
-		want := "path = \"/home/person/projects/alcubi/delegator\"\n" +
+		want := "path = \"/project/delegator\"\n" +
 			"default_branch = \"" + branch + "\"\n"
 		if string(got) != want {
 			t.Errorf("project.toml = %q, want %q", got, want)
@@ -157,19 +163,21 @@ func TestCreateWritesProjectToml(t *testing.T) {
 	}
 }
 
-func createProject(t *testing.T, dataDir string, branch string) string {
+// createProject creates the project and returns the projectDir
+func createProject(t *testing.T, dataDir, root, branch string) string {
 	t.Helper()
-	dir, err := Create(dataDir, "/home/person/projects/alcubi/delegator", branch)
+	dir, err := Create(dataDir, root, branch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return filepath.Join(dir, "project.toml")
+	return dir
 }
 
 func TestCreateTomlAgainRemainsUnmodified(t *testing.T) {
 	dataDir := t.TempDir()
-	path := createProject(t, dataDir, "main")
+	projectDir := createProject(t, dataDir, testRoot, "main")
+	path := filepath.Join(projectDir, "project.toml")
 
 	// Manually set the last modified time as a file modified immediately afterwards
 	// may end up having the same mtime which would make the test unreliable
@@ -178,7 +186,7 @@ func TestCreateTomlAgainRemainsUnmodified(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	createProject(t, dataDir, "trunk")
+	createProject(t, dataDir, testRoot, "trunk")
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -186,5 +194,49 @@ func TestCreateTomlAgainRemainsUnmodified(t *testing.T) {
 	}
 	if !info.ModTime().Equal(old) {
 		t.Errorf("project.toml was written again: mtime = %v, want %v", info.ModTime(), old)
+	}
+}
+
+func TestConfig(t *testing.T) {
+	dataDir := t.TempDir()
+	projectDir := createProject(t, dataDir, testRoot, "main")
+	config, err := Config(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if config.DefaultBranch != "main" {
+		t.Errorf("default_branch = %s, want %s", config.DefaultBranch, "main")
+	}
+
+	if config.Path != testRoot {
+		t.Errorf("path = %s, want %s", config.Path, testRoot)
+	}
+}
+
+func TestConfigTomlDoesNotExist(t *testing.T) {
+	dataDir := t.TempDir()
+	projectDir := createProject(t, dataDir, testRoot, "main")
+	err := os.Remove(filepath.Join(projectDir, "project.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Config(projectDir)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want %v", err, fs.ErrNotExist)
+	}
+}
+
+func TestConfigWithInvalidToml(t *testing.T) {
+	dataDir := t.TempDir()
+	projectDir := createProject(t, dataDir, testRoot, "main")
+	if err := os.WriteFile(filepath.Join(projectDir, "project.toml"), []byte("invalid toml"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Config(projectDir)
+	if _, ok := errors.AsType[toml.ParseError](err); !ok {
+		t.Errorf("err = %v, want a toml.ParseError", err)
 	}
 }

@@ -85,15 +85,15 @@ type Project struct {
 // is the branch of the moment, and refs/remotes/origin/HEAD is not present in a
 // repository that has no remote. Ticket 4 does that work.
 func Create(dataDir, root, defaultBranch string) (string, error) {
-	dir := filepath.Join(dataDir, "projects", Key(root))
+	dir := Dir(dataDir, root)
 	for _, name := range projectDirs {
 		if err := os.MkdirAll(filepath.Join(dir, name), dirPerm); err != nil {
 			return "", err
 		}
 	}
 
-	tomlPath := filepath.Join(dir, "project.toml")
-	exists, err := pathExists(tomlPath)
+	path := tomlPath(dir)
+	exists, err := pathExists(path)
 	if err != nil {
 		return "", err
 	}
@@ -106,10 +106,20 @@ func Create(dataDir, root, defaultBranch string) (string, error) {
 		return "", err
 	}
 
-	if err := atomicfile.Write(tomlPath, data, atomicfile.Perm); err != nil {
+	if err := atomicfile.Write(path, data, atomicfile.Perm); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+// Dir returns the directory below dataDir that holds the data of the project.
+// The root is the path of the git repository and Key creates its unique name.
+func Dir(dataDir string, root string) string {
+	return filepath.Join(dataDir, "projects", Key(root))
+}
+
+func tomlPath(projectDir string) string {
+	return filepath.Join(projectDir, "project.toml")
 }
 
 func pathExists(path string) (bool, error) {
@@ -121,4 +131,21 @@ func pathExists(path string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// Config returns the configuration of the project located in project.toml
+func Config(projectDir string) (Project, error) {
+	var config Project
+	path := tomlPath(projectDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return config, err
+	}
+
+	_, err = toml.Decode(string(data), &config)
+	if err != nil {
+		return config, err
+	}
+
+	return config, nil
 }
