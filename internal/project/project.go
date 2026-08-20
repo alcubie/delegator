@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,9 +75,10 @@ type Project struct {
 }
 
 // Create makes the directory of one project below dataDir, and the directories
-// below it, and writes project.toml. It gives the path of the directory of the
-// project. Create makes a directory that is already present again, and this
-// causes no error.
+// below it, and writes project.toml if it does not exist. If project.toml does
+// exist it is left unmodified. It gives the path of the directory of the project.
+// Create makes a directory that is already present again, and this causes no
+// error.
 //
 // Create takes the default branch, and does not read it from the repository.
 // No answer from git is correct for each repository: the branch that HEAD gives
@@ -90,12 +92,33 @@ func Create(dataDir, root, defaultBranch string) (string, error) {
 		}
 	}
 
+	tomlPath := filepath.Join(dir, "project.toml")
+	exists, err := pathExists(tomlPath)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		return dir, nil
+	}
+
 	data, err := toml.Marshal(Project{Path: root, DefaultBranch: defaultBranch})
 	if err != nil {
 		return "", err
 	}
-	if err := atomicfile.Write(filepath.Join(dir, "project.toml"), data, atomicfile.Perm); err != nil {
+
+	if err := atomicfile.Write(tomlPath, data, atomicfile.Perm); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }

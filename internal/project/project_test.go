@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func initRepo(t *testing.T, dir string) {
@@ -125,13 +126,9 @@ func TestCreateWritesProjectToml(t *testing.T) {
 	// argument. A Create that always writes "main" passes a test that only
 	// ever gives it "main".
 	for _, branch := range []string{"main", "trunk"} {
-		data := t.TempDir()
-		dir, err := Create(data, "/home/person/projects/alcubi/delegator", branch)
-		if err != nil {
-			t.Fatal(err)
-		}
+		dataDir := t.TempDir()
+		path := createProject(t, dataDir, branch)
 
-		path := filepath.Join(dir, "project.toml")
 		got, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -157,5 +154,37 @@ func TestCreateWritesProjectToml(t *testing.T) {
 		if perm := info.Mode().Perm(); perm != 0o600 {
 			t.Errorf("permission = %o, want 600", perm)
 		}
+	}
+}
+
+func createProject(t *testing.T, dataDir string, branch string) string {
+	t.Helper()
+	dir, err := Create(dataDir, "/home/person/projects/alcubi/delegator", branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return filepath.Join(dir, "project.toml")
+}
+
+func TestCreateTomlAgainRemainsUnmodified(t *testing.T) {
+	dataDir := t.TempDir()
+	path := createProject(t, dataDir, "main")
+
+	// Manually set the last modified time as a file modified immediately afterwards
+	// may end up having the same mtime which would make the test unreliable
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	createProject(t, dataDir, "trunk")
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Errorf("project.toml was written again: mtime = %v, want %v", info.ModTime(), old)
 	}
 }
