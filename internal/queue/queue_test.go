@@ -131,7 +131,7 @@ func TestAddAfterRemoveKeepsTheLines(t *testing.T) {
 
 	want := "3\n4\n"
 	if want != string(got) {
-		t.Errorf("want = %s, got = %s", want, got)
+		t.Errorf("got = %s, want = %s", got, want)
 	}
 }
 
@@ -158,5 +158,26 @@ func TestNextIDReturnsNumberAndIncrements(t *testing.T) {
 
 	if string(nextID) != "100" {
 		t.Errorf("want = 100, got = %s", nextID)
+	}
+}
+
+func TestNextIDReturnsOneForANewFileAndCreates(t *testing.T) {
+	dataDir := t.TempDir()
+	id, err := NextID(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if id != 1 {
+		t.Errorf("got = %d, want = 1", id)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(got) != "2" {
+		t.Errorf("got = %s, want = 2", got)
 	}
 }

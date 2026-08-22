@@ -99,21 +99,25 @@ func Remove(dataDir string, id int) error {
 }
 
 // NextID returns the ID of the next ticket and increments the number in the storage file.
+// It creates the file if it doesn't exist.
 func NextID(dataDir string) (int, error) {
 	nextID, err := os.ReadFile(nextIDPath(dataDir))
 	if err != nil {
-		return 0, err
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, err
+		}
+		nextID = []byte("1")
 	}
 
-	res, err := strconv.Atoi(string(nextID))
+	id, err := strconv.Atoi(string(nextID))
 	if err != nil {
 		return 0, err
 	}
 
-	next := res + 1
+	next := id + 1
 	if err := atomicfile.Write(nextIDPath(dataDir), []byte(strconv.Itoa(next)), atomicfile.Perm); err != nil {
 		return 0, err
 	}
 
-	return res, nil
+	return id, nil
 }
