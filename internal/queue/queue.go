@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/alcubie/delegator/internal/atomicfile"
 )
@@ -23,9 +24,12 @@ const queueFile = ".queue"
 // Add() can append. .next-id has nothing to append so the decision was made to avoid a trailing newline.
 const nextIDFile = ".next-id"
 
-// Add puts the id at the end of the queue file, and makes the file if it is not
-// present.
-func Add(dataDir string, id int) error {
+// lockFile gives the exclusive lock.  Section 5 says one writer at a time.
+// The file has no content.  flock locks the inode, and this file is the one
+// file that no write replaces, so its inode does not change.
+const lockFile = ".lock"
+
+func add(dataDir string, id int) error {
 	f, err := os.OpenFile(queuePath(dataDir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, atomicfile.Perm)
 	if err != nil {
 		return err
@@ -50,6 +54,8 @@ func nextIDPath(dataDir string) string {
 
 // List returns a slice of IDs representing the current queue.
 // It returns an empty slice if the file has not been created.
+// This doesn't use the lock because it will still return the current copy of the queue
+// while a write is in progress.  With atomicfile.Write the queue can't be in a partially updated state.
 func List(dataDir string) ([]int, error) {
 	queuePath := queuePath(dataDir)
 	contents, err := os.ReadFile(queuePath)
@@ -76,9 +82,7 @@ func List(dataDir string) ([]int, error) {
 	return ids, nil
 }
 
-// Remove removes the ID from the queue no matter the position.
-// If the ID does not exist, the queue remains unmodified.
-func Remove(dataDir string, id int) error {
+func remove(dataDir string, id int) error {
 	ids, err := List(dataDir)
 	if err != nil {
 		return err
@@ -98,9 +102,7 @@ func Remove(dataDir string, id int) error {
 	return nil
 }
 
-// NextID returns the ID of the next ticket and increments the number in the storage file.
-// It creates the file if it doesn't exist.
-func NextID(dataDir string) (int, error) {
+func nextID(dataDir string) (int, error) {
 	nextID, err := os.ReadFile(nextIDPath(dataDir))
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -120,4 +122,48 @@ func NextID(dataDir string) (int, error) {
 	}
 
 	return id, nil
+}
+
+// withLock runs fn while this program holds the exclusive lock.  Another
+// program that asks for the lock waits until this one releases it.
+// If the process dies then the lock is released.
+func withLock(dataDir string, fn func() error) error {
+	f, err := os.OpenFile(filepath.Join(dataDir, lockFile), os.O_CREATE|os.O_RDWR, atomicfile.Perm)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+
+	return fn()
+}
+
+// NextID returns the ID of the next ticket and increments the number in the storage file.
+// It creates the file if it doesn't exist.
+// This blocks on a currently writing process.
+func NextID(dataDir string) (int, error) {
+	var id int
+	err := withLock(dataDir, func() error {
+		var err error
+		id, err = nextID(dataDir)
+		return err
+	})
+	return id, err
+}
+
+// Remove removes the ID from the queue no matter the position.
+// If the ID does not exist, the queue remains unmodified.
+// This blocks on a currently writing process.
+func Remove(dataDir string, id int) error {
+	return withLock(dataDir, func() error { return remove(dataDir, id) })
+}
+
+// Add puts the id at the end of the queue file, and makes the file if it is not
+// present.  This blocks on a currently writing process.
+func Add(dataDir string, id int) error {
+	return withLock(dataDir, func() error { return add(dataDir, id) })
 }
