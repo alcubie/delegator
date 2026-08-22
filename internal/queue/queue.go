@@ -18,6 +18,11 @@ import (
 // Section 7 gives the name.
 const queueFile = ".queue"
 
+// nextIDFile is the name of the file that holds the next ticket ID.
+// The file holds one number and no newline.  .queue ends each line with a newline so that
+// Add() can append. .next-id has nothing to append so the decision was made to avoid a trailing newline.
+const nextIDFile = ".next-id"
+
 // Add puts the id at the end of the queue file, and makes the file if it is not
 // present.
 func Add(dataDir string, id int) error {
@@ -35,6 +40,11 @@ func Add(dataDir string, id int) error {
 
 func queuePath(dataDir string) string {
 	path := filepath.Join(dataDir, queueFile)
+	return path
+}
+
+func nextIDPath(dataDir string) string {
+	path := filepath.Join(dataDir, nextIDFile)
 	return path
 }
 
@@ -86,4 +96,24 @@ func Remove(dataDir string, id int) error {
 	}
 
 	return nil
+}
+
+// NextID returns the ID of the next ticket and increments the number in the storage file.
+func NextID(dataDir string) (int, error) {
+	nextID, err := os.ReadFile(nextIDPath(dataDir))
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := strconv.Atoi(string(nextID))
+	if err != nil {
+		return 0, err
+	}
+
+	next := res + 1
+	if err := atomicfile.Write(nextIDPath(dataDir), []byte(strconv.Itoa(next)), atomicfile.Perm); err != nil {
+		return 0, err
+	}
+
+	return res, nil
 }

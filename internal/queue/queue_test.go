@@ -134,3 +134,29 @@ func TestAddAfterRemoveKeepsTheLines(t *testing.T) {
 		t.Errorf("want = %s, got = %s", want, got)
 	}
 }
+
+func TestNextIDReturnsNumberAndIncrements(t *testing.T) {
+	dataDir := t.TempDir()
+	nextIDPath := filepath.Join(dataDir, ".next-id")
+	if err := os.WriteFile(nextIDPath, []byte("99"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := NextID(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if id != 99 {
+		t.Errorf("got = %d, want = %d", id, 99)
+	}
+
+	nextID, err := os.ReadFile(nextIDPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(nextID) != "100" {
+		t.Errorf("want = 100, got = %s", nextID)
+	}
+}
