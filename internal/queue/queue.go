@@ -21,8 +21,7 @@ const queueFile = ".queue"
 // Add puts the id at the end of the queue file, and makes the file if it is not
 // present.
 func Add(dataDir string, id int) error {
-	path := filepath.Join(dataDir, queueFile)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, atomicfile.Perm)
+	f, err := os.OpenFile(queuePath(dataDir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, atomicfile.Perm)
 	if err != nil {
 		return err
 	}
@@ -34,11 +33,16 @@ func Add(dataDir string, id int) error {
 	return f.Close()
 }
 
+func queuePath(dataDir string) string {
+	path := filepath.Join(dataDir, queueFile)
+	return path
+}
+
 // List returns a slice of IDs representing the current queue.
 // It returns an empty slice if the file has not been created.
 func List(dataDir string) ([]int, error) {
-	path := filepath.Join(dataDir, queueFile)
-	contents, err := os.ReadFile(path)
+	queuePath := queuePath(dataDir)
+	contents, err := os.ReadFile(queuePath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return []int{}, nil
@@ -54,10 +58,32 @@ func List(dataDir string) ([]int, error) {
 	for i, line := range lines {
 		id, err := strconv.Atoi(line)
 		if err != nil {
-			return nil, fmt.Errorf("%s: line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("%s: line %d: %w", queuePath, i+1, err)
 		}
 		ids[i] = id
 	}
 
 	return ids, nil
+}
+
+// Remove removes the ID from the queue no matter the position.
+// If the ID does not exist, the queue remains unmodified.
+func Remove(dataDir string, id int) error {
+	ids, err := List(dataDir)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	for _, existing := range ids {
+		if existing != id {
+			fmt.Fprintf(&b, "%d\n", existing)
+		}
+	}
+
+	if err := atomicfile.Write(queuePath(dataDir), []byte(b.String()), atomicfile.Perm); err != nil {
+		return err
+	}
+
+	return nil
 }

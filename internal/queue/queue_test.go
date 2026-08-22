@@ -76,3 +76,61 @@ func TestListWithMalformedQueueFile(t *testing.T) {
 		t.Error("expected error")
 	}
 }
+
+func TestRemoveKeepsTheOrderOfTheOtherIDs(t *testing.T) {
+	tests := []struct {
+		name   string
+		remove int
+		want   []int
+	}{
+		{"first", 3, []int{2, 1}},
+		{"middle", 2, []int{3, 1}},
+		{"last", 1, []int{3, 2}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			for _, id := range []int{3, 2, 1} {
+				if err := Add(dataDir, id); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := Remove(dataDir, tt.remove); err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := List(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("list = %v, want = %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddAfterRemoveKeepsTheLines(t *testing.T) {
+	dataDir := t.TempDir()
+	Add(dataDir, 3)
+	Add(dataDir, 2)
+	if err := Remove(dataDir, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(dataDir, 4); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dataDir, ".queue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "3\n4\n"
+	if want != string(got) {
+		t.Errorf("want = %s, got = %s", want, got)
+	}
+}
