@@ -80,10 +80,10 @@ type Project struct {
 // Create makes a directory that is already present again, and this causes no
 // error.
 //
-// Create takes the default branch, and does not read it from the repository.
-// No answer from git is correct for each repository: the branch that HEAD gives
-// is the branch of the moment, and refs/remotes/origin/HEAD is not present in a
-// repository that has no remote. Ticket 4 does that work.
+// Create takes the default branch, and does not read it from the repository,
+// because no one answer from git is correct for each repository. DefaultBranch
+// asks git and gives the best answer that it has, and the caller decides
+// whether to use it.
 func Create(dataDir, root, defaultBranch string) (string, error) {
 	dir := Dir(dataDir, root)
 	for _, name := range projectDirs {
@@ -148,4 +148,58 @@ func Config(projectDir string) (Project, error) {
 	}
 
 	return config, nil
+}
+
+// gitOutput runs one git command in root and gives its output with no final
+// newline. An error means that git said no, and each caller decides what that
+// answer means.
+func gitOutput(root string, args ...string) (string, error) {
+	all := append([]string{"-C", root}, args...)
+	out, err := exec.Command("git", all...).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// trunkNames are the two names that a repository with no remote is most likely
+// to give its main line of work. They come before the branch of HEAD, because
+// the person can be on a branch of a feature at this moment.
+var trunkNames = []string{"main", "master"}
+
+// DefaultBranch gives the branch that each run of a ticket starts from. Section
+// 6.5 gives the reason that the value matters.
+//
+// No one answer from git is correct for each repository, so this asks four
+// questions and takes the first answer:
+//
+//  1. refs/remotes/origin/HEAD. The remote says which branch it gives by
+//     default. This is the best answer, but a repository with no remote, and a
+//     clone that came from a fetch with no head, do not have it.
+//  2. A local branch with the name main.
+//  3. A local branch with the name master.
+//  4. The branch that HEAD points at. This answers for a repository that has
+//     no remote and a different name for its main line, and it also answers
+//     for a new repository that has no commit.
+func DefaultBranch(root string) (string, error) {
+	if out, err := gitOutput(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		// The short form is origin/develop, and the name of the branch on the
+		// remote is the part that comes after the name of the remote.
+		return strings.TrimPrefix(out, "origin/"), nil
+	}
+
+	for _, name := range trunkNames {
+		if _, err := gitOutput(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+name); err == nil {
+			return name, nil
+		}
+	}
+
+	out, err := gitOutput(root, "symbolic-ref", "--short", "HEAD")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", ErrGitNotOnPath
+		}
+		return "", err
+	}
+	return out, nil
 }

@@ -240,3 +240,108 @@ func TestConfigWithInvalidToml(t *testing.T) {
 		t.Errorf("err = %v, want a toml.ParseError", err)
 	}
 }
+
+// gitIn runs one git command in dir. It stops the test if git gives an error,
+// because a repository that the test cannot build is not a result of the test.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	if out, err := exec.Command("git", all...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+// commitIn makes one empty commit, because a branch has no ref until a commit
+// is on it. The identity is in the command, so the test does not read the
+// config of the person.
+func commitIn(t *testing.T, dir string) {
+	t.Helper()
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "--allow-empty", "-q", "-m", "first")
+}
+
+// trunkRepo makes a repository on a branch that is not main and not master, so
+// each result shows which question of DefaultBranch gave the answer.
+func trunkRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q", "-b", "trunk")
+	return dir
+}
+
+func TestDefaultBranchTakesOriginHeadFirst(t *testing.T) {
+	dir := trunkRepo(t)
+	// A branch with the name main is present, so this shows that the remote
+	// comes before it and not only before the branch of HEAD.
+	commitIn(t, dir)
+	gitIn(t, dir, "branch", "main")
+	gitIn(t, dir, "remote", "add", "origin", "https://example.invalid/r.git")
+	gitIn(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+
+	got, err := DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "develop" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "develop")
+	}
+}
+
+func TestDefaultBranchTakesMainBeforeTheBranchOfHead(t *testing.T) {
+	dir := trunkRepo(t)
+	// A branch has no ref until a commit is on it.
+	commitIn(t, dir)
+	gitIn(t, dir, "branch", "main")
+
+	got, err := DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "main" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "main")
+	}
+}
+
+func TestDefaultBranchTakesMasterWhenThereIsNoMain(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	gitIn(t, dir, "branch", "master")
+
+	got, err := DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "master" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "master")
+	}
+}
+
+func TestDefaultBranchTakesMainBeforeMaster(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	// master is made first, so an answer of master cannot come from the order
+	// of the branches in the repository.
+	gitIn(t, dir, "branch", "master")
+	gitIn(t, dir, "branch", "main")
+
+	got, err := DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "main" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "main")
+	}
+}
+
+func TestDefaultBranchTakesTheBranchOfHeadLast(t *testing.T) {
+	// The repository has no remote, no main, no master, and no commit.
+	dir := trunkRepo(t)
+
+	got, err := DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "trunk" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "trunk")
+	}
+}
