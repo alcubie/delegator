@@ -29,6 +29,8 @@ const nextIDFile = ".next-id"
 // file that no write replaces, so its inode does not change.
 const lockFile = ".lock"
 
+// add puts the id at the end of the queue file, and makes the file if it is not
+// present.  This requires the lock to already be held.
 func add(dataDir string, id int) error {
 	f, err := os.OpenFile(queuePath(dataDir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, atomicfile.Perm)
 	if err != nil {
@@ -102,6 +104,9 @@ func remove(dataDir string, id int) error {
 	return nil
 }
 
+// nextID returns the ID of the next ticket and increments the number in the storage file.
+// It creates the file if it doesn't exist.
+// This requires the lock to already be held.
 func nextID(dataDir string) (int, error) {
 	nextID, err := os.ReadFile(nextIDPath(dataDir))
 	if err != nil {
@@ -142,19 +147,6 @@ func withLock(dataDir string, fn func() error) error {
 	return fn()
 }
 
-// NextID returns the ID of the next ticket and increments the number in the storage file.
-// It creates the file if it doesn't exist.
-// This blocks on a currently writing process.
-func NextID(dataDir string) (int, error) {
-	var id int
-	err := withLock(dataDir, func() error {
-		var err error
-		id, err = nextID(dataDir)
-		return err
-	})
-	return id, err
-}
-
 // Remove removes the ID from the queue no matter the position.
 // If the ID does not exist, the queue remains unmodified.
 // This blocks on a currently writing process.
@@ -162,8 +154,17 @@ func Remove(dataDir string, id int) error {
 	return withLock(dataDir, func() error { return remove(dataDir, id) })
 }
 
-// Add puts the id at the end of the queue file, and makes the file if it is not
-// present.  This blocks on a currently writing process.
-func Add(dataDir string, id int) error {
-	return withLock(dataDir, func() error { return add(dataDir, id) })
+// AddNew reserves the next ID and puts it at the end of the queue.
+// This blocks on a currently writing process.
+func AddNew(dataDir string) (int, error) {
+	var id int
+	err := withLock(dataDir, func() error {
+		var err error
+		id, err = nextID(dataDir)
+		if err != nil {
+			return err
+		}
+		return add(dataDir, id)
+	})
+	return id, err
 }

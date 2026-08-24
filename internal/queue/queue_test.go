@@ -7,16 +7,42 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 )
 
+// setupFiles sets up the files manually for testing specific states
+func setupFiles(t *testing.T, dataDir string, queueContents string, nextId int) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dataDir, ".queue"), []byte(queueContents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".next-id"), []byte(strconv.Itoa(nextId)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".lock"), []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// createOrderedQueueString returns a string that can be used to write to .queue that contains IDs from 1 to n
+// eg. "1\n2\n3\n...n\n"
+func createOrderedQueueString(n int) string {
+	var sb strings.Builder
+	for i := 1; i <= n; i++ {
+		sb.WriteString(strconv.Itoa(i))
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
 // Two ids, because one id cannot show that Add writes at the end. An Add that
 // writes the file again each time gives the same result for one id.
-func TestAddPutsTheIDAtTheEnd(t *testing.T) {
+func TestAddNewPutsTheIDAtTheEnd(t *testing.T) {
 	dataDir := t.TempDir()
-	for _, id := range []int{1, 2} {
-		if err := Add(dataDir, id); err != nil {
+	for range 2 {
+		if _, err := AddNew(dataDir); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -36,13 +62,8 @@ func TestAddPutsTheIDAtTheEnd(t *testing.T) {
 
 func TestListGivesTheIDsInOrder(t *testing.T) {
 	dataDir := t.TempDir()
-	if err := Add(dataDir, 2); err != nil {
-		t.Fatal(err)
-	}
-	if err := Add(dataDir, 1); err != nil {
-		t.Fatal(err)
-	}
 
+	setupFiles(t, dataDir, "2\n1\n", 3)
 	got, err := List(dataDir)
 	if err != nil {
 		t.Fatal(err)
@@ -93,12 +114,7 @@ func TestRemoveKeepsTheOrderOfTheOtherIDs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dataDir := t.TempDir()
-			for _, id := range []int{3, 2, 1} {
-				if err := Add(dataDir, id); err != nil {
-					t.Fatal(err)
-				}
-			}
-
+			setupFiles(t, dataDir, "3\n2\n1\n", 4)
 			if err := Remove(dataDir, tt.remove); err != nil {
 				t.Fatal(err)
 			}
@@ -117,12 +133,11 @@ func TestRemoveKeepsTheOrderOfTheOtherIDs(t *testing.T) {
 
 func TestAddAfterRemoveKeepsTheLines(t *testing.T) {
 	dataDir := t.TempDir()
-	Add(dataDir, 3)
-	Add(dataDir, 2)
+	setupFiles(t, dataDir, "3\n2\n", 4)
 	if err := Remove(dataDir, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(dataDir, 4); err != nil {
+	if _, err := AddNew(dataDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,14 +152,14 @@ func TestAddAfterRemoveKeepsTheLines(t *testing.T) {
 	}
 }
 
-func TestNextIDReturnsNumberAndIncrements(t *testing.T) {
+func TestAddNewReturnsNumberAndIncrements(t *testing.T) {
 	dataDir := t.TempDir()
 	nextIDPath := filepath.Join(dataDir, ".next-id")
 	if err := os.WriteFile(nextIDPath, []byte("99"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	id, err := NextID(dataDir)
+	id, err := AddNew(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +178,9 @@ func TestNextIDReturnsNumberAndIncrements(t *testing.T) {
 	}
 }
 
-func TestNextIDReturnsOneForANewFileAndCreates(t *testing.T) {
+func TestAddNewReturnsOneForANewFileAndCreates(t *testing.T) {
 	dataDir := t.TempDir()
-	id, err := NextID(dataDir)
+	id, err := AddNew(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +199,7 @@ func TestNextIDReturnsOneForANewFileAndCreates(t *testing.T) {
 	}
 }
 
-func TestNextIDGivesNoDuplicates(t *testing.T) {
+func TestAddNewGivesNoDuplicates(t *testing.T) {
 	dataDir := t.TempDir()
 	const callers = 50
 	ids := make([]int, callers)
@@ -192,7 +207,7 @@ func TestNextIDGivesNoDuplicates(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range callers {
 		wg.Go(func() {
-			id, err := NextID(dataDir)
+			id, err := AddNew(dataDir)
 			if err != nil {
 				t.Error(err)
 				return
@@ -213,15 +228,10 @@ func TestNextIDGivesNoDuplicates(t *testing.T) {
 
 func TestConcurrentRemoveLosesNoID(t *testing.T) {
 	dataDir := t.TempDir()
-	const ids = 50
-	for i := range ids {
-		if err := Add(dataDir, i+1); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setupFiles(t, dataDir, createOrderedQueueString(50), 51)
 
 	var wg sync.WaitGroup
-	for i := range ids {
+	for i := range 50 {
 		wg.Go(func() {
 			if err := Remove(dataDir, i+1); err != nil {
 				t.Error(err)
@@ -241,11 +251,7 @@ func TestConcurrentRemoveLosesNoID(t *testing.T) {
 
 func TestConcurrentAddsWithRemovesLosesNoIDs(t *testing.T) {
 	dataDir := t.TempDir()
-	for i := range 50 {
-		if err := Add(dataDir, i+1); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setupFiles(t, dataDir, createOrderedQueueString(50), 51)
 
 	var wg sync.WaitGroup
 	for i := range 50 {
@@ -253,7 +259,7 @@ func TestConcurrentAddsWithRemovesLosesNoIDs(t *testing.T) {
 			if err := Remove(dataDir, i+1); err != nil {
 				t.Error(err)
 			}
-			if err := Add(dataDir, i+51); err != nil {
+			if _, err := AddNew(dataDir); err != nil {
 				t.Error(err)
 			}
 		})
@@ -278,15 +284,7 @@ func TestConcurrentAddsWithRemovesLosesNoIDs(t *testing.T) {
 
 func TestErroneousWriteLeavesFilesUnchanged(t *testing.T) {
 	dataDir := t.TempDir()
-	for range 2 {
-		id, err := NextID(dataDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = Add(dataDir, id); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setupFiles(t, dataDir, "1\n2\n", 3)
 
 	wantQueue, err := os.ReadFile(filepath.Join(dataDir, ".queue"))
 	if err != nil {
@@ -315,9 +313,9 @@ func TestErroneousWriteLeavesFilesUnchanged(t *testing.T) {
 		t.Errorf("got = %q, want = %q", gotQueue, wantQueue)
 	}
 
-	_, err = NextID(dataDir)
+	_, err = AddNew(dataDir)
 	if err == nil {
-		t.Error("NextID gave no error")
+		t.Error("AddNew gave no error")
 	}
 
 	gotNextId, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
