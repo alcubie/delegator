@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -272,5 +273,58 @@ func TestConcurrentAddsWithRemovesLosesNoIDs(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, want) {
 		t.Errorf("queue = %v, want %v", got, want)
+	}
+}
+
+func TestErroneousWriteLeavesFilesUnchanged(t *testing.T) {
+	dataDir := t.TempDir()
+	for range 2 {
+		id, err := NextID(dataDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = Add(dataDir, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wantQueue, err := os.ReadFile(filepath.Join(dataDir, ".queue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantNextId, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = os.Chmod(dataDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dataDir, 0o755) })
+
+	if err = Remove(dataDir, 1); err == nil {
+		t.Error("Remove gave no error")
+	}
+
+	gotQueue, err := os.ReadFile(filepath.Join(dataDir, ".queue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotQueue, wantQueue) {
+		t.Errorf("got = %q, want = %q", gotQueue, wantQueue)
+	}
+
+	_, err = NextID(dataDir)
+	if err == nil {
+		t.Error("NextID gave no error")
+	}
+
+	gotNextId, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotNextId, wantNextId) {
+		t.Errorf("got = %q, want = %q", gotNextId, wantNextId)
 	}
 }
