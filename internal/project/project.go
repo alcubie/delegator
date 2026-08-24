@@ -18,6 +18,10 @@ import (
 // ErrGitNotOnPath shows that git is not installed on the PATH.
 var ErrGitNotOnPath = errors.New("git is not on the PATH")
 
+// ErrNoCommit shows that a repository has no commit, so it has no first commit
+// to give it an identity.
+var ErrNoCommit = errors.New("the repository has no commit")
+
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
 
@@ -204,4 +208,31 @@ func DefaultBranch(root string) (string, error) {
 		return "", err
 	}
 	return out, nil
+}
+
+// FirstCommit gives the hash of the commit that has no parent. The hash of a
+// repository does not change when the person moves it, so it is the one value
+// that finds a project again after a move.
+//
+// A copy of a repository has the same first commit as its source, so this value
+// shows that two repositories can be the same. It does not prove that they are
+// the same, and the person makes that decision.
+func FirstCommit(root string) (string, error) {
+	out, err := gitOutput(root, "rev-list", "--max-parents=0", "HEAD")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", ErrGitNotOnPath
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", ErrNoCommit
+		}
+		return "", err
+	}
+
+	// A merge of two histories that had no relation gives more than one commit
+	// with no parent. rev-list gives the newest commit first, so the last line
+	// is the first commit of the repository.
+	lines := strings.Split(out, "\n")
+	return lines[len(lines)-1], nil
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -342,5 +343,79 @@ func TestDefaultBranchTakesTheBranchOfHeadLast(t *testing.T) {
 	}
 	if got != "trunk" {
 		t.Errorf("DefaultBranch = %q, want %q", got, "trunk")
+	}
+}
+
+// gitLine runs one git command in dir and gives its output with no final
+// newline. It stops the test if git gives an error.
+func gitLine(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	out, err := exec.Command("git", all...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestFirstCommitGivesTheCommitWithNoParent(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	want := gitLine(t, dir, "rev-parse", "HEAD")
+	// A second commit, so an answer that comes from HEAD is not the same as an
+	// answer that comes from the first commit.
+	commitIn(t, dir)
+
+	got, err := FirstCommit(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("FirstCommit = %q, want %q", got, want)
+	}
+}
+
+func TestFirstCommitWhenTheRepositoryHasNoCommit(t *testing.T) {
+	dir := trunkRepo(t)
+
+	_, err := FirstCommit(dir)
+	if !errors.Is(err, ErrNoCommit) {
+		t.Errorf("err = %v, want %v", err, ErrNoCommit)
+	}
+}
+
+// commitAt makes one empty commit with a known date. rev-list gives the newest
+// commit first, so the date controls the sequence of its result.
+func commitAt(t *testing.T, dir, date string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "-c", "user.email=test@example.com",
+		"-c", "user.name=Test", "commit", "--allow-empty", "-q", "-m", "commit")
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+}
+
+// A merge of two histories that had no relation gives a repository two commits
+// with no parent. The older one is the start of the repository, and a history
+// that a person adds later must not change the answer.
+func TestFirstCommitWithTwoHistoriesGivesTheOlder(t *testing.T) {
+	dir := trunkRepo(t)
+	commitAt(t, dir, "2020-01-01T00:00:00Z")
+	want := gitLine(t, dir, "rev-parse", "HEAD")
+
+	// An orphan branch starts a history that has no relation to the first one.
+	gitIn(t, dir, "checkout", "-q", "--orphan", "second")
+	commitAt(t, dir, "2021-01-01T00:00:00Z")
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--allow-unrelated-histories", "-m", "merge", "second")
+
+	got, err := FirstCommit(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("FirstCommit = %q, want %q", got, want)
 	}
 }
