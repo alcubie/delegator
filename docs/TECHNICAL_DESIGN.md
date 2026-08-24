@@ -20,16 +20,15 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | agent | An external command line program that writes code. Version 1 has claude only. |
 | CLI | Command Line Interface. |
 | config | The file that holds the selections of the person. |
+| database | The one SQLite file that holds each field, the queue and the counter. |
 | DONE | The group in the inbox that contains each closed ticket. |
 | flags | A short note from the agent about each item that did not go as expected. The value `none` shows that there is no such item. |
 | Go | The programming language of delegator. |
 | goreleaser | The tool that makes the binary files and the installer. |
-| hash | A short string that comes from a longer string, and is different for each input. |
 | inbox | The one ordered list of tickets that the person examines. |
-| lock | A file lock that gives one writer at a time. |
+| lock | The write lock of SQLite. It gives one writer at a time. |
 | log | The output of an agent, kept in a file. |
 | project | One git repository that contains work. |
-| project key | The unique name of a project in the data directory. |
 | prototype | The throwaway code at the root of this repository. |
 | queue | The ordered list of tickets that wait for work. |
 | QUEUED | The group in the inbox that contains each ticket in the queue. |
@@ -37,14 +36,14 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | result | A short note from the agent about what it did. |
 | run | One execution of an agent for one ticket. |
 | RUNNING | The group in the inbox that contains the ticket with an active run. |
-| schema | The version number of the format of a ticket file. |
+| schema | The version number of the format of the database. |
 | session | One conversation with an agent, which the agent can continue later. |
 | state | The condition of a ticket. |
 | supervisor | The short program that operates one run and then stops. |
-| ticket | One item of work, kept in one directory with two files. |
+| ticket | One item of work. Its fields are a row, and its prose is a file. |
 | timeout | A time limit. After the limit, the supervisor stops the run. |
 | TUI | Terminal User Interface. Version 1 does not have one. |
-| variables | The four items that connect a ticket to its work: the ticket file, the worktree, the branch and the session. |
+| variables | The four items that connect a ticket to its work: the file of the prose, the worktree, the branch and the session. |
 | worktree | A git worktree. |
 
 ## 1. Function of the product
@@ -91,11 +90,11 @@ them. Section 4 gives that list.
 |---|---|---|
 | 1 | The MCP server operated inside the queue worker. When the queue stopped, the agent had no tools. | Delegator has no server. The agent calls the CLI. See §5. |
 | 2 | The state `processing` had two meanings. A restart put chat work back into the queue, and started the first prompt again above live work. | A run is a first class entity, and it records its initiator. See §6.1. |
-| 3 | `CREATE TABLE IF NOT EXISTS` does not add new columns. A new column gave the error `no such column` on each database that existed. | Delegator has no database. Each ticket file declares its `schema`. See §7. |
+| 3 | `CREATE TABLE IF NOT EXISTS` does not add new columns. A new column gave the error `no such column` on each database that existed. | A statement `CREATE TABLE IF NOT EXISTS` is not a migration. Delegator keeps a number in `PRAGMA user_version`, and applies each migration step at each start. See §7. |
 | 4 | The output of the agent went into the ticket. One ticket got 13378 characters. The short note for the person got 973 characters. | Delegator limits the length of `result` and `flags` when it writes them. A limit in a prompt does not operate. See §6.4. |
 | 5 | The command `git difftool` started a graphical tool, and the TUI went away until the tool stopped. | Delegator has no diff and no built-in tools. The person configures each command. See §9.2. |
 | 6 | The command `queue status` used the directory of the person as a filter, and hid tickets from other projects. | One inbox contains all projects. A filter is always explicit. See principle 5. |
-| 7 | The command `queue down` released the lock while a run continued. A quick restart was able to start a second worker on the same worktree. | A file lock controls the queue. An operating system lock cannot become out of date. See §5. |
+| 7 | The command `queue down` released the lock while a run continued. A quick restart was able to start a second worker on the same worktree. | SQLite controls the queue. A lock from the operating system cannot become out of date. See §5. |
 | 8 | Only the claude adapter operated. The other three came from documentation, and no one operated them. | Version 1 has claude only. The package `adapters/` keeps the seam for later work. See §6.6. |
 | 9 | No limit controlled a run. A ticket stayed in `processing` with no timeout and no cancel command. | Each run has a timeout, a cancel command and a restart command. See §6.3. |
 | 10 | Each test used a real agent run. The tests were slow, expensive and not repeatable. | A fake agent with a script is a first class test fixture. See §10.2. |
@@ -142,11 +141,11 @@ earlier draft, and it removes lesson 1 and lesson 7 completely.
       └────────────┬──────────────────┘
                    ▼
            ┌───────────────┐
-           │  queue lock   │   flock. One writer at a time.
+           │ delegator.db  │   SQLite in WAL mode. One writer at a time.
            └───────┬───────┘
                    ▼
            ┌───────────────┐
-           │ files on disk │   tickets, queue, config, logs
+           │ files on disk │   prose, worktrees, config, logs
            └───────┬───────┘
                    ▼
            ┌───────────────┐
@@ -158,12 +157,12 @@ earlier draft, and it removes lesson 1 and lesson 7 completely.
 ```
 
 **How the queue continues.** Each supervisor is a short program that operates apart from
-its parent. When its run stops, the supervisor gets the lock, writes the state, and starts
+its parent. When its run stops, the supervisor opens a write transaction, writes the state, and starts
 the supervisor for the next ticket in the queue. The queue therefore continues after the
 person closes the terminal.
 
 **How the queue recovers.** A supervisor can stop with no report, from a crash or from a
-restart of the computer. Each CLI command therefore does a reconcile below the lock. The
+restart of the computer. Each CLI command therefore does a reconcile in one transaction. The
 reconcile finds each run with no live program, marks it `failed`, and starts the next
 ticket if no run is active.
 
@@ -275,41 +274,86 @@ No code therefore reads the output of an agent.
 
 ## 7. Data on disk
 
-There is no database. Files are the data, and the person can read each one.
+Delegator keeps the fields of each ticket in one SQLite database. It keeps the prose of
+each ticket in a file. The person writes the prose with an editor, and an editor opens a
+file and not a row.
 
 ```
 $XDG_CONFIG_HOME/delegator/config.toml
 
 $XDG_DATA_HOME/delegator/
-  .queue                             ordered ticket ids, one on each line
-  .next-id                           the counter for ticket ids
-  .lock                              the file for the exclusive lock
-  projects/
-    web-api-4f2a91/
-      project.toml                  the full path and the default branch
-      tickets/
-        0004-remove-staging/
-          ticket.yaml             the fields. Delegator writes this file.
-          ticket.md               the prose. The person writes this file.
-      worktrees/
-        0004-remove-staging/
-      runs/
-        0004/
-          2026-08-17T09-30-00.log   the raw output of the agent
+  delegator.db                       the fields, the queue and the counter
+  tickets/
+    0004.md                          the prose. The person writes this file.
+  worktrees/
+    0004/
+  runs/
+    0004/
+      2026-08-17T09-30-00.log        the raw output of the agent
 ```
 
-**The project key.** The key is the name of the directory of the repository, and 6
-characters from a hash of its full path. An example is `web-api-4f2a91`. The name
-alone is not unique, because many repositories have the name `backend`. The file
-`project.toml` holds the full path, so the key is reversible.
+**Why a database, after lesson 3.** Lesson 3 in §3 says that `CREATE TABLE IF NOT EXISTS`
+does not add a new column. That lesson is correct. Its cause was the absence of a
+migration, and not the database: `CREATE TABLE IF NOT EXISTS` is not a migration.
+Delegator now keeps a number in `PRAGMA user_version`. At each start it applies each
+migration step above that number, in one transaction. The earlier design had no database
+because of lesson 3, and this design answers the lesson directly.
 
-**If the person moves a project.** The hash comes from the path, so a move gives a new
-key. Two items break at the same time. Delegator loses the connection to its tickets, and
-git loses the connection to each worktree. The `.git` file of a worktree holds the old
-path of the repository.
+The person loses one thing. A ticket is no longer a file that `cat` can show. The command
+`dg show 4 --json` gives the same fields, and §12 says why each command that shows data
+also accepts `--json`.
 
-Delegator therefore does a check. Each command reads `project.toml` of each project. If a
-recorded path is not on the disk, delegator says so, and does not make a new project:
+**Ticket ids are one sequence for all projects.** The column `id` of the table `tickets`
+is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg show 4` is
+therefore not ambiguous, and the inbox can show all projects together. No name on the disk
+contains a project, so the name of each file below `tickets/`, `worktrees/` and `runs/` is
+the id alone.
+
+**The tables.**
+
+```sql
+CREATE TABLE projects (
+  id             INTEGER PRIMARY KEY,
+  path           TEXT NOT NULL UNIQUE,
+  default_branch TEXT NOT NULL,
+  first_commit   TEXT
+);
+
+CREATE TABLE tickets (
+  id         INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  title      TEXT NOT NULL,
+  state      TEXT NOT NULL,
+  position   INTEGER,
+  branch     TEXT,
+  session    TEXT,
+  result     TEXT,
+  flags      TEXT,
+  created    TEXT NOT NULL
+);
+```
+
+The column `position` is the queue. A ticket with a `position` of `NULL` is not in the
+queue. The path of a worktree is `worktrees/<id>`, so it needs no column. The branch keeps
+a column, because the person can give the branch a new name.
+
+**One writer at a time.** Delegator opens the database in WAL mode, and gives it a
+`busy_timeout`. Each command that writes uses `BEGIN IMMEDIATE`. Two programs that write
+at the same time therefore lose no data, and a program that only reads does not wait. This
+removes the file lock of the earlier design. It also keeps the answer to lesson 7. The lock
+comes from the operating system, so it cannot become out of date.
+
+**How the person changes the sequence.** The command `dg queue` writes each id to a
+temporary file in its sequence, and opens `$EDITOR`. When the editor stops, delegator
+reads the file and writes each new position in one transaction. The command `git rebase
+-i` uses the same method.
+
+**If the person moves a project.** The path of a project is a column, and no name on the
+disk comes from it. Delegator therefore keeps its connection to each ticket. Only git
+breaks, because the `.git` file of a worktree holds the old path of the repository.
+
+Delegator does a check. Each command reads the path of each project. If a path is not on
+the disk, delegator says so, and it makes no new project:
 
 ```
 $ dg
@@ -321,65 +365,40 @@ The command `dg project relink` does this work, from the new position:
 
 1. It reads the first commit of the repository, and finds the project with the same first
    commit.
-2. It changes the name of the project directory to the new key.
-3. It writes the new path into `project.toml`, and into each ticket of that project.
-4. It does `git worktree repair` for each worktree of that project.
+2. It writes the new path in the column `path`.
+3. It does `git worktree repair` for each worktree of that project.
 
 Delegator does not do this work automatically. A copy of a repository has the same first
 commit as its source, so two projects can look the same. A command from the person is
-therefore necessary. A project with no open work is not affected, because a new key with
-no tickets does no damage.
+therefore necessary. A project with no open work is not affected.
 
-**Ticket ids are unique for all projects.** The file `next-id` holds the counter, and the
-lock protects it. The command `dg show 4` is therefore not ambiguous, and the inbox can
-show all projects together.
-
-**The format of a ticket.** Each ticket is one directory with two files. The file
-`ticket.yaml` holds the fields, and delegator writes it. The file `ticket.md` holds the
-prose, and the person writes it.
-
-```yaml
-# ticket.yaml
-schema: 1
-id: 4
-title: Remove staging infrastructure
-state: ready
-project: /home/person/projects/web-api
-branch: delegator/4-remove-staging-infrastructure
-worktree: ~/.local/share/delegator/projects/web-api-4f2a91/worktrees/0004-...
-session: e55e382e-2c88-4de7-a31d-ab8763a0fb5a
-result: Staging infra removed. Gate green, 433 tests, 100% branch coverage.
-flags: terraform apply is blocked, the token in .env is invalid. Do not destroy
-  the app first, because DNS points at it.
-created: 2026-08-17T09:30:00Z
-```
-
-The file `ticket.md` holds the prose only:
+**The prose of a ticket.** The file `tickets/0004.md` holds the prose only:
 
 ```markdown
 Remove the staging app, the volume, the DNS records, the monitor and the
 secrets.
 ```
 
-**Which command writes `ticket.md`.** Only two commands write `ticket.md`. The command
-`dg ticket` makes the file. The command `dg revise` adds new prose to the end of it. No
-command removes text from the file, and no command writes the file again from memory. A
-person can therefore change the prose with an editor at any time.
+Only two commands write this file. The command `dg ticket` makes it. The command `dg
+revise` adds new prose to the end of it. No command removes text from the file, and no
+command writes the file again from memory. A person can therefore change the prose with an
+editor at any time.
 
-**Why there are two files.** Delegator writes the fields to `ticket.yaml`, and no command
-of delegator can damage the prose. The two files also make the code more simple. The file
-`ticket.yaml` is YAML, and the file `ticket.md` is text. No program must find the end of a
-header, and the prose needs no escape characters.
+**Why the prose is not in the database.** The person owns the prose. Section 9.2 gives the
+variable `{ticket}` to each command of the person, and that variable is a path. A row of a
+table is not a thing that `$EDITOR` opens. The database holds each field that delegator
+writes, so no command of delegator can damage the prose.
 
 **The title.** The command `dg ticket` with no arguments opens `$EDITOR`. The first line
-becomes the field `title`, and the other lines become `ticket.md`. The title is a field,
-and not the first line of the prose, because delegator makes the row of the inbox, the
-name of the branch and the name of the directory from it.
+becomes the column `title`, and the other lines become the prose. The title is a column,
+and not the first line of the prose. Delegator makes the row of the inbox and the name of
+the branch from it.
 
-**Upgrades.** The field `schema` is the complete answer to the problem of upgrades. A new
-version of delegator reads each older schema, and writes the new schema. If a file
-declares a schema that the program does not know, the program stops with an error. It does
-not write the file. A person who installs an older version therefore loses no data.
+**Upgrades.** The number in `PRAGMA user_version` is the complete answer to the problem of
+upgrades. A new version of delegator applies each migration step that the database does
+not have. If the database declares a number above the number that the program knows, the
+program stops with an error. It writes nothing. A person who installs an older version
+therefore loses no data.
 
 ## 8. States of a ticket
 
@@ -436,8 +455,8 @@ $ dg show 4
             points at it.
   result    Staging infra removed. Gate green, 433 tests.
 
-  ticket    …/projects/web-api-4f2a91/tickets/0004-remove-staging/
-  worktree  …/projects/web-api-4f2a91/worktrees/0004-remove-staging
+  ticket    …/delegator/tickets/0004.md
+  worktree  …/delegator/worktrees/0004
   branch    delegator/4-remove-staging-infrastructure
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
 
@@ -471,7 +490,7 @@ window = false
 ```
 
 The variables are `{ticket}`, `{worktree}`, `{branch}`, `{base}`, `{session}` and
-`{project}`. The variable `{ticket}` gives the path of `ticket.md`, because the person
+`{project}`. The variable `{ticket}` gives the path of the prose, because the person
 changes the prose and not the fields. The command `dg open diff 4` starts the command with the name `diff` for
 ticket 4. A command with `window = true` opens in a new terminal window.
 
@@ -491,7 +510,7 @@ installer.
 | `dg show <id>` | Show one ticket and its variables. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg start` and `dg pause` | Start or stop work on the queue. |
-| `dg queue` | Open the queue file in `$EDITOR`, to change the order. |
+| `dg queue` | Change the sequence of the queue in `$EDITOR`. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop a run. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |
@@ -552,11 +571,11 @@ the date and the symptom. Do this before the correction goes in.
   not a sandbox. This document says so directly, and version 1 does not pretend to have a
   sandbox.
 - Delegator keeps no credentials. The agent keeps its own.
-- Ticket files can contain private data. They stay in the data directory of the person,
-  outside each git repository, so a commit cannot send them away.
+- A ticket can contain private data. The database and the prose stay in the data directory
+  of the person, outside each git repository, so a commit cannot send them away.
 - Delegator writes each file with the permission 0600, and each directory with the
-  permission 0700. Only the person who made the data can read it. This applies to each
-  file in §7: the tickets, the queue, the counter, `project.toml` and each log.
+  permission 0700. Only the person who made the data can read it. This applies to each file
+  in §7: `delegator.db`, the prose of each ticket, and each log.
 
 ## 12. Repository, tools and installation
 
@@ -607,9 +626,9 @@ formula, because this command operates on both Linux and macOS.
 
 Each milestone uses the fake agent, includes tests, and is usable at its end.
 
-1. **Files and the queue.** The ticket format, the schema, the project key, the queue, the
-   lock, the reconcile, and the commands `ticket`, `dg` and `show`. Also the check for a
-   moved project, and `dg project relink`. No agent.
+1. **The database and the queue.** The tables, the migration, the queue, the reconcile, and
+   the commands `ticket`, `dg` and `show`. Also the check for a moved project, and
+   `dg project relink`. No agent.
 2. **Work.** The supervisor, the worktree, the git boundary, the timeout, `start`,
    `pause`, `cancel` and `restart`. The claude adapter. The commands `read` and `finish`,
    with their limits.
@@ -655,7 +674,7 @@ The installation page must give a link to the repository. A person who sends a s
 
 Each question from the earlier draft now has an answer:
 
-- The project key uses the hash, and §7 gives the behaviour after a move.
+- The path of a project is a column, and §7 gives the behaviour after a move.
 - Ticket ids are one sequence for all projects.
 - The limits are 160 characters for `result` and 240 for `flags`.
 - The names are in §15.
