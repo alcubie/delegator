@@ -1,6 +1,6 @@
 // Package atomicfile writes a file in one step. It is the way that delegator
-// makes each file that holds data. Section 7 of docs/TECHNICAL_DESIGN.md says
-// that files are the data, so a file that is half written is a loss of data.
+// makes each file that holds data. Delegator keeps no database, so the files
+// are the data, and a file that is half written is a loss of data.
 package atomicfile
 
 import (
@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 )
 
-// Perm is the permission of each file that delegator writes. Section 11 says
-// that the data can be private, so only its person can read it.
+// Perm is the permission of each file that delegator writes. A ticket can hold
+// private data, and each file stays in the data directory of the person, so only
+// that person can read it.
 const Perm fs.FileMode = 0o600
 
 // Write puts data in a temporary file in the same directory, and then gives that

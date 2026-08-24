@@ -1,5 +1,6 @@
-// Package cli gives each command of the person. Section 9.3 of
-// docs/TECHNICAL_DESIGN.md gives the commands.
+// Package cli holds the body of each command of the person. The program cmd/dg
+// reads the arguments and calls into here, so each command has a test that needs
+// no terminal.
 package cli
 
 import (

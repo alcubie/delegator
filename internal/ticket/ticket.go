@@ -20,8 +20,9 @@ import (
 const CurrentSchema = 1
 
 // MaxResult and MaxFlags are the limits, in characters, on the two fields that
-// the agent writes. Section 6.4 gives the reason: a limit in a prompt to the
-// agent does not operate.
+// the agent writes. Delegator applies the limit when it writes the file,
+// because a limit in a prompt to the agent does not operate: a prompt that asked
+// for one line got 973 characters.
 const (
 	MaxResult = 160
 	MaxFlags  = 240

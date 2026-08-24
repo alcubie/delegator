@@ -42,23 +42,25 @@ func Root(path string) (string, error) {
 }
 
 // keyHashLength is the number of characters that the key takes from the hash.
-// Section 7 gives the value.
+// Six characters give 16 million values, which is sufficient to separate the
+// repositories of one person, and the name of the directory stays short enough
+// to read and to type.
 const keyHashLength = 6
 
 // Key gives the name of the directory that holds the data of one project. It is
 // the name of the root directory, and then 6 characters from the SHA-256 hash of
 // the full path. The name alone is not unique, because many repositories have
-// the name "backend". Section 7 gives the reason, and project.toml holds the
-// full path, so the key is reversible.
+// the name "backend". The file project.toml holds the full path, so the key is
+// reversible.
 func Key(root string) string {
 	sum := sha256.Sum256([]byte(root))
 	return filepath.Base(root) + "-" + hex.EncodeToString(sum[:])[:keyHashLength]
 }
 
-// dirPerm gives the permission of each directory that delegator makes. Section
-// 11 says that a ticket can contain private data, so only its person can read
-// it. A directory that gives no permission to a group stops a read of the names
-// of the files below it.
+// dirPerm gives the permission of each directory that delegator makes. A ticket
+// can contain private data, so only its person can read it. A directory that
+// gives no permission to a group stops a read of the names of the files below
+// it.
 const dirPerm = 0o700
 
 // projectDirs are the directories that each project has. The tickets hold the
@@ -67,8 +69,8 @@ const dirPerm = 0o700
 var projectDirs = []string{"tickets", "worktrees", "runs"}
 
 // Project holds the fields of project.toml. The path makes the key reversible,
-// and the default branch is the start of the branch of each run. Section 6.5
-// gives the reason.
+// and the default branch is the start of the branch of each run: each run gets
+// one worktree and one branch, and that branch comes from the default branch.
 type Project struct {
 	Path          string `toml:"path"`
 	DefaultBranch string `toml:"default_branch"`

@@ -1,5 +1,10 @@
-// Package queue keeps the order of the work. Section 7 of
-// docs/TECHNICAL_DESIGN.md gives the files, and section 5 gives the lock.
+// Package queue keeps the order of the work. Three files hold it: .queue has
+// the ids, .next-id has the counter, and .lock gives one writer at a time.
+//
+// The ids are unique for all projects, so the command dg show 4 is not
+// ambiguous and the inbox can show each project together. Delegator has no
+// server, and each dg command and each supervisor is a separate program, so the
+// lock is the one thing that keeps two writers apart.
 package queue
 
 import (
@@ -15,8 +20,8 @@ import (
 	"github.com/alcubie/delegator/internal/atomicfile"
 )
 
-// queueFile is the name of the file that holds the ids, one on each line.
-// Section 7 gives the name.
+// queueFile is the name of the file that holds the ids, one on each line. One
+// id on each line lets the person change the order with an editor.
 const queueFile = ".queue"
 
 // nextIDFile is the name of the file that holds the next ticket ID.
@@ -24,7 +29,7 @@ const queueFile = ".queue"
 // Add() can append. .next-id has nothing to append so the decision was made to avoid a trailing newline.
 const nextIDFile = ".next-id"
 
-// lockFile gives the exclusive lock.  Section 5 says one writer at a time.
+// lockFile gives the exclusive lock, and one writer operates at a time.
 // The file has no content.  flock locks the inode, and this file is the one
 // file that no write replaces, so its inode does not change.
 const lockFile = ".lock"

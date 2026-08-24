@@ -47,8 +47,8 @@ func TestAddNewPutsTheIDAtTheEnd(t *testing.T) {
 		}
 	}
 
-	// The name of the file is a literal. Section 7 gives it, and a change of the
-	// name loses the queue of each person who has delegator now.
+	// The name of the file is a literal, because a change of the name loses the
+	// queue of each person who has delegator now.
 	got, err := os.ReadFile(filepath.Join(dataDir, ".queue"))
 	if err != nil {
 		t.Fatal(err)

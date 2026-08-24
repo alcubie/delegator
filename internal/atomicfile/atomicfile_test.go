@@ -23,10 +23,10 @@ func TestWritePutsTheContentInTheFile(t *testing.T) {
 	}
 }
 
-// The test compares against the literal 0600, and not against Perm. Section 11
-// gives that value, so the test says it a second time. A test that read Perm
-// would stay green after a change of Perm to 0644, because that one change
-// moves the value that the test wants at the same time.
+// The test compares against the literal 0600, and not against Perm, so the test
+// says the value a second time. A test that read Perm would stay green after a
+// change of Perm to 0644, because that one change moves the value that the test
+// wants at the same time.
 func TestWriteGivesThePermission(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "f.txt")

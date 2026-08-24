@@ -106,11 +106,10 @@ func TestCreateMakesTheDirectories(t *testing.T) {
 		t.Fatalf("dir = %q, want %q", dir, want)
 	}
 
-	// The empty name is the directory of the project. The permission 0700 comes
-	// from section 11, and the test says it a second time as a literal. A test
-	// that read dirPerm would stay green after a change of dirPerm to 0755,
-	// because that one change moves the value that the test wants at the same
-	// time.
+	// The empty name is the directory of the project. The test says the
+	// permission 0700 a second time as a literal. A test that read dirPerm would
+	// stay green after a change of dirPerm to 0755, because that one change moves
+	// the value that the test wants at the same time.
 	for _, name := range []string{"", "tickets", "worktrees", "runs"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
@@ -150,9 +149,9 @@ func TestCreateWritesProjectToml(t *testing.T) {
 			t.Errorf("project.toml = %q, want %q", got, want)
 		}
 
-		// Section 11 names project.toml, so only its person can read it. The
-		// test says the permission a second time as a literal, and does not read
-		// the constant that the code gives to the write.
+		// The file project.toml can name a private path, so only its person can
+		// read it. The test says the permission a second time as a literal, and
+		// does not read the constant that the code gives to the write.
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)

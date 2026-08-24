@@ -319,7 +319,7 @@ func TestSaveFieldsWritesAPrivateFile(t *testing.T) {
 		t.Fatalf("SaveFields returned an error: %v", err)
 	}
 
-	// Section 11: a ticket can contain private data.
+	// A ticket can contain private data, so only its person can read it.
 	info, err := os.Stat(filepath.Join(dir, "ticket.yaml"))
 	if err != nil {
 		t.Fatal(err)
