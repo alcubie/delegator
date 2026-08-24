@@ -584,8 +584,8 @@ github.com/alcubie/delegator
   cmd/
     dg/              the binary. It reads the arguments and calls internal/cli.
   internal/
-    ticket/          the file format, the schema, read and write
-    queue/           the order, the lock, the reconcile
+    store/           the database, the migration, the queue, the reconcile
+    project/         git: the root, the default branch, the first commit
     run/             the supervisor, the timeout, the worktree
     adapters/        the interface for an agent, and claude
     config/          the config and the commands of the person
@@ -594,6 +594,10 @@ github.com/alcubie/delegator
   test/              unit, golden, integration, complete system
   docs/              this document and the decision records
 ```
+
+The library for SQLite is `modernc.org/sqlite`. It is a translation of SQLite into Go, so
+it needs no cgo. A build with cgo needs a C compiler for each target of goreleaser, and
+`CGO_ENABLED=0` gives one static binary for Linux and macOS.
 
 **Where a new interface goes.** The package `inbox/` gives a data structure. It does not
 know which interface shows the data, and it writes no text. The package `cli/` makes the
