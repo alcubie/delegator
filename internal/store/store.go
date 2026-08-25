@@ -148,3 +148,35 @@ func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
 
 	return s.create(query, args...)
 }
+
+// QueuedTicket is one ticket of the queue. It holds the fields that the queue
+// shows, and not each field of the row.
+type QueuedTicket struct {
+	ID    int64
+	Title string
+}
+
+// Queue gives each ticket that has a position, in the sequence of position. A
+// ticket with a position of NULL is not in the queue.
+func (s *Store) Queue() ([]QueuedTicket, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title FROM tickets
+		WHERE position IS NOT NULL
+		ORDER BY position`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var queue []QueuedTicket
+	for rows.Next() {
+		var t QueuedTicket
+		if err := rows.Scan(&t.ID, &t.Title); err != nil {
+			return nil, err
+		}
+		queue = append(queue, t)
+	}
+	// A loop over rows stops on an error as well as on the last row, and Next
+	// gives false for both. Err tells the two apart.
+	return queue, rows.Err()
+}

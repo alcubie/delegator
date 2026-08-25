@@ -392,3 +392,105 @@ func TestAddTicketWithInvalidProjectFails(t *testing.T) {
 		t.Errorf("code = %d, want %d", sErr.Code(), sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY)
 	}
 }
+
+func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketID, err := s.AddTicket(projectID, "My Ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("UPDATE tickets SET position = 1 WHERE id = ?", ticketID); err != nil {
+		t.Fatal(err)
+	}
+
+	queue, err := s.Queue()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queue) != 1 {
+		t.Fatalf("the queue holds %d tickets, want 1", len(queue))
+	}
+	if queue[0].ID != ticketID {
+		t.Errorf("ID = %d, want %d", queue[0].ID, ticketID)
+	}
+	if queue[0].Title != "My Ticket" {
+		t.Errorf("title = %s, want My Ticket", queue[0].Title)
+	}
+}
+
+func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(projectID, "My Ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	queue, err := s.Queue()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want 0", len(queue))
+	}
+}
+
+func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The position of each ticket runs against its id. A queue in the sequence
+	// of id therefore looks different from a queue in the sequence of position,
+	// and the test can tell the two apart.
+	for i, title := range []string{"first", "second", "third"} {
+		position := 3 - i
+		id, err := s.AddTicket(projectID, title)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.Exec("UPDATE tickets SET position = ? WHERE id = ?", position, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	queue, err := s.Queue()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"third", "second", "first"}
+	if len(queue) != len(want) {
+		t.Fatalf("the queue holds %d tickets, want %d", len(queue), len(want))
+	}
+	for i, title := range want {
+		if queue[i].Title != title {
+			t.Errorf("ticket %d is %q, want %q", i, queue[i].Title, title)
+		}
+	}
+}
