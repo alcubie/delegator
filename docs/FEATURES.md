@@ -92,6 +92,7 @@ this item is the first one to examine again.
 | Garbage collection of worktrees | A command that removes each worktree that a crash left behind, if the worktree has no changes. | The reconcile marks the run `failed`, and `dg accept` removes the worktree. A worktree stays only after a crash. | The worktree directory becomes large. |
 | A report if the base branch moved | Delegator says that the default branch moved after the start of the run. | The person selects the diff command, so the person can see this. | A diff gives a result that is difficult to read, because the base branch moved. |
 | Removal of old logs | A command that removes the log files of closed tickets. | A log file is small. | The data directory becomes large. |
+| One step for the first release | Delegator makes the database with one step. The list `migrations` holds that step only, and a new database is at version 1. | No person has delegator now. The steps of the prototype are a record of the work, and no database of a person must go through them. A step that a person has must not change, so this work is possible one time only. | The first release. Do this work before the first person installs delegator. |
 
 ## 10. Smaller items
 
