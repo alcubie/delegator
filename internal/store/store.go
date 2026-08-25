@@ -5,6 +5,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -35,6 +36,15 @@ var dataDirs = []string{"", "tickets", "worktrees", "runs"}
 type Store struct {
 	db *sql.DB
 }
+
+// migrations holds one step for each version of the database. The number of a
+// step is its position in the list, and the first step is version 1. A step
+// that a person installed already must never change: the way to change the
+// database is a new step at the end of the list.
+//
+// Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
+// not a migration. This list is the answer to that lesson.
+var migrations = []string{tables}
 
 // tables makes the two tables. The ids of tickets are one sequence for all
 // projects, so INTEGER PRIMARY KEY gives the number and no counter is
@@ -79,7 +89,7 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(tables); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -89,4 +99,43 @@ func Open(dataDir string) (*Store, error) {
 // Close stops the connection to the database.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// migrate applies each step above the number in PRAGMA user_version, and then
+// writes the new number. A database that is current gets no statement.
+func migrate(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+
+	for i := version; i < len(migrations); i++ {
+		if err := applyStep(db, i); err != nil {
+			return fmt.Errorf("migration step %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// applyStep applies one step and its new number below one transaction. A step
+// that gives an error part way therefore leaves the database as it was.
+func applyStep(db *sql.DB, i int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	// A rollback after a commit gives sql.ErrTxDone, and this discards it. The
+	// rollback operates only when a statement below gives an error.
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(migrations[i]); err != nil {
+		return err
+	}
+	// PRAGMA takes no parameter, so the number goes in the text of the
+	// statement. The number is the position in a list of this package, and no
+	// text of a person reaches here.
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
