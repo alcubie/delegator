@@ -135,9 +135,13 @@ func (s *Store) AddProject(path, defaultBranch string) (int64, error) {
 
 // AddTicket adds a new ticket record to the database.
 func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
+	// The position comes from a sub-query in the same statement, so the read of
+	// the last position and the write of the new one cannot come apart. A
+	// ticket that delegator makes is in the queue, which is what the state
+	// "queued" says.
 	query := `INSERT INTO tickets (
-		project_id, title, state, created
-	) VALUES (?, ?, ?, ?)
+		project_id, title, state, position, created
+	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets), ?)
 	`
 	args := []any{
 		projectID,

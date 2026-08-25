@@ -439,7 +439,13 @@ func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AddTicket(projectID, "My Ticket"); err != nil {
+	ticketID, err := s.AddTicket(projectID, "My Ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AddTicket puts each new ticket in the queue, so the test takes this one
+	// out again. Remove does this work for the person.
+	if _, err := s.db.Exec("UPDATE tickets SET position = NULL WHERE id = ?", ticketID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -561,5 +567,49 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 		"SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'tickets_position'").Scan(&name)
 	if err != nil {
 		t.Errorf("the index of the second step is not on the old database: %v", err)
+	}
+}
+
+func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"first", "second", "third"} {
+		if _, err := s.AddTicket(projectID, title); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	queue, err := s.Queue()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"first", "second", "third"}
+	if len(queue) != len(want) {
+		t.Fatalf("the queue holds %d tickets, want %d", len(queue), len(want))
+	}
+	for i, title := range want {
+		if queue[i].Title != title {
+			t.Errorf("ticket %d is %q, want %q", i, queue[i].Title, title)
+		}
+	}
+
+	// The sequence starts at 1. The queue works with any first number, but a
+	// person who reads the table sees these numbers.
+	var position int
+	if err := s.db.QueryRow(
+		"SELECT position FROM tickets WHERE title = 'first'").Scan(&position); err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Errorf("the first ticket is at position %d, want 1", position)
 	}
 }
