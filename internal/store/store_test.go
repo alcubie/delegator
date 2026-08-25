@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -200,5 +201,73 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 	if err := db.QueryRow(
 		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'later'").Scan(&name); err != nil {
 		t.Errorf("the table of the later version went away: %v", err)
+	}
+}
+
+func TestOpenSetsWalMode(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	var mode string
+	if err := s.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if mode != "wal" {
+		t.Errorf("journal_mode = %q, want %q", mode, "wal")
+	}
+}
+
+// busy_timeout belongs to one connection, and database/sql keeps a pool that
+// can make a new connection at any time. Each connection must therefore get the
+// value. The test holds the first connection while it takes the second, because
+// the pool gives the same connection again if the first one is free.
+func TestOpenSetsBusyTimeoutOnEachConnection(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	for i := range 2 {
+		conn, err := s.db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		var timeout int
+		if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeout); err != nil {
+			t.Fatal(err)
+		}
+		if timeout != 5000 {
+			t.Errorf("connection %d: busy_timeout = %d, want 5000", i, timeout)
+		}
+	}
+}
+
+// The path of the database goes in a URL, and a path can hold the characters
+// that separate a URL. SQLite reads such a path only as far as that character,
+// and it makes the database at a different place with no error.
+func TestOpenWithAPathThatHoldsURLCharacters(t *testing.T) {
+	for _, name := range []string{"my data", "we#ird", "qu?ery"} {
+		t.Run(name, func(t *testing.T) {
+			dataDir := filepath.Join(t.TempDir(), name)
+
+			s, err := Open(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+
+			if _, err := os.Stat(filepath.Join(dataDir, "delegator.db")); err != nil {
+				t.Errorf("the database is not at the path that Open got: %v", err)
+			}
+		})
 	}
 }

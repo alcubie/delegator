@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,31 @@ const dirPerm = 0o700
 // in tickets, the copy of a repository for each run is in worktrees, and the
 // log of each agent is in runs.
 var dataDirs = []string{"", "tickets", "worktrees", "runs"}
+
+// busyTimeout is the time in milliseconds that a connection waits for the lock
+// of a writer before it gives an error. Delegator has no server, so two
+// commands of the person, or a command and a supervisor, can want the lock at
+// the same time. A wait is correct here, and an error is not.
+const busyTimeout = 5000
+
+// dsn gives the name that sql.Open takes. Each setting is in the name, and not
+// in a statement after the open, because database/sql keeps a pool of
+// connections and makes a new one at any time. A statement after the open
+// reaches one connection only.
+//
+// The path goes in a URL, so a path that holds ? or # needs an escape. Without
+// it SQLite reads the path only as far as that character, and it makes the
+// database at a different place and gives no error. url.URL escapes the path
+// and keeps each separator of a directory.
+func dsn(dataDir string) string {
+	u := url.URL{
+		Scheme: "file",
+		Path:   filepath.Join(dataDir, dbFile),
+		RawQuery: fmt.Sprintf("_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)",
+			busyTimeout),
+	}
+	return u.String()
+}
 
 // Store holds the open database. Each command makes one Store, and closes it
 // when the command stops.
@@ -91,7 +117,7 @@ func Open(dataDir string) (*Store, error) {
 		}
 	}
 
-	db, err := sql.Open("sqlite", filepath.Join(dataDir, dbFile))
+	db, err := sql.Open("sqlite", dsn(dataDir))
 	if err != nil {
 		return nil, err
 	}
