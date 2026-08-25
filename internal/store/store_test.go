@@ -116,11 +116,11 @@ func TestOpenWritesTheVersionOfTheLastStep(t *testing.T) {
 	}
 	defer s.Close()
 
-	// The literal 1 is the count of steps that this version has. A test that
+	// The literal 2 is the count of steps that this version has. A test that
 	// read len(migrations) would stay green after a new step, because that one
 	// change moves the value that the test wants at the same time.
-	if got := userVersion(t, s.db); got != 1 {
-		t.Errorf("user_version = %d, want 1", got)
+	if got := userVersion(t, s.db); got != 2 {
+		t.Errorf("user_version = %d, want 2", got)
 	}
 }
 
@@ -138,8 +138,8 @@ func TestOpenAgainAppliesNoStepAgain(t *testing.T) {
 	}
 	defer second.Close()
 
-	if got := userVersion(t, second.db); got != 1 {
-		t.Errorf("user_version = %d, want 1", got)
+	if got := userVersion(t, second.db); got != 2 {
+		t.Errorf("user_version = %d, want 2", got)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	}
 
 	db := openRaw(t, dataDir)
-	if got := userVersion(t, db); got != 1 {
-		t.Errorf("user_version = %d, want 1", got)
+	if got := userVersion(t, db); got != 2 {
+		t.Errorf("user_version = %d, want 2", got)
 	}
 	var name string
 	err = db.QueryRow(
@@ -190,7 +190,7 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE later (id INTEGER PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+	if _, err := db.Exec("PRAGMA user_version = 3"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -198,8 +198,8 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, ErrNewerDatabase)
 	}
 
-	if got := userVersion(t, db); got != 2 {
-		t.Errorf("user_version = %d, want 2", got)
+	if got := userVersion(t, db); got != 3 {
+		t.Errorf("user_version = %d, want 3", got)
 	}
 	var name string
 	if err := db.QueryRow(
@@ -492,5 +492,74 @@ func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
 		if queue[i].Title != title {
 			t.Errorf("ticket %d is %q, want %q", i, queue[i].Title, title)
 		}
+	}
+}
+
+func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.AddTicket(projectID, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.AddTicket(projectID, "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.db.Exec("UPDATE tickets SET position = 1 WHERE id = ?", first); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.db.Exec("UPDATE tickets SET position = 1 WHERE id = ?", second)
+	var sErr *sqlite.Error
+	if !errors.As(err, &sErr) {
+		t.Fatalf("err is %T, want *sqlite.Error", err)
+	}
+	if sErr.Code() != sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		t.Errorf("code = %d, want %d", sErr.Code(), sqlite3.SQLITE_CONSTRAINT_UNIQUE)
+	}
+}
+
+// The database of a person who has the version before this one holds the first
+// step and not the second. This is the path that such a database takes.
+func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
+	dataDir := t.TempDir()
+
+	old := migrations
+	migrations = old[:1]
+	first, err := Open(dataDir)
+	migrations = old
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	if got := userVersion(t, openRaw(t, dataDir)); got != 1 {
+		t.Fatalf("the old database is at version %d, want 1", got)
+	}
+
+	second, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	if got := userVersion(t, second.db); got != 2 {
+		t.Errorf("user_version = %d, want 2", got)
+	}
+	var name string
+	err = second.db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'tickets_position'").Scan(&name)
+	if err != nil {
+		t.Errorf("the index of the second step is not on the old database: %v", err)
 	}
 }

@@ -23,7 +23,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 //
 // Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
 // not a migration. This list is the answer to that lesson.
-var migrations = []string{tables}
+var migrations = []string{tables, positionIndex}
 
 // tables makes the two tables. The ids of tickets are one sequence for all
 // projects, so INTEGER PRIMARY KEY gives the number and no counter is
@@ -51,6 +51,13 @@ CREATE TABLE tickets (
   flags      TEXT,
   created    TEXT NOT NULL
 );
+`
+
+// A position is a place in one sequence, so no two tickets can hold the same
+// one. SQLite counts each NULL as different from each other NULL in a unique
+// index, so a ticket that is not in the queue is not affected.
+const positionIndex = `
+CREATE UNIQUE INDEX tickets_position ON tickets(position);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then
