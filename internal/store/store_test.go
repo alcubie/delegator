@@ -6,7 +6,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
@@ -269,5 +273,122 @@ func TestOpenWithAPathThatHoldsURLCharacters(t *testing.T) {
 				t.Errorf("the database is not at the path that Open got: %v", err)
 			}
 		})
+	}
+}
+
+func TestAddProjectSucceeds(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type Project struct {
+		ID            int64
+		Path          string
+		DefaultBranch string
+	}
+
+	var project Project
+	row := s.db.QueryRow("SELECT id, path, default_branch FROM projects WHERE id = ?", projectID)
+	if err := row.Scan(
+		&project.ID,
+		&project.Path,
+		&project.DefaultBranch,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if project.Path != "/projects/path" {
+		t.Errorf("path = %s, want = /projects/path", project.Path)
+	}
+	if project.DefaultBranch != "main" {
+		t.Errorf("default_branch = %s, want = main", project.DefaultBranch)
+	}
+}
+
+func TestAddTicketSucceeds(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ticketID, err := s.AddTicket(projectID, "My Ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ticketID != 1 {
+		t.Errorf("ticketID = %d, want = %d", ticketID, 1)
+	}
+
+	type Ticket struct {
+		ID        int64
+		ProjectID int64
+		Title     string
+		State     string
+		Created   string
+	}
+
+	var ticket Ticket
+	row := s.db.QueryRow("SELECT id, project_id, title, state, created FROM tickets WHERE id = ?", ticketID)
+	if err = row.Scan(
+		&ticket.ID,
+		&ticket.ProjectID,
+		&ticket.Title,
+		&ticket.State,
+		&ticket.Created,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if ticket.ProjectID != projectID {
+		t.Errorf("project_id = %d, want = %d", ticket.ProjectID, projectID)
+	}
+	if ticket.Title != "My Ticket" {
+		t.Errorf("title = %s, want = My Ticket", ticket.Title)
+	}
+	if ticket.State != "queued" {
+		t.Errorf("state = %s, want = queued", ticket.State)
+	}
+
+	rfc3339Pattern := `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`
+	matched, err := regexp.MatchString(rfc3339Pattern, ticket.Created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !matched {
+		t.Errorf("created does not match RFC3339 format: %s", ticket.Created)
+	}
+}
+
+func TestAddTicketWithInvalidProjectFails(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	_, err = s.AddTicket(9999, "My Ticket")
+	var sErr *sqlite.Error
+	if !errors.As(err, &sErr) {
+		t.Fatalf("err is %T, want *sqlite.Error", err)
+	}
+	if sErr.Code() != sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		t.Errorf("code = %d, want %d", sErr.Code(), sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY)
 	}
 }

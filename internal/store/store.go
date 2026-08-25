@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	// The blank name imports this package for its init function only. The init
 	// function puts the driver in the registry of database/sql below the name
@@ -57,8 +58,10 @@ func dsn(dataDir string) string {
 	u := url.URL{
 		Scheme: "file",
 		Path:   filepath.Join(dataDir, dbFile),
-		RawQuery: fmt.Sprintf("_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)",
-			busyTimeout),
+		RawQuery: fmt.Sprintf(
+			"_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)&_pragma=foreign_keys(on)",
+			busyTimeout,
+		),
 	}
 	return u.String()
 }
@@ -105,6 +108,18 @@ CREATE TABLE tickets (
   created    TEXT NOT NULL
 );
 `
+
+// TicketStatus is the state of a ticket.  The constants below are the states.
+type TicketStatus string
+
+const (
+	Queued    TicketStatus = "queued"
+	Ready     TicketStatus = "ready"
+	Running   TicketStatus = "running"
+	Done      TicketStatus = "done"
+	Cancelled TicketStatus = "cancelled"
+	Failed    TicketStatus = "failed"
+)
 
 // Open gives the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
@@ -178,4 +193,48 @@ func applyStep(db *sql.DB, i int) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// create executes the query SQL and returns the inserted ID.
+func (s *Store) create(query string, args ...any) (int64, error) {
+	result, err := s.db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+// AddProject adds a new project record to the database.
+func (s *Store) AddProject(path, defaultBranch string) (int64, error) {
+	query := `INSERT INTO projects (
+		path, default_branch
+	) VALUES (?, ?)`
+
+	args := []any{
+		path,
+		defaultBranch,
+	}
+
+	return s.create(query, args...)
+}
+
+// AddTicket adds a new ticket record to the database.
+func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
+	query := `INSERT INTO tickets (
+		project_id, title, state, created
+	) VALUES (?, ?, ?, ?)
+	`
+	args := []any{
+		projectID,
+		title,
+		Queued,
+		time.Now().UTC().Format(time.RFC3339),
+	}
+
+	return s.create(query, args...)
 }
