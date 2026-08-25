@@ -5,6 +5,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,11 @@ import (
 	// "sqlite", and each call of this package goes through database/sql.
 	_ "modernc.org/sqlite"
 )
+
+// ErrNewerDatabase shows that a later version of delegator made the database.
+// The person must install that version again, because this one does not know
+// each step that made the database what it is.
+var ErrNewerDatabase = errors.New("the database comes from a later version of delegator")
 
 // dbFile is the name of the database below the data directory. A change of
 // this name loses the data of each person who has delegator now.
@@ -107,6 +113,14 @@ func migrate(db *sql.DB) error {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
+	}
+
+	// A number above the last step means that a later version of delegator made
+	// this database. This version does not know what that step did, so it stops
+	// and writes nothing.
+	if version > len(migrations) {
+		return fmt.Errorf("%w: the database is version %d, and this delegator knows version %d",
+			ErrNewerDatabase, version, len(migrations))
 	}
 
 	for i := version; i < len(migrations); i++ {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,5 +166,39 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'later'").Scan(&name)
 	if err == nil {
 		t.Error("the table later stayed after the step gave an error")
+	}
+}
+
+// A later version of delegator can add a step, and a person can then start an
+// earlier version. The earlier version knows nothing about the new step, so it
+// must stop and write nothing.
+func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
+	dataDir := t.TempDir()
+	first, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	// What a later version of delegator leaves behind.
+	db := openRaw(t, dataDir)
+	if _, err := db.Exec("CREATE TABLE later (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(dataDir); !errors.Is(err, ErrNewerDatabase) {
+		t.Errorf("err = %v, want %v", err, ErrNewerDatabase)
+	}
+
+	if got := userVersion(t, db); got != 2 {
+		t.Errorf("user_version = %d, want 2", got)
+	}
+	var name string
+	if err := db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'later'").Scan(&name); err != nil {
+		t.Errorf("the table of the later version went away: %v", err)
 	}
 }
