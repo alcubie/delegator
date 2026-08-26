@@ -219,7 +219,9 @@ An error can also come from outside. An example is an API that does not reply. T
 `dg restart <id>` therefore starts the run again. It continues the same session, in the
 same worktree, so the agent keeps the work that it did.
 
-The command `dg cancel <id>` stops a run and keeps the worktree.
+The command `dg cancel <id>` stops the work on a ticket. From `running` it stops the
+run and keeps the worktree. From `queued` it takes the ticket out of the queue, and
+from `ready` it closes the ticket with no `dg accept`. Section 8 gives each state.
 
 ### 6.4 The summary from the agent: `result` and `flags`
 
@@ -405,22 +407,49 @@ therefore loses no data.
 One module controls each change of state. An illegal change causes an error, and the
 module does not write it.
 
-```
-   ┌──────────┐   dg revise                        ┌───────────┐
-   │  queued  │◄──────────────────────────────────►│   ready   │
-   └────┬─────┘                                    └─────┬─────┘
-        │ a supervisor starts                            │ dg accept
-        ▼                                                ▼
-   ┌──────────┐   dg finish                        ┌──────────┐
-   │ running  ├───────────────────────────────────►│   done   │
-   └────┬─────┘                                    └──────────┘
-        │ timeout, error, or no dg finish
-        ▼
-   ┌──────────┐   dg restart
-   │  failed  ├──────────────► queued
-   └──────────┘
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> queued: dg ticket
+    queued --> running: a supervisor starts
+    running --> ready: dg finish
+    running --> failed: timeout, error, or no dg finish
+    failed --> queued: dg restart
+    ready --> done: dg accept
+    ready --> queued: dg revise
+    queued --> cancelled: dg cancel
+    running --> cancelled: dg cancel
+    ready --> cancelled: dg cancel
+    done --> [*]
+    cancelled --> [*]
 ```
 
+Each change of state is in the table below.
+
+| From | To | What causes the change |
+|---|---|---|
+| no ticket | `queued` | `dg ticket`. The new ticket goes at the end of the queue. |
+| `queued` | `running` | No command. A supervisor takes the first ticket of the queue. |
+| `queued` | `cancelled` | `dg cancel`. |
+| `running` | `ready` | `dg finish`. The agent gives its `result` and its `flags`. |
+| `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
+| `running` | `cancelled` | `dg cancel`. Delegator stops the run and keeps the worktree. |
+| `failed` | `queued` | `dg restart`. The run continues the same session, in the same worktree. |
+| `ready` | `done` | `dg accept`. Delegator removes the worktree and keeps the branch. |
+| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again. |
+| `ready` | `cancelled` | `dg cancel`. |
+
+**Only an agent gives the state `ready`.** The command `dg finish` is one of the two
+commands of the agent in §9.3. A run that stops before `dg finish` becomes `failed`, and
+not `ready`. Section 6.4 says why: a ticket that looks complete but is not complete is the
+most expensive error.
+
+**The state `ready` is where the person examines the work.** The person then gives one of
+three commands. The command `dg accept` closes the ticket. The command `dg revise` puts
+the ticket at the end of the queue with more instructions, and a new run continues the
+same session. The command `dg cancel` stops the work.
+
+**The states `done` and `cancelled` are the end.** No command changes a ticket from them.
 The state `cancelled` comes from `queued`, `running` or `ready`.
 
 ## 9. Interfaces for the person
@@ -512,7 +541,7 @@ installer.
 | `dg start` and `dg pause` | Start or stop work on the queue. |
 | `dg queue` | Change the sequence of the queue in `$EDITOR`. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
-| `dg cancel <id>` | Stop a run. |
+| `dg cancel <id>` | Stop the work on a ticket, from `queued`, `running` or `ready`. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |
 | `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run <id>` | The supervisor. Delegator starts this, and a person does not. |
