@@ -69,13 +69,28 @@ type Store struct {
 // TicketStatus is the state of a ticket.  The constants below are the states.
 type TicketStatus string
 
+// The states of a ticket, and what changes each one:
+//
+//	(new)                  -> queued     dg ticket, at the end of the queue
+//	queued                 -> running    no command. A supervisor takes the first ticket.
+//	running                -> ready      dg finish, from the agent
+//	running                -> failed     the timeout, an error, or the end before dg finish
+//	failed                 -> queued     dg restart, with the same session and worktree
+//	ready                  -> done       dg accept, which removes the worktree
+//	ready                  -> queued     dg revise, at the end of the queue again
+//	any non-terminal state -> cancelled  dg cancel
+//
+// done and cancelled are the end. Only dg finish gives ready, so a run that
+// stops early cannot look complete.
+//
+// See TECHNICAL_DESIGN.md Section 8 for a visual
 const (
 	Queued    TicketStatus = "queued"
-	Ready     TicketStatus = "ready"
 	Running   TicketStatus = "running"
+	Ready     TicketStatus = "ready"
+	Failed    TicketStatus = "failed"
 	Done      TicketStatus = "done"
 	Cancelled TicketStatus = "cancelled"
-	Failed    TicketStatus = "failed"
 )
 
 // Open gives the database below dataDir. It makes the data directory, the
@@ -160,9 +175,9 @@ type QueuedTicket struct {
 	Title string
 }
 
-// Queue gives each ticket that has a position, in the sequence of position. A
+// ListQueue gives each ticket that has a position, in the sequence of position. A
 // ticket with a position of NULL is not in the queue.
-func (s *Store) Queue() ([]QueuedTicket, error) {
+func (s *Store) ListQueue() ([]QueuedTicket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title FROM tickets
 		WHERE position IS NOT NULL

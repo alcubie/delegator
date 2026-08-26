@@ -412,7 +412,7 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	queue, err := s.Queue()
+	queue, err := s.ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	queue, err := s.Queue()
+	queue, err := s.ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +485,7 @@ func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
 		}
 	}
 
-	queue, err := s.Queue()
+	queue, err := s.ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +587,7 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 		}
 	}
 
-	queue, err := s.Queue()
+	queue, err := s.ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
