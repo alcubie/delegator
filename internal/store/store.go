@@ -114,6 +114,10 @@ func canChange(from, to TicketStatus) bool {
 // ErrInvalidTicketStateChange shows that an invalid state change was attempted and blocked.
 var ErrInvalidTicketStateChange = errors.New("invalid ticket state change")
 
+// ErrNotInTheQueue shows that a ticket is not one that the queue holds. The id
+// can belong to no ticket, or to a ticket that has a status other than queued.
+var ErrNotInTheQueue = errors.New("the ticket is not in the queue")
+
 // Open gives the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
 func Open(dataDir string) (*Store, error) {
@@ -248,4 +252,68 @@ func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
 	}
 
 	return num == 1, nil
+}
+
+// MoveTicket moves one ticket in the queue, in the direction of move. The read
+// of the sequence and the write of each new position are in one transaction, so
+// the sequence that moves is the sequence that the queue has.
+func (s *Store) MoveTicket(id int64, move Move) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	ids, err := queuedIDs(tx)
+	if err != nil {
+		return err
+	}
+	from := slices.Index(ids, id)
+	if from < 0 {
+		return fmt.Errorf("%w: ticket %d", ErrNotInTheQueue, id)
+	}
+
+	if err := setPositions(tx, reorder(ids, from, move)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// queuedIDs gives the id of each ticket of the queue, in the sequence of
+// position.
+func queuedIDs(tx *sql.Tx) ([]int64, error) {
+	rows, err := tx.Query(`
+		SELECT id FROM tickets
+		WHERE position IS NOT NULL
+		ORDER BY position`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// setPositions writes the sequence of the queue. The first id of ids takes
+// position 1, the next takes 2, and so on.
+func setPositions(tx *sql.Tx, ids []int64) error {
+	// The column has a unique index, and a ticket can take a position that
+	// another ticket holds now, so each position goes away first.
+	if _, err := tx.Exec("UPDATE tickets SET position = NULL WHERE position IS NOT NULL"); err != nil {
+		return err
+	}
+	for i, id := range ids {
+		if _, err := tx.Exec("UPDATE tickets SET position = ? WHERE id = ?", i+1, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }

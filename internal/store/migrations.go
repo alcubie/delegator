@@ -99,8 +99,6 @@ func applyStep(db *sql.DB, i int) error {
 	if err != nil {
 		return err
 	}
-	// A rollback after a commit gives sql.ErrTxDone, and this discards it. The
-	// rollback operates only when a statement below gives an error.
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(migrations[i]); err != nil {

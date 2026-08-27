@@ -645,3 +645,64 @@ func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
 		t.Error("ticket was removed and should not have been")
 	}
 }
+
+func TestMoveTicketWritesTheNewSequence(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	if err := s.MoveTicket(ids[2], Top); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"third", "first", "second"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
+	}
+
+	var position int
+	if err := s.db.QueryRow(
+		"SELECT position FROM tickets WHERE title = 'third'").Scan(&position); err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Errorf("the first ticket of the queue is at position %d, want 1", position)
+	}
+}
+
+func TestMoveTicketMovesInEachDirection(t *testing.T) {
+	tests := []struct {
+		move Move
+		want []string
+	}{
+		{Up, []string{"second", "first", "third"}},
+		{Down, []string{"first", "third", "second"}},
+		{Top, []string{"second", "first", "third"}},
+		{Bottom, []string{"first", "third", "second"}},
+	}
+	for _, test := range tests {
+		t.Run(string(test.move), func(t *testing.T) {
+			s, ids := threeTickets(t)
+			if err := s.MoveTicket(ids[1], test.move); err != nil {
+				t.Fatal(err)
+			}
+			if got := queueTitles(t, s); !slices.Equal(got, test.want) {
+				t.Errorf("the queue is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.RemoveTicket(ids[1], Running); err != nil {
+		t.Fatal(err)
+	}
+	before := queueTitles(t, s)
+
+	err := s.MoveTicket(ids[1], Top)
+	if !errors.Is(err, ErrNotInTheQueue) {
+		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
