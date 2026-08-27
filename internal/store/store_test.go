@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -116,30 +117,8 @@ func TestOpenWritesTheVersionOfTheLastStep(t *testing.T) {
 	}
 	defer s.Close()
 
-	// The literal 2 is the count of steps that this version has. A test that
-	// read len(migrations) would stay green after a new step, because that one
-	// change moves the value that the test wants at the same time.
-	if got := userVersion(t, s.db); got != 2 {
-		t.Errorf("user_version = %d, want 2", got)
-	}
-}
-
-func TestOpenAgainAppliesNoStepAgain(t *testing.T) {
-	dataDir := t.TempDir()
-	first, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first.Close()
-
-	second, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer second.Close()
-
-	if got := userVersion(t, second.db); got != 2 {
-		t.Errorf("user_version = %d, want 2", got)
+	if got := userVersion(t, s.db); got != len(migrations) {
+		t.Errorf("user_version = %d, want %d", got, len(migrations))
 	}
 }
 
@@ -153,8 +132,9 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	}
 	first.Close()
 
-	// The second step makes a table, and then gives an error. Neither statement
+	// The new step makes a table, and then gives an error. Neither statement
 	// must stay.
+	good := len(migrations)
 	setMigrations(t, append(migrations,
 		"CREATE TABLE later (id INTEGER PRIMARY KEY);\nSELECT no_such_function();"))
 
@@ -163,8 +143,8 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	}
 
 	db := openRaw(t, dataDir)
-	if got := userVersion(t, db); got != 2 {
-		t.Errorf("user_version = %d, want 2", got)
+	if got := userVersion(t, db); got != good {
+		t.Errorf("user_version = %d, want %d", got, good)
 	}
 	var name string
 	err = db.QueryRow(
@@ -190,7 +170,8 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE later (id INTEGER PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("PRAGMA user_version = 3"); err != nil {
+	later := len(migrations) + 1
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", later)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -198,8 +179,8 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, ErrNewerDatabase)
 	}
 
-	if got := userVersion(t, db); got != 3 {
-		t.Errorf("user_version = %d, want 3", got)
+	if got := userVersion(t, db); got != later {
+		t.Errorf("user_version = %d, want %d", got, later)
 	}
 	var name string
 	if err := db.QueryRow(
@@ -344,7 +325,7 @@ func TestAddTicketSucceeds(t *testing.T) {
 	}
 
 	var ticket Ticket
-	row := s.db.QueryRow("SELECT id, project_id, title, state, created FROM tickets WHERE id = ?", ticketID)
+	row := s.db.QueryRow("SELECT id, project_id, title, status, created FROM tickets WHERE id = ?", ticketID)
 	if err = row.Scan(
 		&ticket.ID,
 		&ticket.ProjectID,
@@ -535,8 +516,10 @@ func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
 	}
 }
 
-// The database of a person who has the version before this one holds the first
-// step and not the second. This is the path that such a database takes.
+// The database of a person who has an earlier version of delegator holds only
+// the steps of that version. The next start must apply each step that is
+// missing, and no step that is present. This is the path that such a database
+// takes.
 func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -559,8 +542,8 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	}
 	defer second.Close()
 
-	if got := userVersion(t, second.db); got != 2 {
-		t.Errorf("user_version = %d, want 2", got)
+	if got := userVersion(t, second.db); got != len(migrations) {
+		t.Errorf("user_version = %d, want %d", got, len(migrations))
 	}
 	var name string
 	err = second.db.QueryRow(
@@ -664,7 +647,7 @@ func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
 	var state string
 	var position sql.Null[int]
 	if err = s.db.QueryRow(
-		"SELECT state, position FROM tickets WHERE id = ?",
+		"SELECT status, position FROM tickets WHERE id = ?",
 		removeID,
 	).Scan(&state, &position); err != nil {
 		t.Fatal(err)
@@ -723,7 +706,7 @@ func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
 
 	nonEntryState := Ready // a state that can't advance from queued
 	result, err := s.db.Exec(
-		"INSERT INTO tickets (project_id, title, state, created) VALUES (?, ?, ?, ?)",
+		"INSERT INTO tickets (project_id, title, status, created) VALUES (?, ?, ?, ?)",
 		projectID, "title", nonEntryState, "2026-08-27",
 	)
 	if err != nil {

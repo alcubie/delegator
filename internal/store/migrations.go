@@ -23,7 +23,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 //
 // Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
 // not a migration. This list is the answer to that lesson.
-var migrations = []string{tables, positionIndex}
+var migrations = []string{tables, positionIndex, renameStateToStatus}
 
 // tables makes the two tables. The ids of tickets are one sequence for all
 // projects, so INTEGER PRIMARY KEY gives the number and no counter is
@@ -58,6 +58,14 @@ CREATE TABLE tickets (
 // index, so a ticket that is not in the queue is not affected.
 const positionIndex = `
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
+`
+
+// A state is the condition of a ticket, and status is the name that the column
+// of a database takes for it. Step 1 made the column state, and a step that a
+// person has must never change, so the name changes in a step of its own. The
+// data of the column stays, and so does the index of step 2.
+const renameStateToStatus = `
+ALTER TABLE tickets RENAME COLUMN state TO status;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

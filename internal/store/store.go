@@ -176,7 +176,7 @@ func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
 	// ticket that delegator makes is in the queue, which is what the state
 	// "queued" says.
 	query := `INSERT INTO tickets (
-		project_id, title, state, position, created
+		project_id, title, status, position, created
 	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets), ?)
 	`
 	args := []any{
@@ -231,8 +231,8 @@ func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
 
 	result, err := s.db.Exec(
 		`UPDATE tickets
-			SET state = ?, position = NULL
-			WHERE id = ? AND state = ? AND position IS NOT NULL
+			SET status = ?, position = NULL
+			WHERE id = ? AND status = ? AND position IS NOT NULL
 		`,
 		newStatus,
 		id,
