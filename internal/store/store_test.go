@@ -819,3 +819,59 @@ func TestTwoProgramsThatWriteAtTheSameTimeLoseNoTicket(t *testing.T) {
 		t.Errorf("the positions run from %d to %d over %d tickets, want 1 to %d", low, high, count, count)
 	}
 }
+
+func TestProjectIDMakesTheProjectOnce(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	first, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.ProjectID("/projects/path", "trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Errorf("the second call gives %d, want %d", second, first)
+	}
+
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("the database holds %d projects, want 1", len(projects))
+	}
+	if projects[0].Path != "/projects/path" {
+		t.Errorf("path = %q, want /projects/path", projects[0].Path)
+	}
+	// The first call settles the branch. The second gave a different one, and
+	// the project keeps the branch that it has.
+	if projects[0].DefaultBranch != "main" {
+		t.Errorf("default branch = %q, want main", projects[0].DefaultBranch)
+	}
+}
+
+func TestProjectIDGivesADifferentIDForADifferentPath(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	first, err := s.ProjectID("/projects/one", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.ProjectID("/projects/two", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Errorf("both projects have id %d, want two ids", first)
+	}
+}

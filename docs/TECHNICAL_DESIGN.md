@@ -287,11 +287,11 @@ $XDG_CONFIG_HOME/delegator/config.toml
 $XDG_DATA_HOME/delegator/
   delegator.db                       the fields, the queue and the counter
   tickets/
-    0004.md                          the prose. The person writes this file.
+    4.md                             the prose. The person writes this file.
   worktrees/
-    0004/
+    4/
   runs/
-    0004/
+    4/
       2026-08-17T09-30-00.log        the raw output of the agent
 ```
 
@@ -311,6 +311,9 @@ is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg sh
 therefore not ambiguous, and the inbox can show all projects together. No name on the disk
 contains a project, so the name of each file below `tickets/`, `worktrees/` and `runs/` is
 the id alone.
+
+The id has no zero in front of it. A name with a zero in front sorts correctly with `ls`,
+but `ls -v` and `sort -V` read the number and give the same sequence from the id alone.
 
 **The tables.**
 
@@ -398,7 +401,7 @@ Delegator does not do this work automatically. A copy of a repository has the sa
 commit as its source, so two projects can look the same. A command from the person is
 therefore necessary. A project with no open work is not affected.
 
-**The prose of a ticket.** The file `tickets/0004.md` holds the prose only:
+**The prose of a ticket.** The file `tickets/4.md` holds the prose only:
 
 ```markdown
 Remove the staging app, the volume, the DNS records, the monitor and the
@@ -507,8 +510,8 @@ $ dg show 4
             points at it.
   result    Staging infra removed. Gate green, 433 tests.
 
-  ticket    …/delegator/tickets/0004.md
-  worktree  …/delegator/worktrees/0004
+  ticket    …/delegator/tickets/4.md
+  worktree  …/delegator/worktrees/4
   branch    delegator/4-remove-staging-infrastructure
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
 

@@ -180,6 +180,62 @@ func (s *Store) AddProject(path, defaultBranch string) (int64, error) {
 	return s.create(query, args...)
 }
 
+// Project is one row of the table projects.
+type Project struct {
+	ID            int64
+	Path          string
+	DefaultBranch string
+}
+
+// ProjectID gives the id of the project at path, and makes the row if the path
+// is not there. The first ticket of a project therefore settles its default
+// branch, and a later ticket of the same project keeps it.
+func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var id int64
+	err = tx.QueryRow("SELECT id FROM projects WHERE path = ?", path).Scan(&id)
+	switch {
+	case err == nil:
+		return id, tx.Commit()
+	case !errors.Is(err, sql.ErrNoRows):
+		return 0, err
+	}
+
+	result, err := tx.Exec(
+		"INSERT INTO projects (path, default_branch) VALUES (?, ?)", path, defaultBranch)
+	if err != nil {
+		return 0, err
+	}
+	if id, err = result.LastInsertId(); err != nil {
+		return 0, err
+	}
+	return id, tx.Commit()
+}
+
+// Projects gives each project, in the sequence of id.
+func (s *Store) Projects() ([]Project, error) {
+	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		if err := rows.Scan(&p.ID, &p.Path, &p.DefaultBranch); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
 // AddTicket adds a new ticket record to the database.
 func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
 	// The position comes from a sub-query in the same statement, so the read of

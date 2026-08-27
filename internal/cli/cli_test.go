@@ -2,20 +2,21 @@ package cli
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/project"
-	"github.com/alcubie/delegator/internal/queue"
-	"github.com/alcubie/delegator/internal/ticket"
+	"github.com/alcubie/delegator/internal/store"
 )
 
+// repoBranch is the branch of each repository that these tests make. It is not
+// main and not master, so a value that does not come from the repository is
+// visible in a result.
+const repoBranch = "trunk"
+
 // gitRepo makes an empty repository, because Ticket finds the project from the
-// directory that the person is in. The branch is not main and not master, so a
-// value that does not come from the repository is visible in a result.
+// directory that the person is in.
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -25,77 +26,58 @@ func gitRepo(t *testing.T) string {
 	return dir
 }
 
-// repoBranch is the branch of each repository that these tests make.
-const repoBranch = "trunk"
-
-// projectDir finds the one project below dataDir.
-func projectDir(t *testing.T, dataDir string) string {
+// openStore opens the database that a command wrote.
+func openStore(t *testing.T, dataDir string) *store.Store {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(dataDir, "projects", "*"))
+	s, err := store.Open(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 {
-		t.Fatalf("projects = %v, want one", matches)
-	}
-	return matches[0]
+	t.Cleanup(func() { s.Close() })
+	return s
 }
 
-// ticketDir finds the one ticket below dataDir. The test does not build the
-// path itself, because the name of the directory is condition 5 of the ticket
-// and not this condition.
-func ticketDir(t *testing.T, dataDir string) string {
+// proseFiles gives each file of prose that a command made. The test does not
+// build the name itself, because the name is condition 5 of the ticket.
+func proseFiles(t *testing.T, dataDir string) []string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(dataDir, "projects", "*", "tickets", "*"))
+	matches, err := filepath.Glob(filepath.Join(dataDir, "tickets", "*.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 1 {
-		t.Fatalf("tickets = %v, want one", matches)
-	}
-	return matches[0]
+	return matches
 }
 
-func TestTicketMakesTheTicketAndPutsTheIDInTheQueue(t *testing.T) {
+func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
 	const title = "Remove staging infrastructure"
 
-	id, err := Ticket(dataDir, repo, title)
+	id, err := Ticket(dataDir, gitRepo(t), title)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dir := ticketDir(t, dataDir)
-	for _, name := range []string{"ticket.yaml", "ticket.md"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-			t.Error(err)
-		}
-	}
-
-	got, err := ticket.Load(dir)
+	queue, err := openStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != id {
-		t.Errorf("ticket id = %d, want %d", got.ID, id)
+	if len(queue) != 1 {
+		t.Fatalf("the queue holds %d tickets, want 1", len(queue))
 	}
-	if got.Title != title {
-		t.Errorf("title = %q, want %q", got.Title, title)
+	if queue[0].ID != id {
+		t.Errorf("the queue holds ticket %d, want %d", queue[0].ID, id)
+	}
+	if queue[0].Title != title {
+		t.Errorf("title = %q, want %q", queue[0].Title, title)
 	}
 
-	ids, err := queue.List(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ids) != 1 || ids[0] != id {
-		t.Errorf("queue = %v, want [%d]", ids, id)
+	if got := proseFiles(t, dataDir); len(got) != 1 {
+		t.Errorf("the files of prose are %v, want one", got)
 	}
 }
 
-// Ticket finds the project before it reserves an id. A directory that is not a
-// repository must therefore cost no id, because an id in the queue that has no
-// ticket is a gap that no command removes.
+// Ticket finds the project before it writes a row, so a directory that is not a
+// repository costs no id.
 func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -104,8 +86,6 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 		t.Fatalf("err = %v, want %v", err, project.ErrNotARepository)
 	}
 
-	// The ticket that comes after takes the first id, because the failure
-	// took none.
 	id, err := Ticket(dataDir, gitRepo(t), "Add rate limiting")
 	if err != nil {
 		t.Fatal(err)
@@ -113,19 +93,10 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	if id != 1 {
 		t.Errorf("id = %d, want 1", id)
 	}
-
-	ids, err := queue.List(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(ids, []int{1}) {
-		t.Errorf("queue = %v, want [1]", ids)
-	}
 }
 
-// The branch of the project is the start of the branch of each run, and
-// project.Create writes it one time only, so the first ticket of a project
-// settles it.
+// The branch of the project is the start of the branch of each run, so the
+// first ticket of a project settles it.
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -133,11 +104,36 @@ func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := project.Config(projectDir(t, dataDir))
+	projects, err := openStore(t, dataDir).Projects()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DefaultBranch != repoBranch {
-		t.Errorf("default branch = %q, want %q", got.DefaultBranch, repoBranch)
+	if len(projects) != 1 {
+		t.Fatalf("the database holds %d projects, want 1", len(projects))
+	}
+	if projects[0].DefaultBranch != repoBranch {
+		t.Errorf("default branch = %q, want %q", projects[0].DefaultBranch, repoBranch)
+	}
+}
+
+// A second ticket in the same repository uses the project that the first one
+// made, because the path of a project is unique.
+func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := gitRepo(t)
+
+	if _, err := Ticket(dataDir, repo, "Remove staging infrastructure"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ticket(dataDir, repo, "Add rate limiting"); err != nil {
+		t.Fatal(err)
+	}
+
+	projects, err := openStore(t, dataDir).Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Errorf("the database holds %d projects, want 1", len(projects))
 	}
 }
