@@ -23,14 +23,15 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 //
 // Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
 // not a migration. This list is the answer to that lesson.
-var migrations = []string{tables, positionIndex, renameStateToStatus}
+var migrations = []string{tables}
 
-// tables makes the two tables. The ids of tickets are one sequence for all
-// projects, so INTEGER PRIMARY KEY gives the number and no counter is
-// necessary. The column position is the queue, and a ticket with a position of
-// NULL is not in the queue. The path of a worktree is worktrees/<id>, so it
-// needs no column. The branch keeps a column, because the person can give the
-// branch a new name.
+// tables makes the two tables and the index of the queue. The ids of tickets
+// are one sequence for all projects, so dg show 4 is not ambiguous.
+//
+// The CHECK keeps the status and the position together: a ticket is in the queue
+// with both, and with neither half alone. A unique index counts each NULL as
+// different from each other NULL, so it does not affect a ticket that is out of
+// the queue.
 const tables = `
 CREATE TABLE projects (
   id             INTEGER PRIMARY KEY,
@@ -43,29 +44,17 @@ CREATE TABLE tickets (
   id         INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   title      TEXT NOT NULL,
-  state      TEXT NOT NULL,
+  status     TEXT NOT NULL,
   position   INTEGER,
   branch     TEXT,
   session    TEXT,
   result     TEXT,
   flags      TEXT,
-  created    TEXT NOT NULL
+  created    TEXT NOT NULL,
+  CHECK ((status = 'queued') = (position IS NOT NULL))
 );
-`
 
-// A position is a place in one sequence, so no two tickets can hold the same
-// one. SQLite counts each NULL as different from each other NULL in a unique
-// index, so a ticket that is not in the queue is not affected.
-const positionIndex = `
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
-`
-
-// A state is the condition of a ticket, and status is the name that the column
-// of a database takes for it. Step 1 made the column state, and a step that a
-// person has must never change, so the name changes in a step of its own. The
-// data of the column stays, and so does the index of step 2.
-const renameStateToStatus = `
-ALTER TABLE tickets RENAME COLUMN state TO status;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

@@ -326,19 +326,35 @@ CREATE TABLE tickets (
   id         INTEGER PRIMARY KEY,
   project_id INTEGER NOT NULL REFERENCES projects(id),
   title      TEXT NOT NULL,
-  state      TEXT NOT NULL,
+  status     TEXT NOT NULL,
   position   INTEGER,
   branch     TEXT,
   session    TEXT,
   result     TEXT,
   flags      TEXT,
-  created    TEXT NOT NULL
+  created    TEXT NOT NULL,
+  CHECK ((status = 'queued') = (position IS NOT NULL))
 );
+
+CREATE UNIQUE INDEX tickets_position ON tickets(position);
 ```
 
-The column `position` is the queue. A ticket with a `position` of `NULL` is not in the
-queue. The path of a worktree is `worktrees/<id>`, so it needs no column. The branch keeps
-a column, because the person can give the branch a new name.
+The column `position` is the queue. The path of a worktree is `worktrees/<id>`, so it
+needs no column. The branch keeps a column, because the person can give the branch a new
+name. The column is `status`, and a state is what §8 talks about: `status` is the name that
+a column of a database takes.
+
+**The queue is in the table, and not only in the code.** A ticket of the queue holds the
+status `queued` and a position. Each half alone puts the ticket in no queue: a ticket with
+a position and another status left the queue, and a ticket with the status `queued` and no
+position is in no queue at all. The `CHECK` refuses each half, so no command of delegator
+and no person with the `sqlite3` program can make one. The unique index refuses two
+tickets in the same place.
+
+A command that writes a new sequence must therefore not take each position away first,
+because a queued ticket with no position is what the `CHECK` refuses, and SQLite has no
+`CHECK` that waits for the commit. Each position goes below zero instead, and the new
+positions go above it.
 
 **One writer at a time.** Delegator opens the database in WAL mode, and gives it a
 `busy_timeout`. Each command that writes uses `BEGIN IMMEDIATE`. Two programs that write

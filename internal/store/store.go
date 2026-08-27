@@ -310,8 +310,11 @@ func queuedIDs(tx *sql.Tx) ([]int64, error) {
 // position 1, the next takes 2, and so on.
 func setPositions(tx *sql.Tx, ids []int64) error {
 	// The column has a unique index, and a ticket can take a position that
-	// another ticket holds now, so each position goes away first.
-	if _, err := tx.Exec("UPDATE tickets SET position = NULL WHERE position IS NOT NULL"); err != nil {
+	// another ticket holds now, so each position goes below zero first. A
+	// position that is not there at all would be simpler, but the CHECK of the
+	// table refuses a queued ticket with no position, and SQLite has no CHECK
+	// that waits for the commit.
+	if _, err := tx.Exec("UPDATE tickets SET position = -position WHERE position IS NOT NULL"); err != nil {
 		return err
 	}
 	for i, id := range ids {

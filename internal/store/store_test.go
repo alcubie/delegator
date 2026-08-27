@@ -448,19 +448,12 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 
 func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 	s, ticketID := oneTicket(t)
-	// AddTicket puts each new ticket in the queue, so the test takes this one
-	// out again. Remove does this work for the person.
-	if _, err := s.db.Exec("UPDATE tickets SET position = NULL WHERE id = ?", ticketID); err != nil {
+	if _, err := s.RemoveTicket(ticketID, Running); err != nil {
 		t.Fatal(err)
 	}
 
-	queue, err := s.ListQueue()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(queue) != 0 {
-		t.Errorf("the queue holds %d tickets, want 0", len(queue))
+	if got := queueTitles(t, s); len(got) != 0 {
+		t.Errorf("the queue is %v, want no ticket", got)
 	}
 }
 
@@ -469,9 +462,10 @@ func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
 
 	// The position of each ticket runs against its id. A queue in the sequence
 	// of id therefore looks different from a queue in the sequence of position,
-	// and the test can tell the two apart. Each position goes away first,
-	// because the column has a unique index.
-	if _, err := s.db.Exec("UPDATE tickets SET position = NULL"); err != nil {
+	// and the test can tell the two apart. Each position goes below zero first,
+	// because the column has a unique index and the CHECK of the table refuses a
+	// queued ticket with no position.
+	if _, err := s.db.Exec("UPDATE tickets SET position = -position"); err != nil {
 		t.Fatal(err)
 	}
 	for i, id := range ids {
@@ -707,36 +701,36 @@ func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
 	}
 }
 
-// A ticket with a position and a status other than queued is not in the queue.
-// No command makes such a ticket now, so the test makes one with SQL. It is
-// what a later dg revise or dg restart writes if it gives a ticket the status
-// queued and forgets the position, or the reverse.
-func TestTheQueueHoldsOnlyTicketsWithTheStatusQueued(t *testing.T) {
+// A ticket of the queue holds the status queued and a position. Each one alone
+// puts the ticket in no queue: a ticket with a position and another status left
+// the queue, and a ticket with the status queued and no position is in no queue
+// at all. The database refuses each half, so no command can make one.
+func TestTheDatabaseRefusesATicketThatIsHalfInTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.db.Exec(
-		"UPDATE tickets SET status = ? WHERE id = ?", Running, ids[1]); err != nil {
-		t.Fatal(err)
+
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{"a status that is not queued, with the position left behind",
+			"UPDATE tickets SET status = 'running' WHERE id = ?"},
+		{"the status queued, with the position taken away",
+			"UPDATE tickets SET position = NULL WHERE id = ?"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := s.db.Exec(test.query, ids[1])
+			var sErr *sqlite.Error
+			if !errors.As(err, &sErr) {
+				t.Fatalf("err is %T, want *sqlite.Error", err)
+			}
+			if sErr.Code() != sqlite3.SQLITE_CONSTRAINT_CHECK {
+				t.Errorf("code = %d, want %d", sErr.Code(), sqlite3.SQLITE_CONSTRAINT_CHECK)
+			}
+		})
 	}
 
-	want := []string{"first", "third"}
-	if got := queueTitles(t, s); !slices.Equal(got, want) {
-		t.Errorf("ListQueue gives %v, want %v", got, want)
-	}
-
-	if err := s.MoveTicket(ids[2], Top); err != nil {
-		t.Fatal(err)
-	}
-	want = []string{"third", "first"}
-	if got := queueTitles(t, s); !slices.Equal(got, want) {
-		t.Errorf("after the move the queue is %v, want %v", got, want)
-	}
-
-	var position sql.Null[int]
-	if err := s.db.QueryRow(
-		"SELECT position FROM tickets WHERE id = ?", ids[1]).Scan(&position); err != nil {
-		t.Fatal(err)
-	}
-	if position.Valid {
-		t.Errorf("the ticket that is not queued is at position %d, and the move gave it one", position.V)
+	if got := queueTitles(t, s); !slices.Equal(got, []string{"first", "second", "third"}) {
+		t.Errorf("the queue is %v, and it must not change", got)
 	}
 }
