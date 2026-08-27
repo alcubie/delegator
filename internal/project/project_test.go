@@ -2,18 +2,12 @@ package project
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/BurntSushi/toml"
 )
-
-const testRoot = "/project/delegator"
 
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
@@ -79,165 +73,6 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 	}
 	if result != spaceDir {
 		t.Errorf("result = %s, want = %s", result, spaceDir)
-	}
-}
-
-// The key below is a literal. A test that did the hash a second time would stay
-// green with an error in the code that it examines, because the test would make
-// the same error. The value therefore comes from the shell:
-//
-//	printf '%s' '/project/delegator' | sha256sum | cut -c1-6
-func TestKeyForAKnownPath(t *testing.T) {
-	got := Key(testRoot)
-	want := "delegator-f5dfd0"
-	if got != want {
-		t.Errorf("Key = %q, want %q", got, want)
-	}
-}
-
-func TestCreateMakesTheDirectories(t *testing.T) {
-	data := t.TempDir()
-	dir, err := Create(data, testRoot, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := filepath.Join(data, "projects", "delegator-f5dfd0")
-	if dir != want {
-		t.Fatalf("dir = %q, want %q", dir, want)
-	}
-
-	// The empty name is the directory of the project. The test says the
-	// permission 0700 a second time as a literal. A test that read dirPerm would
-	// stay green after a change of dirPerm to 0755, because that one change moves
-	// the value that the test wants at the same time.
-	for _, name := range []string{"", "tickets", "worktrees", "runs"} {
-		info, err := os.Stat(filepath.Join(dir, name))
-		if err != nil {
-			t.Errorf("%q: %v", name, err)
-			continue
-		}
-		if !info.IsDir() {
-			t.Errorf("%q is not a directory", name)
-		}
-		if got := info.Mode().Perm(); got != 0o700 {
-			t.Errorf("%q permission = %o, want 700", name, got)
-		}
-	}
-}
-
-func TestCreateWritesProjectToml(t *testing.T) {
-	// Two branches, because one value cannot show that Create reads its
-	// argument. A Create that always writes "main" passes a test that only
-	// ever gives it "main".
-	for _, branch := range []string{"main", "trunk"} {
-		dataDir := t.TempDir()
-		projectDir := createProject(t, dataDir, testRoot, branch)
-		path := filepath.Join(projectDir, "project.toml")
-
-		got, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// The content is a literal. A test that read the file back with the
-		// library that wrote it would stay green after a change of the name of
-		// a field: repo_path would go out and come back, and the format of the
-		// file would still be wrong.
-		want := "path = \"/project/delegator\"\n" +
-			"default_branch = \"" + branch + "\"\n"
-		if string(got) != want {
-			t.Errorf("project.toml = %q, want %q", got, want)
-		}
-
-		// The file project.toml can name a private path, so only its person can
-		// read it. The test says the permission a second time as a literal, and
-		// does not read the constant that the code gives to the write.
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if perm := info.Mode().Perm(); perm != 0o600 {
-			t.Errorf("permission = %o, want 600", perm)
-		}
-	}
-}
-
-// createProject creates the project and returns the projectDir
-func createProject(t *testing.T, dataDir, root, branch string) string {
-	t.Helper()
-	dir, err := Create(dataDir, root, branch)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return dir
-}
-
-func TestCreateTomlAgainRemainsUnmodified(t *testing.T) {
-	dataDir := t.TempDir()
-	projectDir := createProject(t, dataDir, testRoot, "main")
-	path := filepath.Join(projectDir, "project.toml")
-
-	// Manually set the last modified time as a file modified immediately afterwards
-	// may end up having the same mtime which would make the test unreliable
-	old := time.Now().Add(-time.Hour).Truncate(time.Second)
-	if err := os.Chtimes(path, old, old); err != nil {
-		t.Fatal(err)
-	}
-
-	createProject(t, dataDir, testRoot, "trunk")
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !info.ModTime().Equal(old) {
-		t.Errorf("project.toml was written again: mtime = %v, want %v", info.ModTime(), old)
-	}
-}
-
-func TestConfig(t *testing.T) {
-	dataDir := t.TempDir()
-	projectDir := createProject(t, dataDir, testRoot, "main")
-	config, err := Config(projectDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if config.DefaultBranch != "main" {
-		t.Errorf("default_branch = %s, want %s", config.DefaultBranch, "main")
-	}
-
-	if config.Path != testRoot {
-		t.Errorf("path = %s, want %s", config.Path, testRoot)
-	}
-}
-
-func TestConfigTomlDoesNotExist(t *testing.T) {
-	dataDir := t.TempDir()
-	projectDir := createProject(t, dataDir, testRoot, "main")
-	err := os.Remove(filepath.Join(projectDir, "project.toml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = Config(projectDir)
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("err = %v, want %v", err, fs.ErrNotExist)
-	}
-}
-
-func TestConfigWithInvalidToml(t *testing.T) {
-	dataDir := t.TempDir()
-	projectDir := createProject(t, dataDir, testRoot, "main")
-	if err := os.WriteFile(filepath.Join(projectDir, "project.toml"), []byte("invalid toml"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := Config(projectDir)
-	if _, ok := errors.AsType[toml.ParseError](err); !ok {
-		t.Errorf("err = %v, want a toml.ParseError", err)
 	}
 }
 

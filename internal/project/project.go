@@ -7,18 +7,9 @@
 package project
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"io/fs"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
-
-	"github.com/BurntSushi/toml"
-
-	"github.com/alcubie/delegator/internal/atomicfile"
 )
 
 // ErrGitNotOnPath shows that git is not installed on the PATH.
@@ -49,117 +40,6 @@ func Root(path string) (string, error) {
 	}
 
 	return strings.TrimSuffix(string(gitDir), "\n"), nil
-}
-
-// keyHashLength is the number of characters that the key takes from the hash.
-// Six characters give 16 million values, which is sufficient to separate the
-// repositories of one person, and the name of the directory stays short enough
-// to read and to type.
-const keyHashLength = 6
-
-// Key gives the name of the directory that holds the data of one project. It is
-// the name of the root directory, and then 6 characters from the SHA-256 hash of
-// the full path. The name alone is not unique, because many repositories have
-// the name "backend". The file project.toml holds the full path, so the key is
-// reversible.
-func Key(root string) string {
-	sum := sha256.Sum256([]byte(root))
-	return filepath.Base(root) + "-" + hex.EncodeToString(sum[:])[:keyHashLength]
-}
-
-// dirPerm gives the permission of each directory that delegator makes. A ticket
-// can contain private data, so only its person can read it. A directory that
-// gives no permission to a group stops a read of the names of the files below
-// it.
-const dirPerm = 0o700
-
-// projectDirs are the directories that each project has. The tickets hold the
-// work, the worktrees hold the copy of the repository for each ticket, and the
-// runs hold the log of the agent.
-var projectDirs = []string{"tickets", "worktrees", "runs"}
-
-// Project holds the fields of project.toml. The path makes the key reversible,
-// and the default branch is the start of the branch of each run: each run gets
-// one worktree and one branch, and that branch comes from the default branch.
-type Project struct {
-	Path          string `toml:"path"`
-	DefaultBranch string `toml:"default_branch"`
-}
-
-// Create makes the directory of one project below dataDir, and the directories
-// below it, and writes project.toml if it does not exist. If project.toml does
-// exist it is left unmodified. It gives the path of the directory of the project.
-// Create makes a directory that is already present again, and this causes no
-// error.
-//
-// Create takes the default branch, and does not read it from the repository,
-// because no one answer from git is correct for each repository. DefaultBranch
-// asks git and gives the best answer that it has, and the caller decides
-// whether to use it.
-func Create(dataDir, root, defaultBranch string) (string, error) {
-	dir := Dir(dataDir, root)
-	for _, name := range projectDirs {
-		if err := os.MkdirAll(filepath.Join(dir, name), dirPerm); err != nil {
-			return "", err
-		}
-	}
-
-	path := tomlPath(dir)
-	exists, err := pathExists(path)
-	if err != nil {
-		return "", err
-	}
-	if exists {
-		return dir, nil
-	}
-
-	data, err := toml.Marshal(Project{Path: root, DefaultBranch: defaultBranch})
-	if err != nil {
-		return "", err
-	}
-
-	if err := atomicfile.Write(path, data, atomicfile.Perm); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
-// Dir returns the directory below dataDir that holds the data of the project.
-// The root is the path of the git repository and Key creates its unique name.
-func Dir(dataDir string, root string) string {
-	return filepath.Join(dataDir, "projects", Key(root))
-}
-
-func tomlPath(projectDir string) string {
-	return filepath.Join(projectDir, "project.toml")
-}
-
-func pathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// Config returns the configuration of the project located in project.toml
-func Config(projectDir string) (Project, error) {
-	var config Project
-	path := tomlPath(projectDir)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return config, err
-	}
-
-	_, err = toml.Decode(string(data), &config)
-	if err != nil {
-		return config, err
-	}
-
-	return config, nil
 }
 
 // gitOutput runs one git command in root and gives its output with no final
