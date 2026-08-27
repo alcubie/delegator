@@ -8,11 +8,101 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"testing"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
+
+// emptyStore gives a store that holds one project and no ticket, with the id of
+// the project.
+func emptyStore(t *testing.T) (*Store, int64) {
+	t.Helper()
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, projectID
+}
+
+// oneTicket gives a store that holds one project and one ticket named
+// "My Ticket", with the id of the ticket.
+func oneTicket(t *testing.T) (*Store, int64) {
+	t.Helper()
+	s, projectID := emptyStore(t)
+	id, err := s.AddTicket(projectID, "My Ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, id
+}
+
+// threeTickets gives a store that holds one project and three tickets, in the
+// sequence first, second, third, with their ids.
+func threeTickets(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, projectID := emptyStore(t)
+	ids := make([]int64, 0, 3)
+	for _, title := range []string{"first", "second", "third"} {
+		id, err := s.AddTicket(projectID, title)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return s, ids
+}
+
+// queueTitles gives the title of each ticket of the queue, in its sequence.
+func queueTitles(t *testing.T, s *Store) []string {
+	t.Helper()
+	queue, err := s.ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := make([]string, 0, len(queue))
+	for _, ticket := range queue {
+		titles = append(titles, ticket.Title)
+	}
+	return titles
+}
+
+// openRaw opens the database with no migration, so a test can examine what
+// Open left behind.
+func openRaw(t *testing.T, dataDir string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func userVersion(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	return version
+}
+
+// setMigrations puts a different list of steps in place for one test. Each test
+// of this package runs one after the other, so no test sees the list of another.
+func setMigrations(t *testing.T, list []string) {
+	t.Helper()
+	old := migrations
+	migrations = list
+	t.Cleanup(func() { migrations = old })
+}
 
 func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 	dataDir := t.TempDir()
@@ -77,36 +167,6 @@ func TestOpenWithTheDataDirectoryAlreadyPresent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dataDir, "tickets")); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// openRaw opens the database with no migration, so a test can examine what
-// Open left behind.
-func openRaw(t *testing.T, dataDir string) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
-func userVersion(t *testing.T, db *sql.DB) int {
-	t.Helper()
-	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	return version
-}
-
-// setMigrations puts a different list of steps in place for one test. Each test
-// of this package runs one after the other, so no test sees the list of another.
-func setMigrations(t *testing.T, list []string) {
-	t.Helper()
-	old := migrations
-	migrations = list
-	t.Cleanup(func() { migrations = old })
 }
 
 func TestOpenWritesTheVersionOfTheLastStep(t *testing.T) {
@@ -295,17 +355,7 @@ func TestAddProjectSucceeds(t *testing.T) {
 }
 
 func TestAddTicketSucceeds(t *testing.T) {
-	dataDir := t.TempDir()
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, projectID := emptyStore(t)
 
 	ticketID, err := s.AddTicket(projectID, "My Ticket")
 	if err != nil {
@@ -375,20 +425,7 @@ func TestAddTicketWithInvalidProjectFails(t *testing.T) {
 }
 
 func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ticketID, err := s.AddTicket(projectID, "My Ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, ticketID := oneTicket(t)
 	if _, err := s.db.Exec("UPDATE tickets SET position = 1 WHERE id = ?", ticketID); err != nil {
 		t.Fatal(err)
 	}
@@ -410,20 +447,7 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 }
 
 func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ticketID, err := s.AddTicket(projectID, "My Ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, ticketID := oneTicket(t)
 	// AddTicket puts each new ticket in the queue, so the test takes this one
 	// out again. Remove does this work for the person.
 	if _, err := s.db.Exec("UPDATE tickets SET position = NULL WHERE id = ?", ticketID); err != nil {
@@ -441,58 +465,30 @@ func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 }
 
 func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, ids := threeTickets(t)
 
 	// The position of each ticket runs against its id. A queue in the sequence
 	// of id therefore looks different from a queue in the sequence of position,
-	// and the test can tell the two apart.
-	for i, title := range []string{"first", "second", "third"} {
-		position := 3 - i
-		id, err := s.AddTicket(projectID, title)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.db.Exec("UPDATE tickets SET position = ? WHERE id = ?", position, id); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	queue, err := s.ListQueue()
-	if err != nil {
+	// and the test can tell the two apart. Each position goes away first,
+	// because the column has a unique index.
+	if _, err := s.db.Exec("UPDATE tickets SET position = NULL"); err != nil {
 		t.Fatal(err)
+	}
+	for i, id := range ids {
+		if _, err := s.db.Exec(
+			"UPDATE tickets SET position = ? WHERE id = ?", len(ids)-i, id); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	want := []string{"third", "second", "first"}
-	if len(queue) != len(want) {
-		t.Fatalf("the queue holds %d tickets, want %d", len(queue), len(want))
-	}
-	for i, title := range want {
-		if queue[i].Title != title {
-			t.Errorf("ticket %d is %q, want %q", i, queue[i].Title, title)
-		}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
 	}
 }
 
 func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, projectID := emptyStore(t)
 	first, err := s.AddTicket(projectID, "first")
 	if err != nil {
 		t.Fatal(err)
@@ -554,35 +550,11 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 }
 
 func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, title := range []string{"first", "second", "third"} {
-		if _, err := s.AddTicket(projectID, title); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	queue, err := s.ListQueue()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, _ := threeTickets(t)
 
 	want := []string{"first", "second", "third"}
-	if len(queue) != len(want) {
-		t.Fatalf("the queue holds %d tickets, want %d", len(queue), len(want))
-	}
-	for i, title := range want {
-		if queue[i].Title != title {
-			t.Errorf("ticket %d is %q, want %q", i, queue[i].Title, title)
-		}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
 	// The sequence starts at 1. The queue works with any first number, but a
@@ -598,27 +570,8 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 }
 
 func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+	s, ids := threeTickets(t)
 
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ids := make([]int64, 0, 3)
-	for _, title := range []string{"first", "second", "third"} {
-		id, err := s.AddTicket(projectID, title)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, id)
-	}
-
-	// call RemoveTicket() for first ticket and then make sure the remaining tickets are second and third
 	removeID := ids[0]
 	ok, err := s.RemoveTicket(removeID, Running)
 	if err != nil {
@@ -628,19 +581,9 @@ func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
 		t.Error("ticket was not removed")
 	}
 
-	tickets, err := s.ListQueue()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tickets) != 2 {
-		t.Errorf("got %d tickets in queue, want 2", len(tickets))
-	}
-
-	if tickets[0].Title != "second" {
-		t.Errorf("ticket 0 title should be second, got = %s", tickets[0].Title)
-	}
-	if tickets[1].Title != "third" {
-		t.Errorf("ticket 1 title should be third, got = %s", tickets[1].Title)
+	want := []string{"second", "third"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
 	// check that the removed ticket has the values set correctly
@@ -661,24 +604,10 @@ func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
 }
 
 func TestRemoveTicketCanOnlyTransitionToValidStates(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	id, err := s.AddTicket(projectID, "my title")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, id := oneTicket(t)
 
 	for _, state := range []TicketStatus{Ready, Failed, Done, Queued} {
-		if _, err = s.RemoveTicket(id, state); !errors.Is(err, ErrInvalidTicketStateChange) {
+		if _, err := s.RemoveTicket(id, state); !errors.Is(err, ErrInvalidTicketStateChange) {
 			t.Errorf("RemoveTicket to %s gave err = %v, want ErrInvalidTicketStateChange", state, err)
 		}
 
@@ -693,16 +622,7 @@ func TestRemoveTicketCanOnlyTransitionToValidStates(t *testing.T) {
 }
 
 func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	projectID, err := s.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, projectID := emptyStore(t)
 
 	nonEntryState := Ready // a state that can't advance from queued
 	result, err := s.db.Exec(
