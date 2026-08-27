@@ -18,7 +18,7 @@ trigger occurs, the item stays here, and this is a good result.
 |---|---|---|---|
 | The TUI | A full screen program with the inbox on the left and the ticket on the right. It refreshes while you look at it. It goes in `internal/tui/`, and it reads the same structure from `inbox/`. | The commands `dg` and `dg show` give the same data. The TUI was about 40 percent of the work of version 1. | READY has more than about 20 tickets, and the output of `dg` is difficult to scan. |
 | Keys for commands | Each command of the person also gets one key in the TUI. The config in §9.2 keeps its place for this. | `dg open <name> <id>` does the same work from the CLI. | The TUI arrives. |
-| Reorder with `j` and `k` | Move one ticket up or down in the queue with one key. | `dg queue` opens the queue file in `$EDITOR`, and the queue file is a list of ids. | The TUI arrives. |
+| Reorder with `j` and `k` | Move one ticket up or down in the queue with one key. | `dg move <id> up` and `dg move <id> down` do the same work from the CLI. | The TUI arrives. |
 | A GUI | A graphical interface. In Go it is a second binary `cmd/dg-gui/`. In a different language it uses `dg --json`. | A terminal is sufficient for a programmer, and the CLI is the product now. | A person who does not use a terminal must use delegator. |
 | A filter by project | Show one project only. | The inbox shows the project on each row, and other programs can filter the output. | You have more than about 5 projects with active tickets. |
 

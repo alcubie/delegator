@@ -346,10 +346,17 @@ at the same time therefore lose no data, and a program that only reads does not 
 removes the file lock of the earlier design. It also keeps the answer to lesson 7. The lock
 comes from the operating system, so it cannot become out of date.
 
-**How the person changes the sequence.** The command `dg queue` writes each id to a
-temporary file in its sequence, and opens `$EDITOR`. When the editor stops, delegator
-reads the file and writes each new position in one transaction. The command `git rebase
--i` uses the same method.
+**How the person changes the sequence.** The command `dg move <id> up` moves one ticket
+above the ticket that is above it. The other directions are `down`, `top` and `bottom`.
+Delegator reads the sequence, moves the one ticket, and writes each new position, all in
+one transaction.
+
+An earlier design put the sequence in `$EDITOR`, as `git rebase -i` does. The person can
+hold that file open for a long time, and the queue can change while it is open: a
+supervisor starts the first ticket, or `dg revise` puts a ticket at the end. The file then
+holds a sequence for a queue that is not there any more, and delegator must find the
+difference and say so. A command that moves one ticket reads the queue at the time that it
+writes it, so no such difference is possible.
 
 **If the person moves a project.** The path of a project is a column, and no name on the
 disk comes from it. Delegator therefore keeps its connection to each ticket. Only git
@@ -539,7 +546,7 @@ installer.
 | `dg show <id>` | Show one ticket and its variables. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg start` and `dg pause` | Start or stop work on the queue. |
-| `dg queue` | Change the sequence of the queue in `$EDITOR`. |
+| `dg move <id> <where>` | Move one ticket in the queue. `<where>` is `up`, `down`, `top` or `bottom`. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |
