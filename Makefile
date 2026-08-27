@@ -8,7 +8,7 @@ PKG := github.com/alcubie/delegator
 COVER_MIN  := 60
 COVER_PKGS := ./internal/...
 
-.PHONY: build test vet fmt fmtcheck check clean watch cover coverhtml covercheck
+.PHONY: build test vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
 
 build:
 	go build -o $(BIN) ./cmd/dg
@@ -21,6 +21,14 @@ watch:
 
 vet:
 	go vet ./...
+
+# lint runs each check that staticcheck has, and not only the ones that it has
+# by default. The two that are not default earn their place: ST1000 asks each
+# package for a package comment, and ST1003 asks an initialism for its capitals,
+# so an id is an ID. staticcheck comes from
+# honnef.co/go/tools/cmd/staticcheck.
+lint:
+	staticcheck -checks=all ./...
 
 fmt:
 	gofmt -l -w .
@@ -66,7 +74,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: fmtcheck vet covercheck
+check: fmtcheck vet lint covercheck
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html
