@@ -613,3 +613,132 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 		t.Errorf("the first ticket is at position %d, want 1", position)
 	}
 }
+
+func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids := make([]int64, 0, 3)
+	for _, title := range []string{"first", "second", "third"} {
+		id, err := s.AddTicket(projectID, title)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+
+	// call RemoveTicket() for first ticket and then make sure the remaining tickets are second and third
+	removeID := ids[0]
+	ok, err := s.RemoveTicket(removeID, Running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("ticket was not removed")
+	}
+
+	tickets, err := s.ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tickets) != 2 {
+		t.Errorf("got %d tickets in queue, want 2", len(tickets))
+	}
+
+	if tickets[0].Title != "second" {
+		t.Errorf("ticket 0 title should be second, got = %s", tickets[0].Title)
+	}
+	if tickets[1].Title != "third" {
+		t.Errorf("ticket 1 title should be third, got = %s", tickets[1].Title)
+	}
+
+	// check that the removed ticket has the values set correctly
+	var state string
+	var position sql.Null[int]
+	if err = s.db.QueryRow(
+		"SELECT state, position FROM tickets WHERE id = ?",
+		removeID,
+	).Scan(&state, &position); err != nil {
+		t.Fatal(err)
+	}
+	if state != "running" {
+		t.Errorf("state = %s, want = running", state)
+	}
+	if position.Valid {
+		t.Errorf("position = %d, want = nil", position.V)
+	}
+}
+
+func TestRemoveTicketCanOnlyTransitionToValidStates(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := s.AddTicket(projectID, "my title")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, state := range []TicketStatus{Ready, Failed, Done, Queued} {
+		if _, err = s.RemoveTicket(id, state); !errors.Is(err, ErrInvalidTicketStateChange) {
+			t.Errorf("RemoveTicket to %s gave err = %v, want ErrInvalidTicketStateChange", state, err)
+		}
+
+		tickets, err := s.ListQueue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tickets) != 1 {
+			t.Errorf("ticket should remain in queue, got length = %d for state = %s", len(tickets), state)
+		}
+	}
+}
+
+func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	projectID, err := s.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nonEntryState := Ready // a state that can't advance from queued
+	result, err := s.db.Exec(
+		"INSERT INTO tickets (project_id, title, state, created) VALUES (?, ?, ?, ?)",
+		projectID, "title", nonEntryState, "2026-08-27",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ticketID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, err := s.RemoveTicket(ticketID, Running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("ticket was removed and should not have been")
+	}
+}

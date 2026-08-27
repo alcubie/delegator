@@ -5,10 +5,12 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	// The blank name imports this package for its init function only. The init
@@ -92,6 +94,25 @@ const (
 	Done      TicketStatus = "done"
 	Cancelled TicketStatus = "cancelled"
 )
+
+// nextStates gives each state that one state can go to.
+// See Section 8 of the technical document for a visual diagram
+var nextStates = map[TicketStatus][]TicketStatus{
+	Queued:    {Running, Cancelled},
+	Running:   {Ready, Failed, Cancelled},
+	Ready:     {Done, Queued, Cancelled},
+	Failed:    {Queued, Cancelled},
+	Done:      nil,
+	Cancelled: nil,
+}
+
+// canChange gives the ok to whether one TicketStatus can advance to another TicketStatus.
+func canChange(from, to TicketStatus) bool {
+	return slices.Contains(nextStates[from], to)
+}
+
+// ErrInvalidTicketStateChange shows that an invalid state change was attempted and blocked.
+var ErrInvalidTicketStateChange = errors.New("invalid ticket state change")
 
 // Open gives the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
@@ -198,4 +219,33 @@ func (s *Store) ListQueue() ([]QueuedTicket, error) {
 	// A loop over rows stops on an error as well as on the last row, and Next
 	// gives false for both. Err tells the two apart.
 	return queue, rows.Err()
+}
+
+// RemoveTicket removes ticket with ID id from the queue.
+// The positions of the other tickets are not modified as they will still remain in the correct order.
+// The ticket must have its status as "queued" and a position in the queue in order to be modified.
+func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
+	if !canChange(Queued, newStatus) {
+		return false, fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, Queued, newStatus)
+	}
+
+	result, err := s.db.Exec(
+		`UPDATE tickets
+			SET state = ?, position = NULL
+			WHERE id = ? AND state = ? AND position IS NOT NULL
+		`,
+		newStatus,
+		id,
+		Queued,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	num, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return num == 1, nil
 }
