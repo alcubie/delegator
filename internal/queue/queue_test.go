@@ -13,12 +13,12 @@ import (
 )
 
 // setupFiles sets up the files manually for testing specific states
-func setupFiles(t *testing.T, dataDir string, queueContents string, nextId int) {
+func setupFiles(t *testing.T, dataDir string, queueContents string, nextID int) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dataDir, ".queue"), []byte(queueContents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dataDir, ".next-id"), []byte(strconv.Itoa(nextId)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, ".next-id"), []byte(strconv.Itoa(nextID)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, ".lock"), []byte{}, 0o600); err != nil {
@@ -291,7 +291,7 @@ func TestErroneousWriteLeavesFilesUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantNextId, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
+	wantNextID, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,11 +318,11 @@ func TestErroneousWriteLeavesFilesUnchanged(t *testing.T) {
 		t.Error("AddNew gave no error")
 	}
 
-	gotNextId, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
+	gotNextID, err := os.ReadFile(filepath.Join(dataDir, ".next-id"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(gotNextId, wantNextId) {
-		t.Errorf("got = %q, want = %q", gotNextId, wantNextId)
+	if !bytes.Equal(gotNextID, wantNextID) {
+		t.Errorf("got = %q, want = %q", gotNextID, wantNextID)
 	}
 }

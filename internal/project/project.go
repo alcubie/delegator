@@ -1,3 +1,9 @@
+// Package project reads a git repository. It gives the root of the repository,
+// the default branch and the first commit.
+//
+// Delegator accepts a ticket only if the directory is below a repository, so
+// this package is the boundary at git. It starts the git command and reads the
+// output, and no other package of delegator does.
 package project
 
 import (
