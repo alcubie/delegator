@@ -706,3 +706,37 @@ func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, before)
 	}
 }
+
+// A ticket with a position and a status other than queued is not in the queue.
+// No command makes such a ticket now, so the test makes one with SQL. It is
+// what a later dg revise or dg restart writes if it gives a ticket the status
+// queued and forgets the position, or the reverse.
+func TestTheQueueHoldsOnlyTicketsWithTheStatusQueued(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.db.Exec(
+		"UPDATE tickets SET status = ? WHERE id = ?", Running, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"first", "third"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("ListQueue gives %v, want %v", got, want)
+	}
+
+	if err := s.MoveTicket(ids[2], Top); err != nil {
+		t.Fatal(err)
+	}
+	want = []string{"third", "first"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("after the move the queue is %v, want %v", got, want)
+	}
+
+	var position sql.Null[int]
+	if err := s.db.QueryRow(
+		"SELECT position FROM tickets WHERE id = ?", ids[1]).Scan(&position); err != nil {
+		t.Fatal(err)
+	}
+	if position.Valid {
+		t.Errorf("the ticket that is not queued is at position %d, and the move gave it one", position.V)
+	}
+}

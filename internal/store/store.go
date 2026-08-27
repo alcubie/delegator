@@ -200,13 +200,16 @@ type QueuedTicket struct {
 	Title string
 }
 
-// ListQueue gives each ticket that has a position, in the sequence of position. A
-// ticket with a position of NULL is not in the queue.
+// ListQueue gives each ticket of the queue, in the sequence of position.
+//
+// A ticket of the queue holds the status queued and a position. Each one alone
+// is not enough: a ticket with a position and another status left the queue,
+// and a ticket with the status queued and no position is in no queue at all.
 func (s *Store) ListQueue() ([]QueuedTicket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title FROM tickets
-		WHERE position IS NOT NULL
-		ORDER BY position`)
+		WHERE status = ? AND position IS NOT NULL
+		ORDER BY position`, Queued)
 	if err != nil {
 		return nil, err
 	}
@@ -280,12 +283,13 @@ func (s *Store) MoveTicket(id int64, move Move) error {
 }
 
 // queuedIDs gives the id of each ticket of the queue, in the sequence of
-// position.
+// position. It asks the same question as ListQueue, so a move operates on the
+// queue that the person can see.
 func queuedIDs(tx *sql.Tx) ([]int64, error) {
 	rows, err := tx.Query(`
 		SELECT id FROM tickets
-		WHERE position IS NOT NULL
-		ORDER BY position`)
+		WHERE status = ? AND position IS NOT NULL
+		ORDER BY position`, Queued)
 	if err != nil {
 		return nil, err
 	}
