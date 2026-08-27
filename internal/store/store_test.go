@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sync"
 	"testing"
 
 	"modernc.org/sqlite"
@@ -58,6 +59,38 @@ func threeTickets(t *testing.T) (*Store, []int64) {
 		ids = append(ids, id)
 	}
 	return s, ids
+}
+
+// twoPrograms gives two stores on one data directory, each with its own pool of
+// connections, and the ids of six tickets in the queue. Two stores are what two
+// programs of delegator have.
+func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
+	t.Helper()
+	dir := t.TempDir()
+	first, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Close() })
+	second, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { second.Close() })
+
+	projectID, err := first.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]int64, 0, 6)
+	for i := range 6 {
+		id, err := first.AddTicket(projectID, fmt.Sprintf("ticket %d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return first, second, ids
 }
 
 // queueTitles gives the title of each ticket of the queue, in its sequence.
@@ -732,5 +765,57 @@ func TestTheDatabaseRefusesATicketThatIsHalfInTheQueue(t *testing.T) {
 
 	if got := queueTitles(t, s); !slices.Equal(got, []string{"first", "second", "third"}) {
 		t.Errorf("the queue is %v, and it must not change", got)
+	}
+}
+
+func TestTwoProgramsThatWriteAtTheSameTimeLoseNoTicket(t *testing.T) {
+	first, second, ids := twoPrograms(t)
+
+	const moves = 20
+	var wg sync.WaitGroup
+	// Each move sends its error here. Two goroutines cannot add to a slice at
+	// the same time, and one of the two writes goes away. The channel holds one
+	// place for each move, so a send never waits for a read, and nothing reads
+	// until each move has stopped.
+	errs := make(chan error, moves)
+	for i := range moves {
+		program := first
+		if i%2 == 1 {
+			program = second
+		}
+		// Add is here and not below, because Wait can see a count of zero
+		// before the first goroutine has run, and return at once.
+		wg.Add(1)
+		go func(s *Store, n int) {
+			defer wg.Done()
+			if err := s.MoveTicket(ids[n%len(ids)], Top); err != nil {
+				errs <- err
+			}
+		}(program, i)
+	}
+	wg.Wait()
+	close(errs)
+
+	var failed []error
+	for err := range errs {
+		failed = append(failed, err)
+	}
+	if len(failed) > 0 {
+		t.Errorf("%d of %d moves gave an error; the first was %v", len(failed), moves, failed[0])
+	}
+
+	// Each ticket is still in the queue, and the positions are 1 to 6 with no
+	// gap. A gap is a write that another write lost.
+	if got := len(queueTitles(t, first)); got != len(ids) {
+		t.Fatalf("the queue holds %d tickets, want %d", got, len(ids))
+	}
+	var low, high, count int
+	if err := first.db.QueryRow(
+		`SELECT MIN(position), MAX(position), count(*) FROM tickets
+		 WHERE position IS NOT NULL`).Scan(&low, &high, &count); err != nil {
+		t.Fatal(err)
+	}
+	if low != 1 || high != count {
+		t.Errorf("the positions run from %d to %d over %d tickets, want 1 to %d", low, high, count, count)
 	}
 }

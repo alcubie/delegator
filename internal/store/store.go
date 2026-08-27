@@ -50,12 +50,19 @@ const busyTimeout = 5000
 // it SQLite reads the path only as far as that character, and it makes the
 // database at a different place and gives no error. url.URL escapes the path
 // and keeps each separator of a directory.
+//
+// _txlock=immediate makes each transaction that writes take the lock of the
+// writer at its BEGIN. A transaction that takes the lock later, after it reads,
+// gives SQLITE_BUSY the moment another writer has the lock, and busy_timeout
+// does not wait: SQLite cannot let a reader wait to become a writer. A
+// transaction that database/sql opens with ReadOnly keeps a plain BEGIN, so a
+// program that only reads does not wait.
 func dsn(dataDir string) string {
 	u := url.URL{
 		Scheme: "file",
 		Path:   filepath.Join(dataDir, dbFile),
 		RawQuery: fmt.Sprintf(
-			"_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)&_pragma=foreign_keys(on)",
+			"_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)&_pragma=foreign_keys(on)&_txlock=immediate",
 			busyTimeout,
 		),
 	}
