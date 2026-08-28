@@ -573,6 +573,13 @@ installer.
 | `dg run <id>` | The supervisor. Delegator starts this, and a person does not. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
+| `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |
+| `dg completion <shell>` | Write the script that completes each command for bash, zsh, fish or powershell. |
+
+The package `github.com/spf13/cobra` holds the tree of commands. One tree gives the
+dispatch, the text of `dg help`, the completion of each shell, and the man page that
+`cobra/doc` makes at a release. A command that arrives is therefore in each of them, and a
+test walks the tree to say so.
 
 Each command that shows data also accepts `--json`. A different interface, or a script of
 the person, can therefore read the data and not the text. Section 12 shows why.

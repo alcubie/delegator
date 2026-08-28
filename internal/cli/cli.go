@@ -21,7 +21,7 @@ const filePerm = 0o600
 // ErrNoTitle shows that a ticket has no title. The inbox shows the title, and
 // the branch of a run takes its name from it, so a ticket with no title is a
 // ticket that a person cannot find again.
-var ErrNoTitle = errors.New("the ticket has no title")
+var ErrNoTitle = errors.New("the ticket must have a title")
 
 // proseFile returns the path of the file that holds the prose of one ticket.
 func proseFile(dataDir string, id int64) string {

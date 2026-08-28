@@ -9,11 +9,23 @@ import (
 	"testing"
 )
 
-// runIn runs one command and returns what it wrote.
+// runIn runs one command and returns what it wrote to the output. cobra writes
+// each error to the error output, and cmd/dg makes the text for those, so the
+// test reads the two apart.
 func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error) {
 	t.Helper()
-	var out bytes.Buffer
-	err := Run(&out, dataDir, workDir, args)
+	var out, errOut bytes.Buffer
+	root := Root(dataDir, workDir)
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	// A nil slice makes cobra read os.Args, which holds the arguments of the
+	// test, so the arguments are always a slice that is there.
+	if args == nil {
+		args = []string{}
+	}
+	root.SetArgs(args)
+
+	err := root.Execute()
 	return out.String(), err
 }
 
@@ -90,21 +102,24 @@ func TestRunTicketThatFailsShowsNothing(t *testing.T) {
 	}
 }
 
-func TestRunWithNoCommand(t *testing.T) {
-	_, err := runIn(t, t.TempDir(), gitRepo(t))
-	if !errors.Is(err, ErrNoCommand) {
-		t.Errorf("err = %v, want ErrNoCommand", err)
+func TestRunWithNoCommandShowsTheHelp(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), gitRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ticket") {
+		t.Errorf("dg with no command does not name each command:\n%s", out)
 	}
 }
 
-func TestRunWithACommandThatIsNotThere(t *testing.T) {
-	_, err := runIn(t, t.TempDir(), gitRepo(t), "banana")
-	if !errors.Is(err, ErrUnknownCommand) {
-		t.Fatalf("err = %v, want ErrUnknownCommand", err)
-	}
-	// the message names the command, so the person can see the mistake
-	if !strings.Contains(err.Error(), "banana") {
-		t.Errorf("err = %v, and it does not name the command", err)
+// cobra makes the help from the tree of commands, and a command with no Short
+// arrives in that help with nothing beside it. The line is ours to write, so
+// this reads the tree and not the help that cobra makes from it.
+func TestEachCommandSaysWhatItDoes(t *testing.T) {
+	for _, c := range Root(t.TempDir(), t.TempDir()).Commands() {
+		if c.Short == "" {
+			t.Errorf("the command %q has no Short, so the help says nothing about it", c.Name())
+		}
 	}
 }
 

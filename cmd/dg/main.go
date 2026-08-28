@@ -1,5 +1,5 @@
-// Command dg gives the commands of delegator to the person. It reads the
-// arguments and the place of the work, and internal/cli holds each command.
+// Command dg gives the commands of delegator to the person. It takes the
+// directories and runs the command tree, and internal/cli holds each command.
 package main
 
 import (
@@ -25,5 +25,5 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return cli.Run(os.Stdout, dataDir, workDir, os.Args[1:])
+	return cli.Root(dataDir, workDir).Execute()
 }
