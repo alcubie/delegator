@@ -22,10 +22,39 @@ import (
 // emptyGroup is the line below the heading of a group that holds no ticket.
 const emptyGroup = "  none"
 
+// noFlags is what the agent writes when each item went as the ticket said. It
+// is a complete answer, and not an empty one.
+const noFlags = "none"
+
+// flagMark stands in the row of a ticket that has a problem, and a space stands
+// in the row of a ticket that has none.
+//
+// The row holds the mark and not the flags. The flags take up to 240
+// characters, and one of those wraps a row of a terminal three times, so a
+// person can no longer read the inbox as a list. The mark answers what the
+// inbox is for: which tickets have a problem, and which the person can accept
+// with no more commands. dg show gives the words.
+const flagMark = "⚠"
+
 // group is one heading of the inbox and the tickets below it.
 type group struct {
 	heading string
 	tickets []store.OpenTicket
+}
+
+// flagsText returns the mark for the flags of one ticket. A ticket that never
+// went through dg finish holds no flags, and it reads as a ticket that had no
+// problem.
+//
+// Each group asks this, and not READY alone. dg revise takes the flags away
+// when it puts a ticket back in the queue, because the person read them and is
+// giving the work again, so a ticket that waits holds no mark. A ticket that
+// holds flags in another group therefore has a problem that a person must see.
+func flagsText(flags string) string {
+	if flags == "" || flags == noFlags {
+		return " "
+	}
+	return flagMark
 }
 
 // groups returns each group of the inbox, always in one order. A group that
@@ -71,8 +100,9 @@ func writeInbox(out io.Writer, box inbox.Inbox) {
 			continue
 		}
 		for _, t := range g.tickets {
-			fmt.Fprintf(out, " %*d  %-*s  %s\n",
-				idWidth, t.ID, projectWidth, filepath.Base(t.Project), t.Title)
+			fmt.Fprintf(out, " %*d %s  %-*s  %s\n",
+				idWidth, t.ID, flagsText(t.Flags), projectWidth,
+				filepath.Base(t.Project), t.Title)
 		}
 	}
 }

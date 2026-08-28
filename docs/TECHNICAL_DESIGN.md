@@ -457,7 +457,7 @@ Each change of state is in the table below.
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
 | `failed` | `queued` | `dg restart`. The run continues the same session, in the same worktree. |
 | `ready` | `done` | `dg accept`. Delegator removes the worktree and keeps the branch. |
-| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again. |
+| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its `result` and its `flags` go away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
 
 **Only an agent gives the state `ready`.** The command `dg finish` is one of the two
@@ -469,6 +469,11 @@ most expensive error.
 three commands. The command `dg accept` closes the ticket. The command `dg revise` puts
 the ticket at the end of the queue with more instructions, and a new run continues the
 same session. The command `dg cancel` stops the work.
+
+**`dg revise` takes away the `result` and the `flags`.** Those two are the report of the
+run that is complete. The person read them, and gives the work again because of what they
+said, so the next run writes its own. A ticket that waits therefore holds no report of a
+run that came before, and the inbox marks no problem that a person is already correcting.
 
 **The command `dg cancel` is not in the diagram.** It operates from each state that is
 not the end, so an edge from each of those states would go to `cancelled`. Those edges
@@ -488,16 +493,26 @@ recognition is easier than memory.
 ```
 $ dg
 READY
-  4  web-api      Remove the staging app     ⚠ the token of the deploy is not valid
-  7  data-loader  Add a limit on the rate    none
+  4 ⚠  web-api      Remove the staging app
+  7    data-loader  Add a limit on the rate
 RUNNING
-  9  web-api      Move to a new version of Go   14m
+  9    web-api      Move to a new version of Go   14m
 QUEUED
- 11  data-loader  Change the tool that measures the coverage
+ 11    data-loader  Change the tool that measures the coverage
 ```
 
-The `flags` of each ticket in READY are on the same row. The person can therefore see
-which tickets have a problem, and can accept the other tickets with no more commands.
+A ticket with `flags` that are not `none` takes the mark ⚠, and a ticket with no problem
+takes a space. The person can therefore see which tickets have a problem, and can accept
+the other tickets with no more commands.
+
+The row holds the mark and not the words. Section 6.4 gives `flags` 240 characters, and one
+of those wraps a row of a terminal three times, so the inbox is no longer a list that a
+person can read down. The command `dg show` gives the words.
+
+The mark is on each row of each group, and not on READY alone. Only a run writes `flags`,
+and `dg revise` takes them away when it puts a ticket back in the queue, so a ticket that
+waits holds no mark. A mark below RUNNING or QUEUED therefore says that something is
+wrong, and it is not the report of a run that the person read already.
 
 The command `dg show 4` gives one ticket in full:
 
