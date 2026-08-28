@@ -875,3 +875,23 @@ func TestProjectIDGivesADifferentIDForADifferentPath(t *testing.T) {
 		t.Errorf("both projects have id %d, want two ids", first)
 	}
 }
+
+// A ticket can hold private data, so only the person who made it can read the
+// database. SQLite makes the file, and it takes the umask of the person, so
+// Open must set the permission itself.
+func TestOpenMakesTheDatabaseForItsPersonOnly(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	info, err := os.Stat(filepath.Join(dataDir, "delegator.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("the permission is %v, want %v", got, os.FileMode(0o600))
+	}
+}

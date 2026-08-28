@@ -30,6 +30,14 @@ const dbFile = "delegator.db"
 // command gives a permission to the file that it writes.
 const dirPerm = 0o700
 
+// filePerm gives the permission of the database. A ticket can hold private
+// data, so only the person who made it can read it. Open makes the file before
+// SQLite does, for two reasons: SQLite makes it with the umask of the person,
+// and SQLite gives each write-ahead file the permission that the database has.
+// A chmod after the open therefore leaves delegator.db-wal open to each other
+// person, and the write-ahead file holds the newest writes.
+const filePerm = 0o600
+
 // dataDirs are the directories that hold the files. The prose of each ticket is
 // in tickets, the copy of a repository for each run is in worktrees, and the
 // log of each agent is in runs.
@@ -134,6 +142,14 @@ func Open(dataDir string) (*Store, error) {
 		if err := os.MkdirAll(filepath.Join(dataDir, name), dirPerm); err != nil {
 			return nil, err
 		}
+	}
+
+	f, err := os.OpenFile(filepath.Join(dataDir, dbFile), os.O_CREATE|os.O_RDWR, filePerm)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
 	}
 
 	db, err := sql.Open("sqlite", dsn(dataDir))
