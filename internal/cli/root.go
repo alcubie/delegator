@@ -71,5 +71,6 @@ func Root(dataDir, workDir string) *cobra.Command {
 		},
 	}
 	root.AddCommand(ticketCommand(dataDir, workDir))
+	root.AddCommand(showCommand(dataDir))
 	return root
 }

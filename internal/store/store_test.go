@@ -1048,3 +1048,68 @@ func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
 		t.Errorf("a queued ticket has completed = %q, want it empty", got)
 	}
 }
+
+func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[1], Ready)
+	setCompleted(t, s, ids[1], "2026-08-28T09:30:00Z")
+	if _, err := s.db.Exec(
+		`UPDATE tickets SET branch = ?, session = ?, result = ?, flags = ? WHERE id = ?`,
+		"delegator/2-second", "a-session-id", "it is done", "none", ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ name, got, want string }{
+		{"project", got.Project, "/projects/path"},
+		{"title", got.Title, "second"},
+		{"status", string(got.Status), "ready"},
+		{"branch", got.Branch, "delegator/2-second"},
+		{"session", got.Session, "a-session-id"},
+		{"result", got.Result, "it is done"},
+		{"flags", got.Flags, "none"},
+		{"completed", got.Completed, "2026-08-28T09:30:00Z"},
+	} {
+		if test.got != test.want {
+			t.Errorf("%s = %q, want %q", test.name, test.got, test.want)
+		}
+	}
+	if got.ID != ids[1] {
+		t.Errorf("id = %d, want %d", got.ID, ids[1])
+	}
+	if got.Created == "" {
+		t.Error("created is empty")
+	}
+}
+
+// A ticket that is not in the queue holds no position, and a column that holds
+// NULL arrives as the zero value of its type.
+func TestTicketWithNoPositionAndNoBranch(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.RemoveTicket(id, Running); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Position != 0 {
+		t.Errorf("position = %d, want 0", got.Position)
+	}
+	if got.Branch != "" || got.Session != "" || got.Result != "" || got.Flags != "" {
+		t.Errorf("a ticket that had no run holds %+v", got)
+	}
+}
+
+func TestTicketThatIsNotThere(t *testing.T) {
+	s, _ := emptyStore(t)
+
+	_, err := s.Ticket(9999)
+	if !errors.Is(err, ErrNoTicket) {
+		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+}
