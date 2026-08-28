@@ -54,21 +54,21 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 func TestRunTicketWithABody(t *testing.T) {
 	dataDir := t.TempDir()
 
-	out, err := runIn(t, dataDir, gitRepo(t), "ticket", "Remove staging infrastructure", "Remove the app.")
+	out, err := runIn(t, dataDir, gitRepo(t), "ticket", "Remove staging infrastructure", "Remove the staging app.")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out != "1\n" {
 		t.Errorf("the command wrote %q, want %q", out, "1\n")
 	}
-	if got := proseOf(t, dataDir); got != "Remove the app." {
+	if got := proseOf(t, dataDir); got != "Remove the staging app." {
 		t.Errorf("the prose is %q", got)
 	}
 }
 
 func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	dataDir := t.TempDir()
-	withEditor(t, "Remove staging infrastructure\n\nRemove the app.\n")
+	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app.\n")
 
 	out, err := runIn(t, dataDir, gitRepo(t), "ticket")
 	if err != nil {
@@ -102,13 +102,25 @@ func TestRunTicketThatFailsShowsNothing(t *testing.T) {
 	}
 }
 
-func TestRunWithNoCommandShowsTheHelp(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), gitRepo(t))
+// dg with no command is the inbox. The help is still there, at dg help.
+func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := gitRepo(t)
+	if _, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "ticket") {
-		t.Errorf("dg with no command does not name each command:\n%s", out)
+	for _, want := range []string{"READY", "RUNNING", "QUEUED", "Remove staging infrastructure"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the inbox does not hold %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Errorf("dg with no command shows the help:\n%s", out)
 	}
 }
 

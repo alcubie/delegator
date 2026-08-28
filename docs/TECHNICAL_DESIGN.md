@@ -404,8 +404,8 @@ therefore necessary. A project with no open work is not affected.
 **The prose of a ticket.** The file `tickets/4.md` holds the prose only:
 
 ```markdown
-Remove the staging app, the volume, the DNS records, the monitor and the
-secrets.
+Remove the staging app, the volume, the records of the DNS, the monitor and
+the secrets.
 ```
 
 Only two commands write this file. The command `dg ticket` makes it. The command `dg
@@ -488,12 +488,12 @@ recognition is easier than memory.
 ```
 $ dg
 READY
-  4  web-api  Remove staging infra   ⚠ terraform blocked, token invalid
-  7  data-loader   Add rate limiting      none
+  4  web-api      Remove the staging app     ⚠ the token of the deploy is not valid
+  7  data-loader  Add a limit on the rate    none
 RUNNING
-  9  web-api  Migrate to Python 3.13   14m
+  9  web-api      Move to a new version of Go   14m
 QUEUED
- 11  data-loader   Switch coverage to another tool
+ 11  data-loader  Change the tool that measures the coverage
 ```
 
 The `flags` of each ticket in READY are on the same row. The person can therefore see
@@ -503,20 +503,20 @@ The command `dg show 4` gives one ticket in full:
 
 ```
 $ dg show 4
-  #4  Remove staging infrastructure                    ready · 2h ago
+  #4  Remove the staging app                           ready · 2h ago
   ───────────────────────────────────────────────────────────────────
-  flags     terraform apply is blocked, the token in .env is
-            invalid. Do not destroy the app first, because DNS
+  flags     the deploy is blocked, because the token in .env is not
+            valid. Do not remove the app first, because the DNS
             points at it.
-  result    Staging infra removed. Gate green, 433 tests.
+  result    The staging app is removed. The gate is green, 433 tests.
 
   ticket    …/delegator/tickets/4.md
   worktree  …/delegator/worktrees/4
-  branch    delegator/4-remove-staging-infrastructure
+  branch    delegator/4-remove-the-staging-app
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
 
-  Remove the staging app, the volume, the DNS records, the monitor
-  and the secrets.
+  Remove the staging app, the volume, the records of the DNS, the
+  monitor and the secrets.
 ```
 
 A ticket with no problem shows `flags     none`.

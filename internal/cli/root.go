@@ -65,6 +65,10 @@ func Root(dataDir, workDir string) *cobra.Command {
 		Long:          "Delegate tasks to an agent to help you avoid overload from context switching.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return showInbox(cmd.OutOrStdout(), dataDir)
+		},
 	}
 	root.AddCommand(ticketCommand(dataDir, workDir))
 	return root

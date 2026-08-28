@@ -155,7 +155,7 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 
 func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
 	dataDir := t.TempDir()
-	const body = "Remove the staging app, the volume and the DNS records."
+	const body = "Remove the staging app, the volume and the records of the DNS."
 
 	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", body); err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 func TestTicketWithNoTitle(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := Ticket(dataDir, gitRepo(t), "   ", "Remove the app.")
+	_, err := Ticket(dataDir, gitRepo(t), "   ", "Remove the staging app.")
 	if !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}

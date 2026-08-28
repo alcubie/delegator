@@ -1,7 +1,15 @@
-// Package inbox is the one list that the person examines. It holds the
-// groups and their order, and it makes no text: internal/cli makes the text
-// for a terminal, and another interface can make its own from the same
-// structure.
+// Package inbox is the one list that the person examines. It answers which
+// ticket is in which group, and in what order, and it writes no text.
+//
+// The rule that READY comes in the order of completion and QUEUED in the order
+// of position lives here, and in one place only. A terminal is not the one
+// interface that shows this list: internal/cli writes the text for a terminal,
+// a TUI reads the same structure, and dg --json writes the structure itself. An
+// order that lived in one of those would have to be written again in each other
+// one, and the three would come apart.
+//
+// Nothing here knows that a terminal exists. It makes no string that a person
+// reads, and it takes no width of a column.
 package inbox
 
 import (

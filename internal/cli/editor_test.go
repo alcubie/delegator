@@ -46,7 +46,7 @@ func echoEditor(t *testing.T) string {
 
 func TestTicketFromEditorTakesTheFirstLineAsTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
-	withEditor(t, "Remove staging infrastructure\n\nRemove the app and the volume.\n")
+	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app and the volume.\n")
 
 	id, err := TicketFromEditor(dataDir, gitRepo(t))
 	if err != nil {
@@ -67,7 +67,7 @@ func TestTicketFromEditorTakesTheFirstLineAsTheTitle(t *testing.T) {
 		t.Errorf("title = %q, want %q", queue[0].Title, want)
 	}
 
-	if want := "Remove the app and the volume.\n"; proseOf(t, dataDir) != want {
+	if want := "Remove the staging app and the volume.\n"; proseOf(t, dataDir) != want {
 		t.Errorf("the prose is %q, want %q", proseOf(t, dataDir), want)
 	}
 }
@@ -109,7 +109,7 @@ func TestTicketFromEditorKeepsEachLineOfTheProse(t *testing.T) {
 // system ends a line with a return and a newline.
 func TestTicketFromEditorTrimsTheEndOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
-	withEditor(t, "Remove staging infrastructure  \r\n\nRemove the app.\n")
+	withEditor(t, "Remove staging infrastructure  \r\n\nRemove the staging app.\n")
 
 	if _, err := TicketFromEditor(dataDir, gitRepo(t)); err != nil {
 		t.Fatal(err)
@@ -184,7 +184,7 @@ func TestTicketFromEditorWithNoTitle(t *testing.T) {
 		{"an empty file", ""},
 		{"a newline only", "\n"},
 		{"spaces and newlines", "   \n\n"},
-		{"a body with no first line", "\n\nRemove the app.\n"},
+		{"a body with no first line", "\n\nRemove the staging app.\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
