@@ -23,14 +23,14 @@ import (
 // this name loses the data of each person who has delegator now.
 const dbFile = "delegator.db"
 
-// dirPerm gives the permission of the data directory and of each directory
+// dirPerm is the permission of the data directory and of each directory
 // below it. A ticket can contain private data, and a directory with no
 // permission for a group or for other persons stops each other person on the
 // computer. Delegator therefore gives the permission in this one place, and no
 // command gives a permission to the file that it writes.
 const dirPerm = 0o700
 
-// filePerm gives the permission of the database. A ticket can hold private
+// filePerm is the permission of the database. A ticket can hold private
 // data, so only the person who made it can read it. Open makes the file before
 // SQLite does, for two reasons: SQLite makes it with the umask of the person,
 // and SQLite gives each write-ahead file the permission that the database has.
@@ -49,7 +49,7 @@ var dataDirs = []string{"", "tickets", "worktrees", "runs"}
 // the same time. A wait is correct here, and an error is not.
 const busyTimeout = 5000
 
-// dsn gives the name that sql.Open takes. Each setting is in the name, and not
+// dsn returns the name that sql.Open takes. Each setting is in the name, and not
 // in a statement after the open, because database/sql keeps a pool of
 // connections and makes a new one at any time. A statement after the open
 // reaches one connection only.
@@ -110,7 +110,7 @@ const (
 	Cancelled TicketStatus = "cancelled"
 )
 
-// nextStates gives each state that one state can go to.
+// nextStates holds each state that one state can go to.
 // See Section 8 of the technical document for a visual diagram
 var nextStates = map[TicketStatus][]TicketStatus{
 	Queued:    {Running, Cancelled},
@@ -121,7 +121,7 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Cancelled: nil,
 }
 
-// canChange gives the ok to whether one TicketStatus can advance to another TicketStatus.
+// canChange returns whether one status can advance to another.
 func canChange(from, to TicketStatus) bool {
 	return slices.Contains(nextStates[from], to)
 }
@@ -133,7 +133,7 @@ var ErrInvalidTicketStateChange = errors.New("invalid ticket state change")
 // can belong to no ticket, or to a ticket that has a status other than queued.
 var ErrNotInTheQueue = errors.New("the ticket is not in the queue")
 
-// Open gives the database below dataDir. It makes the data directory, the
+// Open returns the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
 func Open(dataDir string) (*Store, error) {
 	// The directories come first. SQLite cannot make its file below a directory
@@ -203,7 +203,7 @@ type Project struct {
 	DefaultBranch string
 }
 
-// ProjectID gives the id of the project at path, and makes the row if the path
+// ProjectID returns the id of the project at path, and makes the row if the path
 // is not there. The first ticket of a project therefore settles its default
 // branch, and a later ticket of the same project keeps it.
 func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
@@ -233,7 +233,7 @@ func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
 	return id, tx.Commit()
 }
 
-// Projects gives each project, in the sequence of id.
+// Projects returns each project, in the sequence of id.
 func (s *Store) Projects() ([]Project, error) {
 	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY id")
 	if err != nil {
@@ -279,7 +279,7 @@ type QueuedTicket struct {
 	Title string
 }
 
-// ListQueue gives each ticket of the queue, in the sequence of position.
+// ListQueue returns each ticket of the queue, in the sequence of position.
 //
 // A ticket of the queue holds the status queued and a position. Each one alone
 // is not enough: a ticket with a position and another status left the queue,
@@ -361,7 +361,7 @@ func (s *Store) MoveTicket(id int64, move Move) error {
 	return tx.Commit()
 }
 
-// queuedIDs gives the id of each ticket of the queue, in the sequence of
+// queuedIDs returns the id of each ticket of the queue, in the sequence of
 // position. It asks the same question as ListQueue, so a move operates on the
 // queue that the person can see.
 func queuedIDs(tx *sql.Tx) ([]int64, error) {

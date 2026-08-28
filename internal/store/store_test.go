@@ -16,7 +16,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// emptyStore gives a store that holds one project and no ticket, with the id of
+// emptyStore returns a store that holds one project and no ticket, with the id of
 // the project.
 func emptyStore(t *testing.T) (*Store, int64) {
 	t.Helper()
@@ -33,7 +33,7 @@ func emptyStore(t *testing.T) (*Store, int64) {
 	return s, projectID
 }
 
-// oneTicket gives a store that holds one project and one ticket named
+// oneTicket returns a store that holds one project and one ticket named
 // "My Ticket", with the id of the ticket.
 func oneTicket(t *testing.T) (*Store, int64) {
 	t.Helper()
@@ -45,7 +45,7 @@ func oneTicket(t *testing.T) (*Store, int64) {
 	return s, id
 }
 
-// threeTickets gives a store that holds one project and three tickets, in the
+// threeTickets returns a store that holds one project and three tickets, in the
 // sequence first, second, third, with their ids.
 func threeTickets(t *testing.T) (*Store, []int64) {
 	t.Helper()
@@ -61,7 +61,7 @@ func threeTickets(t *testing.T) (*Store, []int64) {
 	return s, ids
 }
 
-// twoPrograms gives two stores on one data directory, each with its own pool of
+// twoPrograms returns two stores on one data directory, each with its own pool of
 // connections, and the ids of six tickets in the queue. Two stores are what two
 // programs of delegator have.
 func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
@@ -106,7 +106,7 @@ func mustProject(t *testing.T, s *Store) int64 {
 	return projects[0].ID
 }
 
-// queueTitles gives the title of each ticket of the queue, in its sequence.
+// queueTitles returns the title of each ticket of the queue, in its sequence.
 func queueTitles(t *testing.T, s *Store) []string {
 	t.Helper()
 	queue, err := s.ListQueue()

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// runIn runs one command and gives what it wrote.
+// runIn runs one command and returns what it wrote.
 func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer

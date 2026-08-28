@@ -14,7 +14,7 @@ const defaultEditor = "vi"
 // is a variable so that a test can put its own editor in place of it.
 var editor = startEditor
 
-// editorName gives the editor of the person, or the one that each system has if
+// editorName returns the editor of the person, or the one that each system has if
 // the person has set none.
 func editorName() string {
 	if name := os.Getenv("EDITOR"); name != "" {
@@ -33,7 +33,7 @@ func startEditor(path string) error {
 	return cmd.Run()
 }
 
-// splitTitle gives the first line of text and each line below it. The title is
+// splitTitle returns the first line of text and each line below it. The title is
 // a column and not the first line of the prose, so the prose does not hold it,
 // and the empty lines between the two go away.
 func splitTitle(text string) (title, body string) {

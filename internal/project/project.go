@@ -42,7 +42,7 @@ func Root(path string) (string, error) {
 	return strings.TrimSuffix(string(gitDir), "\n"), nil
 }
 
-// gitOutput runs one git command in root and gives its output with no final
+// gitOutput runs one git command in root and returns its output with no final
 // newline. An error means that git said no, and each caller decides what that
 // answer means.
 func gitOutput(root string, args ...string) (string, error) {
@@ -59,7 +59,7 @@ func gitOutput(root string, args ...string) (string, error) {
 // the person can be on a branch of a feature at this moment.
 var trunkNames = []string{"main", "master"}
 
-// DefaultBranch gives the branch that each run of a ticket starts from. Section
+// DefaultBranch returns the branch that each run of a ticket starts from. Section
 // 6.5 gives the reason that the value matters.
 //
 // No one answer from git is correct for each repository, so this asks four
@@ -96,7 +96,7 @@ func DefaultBranch(root string) (string, error) {
 	return out, nil
 }
 
-// FirstCommit gives the hash of the commit that has no parent. The hash of a
+// FirstCommit returns the hash of the commit that has no parent. The hash of a
 // repository does not change when the person moves it, so it is the one value
 // that finds a project again after a move.
 //

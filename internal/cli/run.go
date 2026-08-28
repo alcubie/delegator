@@ -17,7 +17,7 @@ var ErrUnknownCommand = errors.New("no such command")
 // ErrTooManyArguments shows that a command got more arguments than it takes.
 var ErrTooManyArguments = errors.New("too many arguments")
 
-// DataDir gives the directory that holds the database and the prose of each
+// DataDir returns the directory that holds the database and the prose of each
 // ticket. XDG_DATA_HOME names it, and a person who has not set that variable
 // gets the directory that the XDG specification asks for.
 func DataDir() (string, error) {

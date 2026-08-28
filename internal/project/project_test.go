@@ -181,7 +181,7 @@ func TestDefaultBranchTakesTheBranchOfHeadLast(t *testing.T) {
 	}
 }
 
-// gitLine runs one git command in dir and gives its output with no final
+// gitLine runs one git command in dir and returns its output with no final
 // newline. It stops the test if git gives an error.
 func gitLine(t *testing.T, dir string, args ...string) string {
 	t.Helper()

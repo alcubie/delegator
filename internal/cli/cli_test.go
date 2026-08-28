@@ -38,7 +38,7 @@ func openStore(t *testing.T, dataDir string) *store.Store {
 	return s
 }
 
-// proseFiles gives each file of prose that a command made. The test does not
+// proseFiles returns each file of prose that a command made. The test does not
 // build the name itself, because the name is condition 5 of the ticket.
 func proseFiles(t *testing.T, dataDir string) []string {
 	t.Helper()
