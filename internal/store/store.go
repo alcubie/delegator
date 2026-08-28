@@ -233,7 +233,7 @@ func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
 	return id, tx.Commit()
 }
 
-// Projects returns each project, in the sequence of id.
+// Projects returns each project, in the order of id.
 func (s *Store) Projects() ([]Project, error) {
 	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY id")
 	if err != nil {
@@ -279,7 +279,7 @@ type QueuedTicket struct {
 	Title string
 }
 
-// ListQueue returns each ticket of the queue, in the sequence of position.
+// ListQueue returns each ticket of the queue, in the order of position.
 //
 // A ticket of the queue holds the status queued and a position. Each one alone
 // is not enough: a ticket with a position and another status left the queue,
@@ -337,8 +337,8 @@ func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
 }
 
 // MoveTicket moves one ticket in the queue, in the direction of move. The read
-// of the sequence and the write of each new position are in one transaction, so
-// the sequence that moves is the sequence that the queue has.
+// of the order and the write of each new position are in one transaction, so
+// the order that moves is the order that the queue has.
 func (s *Store) MoveTicket(id int64, move Move) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -361,7 +361,7 @@ func (s *Store) MoveTicket(id int64, move Move) error {
 	return tx.Commit()
 }
 
-// queuedIDs returns the id of each ticket of the queue, in the sequence of
+// queuedIDs returns the id of each ticket of the queue, in the order of
 // position. It asks the same question as ListQueue, so a move operates on the
 // queue that the person can see.
 func queuedIDs(tx *sql.Tx) ([]int64, error) {
@@ -385,7 +385,7 @@ func queuedIDs(tx *sql.Tx) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// setPositions writes the sequence of the queue. The first id of ids takes
+// setPositions writes the order of the queue. The first id of ids takes
 // position 1, the next takes 2, and so on.
 func setPositions(tx *sql.Tx, ids []int64) error {
 	// The column has a unique index, and a ticket can take a position that

@@ -96,10 +96,10 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 	}
 }
 
-// READY is in the sequence of the time of completion, and a ticket that becomes
-// ready goes at the end. The source gives them in another sequence, so the
+// READY is in the order of the time of completion, and a ticket that becomes
+// ready goes at the end. The source gives them in another order, so the
 // inbox and not the query does this work.
-func TestGetPutsReadyInTheSequenceOfCompletion(t *testing.T) {
+func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
 	source := fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Ready, Completed: "2026-08-28T12:00:00Z"},
 		{ID: 2, Status: store.Ready, Completed: "2026-08-28T09:00:00Z"},
@@ -116,7 +116,7 @@ func TestGetPutsReadyInTheSequenceOfCompletion(t *testing.T) {
 }
 
 // Two tickets can hold the same time, because the time has one second and no
-// part of a second. The id then keeps the sequence stable.
+// part of a second. The id then keeps the order stable.
 func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
 	same := "2026-08-28T09:00:00Z"
 	source := fakeSource{tickets: []store.OpenTicket{

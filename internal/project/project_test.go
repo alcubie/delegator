@@ -220,7 +220,7 @@ func TestFirstCommitWhenTheRepositoryHasNoCommit(t *testing.T) {
 }
 
 // commitAt makes one empty commit with a known date. rev-list gives the newest
-// commit first, so the date controls the sequence of its result.
+// commit first, so the date controls the order of its result.
 func commitAt(t *testing.T, dir, date string) {
 	t.Helper()
 	cmd := exec.Command("git", "-C", dir, "-c", "user.email=test@example.com",

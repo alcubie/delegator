@@ -1,5 +1,5 @@
 // Package inbox is the one list that the person examines. It holds the
-// groups and their sequence, and it makes no text: internal/cli makes the text
+// groups and their order, and it makes no text: internal/cli makes the text
 // for a terminal, and another interface can make its own from the same
 // structure.
 package inbox
@@ -51,7 +51,7 @@ func Get(source Source) (Inbox, error) {
 // byCompletion puts the ticket that became ready first at the top. A ticket that
 // becomes ready therefore goes at the end, and no row that the person can see
 // moves. The time holds one second and no part of a second, so two tickets can
-// hold the same one, and the id then keeps the sequence stable.
+// hold the same one, and the id then keeps the order stable.
 func byCompletion(a, b store.OpenTicket) int {
 	if by := cmp.Compare(a.Completed, b.Completed); by != 0 {
 		return by

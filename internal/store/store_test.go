@@ -46,7 +46,7 @@ func oneTicket(t *testing.T) (*Store, int64) {
 }
 
 // threeTickets returns a store that holds one project and three tickets, in the
-// sequence first, second, third, with their ids.
+// order first, second, third, with their ids.
 func threeTickets(t *testing.T) (*Store, []int64) {
 	t.Helper()
 	s, projectID := emptyStore(t)
@@ -106,7 +106,7 @@ func mustProject(t *testing.T, s *Store) int64 {
 	return projects[0].ID
 }
 
-// queueTitles returns the title of each ticket of the queue, in its sequence.
+// queueTitles returns the title of each ticket of the queue, in its order.
 func queueTitles(t *testing.T, s *Store) []string {
 	t.Helper()
 	queue, err := s.ListQueue()
@@ -503,11 +503,11 @@ func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 	}
 }
 
-func TestQueueGivesTheSequenceOfPosition(t *testing.T) {
+func TestQueueGivesTheOrderOfPosition(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	// The position of each ticket runs against its id. A queue in the sequence
-	// of id therefore looks different from a queue in the sequence of position,
+	// The position of each ticket runs against its id. A queue in the order
+	// of id therefore looks different from a queue in the order of position,
 	// and the test can tell the two apart. Each position goes below zero first,
 	// because the column has a unique index and the CHECK of the table refuses a
 	// queued ticket with no position.
@@ -597,7 +597,7 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
-	// The sequence starts at 1. The queue works with any first number, but a
+	// The order starts at 1. The queue works with any first number, but a
 	// person who reads the table sees these numbers.
 	var position int
 	if err := s.db.QueryRow(
@@ -686,7 +686,7 @@ func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
 	}
 }
 
-func TestMoveTicketWritesTheNewSequence(t *testing.T) {
+func TestMoveTicketWritesTheNewOrder(t *testing.T) {
 	s, ids := threeTickets(t)
 
 	if err := s.MoveTicket(ids[2], Top); err != nil {

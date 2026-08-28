@@ -26,7 +26,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 var migrations = []string{tables, completedColumn}
 
 // tables makes the two tables and the index of the queue. The ids of tickets
-// are one sequence for all projects, so dg show 4 is not ambiguous.
+// are unique for all projects, so dg show 4 is not ambiguous.
 //
 // The CHECK keeps the status and the position together: a ticket is in the queue
 // with both, and with neither half alone. A unique index counts each NULL as
@@ -57,8 +57,8 @@ CREATE TABLE tickets (
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
 `
 
-// READY is in the sequence of the time of completion, and a ticket that becomes
-// ready goes at the end. The sequence of the queue is not stable for READY: a
+// READY is in the order of the time of completion, and a ticket that becomes
+// ready goes at the end. The order of the queue is not stable for READY: a
 // slow ticket that entered the queue first arrives above the tickets that the
 // person can see now, so the list moves below the eyes of the person.
 //

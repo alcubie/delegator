@@ -12,8 +12,8 @@ const (
 	Bottom Move = "bottom"
 )
 
-// reorder returns the sequence that ids becomes when the ticket at from goes in
-// the direction of move. A move that goes past the end of the sequence is no
+// reorder returns the order that ids becomes when the ticket at from goes in
+// the direction of move. A move that goes past the end of the order is no
 // move, so the ticket at the top stays there when it goes up. The slice that
 // reorder gets does not change.
 func reorder(ids []int64, from int, move Move) []int64 {
