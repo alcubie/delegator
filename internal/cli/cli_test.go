@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -48,11 +49,25 @@ func proseFiles(t *testing.T, dataDir string) []string {
 	return matches
 }
 
+// proseOf reads the one file of prose that a command made.
+func proseOf(t *testing.T, dataDir string) string {
+	t.Helper()
+	files := proseFiles(t, dataDir)
+	if len(files) != 1 {
+		t.Fatalf("the files of prose are %v, want one", files)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	const title = "Remove staging infrastructure"
 
-	id, err := Ticket(dataDir, gitRepo(t), title)
+	id, err := Ticket(dataDir, gitRepo(t), title, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,12 +96,12 @@ func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := Ticket(dataDir, t.TempDir(), "Remove staging infrastructure")
+	_, err := Ticket(dataDir, t.TempDir(), "Remove staging infrastructure", "")
 	if !errors.Is(err, project.ErrNotARepository) {
 		t.Fatalf("err = %v, want %v", err, project.ErrNotARepository)
 	}
 
-	id, err := Ticket(dataDir, gitRepo(t), "Add rate limiting")
+	id, err := Ticket(dataDir, gitRepo(t), "Add rate limiting", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +115,7 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure"); err != nil {
+	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,10 +137,10 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := gitRepo(t)
 
-	if _, err := Ticket(dataDir, repo, "Remove staging infrastructure"); err != nil {
+	if _, err := Ticket(dataDir, repo, "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Ticket(dataDir, repo, "Add rate limiting"); err != nil {
+	if _, err := Ticket(dataDir, repo, "Add rate limiting", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,5 +150,52 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 	}
 	if len(projects) != 1 {
 		t.Errorf("the database holds %d projects, want 1", len(projects))
+	}
+}
+
+func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
+	dataDir := t.TempDir()
+	const body = "Remove the staging app, the volume and the DNS records."
+
+	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", body); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := proseOf(t, dataDir); got != body {
+		t.Errorf("the prose is %q, want %q", got, body)
+	}
+}
+
+func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
+	dataDir := t.TempDir()
+
+	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := proseOf(t, dataDir); got != "" {
+		t.Errorf("the prose is %q, want it empty", got)
+	}
+}
+
+// A ticket can hold private data, so only the person who made it can read the
+// prose.
+func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
+	dataDir := t.TempDir()
+
+	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", "body"); err != nil {
+		t.Fatal(err)
+	}
+
+	files := proseFiles(t, dataDir)
+	if len(files) != 1 {
+		t.Fatalf("the files of prose are %v, want one", files)
+	}
+	info, err := os.Stat(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("the permission is %v, want %v", got, os.FileMode(0o600))
 	}
 }

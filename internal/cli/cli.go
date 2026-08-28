@@ -12,8 +12,8 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// filePerm gives the permission of each file that delegator makes. Section 11
-// says that a ticket can contain private data, so only its person can read it.
+// filePerm gives the permission of each file that this package writes. A ticket
+// can hold private data, so only the person who made it can read it.
 const filePerm = 0o600
 
 // proseFile gives the path of the file that holds the prose of one ticket.
@@ -22,8 +22,9 @@ func proseFile(dataDir string, id int64) string {
 }
 
 // Ticket makes a ticket for the project that holds workDir, and puts it at the
-// end of the queue. It gives the id.
-func Ticket(dataDir, workDir, title string) (int64, error) {
+// end of the queue. It gives the id. The body is the prose of the ticket, and
+// it can be empty.
+func Ticket(dataDir, workDir, title, body string) (int64, error) {
 	root, err := project.Root(workDir)
 	if err != nil {
 		return 0, err
@@ -48,9 +49,9 @@ func Ticket(dataDir, workDir, title string) (int64, error) {
 		return 0, err
 	}
 
-	// The person owns the prose, so delegator makes the file and writes nothing
-	// in it. Condition 2 puts the body there.
-	if err := os.WriteFile(proseFile(dataDir, id), nil, filePerm); err != nil {
+	// The person owns the prose after this write. Only dg revise adds to the
+	// file, and no command writes it again from what it holds in memory.
+	if err := os.WriteFile(proseFile(dataDir, id), []byte(body), filePerm); err != nil {
 		return 0, err
 	}
 	return id, nil
