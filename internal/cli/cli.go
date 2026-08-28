@@ -4,9 +4,11 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
@@ -15,6 +17,11 @@ import (
 // filePerm gives the permission of each file that this package writes. A ticket
 // can hold private data, so only the person who made it can read it.
 const filePerm = 0o600
+
+// ErrNoTitle shows that a ticket has no title. The inbox shows the title, and
+// the branch of a run takes its name from it, so a ticket with no title is a
+// ticket that a person cannot find again.
+var ErrNoTitle = errors.New("the ticket has no title")
 
 // proseFile gives the path of the file that holds the prose of one ticket.
 func proseFile(dataDir string, id int64) string {
@@ -25,6 +32,11 @@ func proseFile(dataDir string, id int64) string {
 // end of the queue. It gives the id. The body is the prose of the ticket, and
 // it can be empty.
 func Ticket(dataDir, workDir, title, body string) (int64, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return 0, ErrNoTitle
+	}
+
 	root, err := project.Root(workDir)
 	if err != nil {
 		return 0, err

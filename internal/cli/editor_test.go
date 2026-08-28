@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -169,5 +170,63 @@ func TestEditorNameWithNoEDITOR(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	if got := editorName(); got != "vi" {
 		t.Errorf("editorName = %q, want vi", got)
+	}
+}
+
+// A person who writes nothing, or only spaces, or a body with no first line,
+// has given the ticket no title. Each one is an error, and each one leaves the
+// database as it was.
+func TestTicketFromEditorWithNoTitle(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+	}{
+		{"an empty file", ""},
+		{"a newline only", "\n"},
+		{"spaces and newlines", "   \n\n"},
+		{"a body with no first line", "\n\nRemove the app.\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			withEditor(t, test.text)
+
+			_, err := TicketFromEditor(dataDir, gitRepo(t))
+			if !errors.Is(err, ErrNoTitle) {
+				t.Fatalf("err = %v, want ErrNoTitle", err)
+			}
+
+			queue, err := openStore(t, dataDir).ListQueue()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(queue) != 0 {
+				t.Errorf("the queue holds %d tickets, want none", len(queue))
+			}
+			if files := proseFiles(t, dataDir); len(files) != 0 {
+				t.Errorf("the files of prose are %v, want none", files)
+			}
+		})
+	}
+}
+
+// The failure takes no id, so the ticket that comes after it takes the first
+// one.
+func TestTicketFromEditorWithNoTitleUsesNoID(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := gitRepo(t)
+
+	withEditor(t, "")
+	if _, err := TicketFromEditor(dataDir, repo); !errors.Is(err, ErrNoTitle) {
+		t.Fatalf("err = %v, want ErrNoTitle", err)
+	}
+
+	withEditor(t, "Remove staging infrastructure\n")
+	id, err := TicketFromEditor(dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 1 {
+		t.Errorf("id = %d, want 1", id)
 	}
 }

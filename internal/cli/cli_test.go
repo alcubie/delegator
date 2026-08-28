@@ -199,3 +199,22 @@ func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 		t.Errorf("the permission is %v, want %v", got, os.FileMode(0o600))
 	}
 }
+
+// The title comes from an argument here, and a ticket with no title is the same
+// error as one that comes from the editor.
+func TestTicketWithNoTitle(t *testing.T) {
+	dataDir := t.TempDir()
+
+	_, err := Ticket(dataDir, gitRepo(t), "   ", "Remove the app.")
+	if !errors.Is(err, ErrNoTitle) {
+		t.Fatalf("err = %v, want ErrNoTitle", err)
+	}
+
+	queue, err := openStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want none", len(queue))
+	}
+}
