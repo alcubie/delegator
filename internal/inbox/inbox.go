@@ -45,16 +45,25 @@ func Get(source Source) (Inbox, error) {
 	}
 
 	slices.SortFunc(box.Ready, byCompletion)
+	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
 }
 
-// byCompletion puts the ticket that became ready first at the top. A ticket that
-// becomes ready therefore goes at the end, and no row that the person can see
-// moves. The time holds one second and no part of a second, so two tickets can
+// byCompletion orders the tickets by completion in ascending order. A ticket that
+// becomes ready therefore goes at the end which keeps the ordering stable as
+// new tickets are completed and added to the end of the list.
+// The time holds one second and no part of a second, so two tickets can
 // hold the same one, and the id then keeps the order stable.
 func byCompletion(a, b store.OpenTicket) int {
 	if by := cmp.Compare(a.Completed, b.Completed); by != 0 {
 		return by
 	}
 	return cmp.Compare(a.ID, b.ID)
+}
+
+// byPosition orders the tickets by position in ascending order.
+// This assumes the position of each ticket is unique which is enforced by the
+// database for queued tickets.
+func byPosition(a, b store.OpenTicket) int {
+	return cmp.Compare(a.Position, b.Position)
 }

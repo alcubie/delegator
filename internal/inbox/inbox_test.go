@@ -133,3 +133,19 @@ func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
 		t.Errorf("READY holds %v, want %v", ids(got.Ready), want)
 	}
 }
+
+func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
+	source := fakeSource{tickets: []store.OpenTicket{
+		{ID: 1, Status: store.Queued, Position: 2},
+		{ID: 2, Status: store.Queued, Position: 3},
+		{ID: 3, Status: store.Queued, Position: 1},
+	}}
+
+	got, err := Get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{3, 1, 2}; !slices.Equal(ids(got.Queued), want) {
+		t.Errorf("QUEUED holds %v, want %v", ids(got.Queued), want)
+	}
+}
