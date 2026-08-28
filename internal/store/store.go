@@ -403,3 +403,45 @@ func setPositions(tx *sql.Tx, ids []int64) error {
 	}
 	return nil
 }
+
+// OpenTicket is one ticket of the inbox. The project is the path of the
+// repository, and the inbox makes the short name that it shows from it.
+type OpenTicket struct {
+	ID       int64
+	Project  string
+	Title    string
+	Status   TicketStatus
+	Position sql.Null[int]
+	Flags    string
+}
+
+// OpenTickets returns each ticket that the inbox shows: the ones that wait, the
+// one that runs, and the ones that are complete. A ticket that is done or
+// cancelled is closed, and the inbox does not hold it.
+//
+// One query returns the tickets of each project, because the inbox is one list
+// for all projects.
+func (s *Store) OpenTickets() ([]OpenTicket, error) {
+	rows, err := s.db.Query(`
+		SELECT tickets.id, projects.path, tickets.title, tickets.status,
+		       tickets.position, COALESCE(tickets.flags, '')
+		FROM tickets
+		JOIN projects ON projects.id = tickets.project_id
+		WHERE tickets.status IN (?, ?, ?)
+		ORDER BY tickets.id`, Queued, Running, Ready)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var open []OpenTicket
+	for rows.Next() {
+		var t OpenTicket
+		if err := rows.Scan(
+			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Flags); err != nil {
+			return nil, err
+		}
+		open = append(open, t)
+	}
+	return open, rows.Err()
+}

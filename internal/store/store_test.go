@@ -93,6 +93,19 @@ func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	return first, second, ids
 }
 
+// mustProject returns the id of the one project that a fixture made.
+func mustProject(t *testing.T, s *Store) int64 {
+	t.Helper()
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("the database holds %d projects, want one", len(projects))
+	}
+	return projects[0].ID
+}
+
 // queueTitles gives the title of each ticket of the queue, in its sequence.
 func queueTitles(t *testing.T, s *Store) []string {
 	t.Helper()
@@ -893,5 +906,113 @@ func TestOpenMakesTheDatabaseForItsPersonOnly(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Errorf("the permission is %v, want %v", got, os.FileMode(0o600))
+	}
+}
+
+// setStatus takes a ticket out of the queue and sets its status. No command
+// makes a ticket ready yet, because that is dg finish in milestone 2.
+func setStatus(t *testing.T, s *Store, id int64, status TicketStatus) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		"UPDATE tickets SET status = ?, position = NULL WHERE id = ?", status, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenTicketsGivesEachTicketThatIsNotClosed(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[0], Ready)
+	setStatus(t, s, ids[1], Running)
+	// the third stays queued
+
+	// a ticket that is closed is not in the inbox
+	closed, err := s.AddTicket(mustProject(t, s), "closed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setStatus(t, s, closed, Done)
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if len(byID) != 3 {
+		t.Fatalf("OpenTickets gives %d tickets, want 3", len(byID))
+	}
+	for _, want := range []struct {
+		id     int64
+		status TicketStatus
+	}{{ids[0], Ready}, {ids[1], Running}, {ids[2], Queued}} {
+		if got := byID[want.id].Status; got != want.status {
+			t.Errorf("ticket %d has the status %q, want %q", want.id, got, want.status)
+		}
+	}
+	if _, there := byID[closed]; there {
+		t.Error("OpenTickets gives a ticket that is done")
+	}
+}
+
+func TestOpenTicketsGivesTheProjectAndTheTitle(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 3 {
+		t.Fatalf("OpenTickets gives %d tickets, want 3", len(open))
+	}
+	for _, ticket := range open {
+		if ticket.Project != "/projects/path" {
+			t.Errorf("ticket %d has the project %q, want /projects/path", ticket.ID, ticket.Project)
+		}
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if got := byID[ids[0]].Title; got != "first" {
+		t.Errorf("title = %q, want first", got)
+	}
+}
+
+// The inbox shows each project together, so one query returns the tickets of two
+// projects.
+func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
+	s, projectID := emptyStore(t)
+	other, err := s.ProjectID("/projects/other", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(projectID, "one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(other, "two"); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A join that is not on the project returns each ticket with each project,
+	// so the count matters as much as the paths.
+	if len(open) != 2 {
+		t.Fatalf("OpenTickets gives %d tickets, want 2", len(open))
+	}
+	byTitle := map[string]string{}
+	for _, ticket := range open {
+		byTitle[ticket.Title] = ticket.Project
+	}
+	if got := byTitle["one"]; got != "/projects/path" {
+		t.Errorf("the ticket one has the project %q, want /projects/path", got)
+	}
+	if got := byTitle["two"]; got != "/projects/other" {
+		t.Errorf("the ticket two has the project %q, want /projects/other", got)
 	}
 }
