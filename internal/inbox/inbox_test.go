@@ -149,3 +149,23 @@ func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
 		t.Errorf("QUEUED holds %v, want %v", ids(got.Queued), want)
 	}
 }
+
+// RUNNING takes the order of the id. Version 1 has one run at a time, so the
+// group holds one ticket and the order shows after a fault that leaves two. The
+// order is a decision here and not the ORDER BY of the query, which a change
+// for another reason would move.
+func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
+	source := fakeSource{tickets: []store.OpenTicket{
+		{ID: 9, Status: store.Running},
+		{ID: 3, Status: store.Running},
+		{ID: 7, Status: store.Running},
+	}}
+
+	got, err := Get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{3, 7, 9}; !slices.Equal(ids(got.Running), want) {
+		t.Errorf("RUNNING holds %v, want %v", ids(got.Running), want)
+	}
+}

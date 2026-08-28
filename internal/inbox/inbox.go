@@ -53,6 +53,7 @@ func Get(source Source) (Inbox, error) {
 	}
 
 	slices.SortFunc(box.Ready, byCompletion)
+	slices.SortFunc(box.Running, byID)
 	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
 }
@@ -74,4 +75,15 @@ func byCompletion(a, b store.OpenTicket) int {
 // database for queued tickets.
 func byPosition(a, b store.OpenTicket) int {
 	return cmp.Compare(a.Position, b.Position)
+}
+
+// byID orders the tickets by id, and the smallest id is first.
+//
+// Version 1 runs one ticket at a time, so RUNNING holds one ticket and this
+// order shows after a fault that leaves two. It is here, and not the ORDER BY
+// of the query, because a change to that query for another reason would move
+// RUNNING and no test would say so. Milestone 2 gives each run a start time,
+// and that time takes the place of the id.
+func byID(a, b store.OpenTicket) int {
+	return cmp.Compare(a.ID, b.ID)
 }
