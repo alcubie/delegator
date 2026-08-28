@@ -279,3 +279,20 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 		}
 	}
 }
+
+// The text of a field stops where the rule stops. The prose is not in this,
+// because the person chose its line breaks and dg show writes them as they are.
+func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 4, Project: "/projects/a-name-of-some-length", Title: "a title", Status: store.Ready,
+		Flags:   strings.Repeat("a word ", 40),
+		Result:  strings.Repeat("more words ", 20),
+		Branch:  "delegator/4-a-title",
+		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+	}
+	for _, line := range showTicketLines(t, ticket, "") {
+		if n := len([]rune(line)); n > ruleWidth {
+			t.Errorf("the line takes %d columns and the rule takes %d: %q", n, ruleWidth, line)
+		}
+	}
+}

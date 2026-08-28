@@ -20,9 +20,11 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// wrapWidth is the width of the text of flags, of result and of the prose. A
-// terminal of 80 columns holds it with the indent of the label.
-const wrapWidth = 62
+// indent is the width of the space at the start of each line.
+const indent = 2
+
+// gap is the width of the space between a label and its text.
+const gap = 2
 
 // wrap breaks text into lines of at most width characters. It breaks at a
 // space, and a word longer than the width takes its own line and goes past it,
@@ -98,6 +100,12 @@ const labelWidth = 8
 // ruleWidth is the width of the line below the title.
 const ruleWidth = 67
 
+// wrapWidth is the width of the text of flags and of result. It comes from the
+// width of the rule, so the text of a field stops where the rule stops and no
+// line goes past it. The prose takes no wrap, because the person chose its line
+// breaks.
+const wrapWidth = ruleWidth - indent - labelWidth - gap
+
 // writeField writes one label and its text, and puts each line below the first
 // under the first.
 func writeField(out io.Writer, label, text string) {
@@ -105,9 +113,9 @@ func writeField(out io.Writer, label, text string) {
 	if len(lines) == 0 {
 		lines = []string{noFlags}
 	}
-	fmt.Fprintf(out, "  %-*s  %s\n", labelWidth, label, lines[0])
+	fmt.Fprintf(out, "%*s%-*s%*s%s\n", indent, "", labelWidth, label, gap, "", lines[0])
 	for _, line := range lines[1:] {
-		fmt.Fprintf(out, "  %-*s  %s\n", labelWidth, "", line)
+		fmt.Fprintf(out, "%*s%-*s%*s%s\n", indent, "", labelWidth, "", gap, "", line)
 	}
 }
 
