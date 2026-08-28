@@ -406,13 +406,24 @@ func setPositions(tx *sql.Tx, ids []int64) error {
 
 // OpenTicket is one ticket of the inbox. The project is the path of the
 // repository, and the inbox makes the short name that it shows from it.
+//
+// A column that holds NULL arrives here as the zero value of its type, and not
+// as a sql.Null. The rule is that the zero value stands for NULL when no row
+// can hold that value: a position starts at 1, the empty string is no time and
+// no flags. A column that can hold its zero value would need a sql.Null, to keep
+// the two apart. The status says which group the ticket is in, so no field here
+// must answer that as well.
 type OpenTicket struct {
 	ID       int64
 	Project  string
 	Title    string
 	Status   TicketStatus
-	Position sql.Null[int]
+	Position int
 	Flags    string
+
+	// Completed is the time that the ticket became ready, in RFC 3339. A ticket
+	// that never became ready holds the empty string.
+	Completed string
 }
 
 // OpenTickets returns each ticket that the inbox shows: the ones that wait, the
@@ -424,7 +435,8 @@ type OpenTicket struct {
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	rows, err := s.db.Query(`
 		SELECT tickets.id, projects.path, tickets.title, tickets.status,
-		       tickets.position, COALESCE(tickets.flags, '')
+		       COALESCE(tickets.position, 0), COALESCE(tickets.flags, ''),
+		       COALESCE(tickets.completed, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.status IN (?, ?, ?)
@@ -438,7 +450,8 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	for rows.Next() {
 		var t OpenTicket
 		if err := rows.Scan(
-			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Flags); err != nil {
+			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Flags,
+			&t.Completed); err != nil {
 			return nil, err
 		}
 		open = append(open, t)

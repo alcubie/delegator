@@ -1016,3 +1016,35 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 		t.Errorf("the ticket two has the project %q, want /projects/other", got)
 	}
 }
+
+// setCompleted writes the time that a ticket became ready. dg finish does this
+// work in milestone 2.
+func setCompleted(t *testing.T, s *Store, id int64, completed string) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		"UPDATE tickets SET completed = ? WHERE id = ?", completed, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[0], Ready)
+	setCompleted(t, s, ids[0], "2026-08-28T09:30:00Z")
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if got := byID[ids[0]].Completed; got != "2026-08-28T09:30:00Z" {
+		t.Errorf("completed = %q, want 2026-08-28T09:30:00Z", got)
+	}
+	// a ticket that waits has no time of completion
+	if got := byID[ids[2]].Completed; got != "" {
+		t.Errorf("a queued ticket has completed = %q, want it empty", got)
+	}
+}

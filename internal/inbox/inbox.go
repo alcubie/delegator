@@ -4,7 +4,12 @@
 // structure.
 package inbox
 
-import "github.com/alcubie/delegator/internal/store"
+import (
+	"cmp"
+	"slices"
+
+	"github.com/alcubie/delegator/internal/store"
+)
 
 // Source returns the tickets that the inbox holds. The store has this method,
 // and a test has its own.
@@ -38,5 +43,18 @@ func Get(source Source) (Inbox, error) {
 			box.Queued = append(box.Queued, ticket)
 		}
 	}
+
+	slices.SortFunc(box.Ready, byCompletion)
 	return box, nil
+}
+
+// byCompletion puts the ticket that became ready first at the top. A ticket that
+// becomes ready therefore goes at the end, and no row that the person can see
+// moves. The time holds one second and no part of a second, so two tickets can
+// hold the same one, and the id then keeps the sequence stable.
+func byCompletion(a, b store.OpenTicket) int {
+	if by := cmp.Compare(a.Completed, b.Completed); by != 0 {
+		return by
+	}
+	return cmp.Compare(a.ID, b.ID)
 }

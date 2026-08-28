@@ -23,7 +23,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 //
 // Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
 // not a migration. This list is the answer to that lesson.
-var migrations = []string{tables}
+var migrations = []string{tables, completedColumn}
 
 // tables makes the two tables and the index of the queue. The ids of tickets
 // are one sequence for all projects, so dg show 4 is not ambiguous.
@@ -55,6 +55,17 @@ CREATE TABLE tickets (
 );
 
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
+`
+
+// READY is in the sequence of the time of completion, and a ticket that becomes
+// ready goes at the end. The sequence of the queue is not stable for READY: a
+// slow ticket that entered the queue first arrives above the tickets that the
+// person can see now, so the list moves below the eyes of the person.
+//
+// A ticket that never became ready holds NULL, and a ticket that goes back to
+// the queue and becomes ready again holds the later time.
+const completedColumn = `
+ALTER TABLE tickets ADD COLUMN completed TEXT;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

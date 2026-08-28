@@ -95,3 +95,41 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, want)
 	}
 }
+
+// READY is in the sequence of the time of completion, and a ticket that becomes
+// ready goes at the end. The source gives them in another sequence, so the
+// inbox and not the query does this work.
+func TestGetPutsReadyInTheSequenceOfCompletion(t *testing.T) {
+	source := fakeSource{tickets: []store.OpenTicket{
+		{ID: 1, Status: store.Ready, Completed: "2026-08-28T12:00:00Z"},
+		{ID: 2, Status: store.Ready, Completed: "2026-08-28T09:00:00Z"},
+		{ID: 3, Status: store.Ready, Completed: "2026-08-28T15:00:00Z"},
+	}}
+
+	got, err := Get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{2, 1, 3}; !slices.Equal(ids(got.Ready), want) {
+		t.Errorf("READY holds %v, want %v", ids(got.Ready), want)
+	}
+}
+
+// Two tickets can hold the same time, because the time has one second and no
+// part of a second. The id then keeps the sequence stable.
+func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
+	same := "2026-08-28T09:00:00Z"
+	source := fakeSource{tickets: []store.OpenTicket{
+		{ID: 7, Status: store.Ready, Completed: same},
+		{ID: 3, Status: store.Ready, Completed: same},
+		{ID: 5, Status: store.Ready, Completed: same},
+	}}
+
+	got, err := Get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{3, 5, 7}; !slices.Equal(ids(got.Ready), want) {
+		t.Errorf("READY holds %v, want %v", ids(got.Ready), want)
+	}
+}
