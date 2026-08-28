@@ -8,10 +8,18 @@ PKG := github.com/alcubie/delegator
 COVER_MIN  := 60
 COVER_PKGS := ./internal/...
 
-.PHONY: build test vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
+.PHONY: build install test vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
 
 build:
 	go build -o $(BIN) ./cmd/dg
+
+# install puts dg on the PATH of the person, so the work can use delegator while
+# it builds delegator. goenv keeps a shim for each program, and it makes the one
+# for a new program at a rehash.
+install:
+	go install ./cmd/dg
+	@command -v goenv >/dev/null && goenv rehash || true
+	@echo "dg is at $$(command -v dg || echo '(not on the PATH)')"
 
 test:
 	go test ./...
