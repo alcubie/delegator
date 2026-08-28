@@ -1113,3 +1113,67 @@ func TestTicketThatIsNotThere(t *testing.T) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
 	}
 }
+
+func TestMoveTicketBeforePutsItWhereTheTargetIs(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	// first goes where third is, so third goes down one place
+	if err := s.MoveTicketBefore(ids[0], ids[2]); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"second", "first", "third"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
+	}
+}
+
+func TestMoveTicketBeforeUpTheQueue(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	if err := s.MoveTicketBefore(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"third", "first", "second"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
+	}
+}
+
+func TestMoveTicketBeforeItself(t *testing.T) {
+	s, ids := threeTickets(t)
+	before := queueTitles(t, s)
+
+	if err := s.MoveTicketBefore(ids[1], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+func TestMoveTicketBeforeWithATargetThatIsNotInTheQueue(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.RemoveTicket(ids[2], Running); err != nil {
+		t.Fatal(err)
+	}
+	before := queueTitles(t, s)
+
+	err := s.MoveTicketBefore(ids[0], ids[2])
+	if !errors.Is(err, ErrNotInTheQueue) {
+		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+func TestMoveTicketBeforeWithATicketThatIsNotInTheQueue(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.RemoveTicket(ids[0], Running); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MoveTicketBefore(ids[0], ids[2]); !errors.Is(err, ErrNotInTheQueue) {
+		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	}
+}

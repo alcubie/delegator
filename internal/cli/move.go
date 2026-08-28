@@ -35,25 +35,30 @@ func moveCommand(dataDir string) *cobra.Command {
 	return &cobra.Command{
 		Use: "move <id> <where>",
 		Short: "Move one ticket in the queue. <where> is " +
-			strings.Join(directionNames(), ", ") + ".",
+			strings.Join(directionNames(), ", ") + ", or the id of another ticket.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			move, there := directions[args[1]]
-			if !there {
-				return fmt.Errorf("%q is not a direction, and dg move takes %s",
-					args[1], strings.Join(directionNames(), ", "))
-			}
-
 			s, err := store.Open(dataDir)
 			if err != nil {
 				return err
 			}
 			defer s.Close()
-			return s.MoveTicket(id, move)
+
+			if move, there := directions[args[1]]; there {
+				return s.MoveTicket(id, move)
+			}
+			// A direction is a word and an id is a number, so the two never
+			// take one another.
+			target, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return fmt.Errorf("%q is not a direction and not an id: dg move takes %s, or the id of another ticket",
+					args[1], strings.Join(directionNames(), ", "))
+			}
+			return s.MoveTicketBefore(id, target)
 		},
 	}
 }

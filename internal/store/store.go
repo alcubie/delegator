@@ -340,6 +340,30 @@ func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
 // of the order and the write of each new position are in one transaction, so
 // the order that moves is the order that the queue has.
 func (s *Store) MoveTicket(id int64, move Move) error {
+	return s.move(id, func(ids []int64, from int) ([]int64, error) {
+		return reorder(ids, from, move), nil
+	})
+}
+
+// MoveTicketBefore puts one ticket where target is, and target and each ticket
+// below it go down one place. A person who moves a ticket into the middle of
+// the queue therefore writes one command, and not one dg move up for each place.
+//
+// A target that is the ticket itself changes nothing, because a ticket is
+// already where it is.
+func (s *Store) MoveTicketBefore(id, target int64) error {
+	return s.move(id, func(ids []int64, from int) ([]int64, error) {
+		if !slices.Contains(ids, target) {
+			return nil, fmt.Errorf("%w: ticket %d", ErrNotInTheQueue, target)
+		}
+		return reorderBefore(ids, from, target), nil
+	})
+}
+
+// move reads the order of the queue, gives it to order, and writes what comes
+// back. The read and the write are below one transaction, so the order that
+// moves is the order that the queue has.
+func (s *Store) move(id int64, order func(ids []int64, from int) ([]int64, error)) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -355,7 +379,11 @@ func (s *Store) MoveTicket(id int64, move Move) error {
 		return fmt.Errorf("%w: ticket %d", ErrNotInTheQueue, id)
 	}
 
-	if err := setPositions(tx, reorder(ids, from, move)); err != nil {
+	moved, err := order(ids, from)
+	if err != nil {
+		return err
+	}
+	if err := setPositions(tx, moved); err != nil {
 		return err
 	}
 	return tx.Commit()

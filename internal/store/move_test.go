@@ -53,3 +53,50 @@ func TestReorderWithOneTicket(t *testing.T) {
 		}
 	}
 }
+
+func TestReorderBefore(t *testing.T) {
+	tests := []struct {
+		name   string
+		from   int
+		target int64
+		want   []int64
+	}{
+		{"down the queue: 10 goes where 40 is", 0, 40, []int64{20, 30, 10, 40}},
+		{"up the queue: 40 goes where 20 is", 3, 20, []int64{10, 40, 20, 30}},
+		{"to the top", 2, 10, []int64{30, 10, 20, 40}},
+		{"one place down", 0, 30, []int64{20, 10, 30, 40}},
+		{"one place up", 2, 20, []int64{10, 30, 20, 40}},
+		{"the ticket below it", 1, 30, []int64{10, 20, 30, 40}},
+		{"itself changes nothing", 1, 20, []int64{10, 20, 30, 40}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ids := []int64{10, 20, 30, 40}
+			got := reorderBefore(ids, test.from, test.target)
+			if !slices.Equal(got, test.want) {
+				t.Errorf("reorderBefore(%v, %d, %d) = %v, want %v",
+					ids, test.from, test.target, got, test.want)
+			}
+		})
+	}
+}
+
+// The bottom of the queue has no ticket below it, so a move there needs the
+// keyword bottom and not an id.
+func TestReorderBeforeLeavesTheGivenSliceAlone(t *testing.T) {
+	ids := []int64{10, 20, 30, 40}
+	reorderBefore(ids, 3, 10)
+	if want := []int64{10, 20, 30, 40}; !slices.Equal(ids, want) {
+		t.Errorf("the slice that reorderBefore got is now %v, want %v", ids, want)
+	}
+}
+
+// A target that the queue does not hold gives back the order that it had, and
+// the store tells the person.
+func TestReorderBeforeWithATargetThatIsNotThere(t *testing.T) {
+	ids := []int64{10, 20, 30}
+	got := reorderBefore(ids, 0, 99)
+	if want := []int64{10, 20, 30}; !slices.Equal(got, want) {
+		t.Errorf("reorderBefore = %v, want %v", got, want)
+	}
+}

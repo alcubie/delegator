@@ -117,3 +117,67 @@ func TestRunMoveWithNoDirection(t *testing.T) {
 		t.Fatal("dg move took no direction")
 	}
 }
+
+// <where> also takes the id of another ticket, so a person reaches a place in
+// the middle of the queue with one command.
+func TestRunMoveBeforeATicket(t *testing.T) {
+	tests := []struct {
+		name   string
+		moved  int
+		target int
+		want   []string
+	}{
+		{"down the queue", 0, 2, []string{"second", "first", "third"}},
+		{"up the queue", 2, 0, []string{"third", "first", "second"}},
+		{"itself changes nothing", 1, 1, []string{"first", "second", "third"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir, repo, ids := threeInTheQueue(t)
+
+			out, err := runIn(t, dataDir, repo, "move",
+				fmt.Sprint(ids[test.moved]), fmt.Sprint(ids[test.target]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out != "" {
+				t.Errorf("dg move wrote %q, want nothing", out)
+			}
+			if got := queueTitlesOf(t, dataDir); !slices.Equal(got, test.want) {
+				t.Errorf("the queue is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRunMoveBeforeATicketThatIsNotInTheQueue(t *testing.T) {
+	dataDir, repo, ids := threeInTheQueue(t)
+	if _, err := openStore(t, dataDir).RemoveTicket(ids[2], store.Running); err != nil {
+		t.Fatal(err)
+	}
+	before := queueTitlesOf(t, dataDir)
+
+	_, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[0]), fmt.Sprint(ids[2]))
+	if !errors.Is(err, store.ErrNotInTheQueue) {
+		t.Fatalf("err = %v, want ErrNotInTheQueue", err)
+	}
+	if got := queueTitlesOf(t, dataDir); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+// A word that is not a direction and not a number names each direction, and
+// says that an id is the other thing that dg move takes.
+func TestRunMoveErrorNamesBothWays(t *testing.T) {
+	dataDir, repo, ids := threeInTheQueue(t)
+
+	_, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[0]), "sideways")
+	if err == nil {
+		t.Fatal("dg move took a word that is neither")
+	}
+	for _, want := range []string{"sideways", "up", "down", "top", "bottom", "id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, and it does not name %q", err, want)
+		}
+	}
+}
