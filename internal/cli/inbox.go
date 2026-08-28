@@ -22,6 +22,11 @@ import (
 // emptyGroup is the line below the heading of a group that holds no ticket.
 const emptyGroup = "  none"
 
+// emptyInbox is the whole inbox of a person who has no ticket. Three headings
+// with none below each of them say the same thing in six lines, and a person
+// who has no ticket has not made one yet, so the line says what makes one.
+const emptyInbox = "There are no active tickets. Use `dg ticket` to add."
+
 // noFlags is what the agent writes when each item went as the ticket said. It
 // is a complete answer, and not an empty one.
 const noFlags = "none"
@@ -92,6 +97,11 @@ func widths(box inbox.Inbox) (id, project int) {
 }
 
 func writeInbox(out io.Writer, box inbox.Inbox) {
+	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
+		fmt.Fprintln(out, emptyInbox)
+		return
+	}
+
 	idWidth, projectWidth := widths(box)
 	for _, g := range groups(box) {
 		fmt.Fprintln(out, g.heading)

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,5 +168,36 @@ func TestWriteInboxWithNoFlags(t *testing.T) {
 	}
 	if want := "  4    one  the title"; render(t, box)[1] != want {
 		t.Errorf("the row is %q, want %q", render(t, box)[1], want)
+	}
+}
+
+// An inbox with no ticket takes one line, and not three headings with none
+// below each of them. The line says what makes a ticket, because a person who
+// has no ticket is a person who has not made one yet.
+func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
+	got := render(t, inbox.Inbox{})
+	if len(got) != 1 {
+		t.Fatalf("the inbox takes %d lines, want 1:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	if !strings.Contains(got[0], "dg ticket") {
+		t.Errorf("the line does not say what makes a ticket: %q", got[0])
+	}
+	for _, heading := range []string{"READY", "RUNNING", "QUEUED"} {
+		if strings.Contains(got[0], heading) {
+			t.Errorf("the line holds the heading %q: %q", heading, got[0])
+		}
+	}
+}
+
+// One group with a ticket keeps each heading, because the person can see where
+// the other groups are.
+func TestWriteInboxWithOneGroupKeepsTheHeadings(t *testing.T) {
+	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
+
+	got := render(t, box)
+	for _, heading := range []string{"READY", "RUNNING", "QUEUED"} {
+		if !slices.Contains(got, heading) {
+			t.Errorf("the inbox does not hold the heading %q:\n%s", heading, strings.Join(got, "\n"))
+		}
 	}
 }
