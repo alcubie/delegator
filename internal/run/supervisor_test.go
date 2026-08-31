@@ -94,7 +94,7 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	ticket := readTicket(t, dataDir, id)
-	if _, err := Worktree(dataDir, ticket.Project.Path, ticket.Project.DefaultBranch, id, ticket.Title); err != nil {
+	if _, err := Worktree(dataDir, ticket); err != nil {
 		t.Fatal(err)
 	}
 

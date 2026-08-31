@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alcubie/delegator/internal/store"
 )
 
 // gitIn runs one git command in dir. It stops the test if git gives an error,
@@ -97,7 +99,11 @@ func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 	commitIn(t, repo, "second")
 	dataDir := t.TempDir()
 
-	path, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	path, err := Worktree(dataDir, store.Ticket{
+		ID:      7,
+		Project: store.Project{Path: repo, DefaultBranch: "main"},
+		Title:   "Add the thing",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,12 +125,20 @@ func TestWorktreeThatIsThereAlready(t *testing.T) {
 	repo := repoOnMain(t)
 	dataDir := t.TempDir()
 
-	first, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	first, err := Worktree(dataDir, store.Ticket{
+		ID:      7,
+		Project: store.Project{Path: repo, DefaultBranch: "main"},
+		Title:   "Add the thing",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	second, err := Worktree(dataDir, store.Ticket{
+		ID:      7,
+		Project: store.Project{Path: repo, DefaultBranch: "main"},
+		Title:   "Add the thing",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

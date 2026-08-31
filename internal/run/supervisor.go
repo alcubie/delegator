@@ -21,7 +21,7 @@ func Start(dataDir string, id int64) error {
 		return err
 	}
 
-	if _, err := Worktree(dataDir, ticket.Project.Path, ticket.Project.DefaultBranch, id, ticket.Title); err != nil {
+	if _, err := Worktree(dataDir, ticket); err != nil {
 		return err
 	}
 	return s.Claim(id, branch(id, ticket.Title))

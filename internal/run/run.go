@@ -10,6 +10,7 @@ import (
 	"github.com/gosimple/slug"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/store"
 )
 
 // branchPrefix is the prefix attached to all branch names
@@ -38,12 +39,13 @@ func branch(id int64, title string) string {
 //
 // A worktree that is there already is returned as it is, because a restart
 // works in the one that the earlier run made.
-func Worktree(dataDir, projectPath, defaultBranch string, id int64, title string) (string, error) {
-	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+func Worktree(dataDir string, ticket store.Ticket) (string, error) {
+	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(ticket.ID, 10))
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	}
-	if err := project.AddWorktree(projectPath, path, branch(id, title), defaultBranch); err != nil {
+	name := branch(ticket.ID, ticket.Title)
+	if err := project.AddWorktree(ticket.Project.Path, path, name, ticket.Project.DefaultBranch); err != nil {
 		return "", err
 	}
 	return path, nil
