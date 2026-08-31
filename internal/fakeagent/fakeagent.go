@@ -1,10 +1,9 @@
-// Package fakeagent runs the script of dg-fake-agent. The program is a real
-// program and not a function of a test, so a test of the supervisor examines a
-// real start of a program, a real call of dg finish, and a real timeout.
+// Package fakeagent interprets the script that dg-fake-agent runs. It is a real
+// program rather than a test function, so a supervisor test exercises a real
+// process start, a real dg finish call and a real timeout.
 //
-// Section 10.2 of the technical document says why: a fake agent makes the
-// queue, the supervisor, the reconcile and the inbox testable in seconds and
-// at no cost.
+// Section 10.2 of the technical document says why: a fake agent makes the queue,
+// the supervisor, the reconcile and the inbox testable in seconds, for nothing.
 package fakeagent
 
 import (
@@ -16,14 +15,13 @@ import (
 	"strings"
 )
 
-// filePerm is the permission of each file that the script writes. These are the
-// work of the agent inside a worktree, and not the data of delegator, so
-// section 11 does not cover them and they take the ordinary permission that a
-// real agent gives a file it makes.
+// filePerm is the permission for files the script writes. These are the agent's
+// work inside a worktree, not delegator's own data, so section 11 does not cover
+// them and they take the ordinary permission a real agent would create.
 const filePerm = 0o644
 
-// Run reads the script at path and does what each line says. It returns the
-// status that the program must exit with.
+// Run reads the script at path and executes each line. It returns the status
+// the program should exit with.
 func Run(path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {

@@ -33,12 +33,11 @@ func branch(id int64, title string) string {
 	return fmt.Sprintf("%s/%d-%s", branchPrefix, id, generated)
 }
 
-// Worktree makes the worktree for one run at <dataDir>/worktrees/<id>, checked
-// out on a new branch that starts at defaultBranch. It returns the path of the
-// worktree.
+// Worktree creates the worktree for one run at <dataDir>/worktrees/<id>, on a
+// new branch cut from the project's default branch, and returns its path.
 //
-// A worktree that is there already is returned as it is, because a restart
-// works in the one that the earlier run made.
+// An existing worktree is returned unchanged: a restart works in the one the
+// earlier run created.
 func Worktree(dataDir string, ticket store.Ticket) (string, error) {
 	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(ticket.ID, 10))
 	if _, err := os.Stat(path); err == nil {
