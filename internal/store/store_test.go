@@ -121,6 +121,18 @@ func queueTitles(t *testing.T, s *Store) []string {
 	return titles
 }
 
+// ticketPosition returns the position of one ticket. A ticket that is not in
+// the queue holds no position, and the value is then not valid.
+func ticketPosition(t *testing.T, s *Store, id int64) sql.Null[int] {
+	t.Helper()
+	var position sql.Null[int]
+	if err := s.db.QueryRow(
+		"SELECT position FROM tickets WHERE id = ?", id).Scan(&position); err != nil {
+		t.Fatal(err)
+	}
+	return position
+}
+
 // openRaw opens the database with no migration, so a test can examine what
 // Open left behind.
 func openRaw(t *testing.T, dataDir string) *sql.DB {
@@ -591,7 +603,7 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 }
 
 func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
-	s, _ := threeTickets(t)
+	s, ids := threeTickets(t)
 
 	want := []string{"first", "second", "third"}
 	if got := queueTitles(t, s); !slices.Equal(got, want) {
@@ -600,13 +612,8 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 
 	// The order starts at 1. The queue works with any first number, but a
 	// person who reads the table sees these numbers.
-	var position int
-	if err := s.db.QueryRow(
-		"SELECT position FROM tickets WHERE title = 'first'").Scan(&position); err != nil {
-		t.Fatal(err)
-	}
-	if position != 1 {
-		t.Errorf("the first ticket is at position %d, want 1", position)
+	if position := ticketPosition(t, s, ids[0]); position.V != 1 {
+		t.Errorf("the first ticket is at position %d, want 1", position.V)
 	}
 }
 
@@ -629,17 +636,14 @@ func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
 
 	// check that the removed ticket has the values set correctly
 	var state string
-	var position sql.Null[int]
 	if err = s.db.QueryRow(
-		"SELECT status, position FROM tickets WHERE id = ?",
-		removeID,
-	).Scan(&state, &position); err != nil {
+		"SELECT status FROM tickets WHERE id = ?", removeID).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
 	if state != "running" {
 		t.Errorf("state = %s, want = running", state)
 	}
-	if position.Valid {
+	if position := ticketPosition(t, s, removeID); position.Valid {
 		t.Errorf("position = %d, want = nil", position.V)
 	}
 }
@@ -699,13 +703,8 @@ func TestMoveTicketWritesTheNewOrder(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
-	var position int
-	if err := s.db.QueryRow(
-		"SELECT position FROM tickets WHERE title = 'third'").Scan(&position); err != nil {
-		t.Fatal(err)
-	}
-	if position != 1 {
-		t.Errorf("the first ticket of the queue is at position %d, want 1", position)
+	if position := ticketPosition(t, s, ids[2]); position.V != 1 {
+		t.Errorf("the first ticket of the queue is at position %d, want 1", position.V)
 	}
 }
 
