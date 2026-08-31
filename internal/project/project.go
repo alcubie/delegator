@@ -8,7 +8,9 @@ package project
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -22,12 +24,46 @@ var ErrNoCommit = errors.New("the repository has no commit")
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
 
+// gitEnv are the variables that pin a git command to one repository. Delegator
+// names the repository with -C, so a value that another git left in the
+// environment must not reach the command. A hook of git sets GIT_DIR and
+// GIT_INDEX_FILE to paths that are relative to the root of the repository, and
+// a command of delegator that runs in a different directory then reads a file
+// that is not there.
+var gitEnv = []string{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_COMMON_DIR",
+	"GIT_DIR",
+	"GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_PREFIX",
+	"GIT_WORK_TREE",
+}
+
+// gitCommand returns the command for one git call in root, with each variable
+// of gitEnv taken out of the environment that it gets.
+func gitCommand(root string, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = withoutGitEnv(os.Environ())
+	return cmd
+}
+
+// withoutGitEnv returns env with each variable of gitEnv removed.
+func withoutGitEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, pair := range env {
+		if name, _, ok := strings.Cut(pair, "="); ok && slices.Contains(gitEnv, name) {
+			continue
+		}
+		out = append(out, pair)
+	}
+	return out
+}
+
 // Root returns the top-level git directory for the argument.
 // It returns an error if the path is not in a git repository.
 func Root(path string) (string, error) {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
-
-	gitDir, err := cmd.Output()
+	gitDir, err := gitCommand(path, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return "", ErrGitNotOnPath
@@ -46,8 +82,7 @@ func Root(path string) (string, error) {
 // newline. An error means that git said no, and each caller decides what that
 // answer means.
 func gitOutput(root string, args ...string) (string, error) {
-	all := append([]string{"-C", root}, args...)
-	out, err := exec.Command("git", all...).Output()
+	out, err := gitCommand(root, args...).Output()
 	if err != nil {
 		return "", err
 	}

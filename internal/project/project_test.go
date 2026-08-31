@@ -254,3 +254,25 @@ func TestFirstCommitWithTwoHistoriesGivesTheOlder(t *testing.T) {
 		t.Errorf("FirstCommit = %q, want %q", got, want)
 	}
 }
+
+// A hook of git sets GIT_INDEX_FILE and GIT_DIR to a path that is relative to
+// the root of the repository. A command of delegator runs in a different
+// directory, so git must not see either value.
+func TestRootIgnoresTheGitEnvironmentOfTheCaller(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	sub := filepath.Join(dir, "subdir")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_DIR", ".git")
+	t.Setenv("GIT_INDEX_FILE", ".git/index")
+
+	got, err := Root(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != dir {
+		t.Errorf("root = %s, want %s", got, dir)
+	}
+}
