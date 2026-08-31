@@ -265,15 +265,26 @@ interface is small:
 
 ```go
 type Adapter interface {
-    Launch(spec RunSpec) *exec.Cmd   // headless run, with a session id that we give
-    Resume(session string) []string  // argv for an interactive session
+    Launch(spec RunSpec) *exec.Cmd                       // headless run
+    Resume(session string) []string                      // argv for an interactive session
+    SessionID(spec RunSpec, out []byte) (string, error)  // the session the run used
     Name() string
 }
 ```
 
-Delegator gives the session id to the agent, and does not read it from the output. The
-command `claude --session-id <uuid>` accepts a UUID, and a test confirmed this behaviour.
-No code therefore reads the output of an agent.
+Only claude accepts a session id at its start. The command `claude --session-id <uuid>`
+takes a UUID, and a test confirmed this behaviour. The agents codex, gemini and opencode
+each make their own id, and each one lets a caller resume by that id after the run. A seam
+that only gives an id down therefore fits one agent of the four.
+
+The method `SessionID` gives the id of a run that is complete. An adapter for claude gives
+the id that delegator gave it, and an adapter for the other agents reads the id from the
+output of the run.
+
+This has two results. A ticket gets its `session` after the run for those agents, and not
+before it. And a run of claude that writes nothing still has an id that `dg open chat` can
+resume, but a run of another agent that stops before it gives its id has no session at
+all, and delegator says so.
 
 ## 7. Data on disk
 
