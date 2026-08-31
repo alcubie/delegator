@@ -2,6 +2,7 @@ package run
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,38 @@ import (
 	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/store"
 )
+
+// fakeAgentPath is dg-fake-agent, built once for the whole package.
+var fakeAgentPath string
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+// TestMain builds dg-fake-agent once. Each test that built its own recompiled
+// the same program, which was most of the run time of this package. The
+// directory is unique because go test runs packages side by side.
+//
+// The work is here rather than in TestMain so the cleanup can be deferred:
+// os.Exit does not run deferred calls, and every path out of TestMain ends in
+// one.
+func runTests(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "delegator-run-test")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer os.RemoveAll(dir)
+
+	fakeAgentPath = filepath.Join(dir, "dg-fake-agent")
+	out, err := exec.Command("go", "build", "-o", fakeAgentPath,
+		"github.com/alcubie/delegator/cmd/dg-fake-agent").CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "go build: %v: %s\n", err, out)
+		return 1
+	}
+	return m.Run()
+}
 
 // queuedTicket makes a data directory that holds one project and one ticket in
 // the queue, and returns the directory and the id of the ticket.
@@ -131,23 +164,14 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	}
 }
 
-// fakeAgent builds dg-fake-agent and returns an Adapter that runs the script.
+// fakeAgent returns an Adapter that runs the given script.
 func fakeAgent(t *testing.T, lines ...string) adapters.Fake {
 	t.Helper()
-	dir := t.TempDir()
-
-	binary := filepath.Join(dir, "dg-fake-agent")
-	out, err := exec.Command("go", "build", "-o", binary,
-		"github.com/alcubie/delegator/cmd/dg-fake-agent").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build: %v: %s", err, out)
-	}
-
-	script := filepath.Join(dir, "script")
+	script := filepath.Join(t.TempDir(), "script")
 	if err := os.WriteFile(script, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return adapters.Fake{Binary: binary, Script: script}
+	return adapters.Fake{Binary: fakeAgentPath, Script: script}
 }
 
 // The script sleeps before it writes, so a Start that returns without waiting

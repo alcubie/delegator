@@ -2,23 +2,44 @@ package adapters
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
-// fakeAgentBinary builds cmd/dg-fake-agent and returns its path. Section 10.2
-// asks for a real program and not a function of a test, so the test builds one.
-func fakeAgentBinary(t *testing.T) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "dg-fake-agent")
-	out, err := exec.Command("go", "build", "-o", path,
+// fakeAgentPath is dg-fake-agent, built once for the whole package.
+var fakeAgentPath string
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+// TestMain builds dg-fake-agent once. Section 10.2 asks for a real program
+// rather than a test function, so the tests need the built command; building it
+// per test recompiled the same program. The directory is unique because go test
+// runs packages side by side.
+//
+// The work is here rather than in TestMain so the cleanup can be deferred:
+// os.Exit does not run deferred calls, and every path out of TestMain ends in
+// one.
+func runTests(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "delegator-adapters-test")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer os.RemoveAll(dir)
+
+	fakeAgentPath = filepath.Join(dir, "dg-fake-agent")
+	out, err := exec.Command("go", "build", "-o", fakeAgentPath,
 		"github.com/alcubie/delegator/cmd/dg-fake-agent").CombinedOutput()
 	if err != nil {
-		t.Fatalf("go build: %v: %s", err, out)
+		fmt.Fprintf(os.Stderr, "go build: %v: %s\n", err, out)
+		return 1
 	}
-	return path
+	return m.Run()
 }
 
 // scriptFile writes one script and returns its path.
@@ -37,7 +58,7 @@ var _ Adapter = Fake{}
 // Launch gave the command that directory to work in.
 func TestFakeLaunchStartsTheFakeAgentWithTheScript(t *testing.T) {
 	worktree := t.TempDir()
-	fake := Fake{Binary: fakeAgentBinary(t), Script: scriptFile(t, "write made-here the work\nexit 0\n")}
+	fake := Fake{Binary: fakeAgentPath, Script: scriptFile(t, "write made-here the work\nexit 0\n")}
 
 	if err := fake.Launch(RunSpec{Worktree: worktree, Session: "s-1"}).Run(); err != nil {
 		t.Fatal(err)
@@ -55,7 +76,7 @@ func TestFakeLaunchStartsTheFakeAgentWithTheScript(t *testing.T) {
 // The supervisor decides that a run failed from the status of the command, so
 // the status of the script must reach it.
 func TestFakeLaunchGivesTheStatusOfTheScript(t *testing.T) {
-	fake := Fake{Binary: fakeAgentBinary(t), Script: scriptFile(t, "exit 3\n")}
+	fake := Fake{Binary: fakeAgentPath, Script: scriptFile(t, "exit 3\n")}
 
 	err := fake.Launch(RunSpec{Worktree: t.TempDir()}).Run()
 
