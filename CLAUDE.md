@@ -14,6 +14,13 @@ above this directory, and this file holds what belongs to this repository only.
   symptom: `staticcheck` reports the change (a function that nothing calls, for
   example) and `go test` passes.
 
+- **A mutation can leave files in the repository.** `go test` runs each test
+  binary with the package directory as its working directory, so a mutation that
+  corrupts a path writes there and not into a temporary directory. Two files
+  landed in `internal/fakeagent` this way and reached a commit through
+  `git add -A`. After a mutation run, read `git status` before staging, and
+  stage the paths you changed rather than everything.
+
 - **Run the real binary.** `make install` puts `dg` on the PATH. Two faults this
   session passed each test and appeared at the first real run: `dg show` wrapped
   prose that already held the line breaks of the person, and the text of a field
