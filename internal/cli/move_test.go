@@ -94,7 +94,7 @@ func TestRunMoveWithAWordThatIsNotADirection(t *testing.T) {
 
 func TestRunMoveWithATicketThatIsNotInTheQueue(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
-	if _, err := openStore(t, dataDir).RemoveTicket(ids[1], store.Running); err != nil {
+	if err := openStore(t, dataDir).ChangeStatus(ids[1], store.Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitlesOf(t, dataDir)
@@ -152,7 +152,7 @@ func TestRunMoveBeforeATicket(t *testing.T) {
 
 func TestRunMoveBeforeATicketThatIsNotInTheQueue(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
-	if _, err := openStore(t, dataDir).RemoveTicket(ids[2], store.Running); err != nil {
+	if err := openStore(t, dataDir).ChangeStatus(ids[2], store.Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitlesOf(t, dataDir)

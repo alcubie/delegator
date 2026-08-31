@@ -507,7 +507,7 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 
 func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
 	s, ticketID := oneTicket(t)
-	if _, err := s.RemoveTicket(ticketID, Running); err != nil {
+	if err := s.ChangeStatus(ticketID, Running); err != nil {
 		t.Fatal(err)
 	}
 
@@ -617,43 +617,25 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 	}
 }
 
-func TestRemoveTicketRemovesTicketFromQueue(t *testing.T) {
+func TestChangeStatusOutOfTheQueueLeavesTheOthersInOrder(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	removeID := ids[0]
-	ok, err := s.RemoveTicket(removeID, Running)
-	if err != nil {
+	if err := s.ChangeStatus(ids[0], Running); err != nil {
 		t.Fatal(err)
-	}
-	if !ok {
-		t.Error("ticket was not removed")
 	}
 
 	want := []string{"second", "third"}
 	if got := queueTitles(t, s); !slices.Equal(got, want) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
-
-	// check that the removed ticket has the values set correctly
-	var state string
-	if err = s.db.QueryRow(
-		"SELECT status FROM tickets WHERE id = ?", removeID).Scan(&state); err != nil {
-		t.Fatal(err)
-	}
-	if state != "running" {
-		t.Errorf("state = %s, want = running", state)
-	}
-	if position := ticketPosition(t, s, removeID); position.Valid {
-		t.Errorf("position = %d, want = nil", position.V)
-	}
 }
 
-func TestRemoveTicketCanOnlyTransitionToValidStates(t *testing.T) {
+func TestChangeStatusFromQueuedToAStatusItCannotReach(t *testing.T) {
 	s, id := oneTicket(t)
 
 	for _, state := range []TicketStatus{Ready, Failed, Done, Queued} {
-		if _, err := s.RemoveTicket(id, state); !errors.Is(err, ErrInvalidTicketStateChange) {
-			t.Errorf("RemoveTicket to %s gave err = %v, want ErrInvalidTicketStateChange", state, err)
+		if err := s.ChangeStatus(id, state); !errors.Is(err, ErrInvalidTicketStateChange) {
+			t.Errorf("ChangeStatus to %s gave err = %v, want ErrInvalidTicketStateChange", state, err)
 		}
 
 		tickets, err := s.ListQueue()
@@ -663,31 +645,6 @@ func TestRemoveTicketCanOnlyTransitionToValidStates(t *testing.T) {
 		if len(tickets) != 1 {
 			t.Errorf("ticket should remain in queue, got length = %d for state = %s", len(tickets), state)
 		}
-	}
-}
-
-func TestRemoveTicketDoesNotModifyANonQueuedTicket(t *testing.T) {
-	s, projectID := emptyStore(t)
-
-	nonEntryState := Ready // a state that can't advance from queued
-	result, err := s.db.Exec(
-		"INSERT INTO tickets (project_id, title, status, created) VALUES (?, ?, ?, ?)",
-		projectID, "title", nonEntryState, "2026-08-27",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ticketID, err := result.LastInsertId()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ok, err := s.RemoveTicket(ticketID, Running)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("ticket was removed and should not have been")
 	}
 }
 
@@ -733,7 +690,7 @@ func TestMoveTicketMovesInEachDirection(t *testing.T) {
 
 func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.RemoveTicket(ids[1], Running); err != nil {
+	if err := s.ChangeStatus(ids[1], Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitles(t, s)
@@ -1089,7 +1046,7 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 // NULL arrives as the zero value of its type.
 func TestTicketWithNoPositionAndNoBranch(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.RemoveTicket(id, Running); err != nil {
+	if err := s.ChangeStatus(id, Running); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1153,7 +1110,7 @@ func TestMoveTicketBeforeItself(t *testing.T) {
 
 func TestMoveTicketBeforeWithATargetThatIsNotInTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.RemoveTicket(ids[2], Running); err != nil {
+	if err := s.ChangeStatus(ids[2], Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitles(t, s)
@@ -1169,7 +1126,7 @@ func TestMoveTicketBeforeWithATargetThatIsNotInTheQueue(t *testing.T) {
 
 func TestMoveTicketBeforeWithATicketThatIsNotInTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.RemoveTicket(ids[0], Running); err != nil {
+	if err := s.ChangeStatus(ids[0], Running); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1182,7 +1139,7 @@ func TestMoveTicketBeforeWithATicketThatIsNotInTheQueue(t *testing.T) {
 // no position, so this change does not need the work of condition 2.
 func TestChangeStatusWritesTheNewStatus(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.RemoveTicket(id, Running); err != nil {
+	if err := s.ChangeStatus(id, Running); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1202,7 +1159,7 @@ func TestChangeStatusWritesTheNewStatus(t *testing.T) {
 // nextStates says which change one status can take, and ChangeStatus obeys it.
 func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.RemoveTicket(id, Running); err != nil {
+	if err := s.ChangeStatus(id, Running); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1230,7 +1187,7 @@ func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
 // An end is an end: no change leaves done or cancelled.
 func TestChangeStatusFromAnEnd(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.RemoveTicket(id, Cancelled); err != nil {
+	if err := s.ChangeStatus(id, Cancelled); err != nil {
 		t.Fatal(err)
 	}
 

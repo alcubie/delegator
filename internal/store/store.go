@@ -307,35 +307,6 @@ func (s *Store) ListQueue() ([]QueuedTicket, error) {
 	return queue, rows.Err()
 }
 
-// RemoveTicket removes ticket with ID id from the queue.
-// The positions of the other tickets are not modified as they will still remain in the correct order.
-// The ticket must have its status as "queued" and a position in the queue in order to be modified.
-func (s *Store) RemoveTicket(id int64, newStatus TicketStatus) (bool, error) {
-	if !canChange(Queued, newStatus) {
-		return false, fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, Queued, newStatus)
-	}
-
-	result, err := s.db.Exec(
-		`UPDATE tickets
-			SET status = ?, position = NULL
-			WHERE id = ? AND status = ? AND position IS NOT NULL
-		`,
-		newStatus,
-		id,
-		Queued,
-	)
-	if err != nil {
-		return false, err
-	}
-
-	num, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-
-	return num == 1, nil
-}
-
 // MoveTicket moves one ticket in the queue, in the direction of move. The read
 // of the order and the write of each new position are in one transaction, so
 // the order that moves is the order that the queue has.
