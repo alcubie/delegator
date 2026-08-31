@@ -532,7 +532,8 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 
 // ChangeStatus sets a new status for a ticket. It reads the current status
 // first, so nextStates decides whether the change is allowed, and returns
-// ErrInvalidTicketStateChange if it is not.
+// ErrInvalidTicketStateChange if it is not, and ErrNoTicket if no ticket has
+// the id.
 //
 // Position follows status: entering queued appends to the end, leaving it
 // clears the position, so the CHECK constraint holds either way.

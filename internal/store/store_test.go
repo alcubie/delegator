@@ -1269,3 +1269,11 @@ func TestChangeStatusIntoTheQueuePutsTheTicketAtTheEnd(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
 }
+
+func TestChangeStatusOnATicketThatIsNotThere(t *testing.T) {
+	s, _ := emptyStore(t)
+
+	if err := s.ChangeStatus(9999, Running); !errors.Is(err, ErrNoTicket) {
+		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+}
