@@ -3,10 +3,13 @@ package run
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -61,7 +64,7 @@ func readTicket(t *testing.T, dataDir string, id int64) store.Ticket {
 func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
-	if err := Start(dataDir, id); err != nil {
+	if err := Start(dataDir, id, fakeAgent(t, "exit 0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,13 +101,14 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	agent := fakeAgent(t, "exit 0")
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- Start(dataDir, id)
+			errs <- Start(dataDir, id, agent)
 		}()
 	}
 	wg.Wait()
@@ -124,5 +128,45 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	}
 	if got := readTicket(t, dataDir, id); got.Status != store.Running {
 		t.Errorf("status = %q, want %q", got.Status, store.Running)
+	}
+}
+
+// fakeAgent builds dg-fake-agent and returns an Adapter that runs the script.
+func fakeAgent(t *testing.T, lines ...string) adapters.Fake {
+	t.Helper()
+	dir := t.TempDir()
+
+	binary := filepath.Join(dir, "dg-fake-agent")
+	out, err := exec.Command("go", "build", "-o", binary,
+		"github.com/alcubie/delegator/cmd/dg-fake-agent").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build: %v: %s", err, out)
+	}
+
+	script := filepath.Join(dir, "script")
+	if err := os.WriteFile(script, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return adapters.Fake{Binary: binary, Script: script}
+}
+
+// The script sleeps before it writes, so a Start that returns without waiting
+// finds no file. The path is relative, so the file lands in the worktree only
+// if the agent was started there.
+func TestStartRunsTheAgentInTheWorktreeAndWaits(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run sleep 0.3", "write made-by-the-agent done", "exit 0")
+
+	if err := Start(dataDir, id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	made := filepath.Join(dataDir, "worktrees", "1", "made-by-the-agent")
+	content, err := os.ReadFile(made)
+	if err != nil {
+		t.Fatalf("the agent did not finish before Start returned: %v", err)
+	}
+	if got := string(content); got != "done" {
+		t.Errorf("content = %q, want %q", got, "done")
 	}
 }
