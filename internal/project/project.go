@@ -157,3 +157,11 @@ func FirstCommit(root string) (string, error) {
 	lines := strings.Split(out, "\n")
 	return lines[len(lines)-1], nil
 }
+
+// AddWorktree makes a worktree at path, checked out on a new branch that starts
+// at from. Git makes the branch together with the worktree, so the caller does
+// not make it first.
+func AddWorktree(root, path, branch, from string) error {
+	_, err := gitOutput(root, "worktree", "add", "-b", branch, path, from)
+	return err
+}

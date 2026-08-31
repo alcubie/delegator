@@ -3,8 +3,12 @@ package run
 
 import (
 	"fmt"
+	"path/filepath"
+	"strconv"
 
 	"github.com/gosimple/slug"
+
+	"github.com/alcubie/delegator/internal/project"
 )
 
 // branchPrefix is the prefix attached to all branch names
@@ -25,4 +29,15 @@ func branch(id int64, title string) string {
 	}
 
 	return fmt.Sprintf("%s/%d-%s", branchPrefix, id, generated)
+}
+
+// Worktree makes the worktree for one run at <dataDir>/worktrees/<id>, checked
+// out on a new branch that starts at defaultBranch. It returns the path of the
+// worktree.
+func Worktree(dataDir, projectPath, defaultBranch string, id int64, title string) (string, error) {
+	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+	if err := project.AddWorktree(projectPath, path, branch(id, title), defaultBranch); err != nil {
+		return "", err
+	}
+	return path, nil
 }

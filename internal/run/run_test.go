@@ -1,9 +1,60 @@
 package run
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// gitIn runs one git command in dir. It stops the test if git gives an error,
+// because a repository the test cannot build is not a result of the test.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	if out, err := exec.Command("git", all...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+// gitOut runs one git command in dir and returns its output with no final
+// newline.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	out, err := exec.Command("git", all...).Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			t.Fatalf("git %v: %v: %s", args, err, exitErr.Stderr)
+		}
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// repoOnMain makes a repository on main with one commit. A worktree needs a
+// commit to start from, and the name is fixed so the test does not depend on
+// the config of the person who runs it.
+func repoOnMain(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	commitIn(t, dir, "first")
+	return dir
+}
+
+// commitIn makes one empty commit. The identity is in the command, so the test
+// does not read the config of the person who runs it.
+func commitIn(t *testing.T, dir, message string) {
+	t.Helper()
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "--allow-empty", "-q", "-m", message)
+}
 
 func TestBranchSuffix(t *testing.T) {
 	tests := []struct {
@@ -34,5 +85,30 @@ func TestBranchNoAsciiTitle(t *testing.T) {
 	want := "delegator/1"
 	if got != want {
 		t.Errorf("got = %s, want = %s", got, want)
+	}
+}
+
+// HEAD moves away from main before the call, so the last assertion shows that
+// the worktree starts at the default branch and not at the branch the person
+// happens to be on.
+func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
+	repo := repoOnMain(t)
+	gitIn(t, repo, "checkout", "-q", "-b", "other")
+	commitIn(t, repo, "second")
+	dataDir := t.TempDir()
+
+	path, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := filepath.Join(dataDir, "worktrees", "7"); path != want {
+		t.Errorf("path = %s, want %s", path, want)
+	}
+	if got := gitOut(t, path, "rev-parse", "--abbrev-ref", "HEAD"); got != "delegator/7-add-the-thing" {
+		t.Errorf("branch = %s, want delegator/7-add-the-thing", got)
+	}
+	if got, want := gitOut(t, path, "rev-parse", "HEAD"), gitOut(t, repo, "rev-parse", "main"); got != want {
+		t.Errorf("the worktree starts at %s, want main at %s", got, want)
 	}
 }
