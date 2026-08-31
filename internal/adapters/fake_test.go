@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/alcubie/delegator/internal/agentbin"
 )
 
 // fakeAgentPath is dg-fake-agent, built once for the whole package.
@@ -16,29 +18,18 @@ func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
 
-// TestMain builds dg-fake-agent once. Section 10.2 asks for a real program
-// rather than a test function, so the tests need the built command; building it
-// per test recompiled the same program. The directory is unique because go test
-// runs packages side by side.
-//
-// The work is here rather than in TestMain so the cleanup can be deferred:
-// os.Exit does not run deferred calls, and every path out of TestMain ends in
-// one.
+// runTests builds dg-fake-agent once for the package and runs its tests. The
+// work is here rather than in TestMain so the cleanup can be deferred: os.Exit
+// does not run deferred calls, and every path out of TestMain ends in one.
 func runTests(m *testing.M) int {
-	dir, err := os.MkdirTemp("", "delegator-adapters-test")
+	binary, remove, err := agentbin.Build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer os.RemoveAll(dir)
+	defer remove()
 
-	fakeAgentPath = filepath.Join(dir, "dg-fake-agent")
-	out, err := exec.Command("go", "build", "-o", fakeAgentPath,
-		"github.com/alcubie/delegator/cmd/dg-fake-agent").CombinedOutput()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "go build: %v: %s\n", err, out)
-		return 1
-	}
+	fakeAgentPath = binary
 	return m.Run()
 }
 
