@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -23,8 +24,8 @@ func emptyStore(t *testing.T) (*Store, int64) {
 	s, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
+		t.Cleanup(func() { s.Close() })
 	}
-	t.Cleanup(func() { s.Close() })
 
 	projectID, err := s.AddProject("/projects/path", "main")
 	if err != nil {
@@ -1175,5 +1176,66 @@ func TestMoveTicketBeforeWithATicketThatIsNotInTheQueue(t *testing.T) {
 
 	if err := s.MoveTicketBefore(ids[0], ids[2]); !errors.Is(err, ErrNotInTheQueue) {
 		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	}
+}
+
+// A ticket that runs can become ready, which is what dg finish does. Both hold
+// no position, so this change does not need the work of condition 2.
+func TestChangeStatusWritesTheNewStatus(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.RemoveTicket(id, Running); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ChangeStatus(id, Ready); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Ready {
+		t.Errorf("status = %q, want %q", ticket.Status, Ready)
+	}
+}
+
+// nextStates says which change one status can take, and ChangeStatus obeys it.
+func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.RemoveTicket(id, Running); err != nil {
+		t.Fatal(err)
+	}
+
+	// running goes to ready, failed or cancelled, and not to done
+	err := s.ChangeStatus(id, Done)
+	if !errors.Is(err, ErrInvalidTicketStateChange) {
+		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+	// the message names the two, so the person sees which change it refused
+	for _, want := range []string{string(Running), string(Done)} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, and it does not name %q", err, want)
+		}
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Running {
+		t.Errorf("status = %q, and the change that gave an error wrote it", ticket.Status)
+	}
+}
+
+// An end is an end: no change leaves done or cancelled.
+func TestChangeStatusFromAnEnd(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.RemoveTicket(id, Cancelled); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ChangeStatus(id, Running); !errors.Is(err, ErrInvalidTicketStateChange) {
+		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
 	}
 }

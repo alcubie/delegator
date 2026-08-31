@@ -121,7 +121,7 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Cancelled: nil,
 }
 
-// canChange returns whether one status can advance to another.
+// canChange returns whether one status can change to another.
 func canChange(from, to TicketStatus) bool {
 	return slices.Contains(nextStates[from], to)
 }
@@ -528,4 +528,35 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		return Ticket{}, err
 	}
 	return t, nil
+}
+
+// ChangeStatus writes a new status for one ticket. It reads the status that the
+// ticket holds, so nextStates decides the change, and it returns
+// ErrInvalidTicketStateChange for a change that the table does not hold.
+//
+// The read and the write are below one transaction, which is BEGIN IMMEDIATE,
+// so no other program changes the status between the two.
+func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var from TicketStatus
+	err = tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	if err != nil {
+		return err
+	}
+	if !canChange(from, status) {
+		return fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, from, status)
+	}
+
+	if _, err := tx.Exec("UPDATE tickets SET status = ? WHERE id = ?", status, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
