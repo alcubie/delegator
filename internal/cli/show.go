@@ -146,7 +146,7 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 	fmt.Fprintln(out)
 
 	home, _ := os.UserHomeDir()
-	writeField(out, "project", tilde(t.Project, home))
+	writeField(out, "project", tilde(t.Project.Path, home))
 	writeField(out, "ticket", tilde(proseFile(dataDir, t.ID), home))
 	writeField(out, "worktree", tilde(filepath.Join(dataDir, "worktrees", strconv.FormatInt(t.ID, 10)), home))
 	if t.Branch != "" {

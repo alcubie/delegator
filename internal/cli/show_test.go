@@ -104,7 +104,7 @@ func showTicketLines(t *testing.T, ticket store.Ticket, prose string) []string {
 func TestWriteTicketHoldsEachPart(t *testing.T) {
 	ticket := store.Ticket{
 		ID:        4,
-		Project:   "/projects/web-api",
+		Project:   store.Project{Path: "/projects/web-api"},
 		Title:     "Remove the staging app",
 		Status:    store.Ready,
 		Branch:    "delegator/4-remove-the-staging-app",
@@ -135,7 +135,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 // A ticket that had no run holds no result and no flags, and the two lines say
 // none rather than nothing, so the person sees that no run wrote them.
 func TestWriteTicketWithNoRun(t *testing.T) {
-	ticket := store.Ticket{ID: 3, Project: "/projects/one", Title: "a title", Status: store.Queued}
+	ticket := store.Ticket{ID: 3, Project: store.Project{Path: "/projects/one"}, Title: "a title", Status: store.Queued}
 	out := strings.Join(showTicketLines(t, ticket, ""), "\n")
 
 	if !strings.Contains(out, "flags     none") {
@@ -156,7 +156,7 @@ func TestWriteTicketWithNoRun(t *testing.T) {
 // first is under the first.
 func TestWriteTicketWrapsTheFlags(t *testing.T) {
 	long := strings.Repeat("a word ", 40)
-	ticket := store.Ticket{ID: 4, Project: "/p/one", Title: "a title", Status: store.Ready, Flags: long}
+	ticket := store.Ticket{ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Ready, Flags: long}
 
 	var body []string
 	for _, line := range showTicketLines(t, ticket, "") {
@@ -230,7 +230,7 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 		"\n" +
 		"1. The first item of a list that is also long enough to go past the width.\n" +
 		"2. The second item.\n"
-	ticket := store.Ticket{ID: 4, Project: "/p/one", Title: "a title", Status: store.Queued}
+	ticket := store.Ticket{ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Queued}
 
 	got := showTicketLines(t, ticket, prose)
 	for _, want := range []string{
@@ -255,7 +255,7 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 // two would say when a run stopped and read as when the ticket arrived.
 func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 	base := store.Ticket{
-		ID: 4, Project: "/p/one", Title: "a title",
+		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
 		Created:   "2026-08-01T09:00:00Z",
 		Completed: "2026-08-28T10:00:00Z",
 	}
@@ -284,7 +284,7 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 // because the person chose its line breaks and dg show writes them as they are.
 func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 	ticket := store.Ticket{
-		ID: 4, Project: "/projects/a-name-of-some-length", Title: "a title", Status: store.Ready,
+		ID: 4, Project: store.Project{Path: "/projects/a-name-of-some-length"}, Title: "a title", Status: store.Ready,
 		Flags:   strings.Repeat("a word ", 40),
 		Result:  strings.Repeat("more words ", 20),
 		Branch:  "delegator/4-a-title",

@@ -1021,7 +1021,7 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct{ name, got, want string }{
-		{"project", got.Project, "/projects/path"},
+		{"project", got.Project.Path, "/projects/path"},
 		{"title", got.Title, "second"},
 		{"status", string(got.Status), "ready"},
 		{"branch", got.Branch, "delegator/2-second"},

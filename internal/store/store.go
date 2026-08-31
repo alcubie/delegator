@@ -461,12 +461,12 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 // ErrNoTicket shows that no ticket holds the id.
 var ErrNoTicket = errors.New("no such ticket")
 
-// Ticket is one row of the table tickets, with the path of its project. A
-// column that holds NULL arrives as the zero value of its type, as it does for
-// an OpenTicket.
+// Ticket is one row of the table tickets, with the project it belongs to. A
+// NULL column arrives as the zero value of its type, as it does for an
+// OpenTicket.
 type Ticket struct {
 	ID        int64
-	Project   string
+	Project   Project
 	Title     string
 	Status    TicketStatus
 	Position  int
@@ -482,7 +482,8 @@ type Ticket struct {
 func (s *Store) Ticket(id int64) (Ticket, error) {
 	var t Ticket
 	err := s.db.QueryRow(`
-		SELECT tickets.id, projects.path, tickets.title, tickets.status,
+		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
+		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.result, ''),
 		       COALESCE(tickets.flags, ''), tickets.created,
@@ -490,7 +491,8 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
-		&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Branch,
+		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
+		&t.Title, &t.Status, &t.Position, &t.Branch,
 		&t.Session, &t.Result, &t.Flags, &t.Created, &t.Completed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
