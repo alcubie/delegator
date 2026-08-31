@@ -520,8 +520,17 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 	}
 	defer tx.Rollback()
 
+	if err := changeStatus(tx, id, status); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// changeStatus is ChangeStatus without the transaction, so a caller that writes
+// more than the status can do all of it in one.
+func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 	var from TicketStatus
-	err = tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
+	err := tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
@@ -539,7 +548,28 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 			WHERE id = ?
 		`
 	}
-	if _, err := tx.Exec(update, status, id); err != nil {
+	_, err = tx.Exec(update, status, id)
+	return err
+}
+
+// Claim marks a queued ticket as running and records its branch, both in one
+// transaction. A second supervisor racing for the same ticket finds it already
+// running, gets ErrInvalidTicketStateChange, and writes nothing.
+//
+// Create the worktree before calling this, never inside it: the transaction
+// holds SQLite's writer lock, and git worktree add runs long enough to park
+// every other dg command on the busy_timeout.
+func (s *Store) Claim(id int64, branch string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := changeStatus(tx, id, Running); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
 		return err
 	}
 	return tx.Commit()
