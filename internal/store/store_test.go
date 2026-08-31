@@ -1238,3 +1238,34 @@ func TestChangeStatusFromAnEnd(t *testing.T) {
 		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
 	}
 }
+
+// The CHECK of the table holds a position for a queued ticket and none for
+// every other status, so a ticket that leaves the queue gives up its position.
+func TestChangeStatusOutOfTheQueueClearsThePosition(t *testing.T) {
+	s, id := oneTicket(t)
+
+	if err := s.ChangeStatus(id, Running); err != nil {
+		t.Fatal(err)
+	}
+
+	if position := ticketPosition(t, s, id); position.Valid {
+		t.Errorf("position = %d, want none", position.V)
+	}
+}
+
+// dg revise puts a ticket that a person rejected back into the queue. It goes
+// to the end, behind each ticket that already waits.
+func TestChangeStatusIntoTheQueuePutsTheTicketAtTheEnd(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	for _, status := range []TicketStatus{Running, Ready, Queued} {
+		if err := s.ChangeStatus(ids[0], status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := []string{"second", "third", "first"}
+	if got := queueTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("the queue is %v, want %v", got, want)
+	}
+}

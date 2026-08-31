@@ -530,12 +530,15 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 	return t, nil
 }
 
-// ChangeStatus writes a new status for one ticket. It reads the status that the
-// ticket holds, so nextStates decides the change, and it returns
-// ErrInvalidTicketStateChange for a change that the table does not hold.
+// ChangeStatus sets a new status for a ticket. It reads the current status
+// first, so nextStates decides whether the change is allowed, and returns
+// ErrInvalidTicketStateChange if it is not.
 //
-// The read and the write are below one transaction, which is BEGIN IMMEDIATE,
-// so no other program changes the status between the two.
+// Position follows status: entering queued appends to the end, leaving it
+// clears the position, so the CHECK constraint holds either way.
+//
+// The read and the write share one transaction, which is BEGIN IMMEDIATE, so
+// nothing can change the status in between.
 func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -555,7 +558,14 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 		return fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, from, status)
 	}
 
-	if _, err := tx.Exec("UPDATE tickets SET status = ? WHERE id = ?", status, id); err != nil {
+	update := "UPDATE tickets SET status = ?, position = NULL WHERE id = ?"
+	if status == Queued {
+		update = `UPDATE tickets
+			SET status = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets)
+			WHERE id = ?
+		`
+	}
+	if _, err := tx.Exec(update, status, id); err != nil {
 		return err
 	}
 	return tx.Commit()
