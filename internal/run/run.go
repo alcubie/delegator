@@ -1,4 +1,4 @@
-// Package run holds the functions needed for initiating a run of a ticket6
+// Package run holds the functions needed for initiating a run of a ticket
 package run
 
 import (
