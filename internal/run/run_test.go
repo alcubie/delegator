@@ -112,3 +112,23 @@ func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 		t.Errorf("the worktree starts at %s, want main at %s", got, want)
 	}
 }
+
+// A restart uses the worktree that the earlier run made, so a second call
+// returns the same path and no error.
+func TestWorktreeThatIsThereAlready(t *testing.T) {
+	repo := repoOnMain(t)
+	dataDir := t.TempDir()
+
+	first, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := Worktree(dataDir, repo, "main", 7, "Add the thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != first {
+		t.Errorf("second = %s, want %s", second, first)
+	}
+}

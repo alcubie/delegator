@@ -3,6 +3,7 @@ package run
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -34,8 +35,14 @@ func branch(id int64, title string) string {
 // Worktree makes the worktree for one run at <dataDir>/worktrees/<id>, checked
 // out on a new branch that starts at defaultBranch. It returns the path of the
 // worktree.
+//
+// A worktree that is there already is returned as it is, because a restart
+// works in the one that the earlier run made.
 func Worktree(dataDir, projectPath, defaultBranch string, id int64, title string) (string, error) {
 	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
 	if err := project.AddWorktree(projectPath, path, branch(id, title), defaultBranch); err != nil {
 		return "", err
 	}
