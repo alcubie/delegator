@@ -33,13 +33,19 @@ func branch(id int64, title string) string {
 	return fmt.Sprintf("%s/%d-%s", branchPrefix, id, generated)
 }
 
+// WorktreePath returns the directory a run works in. Section 7 gives it the id
+// of the ticket and nothing else, so no name on the disk holds a project.
+func WorktreePath(dataDir string, id int64) string {
+	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+}
+
 // Worktree creates the worktree for one run at <dataDir>/worktrees/<id>, on a
 // new branch cut from the project's default branch, and returns its path.
 //
 // An existing worktree is returned unchanged: a restart works in the one the
 // earlier run created.
 func Worktree(dataDir string, ticket store.Ticket) (string, error) {
-	path := filepath.Join(dataDir, "worktrees", strconv.FormatInt(ticket.ID, 10))
+	path := WorktreePath(dataDir, ticket.ID)
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	}

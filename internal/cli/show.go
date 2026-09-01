@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -169,7 +170,7 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 	home, _ := os.UserHomeDir()
 	writeField(out, "project", tilde(t.Project.Path, home))
 	writeField(out, "ticket", tilde(proseFile(dataDir, t.ID), home))
-	writeField(out, "worktree", tilde(filepath.Join(dataDir, "worktrees", strconv.FormatInt(t.ID, 10)), home))
+	writeField(out, "worktree", tilde(run.WorktreePath(dataDir, t.ID), home))
 	if t.Branch != "" {
 		writeField(out, "branch", t.Branch)
 	}
