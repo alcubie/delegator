@@ -121,8 +121,10 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Cancelled: nil,
 }
 
-// canChange returns whether one status can change to another.
-func canChange(from, to TicketStatus) bool {
+// CanChange reports whether one status can change to another. A caller that
+// does something irreversible before it writes a status asks this first, so it
+// does not do that thing for a change the state machine then refuses.
+func CanChange(from, to TicketStatus) bool {
 	return slices.Contains(nextStates[from], to)
 }
 
@@ -533,7 +535,7 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 	if err != nil {
 		return err
 	}
-	if !canChange(from, status) {
+	if !CanChange(from, status) {
 		return fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, from, status)
 	}
 

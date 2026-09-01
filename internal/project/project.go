@@ -180,3 +180,11 @@ func Commit(root, hash string) (short, subject string, err error) {
 	short, subject, _ = strings.Cut(out, "\n")
 	return short, subject, nil
 }
+
+// RemoveWorktree removes the worktree at path and the record git keeps of it.
+// Git refuses a worktree holding changes that are not committed, which is what
+// makes section 6.4 require a commit from every run.
+func RemoveWorktree(root, path string) error {
+	_, err := gitOutput(root, "worktree", "remove", path)
+	return err
+}
