@@ -483,7 +483,7 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
-			   tickets.created, COALESCE(tickets.completed, '')
+		       tickets.created, COALESCE(tickets.completed, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
