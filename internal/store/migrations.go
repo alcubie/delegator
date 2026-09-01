@@ -27,6 +27,7 @@ var migrations = []string{
 	tables,
 	completedColumn,
 	dropTicketsColumns,
+	addTicketsCommitColumn,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -75,6 +76,10 @@ ALTER TABLE tickets ADD COLUMN completed TEXT;
 const dropTicketsColumns = `
 ALTER TABLE tickets DROP COLUMN result;
 ALTER TABLE tickets DROP COLUMN flags;
+`
+
+const addTicketsCommitColumn = `
+ALTER TABLE tickets ADD COLUMN commit_id TEXT;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

@@ -470,6 +470,7 @@ type Ticket struct {
 	Position  int
 	Branch    string
 	Session   string
+	Commit    string
 	Created   string
 	Completed string
 }
@@ -481,14 +482,14 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
-		       COALESCE(tickets.session, ''), tickets.created,
-		       COALESCE(tickets.completed, '')
+		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
+			   tickets.created, COALESCE(tickets.completed, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Created, &t.Completed)
+		&t.Session, &t.Commit, &t.Created, &t.Completed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
@@ -565,6 +566,25 @@ func (s *Store) Claim(id int64, branch string) error {
 		return err
 	}
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// FinishTicket completes a Running ticket.
+//
+// If the ticket is not Running, it returns ErrInvalidTicketStateChange.
+func (s *Store) FinishTicket(id int64, commit string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := changeStatus(tx, id, Ready); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id); err != nil {
 		return err
 	}
 	return tx.Commit()
