@@ -19,10 +19,10 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | adapter | The code that operates one agent. |
 | agent | An external command line program that writes code. Version 1 has claude only. |
 | CLI | Command Line Interface. |
+| commit | The one commit that a run makes. Its message is the report of the run. |
 | config | The file that holds the selections of the person. |
 | database | The one SQLite file that holds each field, the queue and the counter. |
 | DONE | The group in the inbox that contains each closed ticket. |
-| flags | A short note from the agent about each item that did not go as expected. The value `none` shows that there is no such item. |
 | Go | The programming language of delegator. |
 | goreleaser | The tool that makes the binary files and the installer. |
 | inbox | The one ordered list of tickets that the person examines. |
@@ -33,7 +33,6 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | queue | The ordered list of tickets that wait for work. |
 | QUEUED | The group in the inbox that contains each ticket in the queue. |
 | READY | The group in the inbox that contains each completed ticket. |
-| result | A short note from the agent about what it did. |
 | run | One execution of an agent for one ticket. |
 | RUNNING | The group in the inbox that contains the ticket with an active run. |
 | schema | The version number of the format of the database. |
@@ -70,13 +69,13 @@ them.
 2. **The person goes away and comes back.** The product is not a window on a run that
    operates now. Write it for a person who was away for 2 hours.
 3. **The head of the person keeps no data.** The ticket file contains what to do and
-   why. The agent adds a short `result` and short `flags`.
-4. **Show less.** The person sees the ticket, the `result`, the `flags` and the
-   variables. The person does not see the output of the agent.
+   why. The agent adds a commit, and the message of that commit is its report.
+4. **Show less.** The person sees the ticket, the commit and the variables. The person
+   does not see the output of the agent.
 5. **The inbox is one list.** All projects are in it. The person can apply a filter, but
    delegator does not apply one automatically.
-6. **Closure is complete.** The value `flags none` shows directly that the ticket has no
-   problem.
+6. **Closure is complete.** Each run ends with one commit, so a ticket that is ready
+   always has work that a person can read.
 7. **The person keeps control.** The work is on a branch, in a worktree, and the person
    selects each external command.
 
@@ -91,7 +90,7 @@ them. Section 4 gives that list.
 | 1 | The MCP server operated inside the queue worker. When the queue stopped, the agent had no tools. | Delegator has no server. The agent calls the CLI. See §5. |
 | 2 | The state `processing` had two meanings. A restart put chat work back into the queue, and started the first prompt again above live work. | A run is a first class entity, and it records its initiator. See §6.1. |
 | 3 | `CREATE TABLE IF NOT EXISTS` does not add new columns. A new column gave the error `no such column` on each database that existed. | A statement `CREATE TABLE IF NOT EXISTS` is not a migration. Delegator keeps a number in `PRAGMA user_version`, and applies each migration step at each start. See §7. |
-| 4 | The output of the agent went into the ticket. One ticket got 13378 characters. The short note for the person got 973 characters. | Delegator limits the length of `result` and `flags` when it writes them. A limit in a prompt does not operate. See §6.4. |
+| 4 | The output of the agent went into the ticket. One ticket got 13378 characters. The short note for the person got 973 characters. | The report of a run is its commit message, which delegator does not write and does not limit. The output of the agent stays in the log. See §6.4. |
 | 5 | The command `git difftool` started a graphical tool, and the TUI went away until the tool stopped. | Delegator has no diff and no built-in tools. The person configures each command. See §9.2. |
 | 6 | The command `queue status` used the directory of the person as a filter, and hid tickets from other projects. | One inbox contains all projects. A filter is always explicit. See principle 5. |
 | 7 | The command `queue down` released the lock while a run continued. A quick restart was able to start a second worker on the same worktree. | SQLite controls the queue. A lock from the operating system cannot become out of date. See §5. |
@@ -107,7 +106,7 @@ them. Section 4 gives that list.
 - One queue for all projects, with an order that the person can change.
 - Work in the background, in a worktree. One run at a time.
 - The inbox, with the groups READY, RUNNING, QUEUED and DONE.
-- A short `result` and short `flags` from the agent, with a limit on the length.
+- One commit for each run, and its hash on the ticket.
 - The four variables for each ticket, for use by other programs.
 - The option `--json` on each command that shows data.
 - Commands of the person, which delegator starts in a new window.
@@ -224,29 +223,43 @@ is not the end. From `running` it stops the run and keeps the worktree. From eac
 state there is no run to stop, and the ticket closes with no `dg accept`. Section 8 gives
 each state.
 
-### 6.4 The summary from the agent: `result` and `flags`
+### 6.4 The report from the agent: one commit
 
-The agent must end its work with this command:
+The agent must end its work with one commit, and then this command:
 
 ```
-dg finish <id> --result "..." --flags "..."
+dg finish <id> <commit>
 ```
 
-Delegator limits `result` to 160 characters and `flags` to 240 characters. It applies the
-limit when it writes the file, because a limit in a prompt does not operate. The prototype
-gives the data: the prompt asked for one line, and the agent gave 973 characters.
+The message of that commit is the report. It says what the run did, and it names each item
+that did not go as the ticket said. Delegator writes no part of it and puts no limit on
+it, because the message belongs beside the code that it describes, where the person reads
+the two together.
 
-The field `flags` is not optional. The agent gives `none` if each item went as the ticket
-said. A person who gives work to another person expects a report of each item that did not
-go as expected. This field is that report, and `none` is a complete answer.
+**A run that changes nothing still commits.** The agent uses `git commit --allow-empty` and
+gives the reason in the message. Each run therefore makes exactly one commit, and
+`git log <default>..<branch>` always shows the work of the run. A finished run with no
+commit and a finished run that found nothing to do would otherwise look the same.
 
-A run that stops before `dg finish` becomes `failed`, and not `ready`. A ticket that looks
-complete but is not complete is the most expensive error, so delegator does not let it
-occur.
+**A run with no change is still `ready`.** The person examines the message and decides. A
+run that changed nothing can be the correct answer to a ticket, and delegator does not make
+that decision.
+
+**Delegator keeps no short note from the agent.** An earlier design gave the agent a
+`result` of 160 characters and a `flags` of 240, and put a mark in the inbox for a ticket
+whose `flags` were not `none`. Both are gone.
+
+The note repeated the commit message, which the agent had already written. The mark was
+worse: it came from the agent, about the work of the agent, and a person who saw no mark
+read it as work that needs no examination. An agent that is confidently wrong writes no
+flag. Section 6.4 says that a ticket which looks complete but is not complete is the most
+expensive error, and a ticket that looks safe is that same error one level above. The
+person reads the commit.
+
+A run that stops before `dg finish` becomes `failed`, and not `ready`.
 
 The full data stays available, but away from the eyes of the person. The session has the
-complete conversation. The commit messages on the branch have the detail. The log file has
-the raw output.
+complete conversation. The log file has the raw output.
 
 ### 6.5 The git boundary, worktrees and branches
 
@@ -344,8 +357,7 @@ CREATE TABLE tickets (
   position   INTEGER,
   branch     TEXT,
   session    TEXT,
-  result     TEXT,
-  flags      TEXT,
+  commit_id  TEXT,
   created    TEXT NOT NULL,
   CHECK ((status = 'queued') = (position IS NOT NULL))
 );
@@ -464,11 +476,11 @@ Each change of state is in the table below.
 |---|---|---|
 | no ticket | `queued` | `dg ticket`. The new ticket goes at the end of the queue. |
 | `queued` | `running` | No command. A supervisor takes the first ticket of the queue. |
-| `running` | `ready` | `dg finish`. The agent gives its `result` and its `flags`. |
+| `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
 | `failed` | `queued` | `dg restart`. The run continues the same session, in the same worktree. |
 | `ready` | `done` | `dg accept`. Delegator removes the worktree and keeps the branch. |
-| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its `result` and its `flags` go away. |
+| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its commit goes away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
 
 **Only an agent gives the state `ready`.** The command `dg finish` is one of the two
@@ -481,10 +493,10 @@ three commands. The command `dg accept` closes the ticket. The command `dg revis
 the ticket at the end of the queue with more instructions, and a new run continues the
 same session. The command `dg cancel` stops the work.
 
-**`dg revise` takes away the `result` and the `flags`.** Those two are the report of the
-run that is complete. The person read them, and gives the work again because of what they
-said, so the next run writes its own. A ticket that waits therefore holds no report of a
-run that came before, and the inbox marks no problem that a person is already correcting.
+**`dg revise` takes away the commit.** That commit is the report of the run that is
+complete. The person read it, and gives the work again because of what it said, so the next
+run makes its own. The commits themselves stay on the branch, so nothing is lost: only the
+link from the ticket to one of them goes away.
 
 **The command `dg cancel` is not in the diagram.** It operates from each state that is
 not the end, so an edge from each of those states would go to `cancelled`. Those edges
@@ -504,26 +516,18 @@ recognition is easier than memory.
 ```
 $ dg
 READY
-  4 ⚠  web-api      Remove the staging app
-  7    data-loader  Add a limit on the rate
+  4  web-api      Remove the staging app
+  7  data-loader  Add a limit on the rate
 RUNNING
-  9    web-api      Move to a new version of Go   14m
+  9  web-api      Move to a new version of Go   14m
 QUEUED
- 11    data-loader  Change the tool that measures the coverage
+ 11  data-loader  Change the tool that measures the coverage
 ```
 
-A ticket with `flags` that are not `none` takes the mark ⚠, and a ticket with no problem
-takes a space. The person can therefore see which tickets have a problem, and can accept
-the other tickets with no more commands.
-
-The row holds the mark and not the words. Section 6.4 gives `flags` 240 characters, and one
-of those wraps a row of a terminal three times, so the inbox is no longer a list that a
-person can read down. The command `dg show` gives the words.
-
-The mark is on each row of each group, and not on READY alone. Only a run writes `flags`,
-and `dg revise` takes them away when it puts a ticket back in the queue, so a ticket that
-waits holds no mark. A mark below RUNNING or QUEUED therefore says that something is
-wrong, and it is not the report of a run that the person read already.
+The inbox gives no mark for a ticket that needs attention, and it gives no summary of a
+run. Each ticket below READY waits for the same thing: a person who reads its commit. A
+mark that came from the agent would say that the other tickets need no examination, and
+that is the one thing delegator must not say. Section 6.4 gives the reason in full.
 
 The command `dg show 4` gives one ticket in full:
 
@@ -531,10 +535,7 @@ The command `dg show 4` gives one ticket in full:
 $ dg show 4
   #4  Remove the staging app                           ready · 2h ago
   ───────────────────────────────────────────────────────────────────
-  flags     the deploy is blocked, because the token in .env is not
-            valid. Do not remove the app first, because the DNS
-            points at it.
-  result    The staging app is removed. The gate is green, 433 tests.
+  commit    9f3a1c2  Remove the staging app and its DNS records
 
   ticket    …/delegator/tickets/4.md
   worktree  …/delegator/worktrees/4
@@ -545,7 +546,7 @@ $ dg show 4
   monitor and the secrets.
 ```
 
-A ticket with no problem shows `flags     none`.
+The subject of the commit is on the row. `dg open diff 4` gives the change itself.
 
 ### 9.2 Commands of the person
 
@@ -615,7 +616,7 @@ The agent uses two commands only, and one of them is a command of the person:
 | Command | Function |
 |---|---|
 | `dg show <id>` | Read the ticket, with each change that came after the start. |
-| `dg finish <id> --result … --flags …` | End the work. See §6.4. |
+| `dg finish <id> <commit>` | End the work. See §6.4. |
 
 An earlier draft gave the agent its own `dg read`. The agent and the person then read
 the ticket through two commands, and the two can say different things: the first draft of
@@ -635,8 +636,8 @@ how to prevent them.
 ### 10.1 Types and limits
 
 Go gives types at compilation. Each change of state is in one module, and an illegal
-change causes an error. The limits on `result` and `flags` operate when delegator writes
-the file, and not when it reads it.
+change causes an error. Delegator writes no part of the report of a run, so it applies no
+limit to one: the report is a commit message.
 
 ### 10.2 The fake agent
 
@@ -735,7 +736,7 @@ Each milestone uses the fake agent, includes tests, and is usable at its end.
    `pause`, `cancel` and `restart`. The claude adapter. The commands `read` and `finish`,
    with their limits.
 3. **Closure.** The commands `accept` and `revise`, the removal of a worktree, and the
-   `flags` on each row of the inbox.
+   commit of each run on the ticket.
 4. **Commands of the person.** The config, the variables, `dg open` and the new window.
 5. **Installation.** goreleaser, the installer for Linux and macOS, and `dg doctor`.
 
@@ -778,5 +779,5 @@ Each question from the earlier draft now has an answer:
 
 - The path of a project is a column, and §7 gives the behaviour after a move.
 - Ticket ids are one sequence for all projects.
-- The limits are 160 characters for `result` and 240 for `flags`.
+- The report of a run is its commit message, and delegator applies no limit to it.
 - The names are in §15.
