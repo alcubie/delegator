@@ -113,8 +113,8 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 	}
 }
 
-// Section 5 lets a supervisor start the next ticket, so two can reach one
-// ticket at the same time. The worktree is made first here, because a worktree
+// A supervisor starts the next ticket when its own run ends, so two can reach
+// one ticket at the same time. The worktree is made first here, because a worktree
 // that git refuses would hide which layer does the refusing: with it already
 // there, only the database is left to say no.
 func TestStartGivesOneTicketToOneRun(t *testing.T) {

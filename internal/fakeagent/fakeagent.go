@@ -2,8 +2,9 @@
 // program rather than a test function, so a supervisor test exercises a real
 // process start, a real dg finish call and a real timeout.
 //
-// Section 10.2 of the technical document says why: a fake agent makes the queue,
-// the supervisor, the reconcile and the inbox testable in seconds, for nothing.
+// A fake agent is what makes the queue, the supervisor, the reconcile and the
+// inbox testable in seconds and for nothing. The prototype used a real agent
+// run for each of those, which is why its faults went unfound.
 package fakeagent
 
 import (
@@ -16,8 +17,8 @@ import (
 )
 
 // filePerm is the permission for files the script writes. These are the agent's
-// work inside a worktree, not delegator's own data, so section 11 does not cover
-// them and they take the ordinary permission a real agent would create.
+// work inside a worktree, not delegator's own data, so they take the ordinary
+// permission a real agent would create rather than delegator's private 0600.
 const filePerm = 0o644
 
 // Run reads the script at path and executes each line. It returns the status

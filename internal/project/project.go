@@ -182,8 +182,8 @@ func Commit(root, hash string) (short, subject string, err error) {
 }
 
 // RemoveWorktree removes the worktree at path and the record git keeps of it.
-// Git refuses a worktree holding changes that are not committed, which is what
-// makes section 6.4 require a commit from every run.
+// Git refuses a worktree holding changes that are not committed, which is why
+// every run must end with a commit.
 func RemoveWorktree(root, path string) error {
 	_, err := gitOutput(root, "worktree", "remove", path)
 	return err

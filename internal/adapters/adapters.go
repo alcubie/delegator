@@ -31,8 +31,8 @@ type Adapter interface {
 	Launch(spec RunSpec) *exec.Cmd
 
 	// Resume returns the argv for an interactive session. It is argv rather
-	// than a built command because a user command in section 9.2 may need to
-	// wrap it in a new terminal window.
+	// than a built command because the caller may need to wrap it in a new
+	// terminal window.
 	Resume(session string) []string
 
 	// SessionID returns the id of the session a finished run used, so it can be

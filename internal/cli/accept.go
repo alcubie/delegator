@@ -12,9 +12,8 @@ import (
 
 // acceptCommand returns the command dg accept.
 //
-// The worktree goes before the status, as it does in run.Start. Git refuses a
-// worktree holding changes that are not committed, and a ticket that stays
-// ready after that refusal is one a person sees again.
+// The worktree is removed inside the transaction that closes the ticket, so a
+// worktree git refuses leaves the ticket ready and a person sees it again.
 func acceptCommand(dataDir string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "accept <id>",
@@ -35,16 +34,9 @@ func acceptCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Removing the worktree cannot be undone, so refuse a change the
-			// state machine will not take rather than discover it afterwards.
-			if !store.CanChange(ticket.Status, store.Done) {
-				return fmt.Errorf("%w: %s to %s",
-					store.ErrInvalidTicketStateChange, ticket.Status, store.Done)
-			}
-			if err := run.RemoveWorktree(dataDir, ticket); err != nil {
-				return err
-			}
-			return s.ChangeStatus(id, store.Done)
+			return s.ChangeStatusWith(id, store.Done, func() error {
+				return run.RemoveWorktree(dataDir, ticket)
+			})
 		},
 	}
 }

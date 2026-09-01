@@ -121,10 +121,8 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Cancelled: nil,
 }
 
-// CanChange reports whether one status can change to another. A caller that
-// does something irreversible before it writes a status asks this first, so it
-// does not do that thing for a change the state machine then refuses.
-func CanChange(from, to TicketStatus) bool {
+// canChange reports whether one status can change to another.
+func canChange(from, to TicketStatus) bool {
 	return slices.Contains(nextStates[from], to)
 }
 
@@ -535,7 +533,7 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 	if err != nil {
 		return err
 	}
-	if !CanChange(from, status) {
+	if !canChange(from, status) {
 		return fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, from, status)
 	}
 
@@ -591,6 +589,32 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 		"UPDATE tickets SET commit_id = ?, completed = ? WHERE id = ?",
 		commit, time.Now().UTC().Format(time.RFC3339), id,
 	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ChangeStatusWith changes a status and runs work before the transaction
+// commits, so work that fails leaves the status as it was. Use it when
+// something outside the database must not happen unless the change holds:
+// dg accept removes a worktree, and a ticket it failed to remove must stay
+// ready rather than close with the work still on disk.
+//
+// This holds SQLite's writer lock while work runs, which Claim is careful not
+// to do. Removing a worktree takes a few milliseconds, where creating one
+// checks out every file, so the wait it puts on another command is not the same
+// wait.
+func (s *Store) ChangeStatusWith(id int64, status TicketStatus, work func() error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := changeStatus(tx, id, status); err != nil {
+		return err
+	}
+	if err := work(); err != nil {
 		return err
 	}
 	return tx.Commit()

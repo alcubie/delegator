@@ -100,7 +100,7 @@ func TestAcceptWithTheWorktreeAlreadyGone(t *testing.T) {
 	}
 }
 
-// Section 6.5 removes the worktree at closure, so the disk does not fill with a
+// The worktree goes when the ticket closes, so the disk does not fill with a
 // directory for each ticket a person ever accepted.
 func TestAcceptRemovesTheWorktree(t *testing.T) {
 	dataDir := t.TempDir()

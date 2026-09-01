@@ -33,8 +33,9 @@ func branch(id int64, title string) string {
 	return fmt.Sprintf("%s/%d-%s", branchPrefix, id, generated)
 }
 
-// WorktreePath returns the directory a run works in. Section 7 gives it the id
-// of the ticket and nothing else, so no name on the disk holds a project.
+// WorktreePath returns the directory a run works in. The name is the ticket id
+// alone, so no path on disk carries a project name and a project that moves
+// leaves every worktree where it was.
 func WorktreePath(dataDir string, id int64) string {
 	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
 }
