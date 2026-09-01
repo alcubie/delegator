@@ -1011,8 +1011,8 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	setStatus(t, s, ids[1], Ready)
 	setCompleted(t, s, ids[1], "2026-08-28T09:30:00Z")
 	if _, err := s.db.Exec(
-		`UPDATE tickets SET branch = ?, session = ?, result = ?, flags = ? WHERE id = ?`,
-		"delegator/2-second", "a-session-id", "it is done", "none", ids[1]); err != nil {
+		`UPDATE tickets SET branch = ?, session = ? WHERE id = ?`,
+		"delegator/2-second", "a-session-id", ids[1]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1026,8 +1026,6 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 		{"status", string(got.Status), "ready"},
 		{"branch", got.Branch, "delegator/2-second"},
 		{"session", got.Session, "a-session-id"},
-		{"result", got.Result, "it is done"},
-		{"flags", got.Flags, "none"},
 		{"completed", got.Completed, "2026-08-28T09:30:00Z"},
 	} {
 		if test.got != test.want {
@@ -1057,7 +1055,7 @@ func TestTicketWithNoPositionAndNoBranch(t *testing.T) {
 	if got.Position != 0 {
 		t.Errorf("position = %d, want 0", got.Position)
 	}
-	if got.Branch != "" || got.Session != "" || got.Result != "" || got.Flags != "" {
+	if got.Branch != "" || got.Session != "" {
 		t.Errorf("a ticket that had no run holds %+v", got)
 	}
 }

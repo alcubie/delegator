@@ -55,7 +55,7 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 		"RUNNING",
 		"  none",
 		"QUEUED",
-		"  3    one  the title",
+		"  3 one  the title",
 	}
 	got := render(t, box)
 	if len(got) != len(want) {
@@ -79,11 +79,11 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 	got := render(t, box)
 	want := []string{
 		"READY",
-		"  4    one            the first title",
+		"  4 one            the first title",
 		"RUNNING",
 		"  none",
 		"QUEUED",
-		" 11    a-longer-name  the third title",
+		" 11 a-longer-name  the third title",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -102,39 +102,8 @@ func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
 		Queued: []store.OpenTicket{{ID: 1, Project: "/one/two/three/the-name", Title: "the title"}},
 	}
 	got := render(t, box)
-	if want := "  1    the-name  the title"; got[5] != want {
+	if want := "  1 the-name  the title"; got[5] != want {
 		t.Errorf("the row is %q, want %q", got[5], want)
-	}
-}
-
-// A ticket in READY that has a problem holds a mark, and one that has none
-// holds a space. A person therefore reads down the left of the list and sees
-// which tickets to open, and the words of the problem are at dg show.
-func TestWriteInboxMarksEachReadyTicketThatHasAProblem(t *testing.T) {
-	box := inbox.Inbox{
-		Ready: []store.OpenTicket{
-			{ID: 4, Project: "/projects/one", Title: "the first title", Flags: "the token is not valid"},
-			{ID: 7, Project: "/projects/one", Title: "a much longer title", Flags: "none"},
-		},
-	}
-
-	got := render(t, box)
-	want := []string{
-		"READY",
-		"  4 ⚠  one  the first title",
-		"  7    one  a much longer title",
-		"RUNNING",
-		"  none",
-		"QUEUED",
-		"  none",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
-		}
 	}
 }
 
@@ -142,32 +111,18 @@ func TestWriteInboxMarksEachReadyTicketThatHasAProblem(t *testing.T) {
 // characters, and one of those wraps a row three times.
 func TestWriteInboxNeverShowsTheWordsOfTheFlags(t *testing.T) {
 	box := inbox.Inbox{
-		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "a title", Flags: "a problem"}},
-		Running: []store.OpenTicket{{ID: 9, Project: "/projects/one", Title: "a short one", Flags: "a problem"}},
+		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "a title"}},
+		Running: []store.OpenTicket{{ID: 9, Project: "/projects/one", Title: "a short one"}},
 		Queued: []store.OpenTicket{
-			{ID: 11, Project: "/projects/one", Title: "a much longer title", Flags: "a problem"},
-			{ID: 12, Project: "/projects/one", Title: "short", Flags: "a problem"},
+			{ID: 11, Project: "/projects/one", Title: "a much longer title"},
+			{ID: 12, Project: "/projects/one", Title: "short"},
 		},
 	}
 
 	for _, line := range render(t, box) {
-		if strings.Contains(line, "a problem") {
-			t.Errorf("a row shows the words of the flags: %q", line)
-		}
 		if strings.HasSuffix(line, " ") {
 			t.Errorf("the row ends with a space: %q", line)
 		}
-	}
-}
-
-// A ticket that never went through dg finish holds no flags, and it takes no
-// mark, as a ticket that had no problem does.
-func TestWriteInboxWithNoFlags(t *testing.T) {
-	box := inbox.Inbox{
-		Ready: []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the title"}},
-	}
-	if want := "  4    one  the title"; render(t, box)[1] != want {
-		t.Errorf("the row is %q, want %q", render(t, box)[1], want)
 	}
 }
 

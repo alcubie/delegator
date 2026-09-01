@@ -418,7 +418,6 @@ type OpenTicket struct {
 	Title    string
 	Status   TicketStatus
 	Position int
-	Flags    string
 
 	// Completed is the time that the ticket became ready, in RFC 3339. A ticket
 	// that never became ready holds the empty string.
@@ -434,7 +433,7 @@ type OpenTicket struct {
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	rows, err := s.db.Query(`
 		SELECT tickets.id, projects.path, tickets.title, tickets.status,
-		       COALESCE(tickets.position, 0), COALESCE(tickets.flags, ''),
+		       COALESCE(tickets.position, 0),
 		       COALESCE(tickets.completed, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
@@ -449,8 +448,7 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	for rows.Next() {
 		var t OpenTicket
 		if err := rows.Scan(
-			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Flags,
-			&t.Completed); err != nil {
+			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Completed); err != nil {
 			return nil, err
 		}
 		open = append(open, t)
@@ -472,8 +470,6 @@ type Ticket struct {
 	Position  int
 	Branch    string
 	Session   string
-	Result    string
-	Flags     string
 	Created   string
 	Completed string
 }
@@ -485,15 +481,14 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
-		       COALESCE(tickets.session, ''), COALESCE(tickets.result, ''),
-		       COALESCE(tickets.flags, ''), tickets.created,
+		       COALESCE(tickets.session, ''), tickets.created,
 		       COALESCE(tickets.completed, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Result, &t.Flags, &t.Created, &t.Completed)
+		&t.Session, &t.Created, &t.Completed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}

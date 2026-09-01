@@ -23,7 +23,11 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 //
 // Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
 // not a migration. This list is the answer to that lesson.
-var migrations = []string{tables, completedColumn}
+var migrations = []string{
+	tables,
+	completedColumn,
+	dropTicketsColumns,
+}
 
 // tables makes the two tables and the index of the queue. The ids of tickets
 // are unique for all projects, so dg show 4 is not ambiguous.
@@ -66,6 +70,11 @@ CREATE UNIQUE INDEX tickets_position ON tickets(position);
 // the queue and becomes ready again holds the later time.
 const completedColumn = `
 ALTER TABLE tickets ADD COLUMN completed TEXT;
+`
+
+const dropTicketsColumns = `
+ALTER TABLE tickets DROP COLUMN result;
+ALTER TABLE tickets DROP COLUMN flags;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

@@ -109,16 +109,12 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		Status:    store.Ready,
 		Branch:    "delegator/4-remove-the-staging-app",
 		Session:   "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
-		Result:    "The staging app is removed.",
-		Flags:     "the token is not valid",
 		Completed: "2026-08-28T10:00:00Z",
 	}
 	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume."), "\n")
 
 	for _, want := range []string{
 		"#4", "Remove the staging app", "ready", "2h ago",
-		"flags", "the token is not valid",
-		"result", "The staging app is removed.",
 		"ticket", "/data/tickets/4.md",
 		"worktree", "/data/worktrees/4",
 		"project", "/projects/web-api",
@@ -128,49 +124,6 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the ticket does not hold %q:\n%s", want, out)
-		}
-	}
-}
-
-// A ticket that had no run holds no result and no flags, and the two lines say
-// none rather than nothing, so the person sees that no run wrote them.
-func TestWriteTicketWithNoRun(t *testing.T) {
-	ticket := store.Ticket{ID: 3, Project: store.Project{Path: "/projects/one"}, Title: "a title", Status: store.Queued}
-	out := strings.Join(showTicketLines(t, ticket, ""), "\n")
-
-	if !strings.Contains(out, "flags     none") {
-		t.Errorf("the ticket does not say that it has no flags:\n%s", out)
-	}
-	if !strings.Contains(out, "result    none") {
-		t.Errorf("the ticket does not say that it has no result:\n%s", out)
-	}
-	// no run means no branch and no session, so those lines are not there
-	for _, gone := range []string{"branch", "session"} {
-		if strings.Contains(out, gone) {
-			t.Errorf("the ticket holds %q, and no run wrote one:\n%s", gone, out)
-		}
-	}
-}
-
-// The flags take 240 characters, so the text wraps and each line below the
-// first is under the first.
-func TestWriteTicketWrapsTheFlags(t *testing.T) {
-	long := strings.Repeat("a word ", 40)
-	ticket := store.Ticket{ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Ready, Flags: long}
-
-	var body []string
-	for _, line := range showTicketLines(t, ticket, "") {
-		if strings.Contains(line, "a word") {
-			body = append(body, line)
-		}
-	}
-	if len(body) < 2 {
-		t.Fatalf("the flags take %d lines, want more than one", len(body))
-	}
-	first := strings.Index(body[0], "a word")
-	for i, line := range body[1:] {
-		if got := strings.Index(line, "a word"); got != first {
-			t.Errorf("line %d starts at column %d, want %d", i+1, got, first)
 		}
 	}
 }
@@ -285,8 +238,6 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 	ticket := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/projects/a-name-of-some-length"}, Title: "a title", Status: store.Ready,
-		Flags:   strings.Repeat("a word ", 40),
-		Result:  strings.Repeat("more words ", 20),
 		Branch:  "delegator/4-a-title",
 		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
 	}

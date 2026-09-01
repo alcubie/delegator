@@ -110,17 +110,13 @@ const wrapWidth = ruleWidth - indent - labelWidth - gap
 // under the first.
 func writeField(out io.Writer, label, text string) {
 	lines := wrap(text, wrapWidth)
-	if len(lines) == 0 {
-		lines = []string{noFlags}
-	}
 	fmt.Fprintf(out, "%*s%-*s%*s%s\n", indent, "", labelWidth, label, gap, "", lines[0])
 	for _, line := range lines[1:] {
 		fmt.Fprintf(out, "%*s%-*s%*s%s\n", indent, "", labelWidth, "", gap, "", line)
 	}
 }
 
-// writeTicket writes one ticket in full: what a run said, the four variables
-// that connect the ticket to its work, and the prose that the person wrote.
+// writeTicket writes one ticket in full
 func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, now time.Time) {
 	// Only a ready ticket has a time that the heading can name. dg finish
 	// writes completed, and no command takes it away, so a ticket that dg
@@ -141,8 +137,6 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), right)
 	fmt.Fprintf(out, "  %s\n", strings.Repeat("─", ruleWidth-2))
 
-	writeField(out, "flags", t.Flags)
-	writeField(out, "result", t.Result)
 	fmt.Fprintln(out)
 
 	home, _ := os.UserHomeDir()
