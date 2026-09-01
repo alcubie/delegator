@@ -610,12 +610,22 @@ test walks the tree to say so.
 Each command that shows data also accepts `--json`. A different interface, or a script of
 the person, can therefore read the data and not the text. Section 12 shows why.
 
-The agent uses two commands only:
+The agent uses two commands only, and one of them is a command of the person:
 
 | Command | Function |
 |---|---|
-| `dg read <id>` | Read the ticket, with each change that came after the start. |
+| `dg show <id>` | Read the ticket, with each change that came after the start. |
 | `dg finish <id> --result … --flags …` | End the work. See §6.4. |
+
+An earlier draft gave the agent its own `dg read`. The agent and the person then read
+the ticket through two commands, and the two can say different things: the first draft of
+`dg read` gave the prose alone, and the title of a ticket is a column and not the first
+line of the prose, so the agent could not see the one line that says what to do. A person
+who then examines the work with `dg show` reads a ticket that the agent never got.
+
+One command removes that risk completely. The text that `dg show` makes needs no change
+for an agent: the prose goes out as the person wrote it, and each line of the ticket has
+two spaces in front of it, which an agent reads as well as a person does.
 
 ## 10. How to prevent errors
 
