@@ -149,3 +149,27 @@ func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Ready)
 	}
 }
+
+// The worktree goes but the branch stays, so a person can read the work again
+// long after the ticket closed. dg show resolves the commit through it, and
+// dg open diff needs it to exist.
+func TestAcceptKeepsTheBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := gitOut(t, repo, "branch", "--list", ticket.Branch); !strings.Contains(got, ticket.Branch) {
+		t.Fatalf("git branch --list gives %q, and the branch of the run is gone", got)
+	}
+	if got := gitOut(t, repo, "rev-parse", ticket.Branch); got != ticket.Commit {
+		t.Errorf("the branch is at %s, and the ticket holds %s", got, ticket.Commit)
+	}
+}
