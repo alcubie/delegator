@@ -165,3 +165,14 @@ func AddWorktree(root, path, branch, from string) error {
 	_, err := gitOutput(root, "worktree", "add", "-b", branch, path, from)
 	return err
 }
+
+// Commit returns the short hash of one commit and the subject of its message.
+// An error means git does not know the hash.
+func Commit(root, hash string) (short, subject string, err error) {
+	out, err := gitOutput(root, "show", "-s", "--format=%h%n%s", hash)
+	if err != nil {
+		return "", "", err
+	}
+	short, subject, _ = strings.Cut(out, "\n")
+	return short, subject, nil
+}

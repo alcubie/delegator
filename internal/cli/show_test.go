@@ -247,3 +247,68 @@ func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 		}
 	}
 }
+
+// showCommit returns the commit row of dg show for a ticket whose commit is the
+// head of repo.
+func showCommit(t *testing.T, repo, hash string) string {
+	t.Helper()
+	var out bytes.Buffer
+	writeTicket(&out, t.TempDir(), store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: repo},
+		Title:   "a title",
+		Status:  store.Ready,
+		Commit:  hash,
+	}, "", time.Now())
+
+	for line := range strings.SplitSeq(out.String(), "\n") {
+		if strings.Contains(line, "commit") {
+			return line
+		}
+	}
+	return ""
+}
+
+func TestWriteTicketGivesTheShortHashAndTheSubject(t *testing.T) {
+	repo := gitRepo(t)
+	commitIn(t, repo, "Remove the staging app and its DNS records")
+	hash := gitOut(t, repo, "rev-parse", "HEAD")
+
+	line := showCommit(t, repo, hash)
+	want := hash[:7] + " Remove the staging app and its DNS records"
+	if !strings.Contains(line, want) {
+		t.Errorf("the commit row is %q, and it does not hold %q", line, want)
+	}
+	if strings.Contains(line, hash) {
+		t.Errorf("the commit row is %q, and it holds the whole hash", line)
+	}
+}
+
+// The subject comes from git at each call, so a message written again is right.
+func TestWriteTicketReadsTheSubjectFromGitEachTime(t *testing.T) {
+	repo := gitRepo(t)
+	commitIn(t, repo, "the first message")
+	gitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "--amend", "--allow-empty", "-q", "-m", "the message written again")
+	hash := gitOut(t, repo, "rev-parse", "HEAD")
+
+	if line := showCommit(t, repo, hash); !strings.Contains(line, "the message written again") {
+		t.Errorf("the commit row is %q, want the new message", line)
+	}
+}
+
+// Only the repository changed, so the ticket is still correct and the hash is
+// what a person needs to go looking.
+func TestWriteTicketWithACommitThatGitDoesNotKnow(t *testing.T) {
+	const gone = "0123456789abcdef0123456789abcdef01234567"
+	line := showCommit(t, gitRepo(t), gone)
+	if !strings.Contains(line, gone[:7]) {
+		t.Errorf("the commit row is %q, and it does not hold the hash", line)
+	}
+}
+
+func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
+	if line := showCommit(t, gitRepo(t), ""); line != "" {
+		t.Errorf("the commit row is %q, want none", line)
+	}
+}

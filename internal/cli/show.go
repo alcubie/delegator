@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -116,6 +117,29 @@ func writeField(out io.Writer, label, text string) {
 	}
 }
 
+// shortHashLen is how much of a hash one row shows. Git uses seven where that
+// is enough to name one commit.
+const shortHashLen = 7
+
+// commitText returns the short hash and the subject for the commit row. A hash
+// git cannot find gives the hash alone, because only the repository moved.
+func commitText(root, hash string) string {
+	short, subject, err := project.Commit(root, hash)
+	if err != nil {
+		return shortHash(hash)
+	}
+	// writeField wraps, and a wrap makes each run of spaces one space.
+	return short + " " + subject
+}
+
+// shortHash cuts a hash to the length that a row shows.
+func shortHash(hash string) string {
+	if len(hash) <= shortHashLen {
+		return hash
+	}
+	return hash[:shortHashLen]
+}
+
 // writeTicket writes one ticket in full
 func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, now time.Time) {
 	// Only a ready ticket has a time that the heading can name. dg finish
@@ -137,7 +161,10 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), right)
 	fmt.Fprintf(out, "  %s\n", strings.Repeat("─", ruleWidth-2))
 
-	fmt.Fprintln(out)
+	if t.Commit != "" {
+		writeField(out, "commit", commitText(t.Project.Path, t.Commit))
+		fmt.Fprintln(out)
+	}
 
 	home, _ := os.UserHomeDir()
 	writeField(out, "project", tilde(t.Project.Path, home))

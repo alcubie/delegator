@@ -535,7 +535,7 @@ The command `dg show 4` gives one ticket in full:
 $ dg show 4
   #4  Remove the staging app                           ready · 2h ago
   ───────────────────────────────────────────────────────────────────
-  commit    9f3a1c2  Remove the staging app and its DNS records
+  commit    9f3a1c2 Remove the staging app and its DNS records
 
   ticket    …/delegator/tickets/4.md
   worktree  …/delegator/worktrees/4
