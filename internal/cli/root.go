@@ -43,5 +43,6 @@ func Root(dataDir, workDir string) *cobra.Command {
 	root.AddCommand(showCommand(dataDir))
 	root.AddCommand(moveCommand(dataDir))
 	root.AddCommand(finishCommand(dataDir))
+	root.AddCommand(acceptCommand(dataDir))
 	return root
 }
