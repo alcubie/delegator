@@ -9,12 +9,16 @@ import (
 )
 
 // runningTicket makes a data directory holding one project and one ticket that
-// a run has taken, which is the only state dg finish accepts.
-func runningTicket(t *testing.T, dataDir string) (*store.Store, int64) {
+// a run has taken, in a repository that has one commit on the branch of that
+// run. It returns the store, the id of the ticket, the repository and the hash
+// of that commit.
+func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, string) {
 	t.Helper()
-	s := openStore(t, dataDir)
+	repo := gitRepo(t)
+	commitIn(t, repo, "first")
 
-	projectID, err := s.AddProject("/projects/path", "main")
+	s := openStore(t, dataDir)
+	projectID, err := s.AddProject(repo, repoBranch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,18 +26,20 @@ func runningTicket(t *testing.T, dataDir string) (*store.Store, int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ChangeStatus(ticketID, store.Running); err != nil {
+
+	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
+	gitIn(t, repo, "branch", branch)
+	if err := s.Claim(ticketID, branch); err != nil {
 		t.Fatal(err)
 	}
-	return s, ticketID
+	return s, ticketID, repo, gitOut(t, repo, "rev-parse", branch)
 }
 
 func TestFinishReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
-	s, ticketID := runningTicket(t, dataDir)
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
 
-	out, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), "123456")
+	out, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,17 +54,16 @@ func TestFinishReadyTicket(t *testing.T) {
 	if ticket.Status != store.Ready {
 		t.Errorf("status = %s, want = ready", ticket.Status)
 	}
-	if ticket.Commit != "123456" {
-		t.Errorf("commit_id = %s, want = 123456", ticket.Commit)
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
 	}
 }
 
 func TestFinishWritesTheTimeTheRunStopped(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
-	s, ticketID := runningTicket(t, dataDir)
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
 
-	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), "123456"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
 		t.Fatal(err)
 	}
 

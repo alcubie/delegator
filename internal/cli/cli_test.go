@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/store"
@@ -23,6 +24,36 @@ func gitRepo(t *testing.T) string {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 	return dir
+}
+
+// gitIn runs one git command in dir. It stops the test if git gives an error,
+// because a repository the test cannot build is not a result of the test.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	if out, err := exec.Command("git", all...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+// gitOut runs one git command in dir and returns its output with no final
+// newline.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	all := append([]string{"-C", dir}, args...)
+	out, err := exec.Command("git", all...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// commitIn makes one empty commit. The identity is in the command, so the test
+// does not read the config of the person who runs it.
+func commitIn(t *testing.T, dir, message string) {
+	t.Helper()
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "--allow-empty", "-q", "-m", message)
 }
 
 // openStore opens the database that a command wrote.
