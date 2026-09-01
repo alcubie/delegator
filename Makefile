@@ -38,15 +38,19 @@ vet:
 lint:
 	staticcheck -checks=all ./...
 
+# fmt formats and fixes the imports. goimports does everything gofmt does, and
+# it also adds an import a file needs and removes one it does not, which is most
+# of the work when code moves between files. It comes from
+# golang.org/x/tools/cmd/goimports.
 fmt:
-	gofmt -l -w .
+	goimports -l -w .
 
 # fmtcheck reports bad formatting and stops. It does not change a file, so it is
 # safe in a git hook.
 fmtcheck:
-	@bad=$$(gofmt -l .); \
+	@bad=$$(goimports -l .); \
 	if [ -n "$$bad" ]; then \
-		echo "gofmt is needed for:"; echo "$$bad"; exit 1; \
+		echo "goimports is needed for:"; echo "$$bad"; exit 1; \
 	fi
 
 # covercheck stops the build if the coverage is less than COVER_MIN. It runs
