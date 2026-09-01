@@ -5,6 +5,10 @@
 // The interface stays small deliberately. What delegator knows about a run goes
 // down in RunSpec, and the one thing it learns from a run comes back through
 // SessionID, so a new agent needs no new field above the seam.
+//
+// Delegator never supplies a session id. Claude will take one, with
+// --session-id, and the others will not: one path for every agent is worth more
+// than a property one of them has.
 package adapters
 
 import "os/exec"
@@ -13,12 +17,6 @@ import "os/exec"
 type RunSpec struct {
 	// Worktree is the directory the agent works in.
 	Worktree string
-
-	// Session is the id delegator offers the agent. Only claude accepts one,
-	// through --session-id. codex, gemini and opencode each mint their own and
-	// let you resume by it afterwards, so their adapters ignore this field and
-	// report the real id from SessionID.
-	Session string
 
 	// Prompt is the first message to the agent.
 	Prompt string
@@ -35,11 +33,13 @@ type Adapter interface {
 	// terminal window.
 	Resume(session string) []string
 
-	// SessionID returns the id of the session a finished run used, so it can be
-	// resumed later. out is what the run wrote. An agent that accepts a supplied
-	// id returns spec.Session and ignores out; an agent that mints its own parses
-	// the id out of out.
-	SessionID(spec RunSpec, out []byte) (string, error)
+	// SessionID returns the id of the session a finished run made, parsed from
+	// out, which is what the run wrote. Every agent mints its own id and reports
+	// it, so there is one path here and not one per agent.
+	//
+	// An empty id and no error means the run reported none, which is what a run
+	// that died before it said anything looks like.
+	SessionID(out []byte) (string, error)
 
 	// Name returns the agent's name, for use in messages.
 	Name() string

@@ -51,7 +51,7 @@ func TestFakeLaunchStartsTheFakeAgentWithTheScript(t *testing.T) {
 	worktree := t.TempDir()
 	fake := Fake{Binary: fakeAgentPath, Script: scriptFile(t, "write made-here the work\nexit 0\n")}
 
-	if err := fake.Launch(RunSpec{Worktree: worktree, Session: "s-1"}).Run(); err != nil {
+	if err := fake.Launch(RunSpec{Worktree: worktree}).Run(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,12 +80,26 @@ func TestFakeLaunchGivesTheStatusOfTheScript(t *testing.T) {
 	}
 }
 
-func TestFakeSessionIDGivesBackTheSessionItWasGiven(t *testing.T) {
-	got, err := Fake{}.SessionID(RunSpec{Session: "s-1"}, []byte("output that names no session"))
+func TestFakeSessionIDReadsWhatTheRunReported(t *testing.T) {
+	out := []byte("doing the work\nsession: s-1\nfinished\n")
+
+	got, err := Fake{}.SessionID(out)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "s-1" {
 		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
+
+// A run that died before it said anything has no session, and that is not an
+// error: the ticket keeps no session and a person cannot resume it.
+func TestFakeSessionIDWithNothingReported(t *testing.T) {
+	got, err := Fake{}.SessionID([]byte("it stopped early\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("session = %q, want nothing", got)
 	}
 }

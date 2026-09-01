@@ -1,6 +1,9 @@
 package adapters
 
-import "os/exec"
+import (
+	"os/exec"
+	"strings"
+)
 
 // defaultBinary is the name that Fake looks for on the PATH when it is given no
 // path of its own.
@@ -19,8 +22,7 @@ type Fake struct {
 }
 
 // Launch returns the command for one run of the fake agent, in the spec's
-// worktree. The session needs no argument: SessionID hands it straight back,
-// because the fake agent keeps no session of its own.
+// worktree.
 func (f Fake) Launch(spec RunSpec) *exec.Cmd {
 	cmd := exec.Command(f.binary(), f.Script)
 	cmd.Dir = spec.Worktree
@@ -33,10 +35,19 @@ func (f Fake) Resume(session string) []string {
 	return []string{f.binary(), f.Script}
 }
 
-// SessionID returns the id delegator gave the run. The fake agent stands in for
-// claude, which accepts a supplied id, so it never parses out.
-func (f Fake) SessionID(spec RunSpec, out []byte) (string, error) {
-	return spec.Session, nil
+// sessionPrefix is what a script writes to report a session, standing in for
+// the JSON a real agent gives.
+const sessionPrefix = "session: "
+
+// SessionID returns the id the script reported, and nothing at all if it
+// reported none, which is what a run that died early looks like.
+func (f Fake) SessionID(out []byte) (string, error) {
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), sessionPrefix); ok {
+			return after, nil
+		}
+	}
+	return "", nil
 }
 
 // Name returns the name of the agent.

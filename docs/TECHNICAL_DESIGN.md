@@ -278,26 +278,27 @@ interface is small:
 
 ```go
 type Adapter interface {
-    Launch(spec RunSpec) *exec.Cmd                       // headless run
-    Resume(session string) []string                      // argv for an interactive session
-    SessionID(spec RunSpec, out []byte) (string, error)  // the session the run used
+    Launch(spec RunSpec) *exec.Cmd         // headless run
+    Resume(session string) []string        // argv for an interactive session
+    SessionID(out []byte) (string, error)  // the session the run made
     Name() string
 }
 ```
 
-Only claude accepts a session id at its start. The command `claude --session-id <uuid>`
-takes a UUID, and a test confirmed this behaviour. The agents codex, gemini and opencode
-each make their own id, and each one lets a caller resume by that id after the run. A seam
-that only gives an id down therefore fits one agent of the four.
+Each agent makes its own session id and reports it in the output of the run. Delegator
+reads it from there and keeps it on the ticket, and `Resume` gives it back to the agent
+later. The command `claude -p --output-format json` gives a field `session_id`, and
+`claude --resume <id>` continues that conversation. The agents codex, gemini and opencode
+each work the same way.
 
-The method `SessionID` gives the id of a run that is complete. An adapter for claude gives
-the id that delegator gave it, and an adapter for the other agents reads the id from the
-output of the run.
+Claude will also take an id at its start, with `claude --session-id <uuid>`, and delegator
+does not use that. One path for every agent is worth more than a property that one of them
+has. An earlier draft gave delegator the id and said that no code reads the output of an
+agent; that was true of claude alone, and it made the seam fit one agent of four.
 
-This has two results. A ticket gets its `session` after the run for those agents, and not
-before it. And a run of claude that writes nothing still has an id that `dg open chat` can
-resume, but a run of another agent that stops before it gives its id has no session at
-all, and delegator says so.
+A run that stops before it reports an id therefore has no session, and a person cannot
+continue that conversation. This is the same for each agent, so the supervisor answers for
+one case and not for two.
 
 ## 7. Data on disk
 
