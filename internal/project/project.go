@@ -40,9 +40,13 @@ var gitEnv = []string{
 	"GIT_WORK_TREE",
 }
 
-// gitCommand returns the command for one git call in root, with each variable
-// of gitEnv taken out of the environment that it gets.
-func gitCommand(root string, args ...string) *exec.Cmd {
+// Command returns the command for one git call in root, with each variable of
+// gitEnv taken out of the environment that it gets.
+//
+// It is exported for the fixtures of a test, which build a repository to run
+// delegator against and meet the same environment. No other package of
+// delegator starts git at run time.
+func Command(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
 	cmd.Env = withoutGitEnv(os.Environ())
 	return cmd
@@ -63,7 +67,7 @@ func withoutGitEnv(env []string) []string {
 // Root returns the top-level git directory for the argument.
 // It returns an error if the path is not in a git repository.
 func Root(path string) (string, error) {
-	gitDir, err := gitCommand(path, "rev-parse", "--show-toplevel").Output()
+	gitDir, err := Command(path, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return "", ErrGitNotOnPath
@@ -82,7 +86,7 @@ func Root(path string) (string, error) {
 // newline. An error means that git said no, and each caller decides what that
 // answer means.
 func gitOutput(root string, args ...string) (string, error) {
-	out, err := gitCommand(root, args...).Output()
+	out, err := Command(root, args...).Output()
 	if err != nil {
 		return "", err
 	}

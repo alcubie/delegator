@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -15,8 +16,7 @@ import (
 // because a repository the test cannot build is not a result of the test.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	all := append([]string{"-C", dir}, args...)
-	if out, err := exec.Command("git", all...).CombinedOutput(); err != nil {
+	if out, err := project.Command(dir, args...).CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }
@@ -25,8 +25,7 @@ func gitIn(t *testing.T, dir string, args ...string) {
 // newline.
 func gitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	all := append([]string{"-C", dir}, args...)
-	out, err := exec.Command("git", all...).Output()
+	out, err := project.Command(dir, args...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -43,7 +42,7 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 func repoOnMain(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if out, err := exec.Command("git", "init", "-b", "main", dir).CombinedOutput(); err != nil {
+	if out, err := project.Command(dir, "init", "-q", "-b", "main").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 	commitIn(t, dir, "first")
