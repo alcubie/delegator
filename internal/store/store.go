@@ -571,7 +571,8 @@ func (s *Store) Claim(id int64, branch string) error {
 	return tx.Commit()
 }
 
-// FinishTicket completes a Running ticket.
+// FinishTicket completes a Running ticket. It records the commit of the run and
+// the time the run stopped, which orders the ready tickets in the inbox.
 //
 // If the ticket is not Running, it returns ErrInvalidTicketStateChange.
 func (s *Store) FinishTicket(id int64, commit string) error {
@@ -584,7 +585,10 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 	if err := changeStatus(tx, id, Ready); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id); err != nil {
+	if _, err := tx.Exec(
+		"UPDATE tickets SET commit_id = ?, completed = ? WHERE id = ?",
+		commit, time.Now().UTC().Format(time.RFC3339), id,
+	); err != nil {
 		return err
 	}
 	return tx.Commit()
