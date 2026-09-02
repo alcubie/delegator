@@ -519,6 +519,7 @@ recognition is easier than memory.
 
 ```
 $ dg
+Status: Running
 READY
   4  web-api      Remove the staging app
   7  data-loader  Add a limit on the rate
@@ -527,6 +528,10 @@ RUNNING
 QUEUED
  11  data-loader  Change the tool that measures the coverage
 ```
+
+The first line says whether the queue will start work: `Status: Running`, or
+`Status: Paused` after `dg pause`. It is always there, so a person never has to know what
+the absence of a line means.
 
 The inbox gives no mark for a ticket that needs attention, and it gives no summary of a
 run. Each ticket below READY waits for the same thing: a person who reads its commit. A

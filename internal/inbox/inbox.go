@@ -23,6 +23,7 @@ import (
 // and a test has its own.
 type Source interface {
 	OpenTickets() ([]store.OpenTicket, error)
+	IsQueueRunning() (bool, error)
 }
 
 // Inbox holds one group for each state that the person acts on. READY waits for
@@ -31,6 +32,11 @@ type Inbox struct {
 	Ready   []store.OpenTicket
 	Running []store.OpenTicket
 	Queued  []store.OpenTicket
+
+	// QueueRunning says whether the queue will start work. It is false after
+	// dg pause, so a person who sees tickets waiting and no run knows why. The
+	// name is not Running because Running is the group of tickets above.
+	QueueRunning bool
 }
 
 // Get returns the inbox.
@@ -51,6 +57,12 @@ func Get(source Source) (Inbox, error) {
 			box.Queued = append(box.Queued, ticket)
 		}
 	}
+
+	running, err := source.IsQueueRunning()
+	if err != nil {
+		return Inbox{}, err
+	}
+	box.QueueRunning = running
 
 	slices.SortFunc(box.Ready, byCompletion)
 	slices.SortFunc(box.Running, byID)

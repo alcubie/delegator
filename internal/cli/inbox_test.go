@@ -46,10 +46,12 @@ func TestWriteInboxHoldsTheThreeGroupsInOneOrder(t *testing.T) {
 // eyes of the person, and a line says that the group is empty.
 func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 	box := inbox.Inbox{
-		Queued: []store.OpenTicket{{ID: 3, Project: "/projects/one", Title: "the title"}},
+		QueueRunning: true,
+		Queued:       []store.OpenTicket{{ID: 3, Project: "/projects/one", Title: "the title"}},
 	}
 
 	want := []string{
+		statusRunning,
 		"READY",
 		"  none",
 		"RUNNING",
@@ -72,12 +74,14 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 // titles of two groups are below one another.
 func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 	box := inbox.Inbox{
-		Ready:  []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
-		Queued: []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
+		QueueRunning: true,
+		Ready:        []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
+		Queued:       []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
 	}
 
 	got := render(t, box)
 	want := []string{
+		statusRunning,
 		"READY",
 		"  4 one            the first title",
 		"RUNNING",
@@ -99,11 +103,12 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 // it.
 func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
 	box := inbox.Inbox{
-		Queued: []store.OpenTicket{{ID: 1, Project: "/one/two/three/the-name", Title: "the title"}},
+		QueueRunning: true,
+		Queued:       []store.OpenTicket{{ID: 1, Project: "/one/two/three/the-name", Title: "the title"}},
 	}
 	got := render(t, box)
-	if want := "  1 the-name  the title"; got[5] != want {
-		t.Errorf("the row is %q, want %q", got[5], want)
+	if want := "  1 the-name  the title"; got[6] != want {
+		t.Errorf("the row is %q, want %q", got[6], want)
 	}
 }
 
@@ -130,16 +135,16 @@ func TestWriteInboxNeverShowsTheWordsOfTheFlags(t *testing.T) {
 // below each of them. The line says what makes a ticket, because a person who
 // has no ticket is a person who has not made one yet.
 func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
-	got := render(t, inbox.Inbox{})
-	if len(got) != 1 {
-		t.Fatalf("the inbox takes %d lines, want 1:\n%s", len(got), strings.Join(got, "\n"))
+	got := render(t, inbox.Inbox{QueueRunning: true})
+	if len(got) != 2 {
+		t.Fatalf("the inbox takes %d lines, want the status and one more:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if !strings.Contains(got[0], "dg ticket") {
-		t.Errorf("the line does not say what makes a ticket: %q", got[0])
+	if !strings.Contains(got[1], "dg ticket") {
+		t.Errorf("the line does not say what makes a ticket: %q", got[1])
 	}
 	for _, heading := range []string{"READY", "RUNNING", "QUEUED"} {
-		if strings.Contains(got[0], heading) {
-			t.Errorf("the line holds the heading %q: %q", heading, got[0])
+		if strings.Contains(got[1], heading) {
+			t.Errorf("the line holds the heading %q: %q", heading, got[1])
 		}
 	}
 }
@@ -154,5 +159,48 @@ func TestWriteInboxWithOneGroupKeepsTheHeadings(t *testing.T) {
 		if !slices.Contains(got, heading) {
 			t.Errorf("the inbox does not hold the heading %q:\n%s", heading, strings.Join(got, "\n"))
 		}
+	}
+}
+
+// The first line always says the state of the queue, so a person never has to
+// know what the absence of a line means; and it is there for an empty inbox
+// too, because a paused queue with nothing in it is still paused.
+func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
+	queued := []store.OpenTicket{{ID: 1, Title: "a title"}}
+	for name, c := range map[string]struct {
+		box  inbox.Inbox
+		want string
+	}{
+		"running with tickets": {inbox.Inbox{QueueRunning: true, Queued: queued}, statusRunning},
+		"running with none":    {inbox.Inbox{QueueRunning: true}, statusRunning},
+		"paused with tickets":  {inbox.Inbox{Queued: queued}, statusPaused},
+		"paused with none":     {inbox.Inbox{}, statusPaused},
+	} {
+		var out bytes.Buffer
+		writeInbox(&out, c.box)
+		if !strings.HasPrefix(out.String(), c.want+"\n") {
+			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
+		}
+	}
+}
+
+func TestRunShowsTheStateOfTheQueue(t *testing.T) {
+	dataDir := t.TempDir()
+	out, err := runIn(t, dataDir, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, statusRunning) {
+		t.Errorf("dg does not start with %q:\n%s", statusRunning, out)
+	}
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "pause"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err = runIn(t, dataDir, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, statusPaused) {
+		t.Errorf("dg after dg pause does not start with %q:\n%s", statusPaused, out)
 	}
 }

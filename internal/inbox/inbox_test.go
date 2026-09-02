@@ -12,11 +12,16 @@ import (
 // query of the store has its own test.
 type fakeSource struct {
 	tickets []store.OpenTicket
+	running bool
 	err     error
 }
 
 func (f fakeSource) OpenTickets() ([]store.OpenTicket, error) {
 	return f.tickets, f.err
+}
+
+func (f fakeSource) IsQueueRunning() (bool, error) {
+	return f.running, f.err
 }
 
 // ids returns the id of each ticket of one group.
@@ -167,5 +172,19 @@ func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
 	}
 	if want := []int64{3, 7, 9}; !slices.Equal(ids(got.Running), want) {
 		t.Errorf("RUNNING holds %v, want %v", ids(got.Running), want)
+	}
+}
+
+// A person who sees tickets in QUEUED and no run must know whether delegator
+// is waiting or stopped, so the inbox carries the state of the queue.
+func TestGetSaysWhetherTheQueueIsRunning(t *testing.T) {
+	for _, running := range []bool{true, false} {
+		got, err := Get(fakeSource{running: running})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.QueueRunning != running {
+			t.Errorf("queue running = %v, want %v", got.QueueRunning, running)
+		}
 	}
 }

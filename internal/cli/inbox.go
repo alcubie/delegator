@@ -27,6 +27,23 @@ const emptyGroup = "  none"
 // who has no ticket has not made one yet, so the line says what makes one.
 const emptyInbox = "There are no active tickets. Use `dg ticket` to add."
 
+// The first line of the inbox says whether the queue will start work. It is
+// always there, so a person never has to know what the absence of a line
+// means. The paused form names no command to resume, because dg start does not
+// exist yet.
+const (
+	statusRunning = "Status: Running"
+	statusPaused  = "Status: Paused"
+)
+
+// statusLine returns the first line of the inbox for the state of the queue.
+func statusLine(box inbox.Inbox) string {
+	if box.QueueRunning {
+		return statusRunning
+	}
+	return statusPaused
+}
+
 // group is one heading of the inbox and the tickets below it.
 type group struct {
 	heading string
@@ -68,6 +85,7 @@ func widths(box inbox.Inbox) (id, project int) {
 }
 
 func writeInbox(out io.Writer, box inbox.Inbox) {
+	fmt.Fprintln(out, statusLine(box))
 	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
 		fmt.Fprintln(out, emptyInbox)
 		return
