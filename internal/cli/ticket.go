@@ -69,24 +69,26 @@ func Ticket(dataDir, workDir, title, body string) (int64, error) {
 		return 0, err
 	}
 
-	s, err := store.Open(dataDir)
-	if err != nil {
-		return 0, err
-	}
-	defer s.Close()
+	var id int64
+	err = store.With(dataDir, func(s *store.Store) error {
 
-	projectID, err := s.ProjectID(root, branch)
-	if err != nil {
-		return 0, err
-	}
-	id, err := s.AddTicket(projectID, title)
-	if err != nil {
-		return 0, err
-	}
+		projectID, err := s.ProjectID(root, branch)
+		if err != nil {
+			return err
+		}
+		id, err = s.AddTicket(projectID, title)
+		if err != nil {
+			return err
+		}
 
-	// The person owns the prose after this write. Only dg revise adds to the
-	// file, and no command writes it again from what it holds in memory.
-	if err := os.WriteFile(proseFile(dataDir, id), []byte(body), filePerm); err != nil {
+		// The person owns the prose after this write. Only dg revise adds to the
+		// file, and no command writes it again from what it holds in memory.
+		if err := os.WriteFile(proseFile(dataDir, id), []byte(body), filePerm); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return 0, err
 	}
 	return id, nil

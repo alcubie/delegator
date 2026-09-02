@@ -193,25 +193,22 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 // and the prose comes from the file, because the person owns the prose and an
 // editor opens a file and not a row.
 func showTicket(out io.Writer, dataDir string, id int64) error {
-	s, err := store.Open(dataDir)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
+	return store.With(dataDir, func(s *store.Store) error {
 
-	ticket, err := s.Ticket(id)
-	if err != nil {
-		return err
-	}
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			return err
+		}
 
-	// A ticket that has no file of prose yet is not a fault of dg show.
-	prose, err := os.ReadFile(proseFile(dataDir, id))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
+		// A ticket that has no file of prose yet is not a fault of dg show.
+		prose, err := os.ReadFile(proseFile(dataDir, id))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 
-	writeTicket(out, dataDir, ticket, string(prose), time.Now().UTC())
-	return nil
+		writeTicket(out, dataDir, ticket, string(prose), time.Now().UTC())
+		return nil
+	})
 }
 
 // showCommand returns the command dg show.

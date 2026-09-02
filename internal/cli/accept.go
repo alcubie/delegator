@@ -24,18 +24,15 @@ func acceptCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			s, err := store.Open(dataDir)
-			if err != nil {
-				return err
-			}
-			defer s.Close()
+			return store.With(dataDir, func(s *store.Store) error {
 
-			ticket, err := s.Ticket(id)
-			if err != nil {
-				return err
-			}
-			return s.ChangeStatusWith(id, store.Done, func() error {
-				return run.RemoveWorktree(dataDir, ticket)
+				ticket, err := s.Ticket(id)
+				if err != nil {
+					return err
+				}
+				return s.ChangeStatusWith(id, store.Done, func() error {
+					return run.RemoveWorktree(dataDir, ticket)
+				})
 			})
 		},
 	}

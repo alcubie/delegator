@@ -19,13 +19,10 @@ func finishCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			s, err := store.Open(dataDir)
-			if err != nil {
-				return err
-			}
-			defer s.Close()
+			return store.With(dataDir, func(s *store.Store) error {
 
-			return s.FinishTicket(id, args[1])
+				return s.FinishTicket(id, args[1])
+			})
 		},
 	}
 }

@@ -90,16 +90,13 @@ func writeInbox(out io.Writer, box inbox.Inbox) {
 
 // showInbox reads the tickets and writes the inbox.
 func showInbox(out io.Writer, dataDir string) error {
-	s, err := store.Open(dataDir)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
+	return store.With(dataDir, func(s *store.Store) error {
 
-	box, err := inbox.Get(s)
-	if err != nil {
-		return err
-	}
-	writeInbox(out, box)
-	return nil
+		box, err := inbox.Get(s)
+		if err != nil {
+			return err
+		}
+		writeInbox(out, box)
+		return nil
+	})
 }

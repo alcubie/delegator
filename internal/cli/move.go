@@ -42,23 +42,20 @@ func moveCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			s, err := store.Open(dataDir)
-			if err != nil {
-				return err
-			}
-			defer s.Close()
+			return store.With(dataDir, func(s *store.Store) error {
 
-			if move, there := directions[args[1]]; there {
-				return s.MoveTicket(id, move)
-			}
-			// A direction is a word and an id is a number, so the two never
-			// take one another.
-			target, err := strconv.ParseInt(args[1], 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not a direction and not an id: dg move takes %s, or the id of another ticket",
-					args[1], strings.Join(directionNames(), ", "))
-			}
-			return s.MoveTicketBefore(id, target)
+				if move, there := directions[args[1]]; there {
+					return s.MoveTicket(id, move)
+				}
+				// A direction is a word and an id is a number, so the two never
+				// take one another.
+				target, err := strconv.ParseInt(args[1], 10, 64)
+				if err != nil {
+					return fmt.Errorf("%q is not a direction and not an id: dg move takes %s, or the id of another ticket",
+						args[1], strings.Join(directionNames(), ", "))
+				}
+				return s.MoveTicketBefore(id, target)
+			})
 		},
 	}
 }

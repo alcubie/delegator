@@ -163,6 +163,22 @@ func Open(dataDir string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// With opens the store at dataDir, calls fn with it, and closes it. A command
+// then cannot forget the close, and an error from Close is not lost the way a
+// deferred Close loses it: fn's error wins, and Close's is returned when fn
+// had none.
+func With(dataDir string, fn func(*Store) error) error {
+	s, err := Open(dataDir)
+	if err != nil {
+		return err
+	}
+	if err := fn(s); err != nil {
+		s.Close()
+		return err
+	}
+	return s.Close()
+}
+
 // Close stops the connection to the database.
 func (s *Store) Close() error {
 	return s.db.Close()
