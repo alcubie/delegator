@@ -8,11 +8,10 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// runningTicket makes a data directory holding one project and one ticket that
-// a run has taken, in a repository that has one commit on the branch of that
-// run. It returns the store, the id of the ticket, the repository and the hash
-// of that commit.
-func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, string) {
+// queuedTicket makes a data directory holding one project and one ticket in
+// the queue, in a repository that has one commit. It returns the store, the id
+// of the ticket and the repository.
+func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	t.Helper()
 	repo := gitRepo(t)
 	commitIn(t, repo, "first")
@@ -26,6 +25,15 @@ func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, s
 	if err != nil {
 		t.Fatal(err)
 	}
+	return s, ticketID, repo
+}
+
+// runningTicket makes a queued ticket and claims it for a run, on a branch
+// that holds one commit. It returns the store, the id of the ticket, the
+// repository and the hash of that commit.
+func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, string) {
+	t.Helper()
+	s, ticketID, repo := queuedTicket(t, dataDir)
 
 	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
 	gitIn(t, repo, "branch", branch)
