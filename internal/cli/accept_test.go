@@ -9,6 +9,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // readyTicket makes a data directory holding one ticket that a run finished,
@@ -22,7 +23,7 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gitIn(t, repo, "worktree", "add", run.WorktreePath(dataDir, ticketID), ticket.Branch)
+	testfix.GitIn(t, repo, "worktree", "add", run.WorktreePath(dataDir, ticketID), ticket.Branch)
 
 	if err := s.FinishTicket(ticketID, commit); err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestAcceptWithATicketThatIsNotReady(t *testing.T) {
 		t.Fatal(err)
 	}
 	worktree := run.WorktreePath(dataDir, ticketID)
-	gitIn(t, repo, "worktree", "add", worktree, ticket.Branch)
+	testfix.GitIn(t, repo, "worktree", "add", worktree, ticket.Branch)
 
 	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err == nil {
 		t.Fatal("err = nil, want ErrInvalidTicketStateChange")
@@ -85,7 +86,7 @@ func TestAcceptWithATicketThatIsNotReady(t *testing.T) {
 func TestAcceptWithTheWorktreeAlreadyGone(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
-	gitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, ticketID))
+	testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, ticketID))
 
 	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
@@ -120,7 +121,7 @@ func TestAcceptRemovesTheWorktree(t *testing.T) {
 	}
 	// git keeps its own record of a worktree, and one it still lists but cannot
 	// find blocks the next worktree at that path.
-	if out := gitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
+	if out := testfix.GitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
 		t.Errorf("git still lists the worktree:\n%s", out)
 	}
 }
@@ -166,10 +167,10 @@ func TestAcceptKeepsTheBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := gitOut(t, repo, "branch", "--list", ticket.Branch); !strings.Contains(got, ticket.Branch) {
+	if got := testfix.GitOut(t, repo, "branch", "--list", ticket.Branch); !strings.Contains(got, ticket.Branch) {
 		t.Fatalf("git branch --list gives %q, and the branch of the run is gone", got)
 	}
-	if got := gitOut(t, repo, "rev-parse", ticket.Branch); got != ticket.Commit {
+	if got := testfix.GitOut(t, repo, "rev-parse", ticket.Branch); got != ticket.Commit {
 		t.Errorf("the branch is at %s, and the ticket holds %s", got, ticket.Commit)
 	}
 }

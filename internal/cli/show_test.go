@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -131,7 +132,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 // dg show reads the fields from the database and the prose from the file.
 func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 	const title = "Remove the staging app"
 	const body = "Remove the app, the volume and the records of the DNS."
 	if _, err := runIn(t, dataDir, repo, "ticket", title, body); err != nil {
@@ -150,7 +151,7 @@ func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 }
 
 func TestRunShowWithATicketThatIsNotThere(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), gitRepo(t), "show", "9999")
+	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show", "9999")
 	if !errors.Is(err, store.ErrNoTicket) {
 		t.Fatalf("err = %v, want ErrNoTicket", err)
 	}
@@ -160,7 +161,7 @@ func TestRunShowWithATicketThatIsNotThere(t *testing.T) {
 }
 
 func TestRunShowWithAnIDThatIsNotANumber(t *testing.T) {
-	_, err := runIn(t, t.TempDir(), gitRepo(t), "show", "banana")
+	_, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show", "banana")
 	if err == nil {
 		t.Fatal("dg show took an id that is not a number")
 	}
@@ -170,7 +171,7 @@ func TestRunShowWithAnIDThatIsNotANumber(t *testing.T) {
 }
 
 func TestRunShowWithNoID(t *testing.T) {
-	if _, err := runIn(t, t.TempDir(), gitRepo(t), "show"); err == nil {
+	if _, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show"); err == nil {
 		t.Fatal("dg show took no id")
 	}
 }
@@ -270,9 +271,9 @@ func showCommit(t *testing.T, repo, hash string) string {
 }
 
 func TestWriteTicketGivesTheShortHashAndTheSubject(t *testing.T) {
-	repo := gitRepo(t)
-	commitIn(t, repo, "Remove the staging app and its DNS records")
-	hash := gitOut(t, repo, "rev-parse", "HEAD")
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "Remove the staging app and its DNS records")
+	hash := testfix.GitOut(t, repo, "rev-parse", "HEAD")
 
 	line := showCommit(t, repo, hash)
 	want := hash[:7] + " Remove the staging app and its DNS records"
@@ -286,11 +287,11 @@ func TestWriteTicketGivesTheShortHashAndTheSubject(t *testing.T) {
 
 // The subject comes from git at each call, so a message written again is right.
 func TestWriteTicketReadsTheSubjectFromGitEachTime(t *testing.T) {
-	repo := gitRepo(t)
-	commitIn(t, repo, "the first message")
-	gitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "the first message")
+	testfix.GitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"commit", "--amend", "--allow-empty", "-q", "-m", "the message written again")
-	hash := gitOut(t, repo, "rev-parse", "HEAD")
+	hash := testfix.GitOut(t, repo, "rev-parse", "HEAD")
 
 	if line := showCommit(t, repo, hash); !strings.Contains(line, "the message written again") {
 		t.Errorf("the commit row is %q, want the new message", line)
@@ -301,14 +302,14 @@ func TestWriteTicketReadsTheSubjectFromGitEachTime(t *testing.T) {
 // what a person needs to go looking.
 func TestWriteTicketWithACommitThatGitDoesNotKnow(t *testing.T) {
 	const gone = "0123456789abcdef0123456789abcdef01234567"
-	line := showCommit(t, gitRepo(t), gone)
+	line := showCommit(t, testfix.Repo(t, repoBranch), gone)
 	if !strings.Contains(line, gone[:7]) {
 		t.Errorf("the commit row is %q, and it does not hold the hash", line)
 	}
 }
 
 func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
-	if line := showCommit(t, gitRepo(t), ""); line != "" {
+	if line := showCommit(t, testfix.Repo(t, repoBranch), ""); line != "" {
 		t.Errorf("the commit row is %q, want none", line)
 	}
 }

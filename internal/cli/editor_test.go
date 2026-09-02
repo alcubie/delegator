@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // withEditor puts an editor in place of the one of the person. It writes text
@@ -48,12 +50,12 @@ func TestTicketFromEditorTakesTheFirstLineAsTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app and the volume.\n")
 
-	id, err := TicketFromEditor(dataDir, gitRepo(t))
+	id, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,11 +78,11 @@ func TestTicketFromEditorWithOneLineWritesNoProse(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n")
 
-	if _, err := TicketFromEditor(dataDir, gitRepo(t)); err != nil {
+	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +98,7 @@ func TestTicketFromEditorKeepsEachLineOfTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Title\n\nOne.\n\nTwo.\n")
 
-	if _, err := TicketFromEditor(dataDir, gitRepo(t)); err != nil {
+	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,11 +113,11 @@ func TestTicketFromEditorTrimsTheEndOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure  \r\n\nRemove the staging app.\n")
 
-	if _, err := TicketFromEditor(dataDir, gitRepo(t)); err != nil {
+	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,12 +193,12 @@ func TestTicketFromEditorWithNoTitle(t *testing.T) {
 			dataDir := t.TempDir()
 			withEditor(t, test.text)
 
-			_, err := TicketFromEditor(dataDir, gitRepo(t))
+			_, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch))
 			if !errors.Is(err, ErrNoTitle) {
 				t.Fatalf("err = %v, want ErrNoTitle", err)
 			}
 
-			queue, err := openStore(t, dataDir).ListQueue()
+			queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -214,7 +216,7 @@ func TestTicketFromEditorWithNoTitle(t *testing.T) {
 // one.
 func TestTicketFromEditorWithNoTitleUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 
 	withEditor(t, "")
 	if _, err := TicketFromEditor(dataDir, repo); !errors.Is(err, ErrNoTitle) {

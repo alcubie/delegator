@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 
 	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure")
 	if err != nil {
@@ -33,7 +34,7 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 func TestRunTicketWithABody(t *testing.T) {
 	dataDir := t.TempDir()
 
-	out, err := runIn(t, dataDir, gitRepo(t), "ticket", "Remove staging infrastructure", "Remove the staging app.")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "Remove staging infrastructure", "Remove the staging app.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app.\n")
 
-	out, err := runIn(t, dataDir, gitRepo(t), "ticket")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 
 	// The title comes from the editor, and not from an argument that is not
 	// there, so the title says that the editor gave it.
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 func TestRunTicketThatFailsShowsNothing(t *testing.T) {
 	dataDir := t.TempDir()
 
-	out, err := runIn(t, dataDir, gitRepo(t), "ticket", "   ")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "   ")
 	if !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}
@@ -85,12 +86,12 @@ func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	const title = "Remove staging infrastructure"
 
-	id, err := Ticket(dataDir, gitRepo(t), title, "")
+	id, err := Ticket(dataDir, testfix.Repo(t, repoBranch), title, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 		t.Fatalf("err = %v, want %v", err, project.ErrNotARepository)
 	}
 
-	id, err := Ticket(dataDir, gitRepo(t), "Add rate limiting", "")
+	id, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Add rate limiting", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,11 +134,11 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", ""); err != nil {
+	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
 
-	projects, err := openStore(t, dataDir).Projects()
+	projects, err := testfix.OpenStore(t, dataDir).Projects()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 // made, because the path of a project is unique.
 func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 
 	if _, err := Ticket(dataDir, repo, "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
@@ -162,7 +163,7 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	projects, err := openStore(t, dataDir).Projects()
+	projects, err := testfix.OpenStore(t, dataDir).Projects()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +176,7 @@ func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	const body = "Remove the staging app, the volume and the records of the DNS."
 
-	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", body); err != nil {
+	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", body); err != nil {
 		t.Fatal(err)
 	}
 
@@ -187,7 +188,7 @@ func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
 func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", ""); err != nil {
+	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -201,7 +202,7 @@ func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
 func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, gitRepo(t), "Remove staging infrastructure", "body"); err != nil {
+	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", "body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,12 +224,12 @@ func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 func TestTicketWithNoTitle(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := Ticket(dataDir, gitRepo(t), "   ", "Remove the staging app.")
+	_, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "   ", "Remove the staging app.")
 	if !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}
 
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}

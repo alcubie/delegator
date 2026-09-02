@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // runIn runs one command and returns what it wrote to the output. cobra writes
@@ -31,7 +33,7 @@ func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error
 // dg with no command is the inbox. The help is still there, at dg help.
 func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 	if _, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure"); err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // threeInTheQueue makes three tickets and returns the store and their ids, in
@@ -15,7 +16,7 @@ import (
 func threeInTheQueue(t *testing.T) (string, string, []int64) {
 	t.Helper()
 	dataDir := t.TempDir()
-	repo := gitRepo(t)
+	repo := testfix.Repo(t, repoBranch)
 	var ids []int64
 	for _, title := range []string{"first", "second", "third"} {
 		out, err := runIn(t, dataDir, repo, "ticket", title)
@@ -34,7 +35,7 @@ func threeInTheQueue(t *testing.T) (string, string, []int64) {
 // queueTitlesOf reads the order of the queue through the store.
 func queueTitlesOf(t *testing.T, dataDir string) []string {
 	t.Helper()
-	queue, err := openStore(t, dataDir).ListQueue()
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestRunMoveWithAWordThatIsNotADirection(t *testing.T) {
 
 func TestRunMoveWithATicketThatIsNotInTheQueue(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
-	if err := openStore(t, dataDir).ChangeStatus(ids[1], store.Running); err != nil {
+	if err := testfix.OpenStore(t, dataDir).ChangeStatus(ids[1], store.Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitlesOf(t, dataDir)
@@ -152,7 +153,7 @@ func TestRunMoveBeforeATicket(t *testing.T) {
 
 func TestRunMoveBeforeATicketThatIsNotInTheQueue(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
-	if err := openStore(t, dataDir).ChangeStatus(ids[2], store.Running); err != nil {
+	if err := testfix.OpenStore(t, dataDir).ChangeStatus(ids[2], store.Running); err != nil {
 		t.Fatal(err)
 	}
 	before := queueTitlesOf(t, dataDir)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // queuedTicket makes a data directory holding one project and one ticket in
@@ -13,10 +14,10 @@ import (
 // of the ticket and the repository.
 func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	t.Helper()
-	repo := gitRepo(t)
-	commitIn(t, repo, "first")
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "first")
 
-	s := openStore(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
 	projectID, err := s.AddProject(repo, repoBranch)
 	if err != nil {
 		t.Fatal(err)
@@ -28,22 +29,6 @@ func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	return s, ticketID, repo
 }
 
-// secondTicket adds one more ticket to the queue of a data directory that
-// queuedTicket made, and returns its id.
-func secondTicket(t *testing.T, dataDir string) int64 {
-	t.Helper()
-	s := openStore(t, dataDir)
-	projects, err := s.Projects()
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := s.AddTicket(projects[0].ID, "the second")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return id
-}
-
 // runningTicket makes a queued ticket and claims it for a run, on a branch
 // that holds one commit. It returns the store, the id of the ticket, the
 // repository and the hash of that commit.
@@ -52,11 +37,11 @@ func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, s
 	s, ticketID, repo := queuedTicket(t, dataDir)
 
 	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
-	gitIn(t, repo, "branch", branch)
+	testfix.GitIn(t, repo, "branch", branch)
 	if err := s.Claim(ticketID, branch); err != nil {
 		t.Fatal(err)
 	}
-	return s, ticketID, repo, gitOut(t, repo, "rev-parse", branch)
+	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)
 }
 
 func TestFinishReadyTicket(t *testing.T) {

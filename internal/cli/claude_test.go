@@ -11,6 +11,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // TestClaudeRunsOneTicket runs one real ticket through claude, end to end:
@@ -21,13 +22,13 @@ import (
 // The agent's own dg calls must reach this test's database and this test's
 // build of dg, so XDG_DATA_HOME and PATH are set for the run.
 func TestClaudeRunsOneTicket(t *testing.T) {
-	dataDir := xdgDataDir(t)
+	dataDir := testfix.XDGDataDir(t)
 	useLaunch(t, func(id int64) *exec.Cmd {
 		return exec.Command("dg", "run", fmt.Sprint(id))
 	})
 
-	repo := gitRepo(t)
-	commitIn(t, repo, "first")
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "first")
 
 	out, err := runIn(t, dataDir, repo, "ticket", "Add a greeting",
 		"Create a file named HELLO.md at the root of the repository. Its only content is the word hello.")
@@ -40,7 +41,7 @@ func TestClaudeRunsOneTicket(t *testing.T) {
 		t.Fatalf("dg run: %v", err)
 	}
 
-	s := openStore(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
 	ticket, err := s.Ticket(1)
 	if err != nil {
 		t.Fatal(err)

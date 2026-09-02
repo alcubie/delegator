@@ -2,7 +2,6 @@ package run
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,42 +10,12 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/adapters"
-	"github.com/alcubie/delegator/internal/agentbin"
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// fakeAgentPath is dg-fake-agent, built once for the whole package.
-var fakeAgentPath string
-
 func TestMain(m *testing.M) {
-	os.Exit(runTests(m))
-}
-
-// runTests builds dg-fake-agent once for the package and runs its tests. The
-// work is here rather than in TestMain so the cleanup can be deferred: os.Exit
-// does not run deferred calls, and every path out of TestMain ends in one.
-func runTests(m *testing.M) int {
-	binary, remove, err := agentbin.Build()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	defer remove()
-
-	fakeAgentPath = binary
-	return m.Run()
-}
-
-// openStore opens the store of a data directory and closes it when the test
-// ends, which is the defer a test helper cannot do for its caller.
-func openStore(t *testing.T, dataDir string) *store.Store {
-	t.Helper()
-	s, err := store.Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { s.Close() })
-	return s
+	os.Exit(testfix.RunTests(m, false))
 }
 
 // queuedTicket makes a data directory that holds one project and one ticket in
@@ -61,7 +30,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 	repo := repoOnMain(t)
 	dataDir := t.TempDir()
 
-	s := openStore(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
 
 	projectID, err := s.ProjectID(repo, "main")
 	if err != nil {
@@ -72,21 +41,9 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 		t.Fatal(err)
 	}
 
-	gitIn(t, repo, "checkout", "-q", "-b", "other")
-	commitIn(t, repo, "second")
+	testfix.GitIn(t, repo, "checkout", "-q", "-b", "other")
+	testfix.CommitIn(t, repo, "second")
 	return dataDir, id
-}
-
-// readTicket returns one ticket from the data directory.
-func readTicket(t *testing.T, dataDir string, id int64) store.Ticket {
-	t.Helper()
-	s := openStore(t, dataDir)
-
-	ticket, err := s.Ticket(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return ticket
 }
 
 func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
@@ -96,7 +53,7 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ticket := readTicket(t, dataDir, id)
+	ticket := testfix.ReadTicket(t, dataDir, id)
 	if ticket.Status != store.Running {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Running)
 	}
@@ -110,10 +67,10 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 	if _, err := os.Stat(worktree); err != nil {
 		t.Fatalf("the worktree is not there: %v", err)
 	}
-	if got := gitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != want {
+	if got := testfix.GitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != want {
 		t.Errorf("the worktree is on %q, want %q", got, want)
 	}
-	if got, base := gitOut(t, worktree, "rev-parse", "HEAD"), gitOut(t, ticket.Project.Path, "rev-parse", "main"); got != base {
+	if got, base := testfix.GitOut(t, worktree, "rev-parse", "HEAD"), testfix.GitOut(t, ticket.Project.Path, "rev-parse", "main"); got != base {
 		t.Errorf("the worktree starts at %s, want main at %s", got, base)
 	}
 }
@@ -124,7 +81,7 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 // there, only the database is left to say no.
 func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	ticket := readTicket(t, dataDir, id)
+	ticket := testfix.ReadTicket(t, dataDir, id)
 	if _, err := Worktree(dataDir, ticket); err != nil {
 		t.Fatal(err)
 	}
@@ -154,19 +111,16 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	if won != 1 {
 		t.Errorf("%d supervisors took the ticket, want 1", won)
 	}
-	if got := readTicket(t, dataDir, id); got.Status != store.Running {
+	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Running {
 		t.Errorf("status = %q, want %q", got.Status, store.Running)
 	}
 }
 
-// fakeAgent returns an Adapter that runs the given script.
+// fakeAgent returns an Adapter that runs the given script. It is here and not
+// in testfix because testfix cannot import adapters.
 func fakeAgent(t *testing.T, lines ...string) adapters.Fake {
 	t.Helper()
-	script := filepath.Join(t.TempDir(), "script")
-	if err := os.WriteFile(script, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return adapters.Fake{Binary: fakeAgentPath, Script: script}
+	return adapters.Fake{Binary: testfix.FakeAgentPath, Script: testfix.Script(t, lines...)}
 }
 
 // The script sleeps before it writes, so a Start that returns without waiting
@@ -215,7 +169,7 @@ func TestStartRecordsTheSessionTheRunReported(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := readTicket(t, dataDir, id).Session; got != "s-1" {
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
 		t.Errorf("session = %q, want %q", got, "s-1")
 	}
 }
@@ -230,7 +184,7 @@ func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
 		t.Fatal("err = nil, want the exit status of the run")
 	}
 
-	if got := readTicket(t, dataDir, id).Session; got != "s-1" {
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
 		t.Errorf("session = %q, want %q", got, "s-1")
 	}
 }
