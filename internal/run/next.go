@@ -2,6 +2,7 @@ package run
 
 import (
 	"os/exec"
+	"syscall"
 
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -34,6 +35,22 @@ func Next(dataDir string, launch func(id int64) *exec.Cmd) error {
 		if len(queue) == 0 {
 			return nil
 		}
-		return launch(queue[0].ID).Start()
+		return detach(launch(queue[0].ID))
 	})
+}
+
+// detach starts cmd so that it outlives the program that started it. The
+// child gets a session of its own, so the hangup of a closed terminal and the
+// interrupt of a Ctrl-C, which go to the session and to the foreground process
+// group, do not reach it. It gets none of the parent's standard streams,
+// because a shell waiting on the parent's output would otherwise wait for the
+// whole run; the run writes its own log. The process handle is released
+// because nothing will wait on it.
+func detach(cmd *exec.Cmd) error {
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }
