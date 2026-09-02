@@ -32,8 +32,12 @@ claude:
 watch:
 	gotestsum --watch ./...
 
+# vet also compiles the tagged test behind make claude without running it. The
+# tag keeps that file out of every ordinary build, so without this a change to
+# the adapter could break it and nobody would know until the day it was needed.
 vet:
 	go vet ./...
+	go vet -tags claude ./internal/cli/
 
 # lint runs each check that staticcheck has, and not only the ones that it has
 # by default. The two that are not default earn their place: ST1000 asks each

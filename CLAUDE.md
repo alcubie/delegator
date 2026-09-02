@@ -21,6 +21,13 @@ above this directory, and this file holds what belongs to this repository only.
   `git add -A`. After a mutation run, read `git status` before staging, and
   stage the paths you changed rather than everything.
 
+- **Run `make claude` after changing the agent path.** One test drives a real
+  ticket through claude; it costs money, so it is behind the build tag
+  `claude` and `make check` only compiles it. `go test` will not list it and
+  nothing runs it for you. Run it when you change `internal/adapters/claude.go`,
+  the prompt in `internal/run/supervisor.go`, or how `run.Start` captures
+  output, and say in the commit message that it passed.
+
 - **Run the real binary.** `make install` puts `dg` on the PATH. Two faults this
   session passed each test and appeared at the first real run: `dg show` wrapped
   prose that already held the line breaks of the person, and the text of a field
