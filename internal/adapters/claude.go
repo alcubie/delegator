@@ -24,7 +24,11 @@ func (c Claude) Launch(spec RunSpec) *exec.Cmd {
 	return cmd
 }
 
-func (c Claude) Resume(session string) []string { return nil }
+// Resume returns the argv that reopens a session for a person. It is
+// interactive, so no -p and no permission mode: the person is there to answer.
+func (c Claude) Resume(session string) []string {
+	return []string{claudeBinary, "--resume", session}
+}
 
 func (c Claude) SessionID(out []byte) (string, error) { return "", nil }
 

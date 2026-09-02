@@ -22,3 +22,16 @@ func TestClaudeLaunchGivesAHeadlessRun(t *testing.T) {
 }
 
 var _ Adapter = Claude{}
+
+// A person continues the conversation, so the run is interactive: no -p, and
+// no permission mode, because the person is there to answer.
+func TestClaudeResumeContinuesTheSession(t *testing.T) {
+	const session = "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"
+
+	got := Claude{}.Resume(session)
+
+	want := []string{"claude", "--resume", session}
+	if !slices.Equal(got, want) {
+		t.Errorf("argv = %q, want %q", got, want)
+	}
+}
