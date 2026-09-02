@@ -18,6 +18,14 @@ import (
 func Next(dataDir string, launch func(id int64) *exec.Cmd) error {
 	return store.With(dataDir, func(s *store.Store) error {
 
+		running, err := s.IsQueueRunning()
+		if err != nil {
+			return err
+		}
+		if !running {
+			return nil
+		}
+
 		open, err := s.OpenTickets()
 		if err != nil {
 			return err

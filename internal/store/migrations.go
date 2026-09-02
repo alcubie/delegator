@@ -28,6 +28,7 @@ var migrations = []string{
 	completedColumn,
 	dropTicketsColumns,
 	addTicketsCommitColumn,
+	addQueueTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -80,6 +81,14 @@ ALTER TABLE tickets DROP COLUMN flags;
 
 const addTicketsCommitColumn = `
 ALTER TABLE tickets ADD COLUMN commit_id TEXT;
+`
+
+const addQueueTable = `
+CREATE TABLE queue_state (
+ id      INTEGER PRIMARY KEY CHECK (id = 1),
+ running BOOLEAN NOT NULL DEFAULT 1 CHECK (running IN (0, 1))
+);
+INSERT INTO queue_state (id, running) VALUES (1, 1);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

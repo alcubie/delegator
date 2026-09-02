@@ -63,6 +63,23 @@ func TestNextWithARunActiveStartsNothing(t *testing.T) {
 	}
 }
 
+func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
+	dataDir, _ := queuedTicket(t, "the first")
+	if err := testfix.OpenStore(t, dataDir).PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(dataDir, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a run was started while the queue is paused %s", testfix.WaitFor(t, marker))
+	}
+}
+
 // A run started by a command must not die with that command's terminal. The
 // terminal's hangup and interrupt go to its session and its foreground process
 // group, so the child is placed in a session of its own, and the test reads

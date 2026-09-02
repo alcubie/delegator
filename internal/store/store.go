@@ -653,3 +653,31 @@ func (s *Store) SetSession(id int64, session string) error {
 	}
 	return nil
 }
+
+// IsQueueRunning returns if the queue is actively running. A paused queue
+// prevents tickets from automatically starting.
+func (s *Store) IsQueueRunning() (bool, error) {
+	var running bool
+	err := s.db.QueryRow("SELECT running FROM queue_state WHERE id = 1").Scan(&running)
+	if err != nil {
+		return false, err
+	}
+	return running, nil
+}
+
+// PauseQueue pauses the queue to prevent future tasks from being worked on
+// automatically.
+func (s *Store) PauseQueue() error {
+	result, err := s.db.Exec("UPDATE queue_state SET running = FALSE WHERE id = 1")
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("the queue_state row is missing")
+	}
+	return nil
+}
