@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/alcubie/delegator/internal/store"
 )
 
 // recordingLaunch returns a launch that writes the id it was given to a file,
@@ -43,11 +41,7 @@ func waitFor(t *testing.T, path string) string {
 // queuedTicket made, and returns its id.
 func secondTicket(t *testing.T, dataDir string) int64 {
 	t.Helper()
-	s, err := store.Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+	s := openStore(t, dataDir)
 
 	projects, err := s.Projects()
 	if err != nil {
@@ -78,11 +72,7 @@ func TestNextStartsTheFirstTicketOfTheQueue(t *testing.T) {
 // a start with no ticket would be a dg run with no id.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
-	s, err := store.Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
+	openStore(t, dataDir)
 	launch, marker := recordingLaunch(t)
 
 	if err := Next(dataDir, launch); err != nil {

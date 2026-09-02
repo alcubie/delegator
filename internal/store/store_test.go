@@ -1,3 +1,9 @@
+// These tests call Open directly rather than through a helper like the
+// openStore in the cli and run tests. Open is the thing under test here: the
+// migration steps, the refusal of a database from a later version, the WAL
+// mode and the permission of the file are each a behaviour of Open, and a
+// helper that stopped the test on Open's error would hide the very error
+// some of these tests wait for.
 package store
 
 import (

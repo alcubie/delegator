@@ -37,6 +37,18 @@ func runTests(m *testing.M) int {
 	return m.Run()
 }
 
+// openStore opens the store of a data directory and closes it when the test
+// ends, which is the defer a test helper cannot do for its caller.
+func openStore(t *testing.T, dataDir string) *store.Store {
+	t.Helper()
+	s, err := store.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 // queuedTicket makes a data directory that holds one project and one ticket in
 // the queue, and returns the directory and the id of the ticket.
 //
@@ -49,11 +61,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 	repo := repoOnMain(t)
 	dataDir := t.TempDir()
 
-	s, err := store.Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+	s := openStore(t, dataDir)
 
 	projectID, err := s.ProjectID(repo, "main")
 	if err != nil {
@@ -72,11 +80,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 // readTicket returns one ticket from the data directory.
 func readTicket(t *testing.T, dataDir string, id int64) store.Ticket {
 	t.Helper()
-	s, err := store.Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+	s := openStore(t, dataDir)
 
 	ticket, err := s.Ticket(id)
 	if err != nil {
