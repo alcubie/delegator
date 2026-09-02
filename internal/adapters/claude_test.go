@@ -10,7 +10,7 @@ func TestClaudeLaunchGivesAHeadlessRun(t *testing.T) {
 
 	want := []string{
 		"claude", "-p", "do the thing",
-		"--output-format", "json",
+		"--output-format", "stream-json", "--verbose",
 		"--permission-mode", "bypassPermissions",
 	}
 	if !slices.Equal(cmd.Args, want) {
@@ -36,29 +36,41 @@ func TestClaudeResumeContinuesTheSession(t *testing.T) {
 	}
 }
 
-func TestClaudeSessionIDReadsTheJSON(t *testing.T) {
+// The stream reports the id on its first line, before any work, so it is
+// there even when the run is cut off before its result.
+func TestClaudeSessionIDReadsTheFirstLineOfTheStream(t *testing.T) {
 	const session = "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"
-	out := []byte(`{"type":"result","session_id":"` + session + `","result":"done"}` + "\n")
+	init := `{"type":"system","subtype":"init","session_id":"` + session + `","model":"m"}`
 
-	got, err := Claude{}.SessionID(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != session {
-		t.Errorf("session = %q, want %q", got, session)
+	for name, out := range map[string]string{
+		"a whole run": init + "\n" +
+			`{"type":"assistant","session_id":"` + session + `"}` + "\n" +
+			`{"type":"result","subtype":"success","session_id":"` + session + `"}` + "\n",
+		"cut off after init":        init + "\n" + `{"type":"assist`,
+		"cut off mid result":        init + "\n" + `{"type":"result","session_id":"e55e38`,
+		"only the first line":       init,
+		"a warning before init":     "Warning: something\n" + init + "\n",
+		"an event with no id first": `{"type":"system","subtype":"startup"}` + "\n" + init + "\n",
+	} {
+		got, err := Claude{}.SessionID([]byte(out))
+		if err != nil {
+			t.Errorf("%s: err = %v, want nil", name, err)
+		}
+		if got != session {
+			t.Errorf("%s: session = %q, want %q", name, got, session)
+		}
 	}
 }
 
-// A run that died early wrote no id, and that is the state of the run and not
-// an error in reading it: the ticket keeps no session, and the exit status
-// says the run failed.
+// A run that never started a session wrote no id, and that is the state of
+// the run rather than an error in reading it: the exit status says it failed.
 func TestClaudeSessionIDWithNothingReported(t *testing.T) {
 	for _, out := range []string{
 		"",
 		"panic: it stopped\n",
-		`{"type":"result","result":"done"}`,
-		`{"type":"result","session_id":""}`,
-		`{"type":"result","session_id":"e55e38`,
+		`{"type":"system","subtype":"init"}`,
+		`{"type":"system","session_id":""}`,
+		`{"type":"system","subtype":"init","session_id":"e55e38`,
 	} {
 		got, err := Claude{}.SessionID([]byte(out))
 		if err != nil {

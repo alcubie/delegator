@@ -287,9 +287,12 @@ type Adapter interface {
 
 Each agent makes its own session id and reports it in the output of the run. Delegator
 reads it from there and keeps it on the ticket, and `Resume` gives it back to the agent
-later. The command `claude -p --output-format json` gives a field `session_id`, and
-`claude --resume <id>` continues that conversation. The agents codex, gemini and opencode
-each work the same way.
+later. The command `claude -p --output-format stream-json` writes one JSON object for each
+event, and the first of them carries `session_id`, before any work starts. A run that stops
+part way has therefore already given its id, and a person can open the session to see what
+went wrong. The single-object format `json` gives the id last, which is the one line a run
+that dies never writes. `claude --resume <id>` continues the conversation. The agents
+codex, gemini and opencode each report the id in their output the same way.
 
 Claude will also take an id at its start, with `claude --session-id <uuid>`, and delegator
 does not use that. One path for every agent is worth more than a property that one of them

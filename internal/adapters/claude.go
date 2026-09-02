@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"bytes"
 	"encoding/json"
 	"os/exec"
 )
@@ -13,14 +14,18 @@ type Claude struct{}
 
 // Launch returns the command for a headless run in the spec's worktree.
 //
-// The JSON output carries the session id, which SessionID reads back. The
-// permission mode turns off the questions claude would otherwise ask, because
-// no person is at the terminal to answer one. The worktree is the area that a
-// run can reach, and it is isolation rather than a sandbox.
+// The output is one JSON object per line, and the first line already carries
+// the session id, so a run that dies part way has still reported it and a
+// person can open the session to see what happened. The single-object format
+// writes its id last, which is the one line a dying run never reaches.
+//
+// The permission mode turns off the questions claude would otherwise ask,
+// because no person is at the terminal to answer one. The worktree is the
+// area that a run can reach, and it is isolation rather than a sandbox.
 func (c Claude) Launch(spec RunSpec) *exec.Cmd {
 	cmd := exec.Command(claudeBinary,
 		"-p", spec.Prompt,
-		"--output-format", "json",
+		"--output-format", "stream-json", "--verbose",
 		"--permission-mode", "bypassPermissions",
 	)
 	cmd.Dir = spec.Worktree
@@ -33,19 +38,22 @@ func (c Claude) Resume(session string) []string {
 	return []string{claudeBinary, "--resume", session}
 }
 
-// SessionID reads session_id from the JSON result that a headless run writes.
-// Output that is not that JSON, or JSON with no id in it, gives no id and no
-// error: a run that died early is reported by its exit status, not here.
+// SessionID reads session_id from the stream a headless run writes. Every
+// line of that stream carries it, so the first line that parses is enough,
+// and a run cut off after its first line still yields its id.
+//
+// Output with no such line gives no id and no error: the run never got as far
+// as starting a session, and its exit status already reports that.
 func (c Claude) SessionID(out []byte) (string, error) {
-	var result struct {
-		SessionID string `json:"session_id"`
+	for line := range bytes.SplitSeq(out, []byte("\n")) {
+		var event struct {
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal(line, &event) == nil && event.SessionID != "" {
+			return event.SessionID, nil
+		}
 	}
-	if err := json.Unmarshal(out, &result); err != nil {
-		// Not the result object means the run died before writing one. The
-		// exit status already reports that; an error here would say it twice.
-		return "", nil
-	}
-	return result.SessionID, nil
+	return "", nil
 }
 
 // Name returns the agent's name.
