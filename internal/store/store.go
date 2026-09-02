@@ -619,3 +619,21 @@ func (s *Store) ChangeStatusWith(id int64, status TicketStatus, work func() erro
 	}
 	return tx.Commit()
 }
+
+// SetSession records the session a run reported, so a person can open the
+// conversation later. The supervisor writes it after the run ends, because
+// every agent reports its own id and none takes one from delegator.
+func (s *Store) SetSession(id int64, session string) error {
+	result, err := s.db.Exec("UPDATE tickets SET session = ? WHERE id = ?", session, id)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	return nil
+}

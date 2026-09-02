@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -182,5 +183,68 @@ func TestStartRunsTheAgentInTheWorktreeAndWaits(t *testing.T) {
 	}
 	if got := string(content); got != "done" {
 		t.Errorf("content = %q, want %q", got, "done")
+	}
+}
+
+// logOf returns the one log a run wrote below runs/<id>.
+func logOf(t *testing.T, dataDir string, id int64) string {
+	t.Helper()
+	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("logs = %v, want one", logs)
+	}
+	data, err := os.ReadFile(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func TestStartRecordsTheSessionTheRunReported(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 0")
+
+	if err := Start(dataDir, id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readTicket(t, dataDir, id).Session; got != "s-1" {
+		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
+
+// The run that fails is the one a person most wants to open, so its session
+// is recorded before its failure is reported.
+func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 3")
+
+	if err := Start(dataDir, id, agent); err == nil {
+		t.Fatal("err = nil, want the exit status of the run")
+	}
+
+	if got := readTicket(t, dataDir, id).Session; got != "s-1" {
+		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
+
+// The log holds what the agent wrote on both streams, so a person can read a
+// run that produced no commit.
+func TestStartWritesTheLogOfTheRun(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'to stdout\\n'", "run printf 'to stderr\\n' >&2", "exit 0")
+
+	if err := Start(dataDir, id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	log := logOf(t, dataDir, id)
+	for _, want := range []string{"to stdout", "to stderr"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("the log does not hold %q:\n%s", want, log)
+		}
 	}
 }
