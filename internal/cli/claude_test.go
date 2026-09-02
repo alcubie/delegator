@@ -3,7 +3,7 @@
 package cli
 
 import (
-	"os"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -21,16 +21,10 @@ import (
 // The agent's own dg calls must reach this test's database and this test's
 // build of dg, so XDG_DATA_HOME and PATH are set for the run.
 func TestClaudeRunsOneTicket(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", xdg)
-	dataDir := filepath.Join(xdg, "delegator")
-
-	bin := t.TempDir()
-	if out, err := exec.Command("go", "build", "-o", filepath.Join(bin, "dg"),
-		"github.com/alcubie/delegator/cmd/dg").CombinedOutput(); err != nil {
-		t.Fatalf("go build dg: %v: %s", err, out)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	dataDir := xdgDataDir(t)
+	useLaunch(t, func(id int64) *exec.Cmd {
+		return exec.Command("dg", "run", fmt.Sprint(id))
+	})
 
 	repo := gitRepo(t)
 	commitIn(t, repo, "first")

@@ -28,6 +28,22 @@ func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	return s, ticketID, repo
 }
 
+// secondTicket adds one more ticket to the queue of a data directory that
+// queuedTicket made, and returns its id.
+func secondTicket(t *testing.T, dataDir string) int64 {
+	t.Helper()
+	s := openStore(t, dataDir)
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.AddTicket(projects[0].ID, "the second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 // runningTicket makes a queued ticket and claims it for a run, on a branch
 // that holds one commit. It returns the store, the id of the ticket, the
 // repository and the hash of that commit.

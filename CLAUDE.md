@@ -29,6 +29,13 @@ above this directory, and this file holds what belongs to this repository only.
   or how `run.Start` captures output, and say in the commit message that they
   passed.
 
+- **A launch that defaults to `os.Executable` is the test binary under test.**
+  `launch` in `internal/cli` starts dg's own executable with `run <id>`. Under
+  `go test` that executable is the test binary, so every `dg ticket` in the
+  tests started a detached copy of the tests, which started more, and the CPU
+  sat at 100% until they burned out. `TestMain` sets `launch` to a no-op for
+  the package; a new package-level launcher needs the same.
+
 - **Run the real binary.** `make install` puts `dg` on the PATH. Two faults this
   session passed each test and appeared at the first real run: `dg show` wrapped
   prose that already held the line breaks of the person, and the text of a field

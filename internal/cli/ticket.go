@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -46,7 +47,7 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
-			return nil
+			return run.Next(dataDir, launch)
 		},
 	}
 }
