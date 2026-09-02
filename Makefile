@@ -8,7 +8,7 @@ PKG := github.com/alcubie/delegator
 COVER_MIN  := 60
 COVER_PKGS := ./internal/...
 
-.PHONY: build install test vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
+.PHONY: build install test claude vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
 
 build:
 	go build -o $(BIN) ./cmd/dg
@@ -23,6 +23,11 @@ install:
 
 test:
 	go test ./...
+
+# claude runs the one test that drives a real ticket through claude. It costs
+# money and takes minutes, so it is behind a build tag and is not in check.
+claude:
+	go test -tags claude -run TestClaudeRunsOneTicket -timeout 15m -v ./internal/cli/
 
 watch:
 	gotestsum --watch ./...

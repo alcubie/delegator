@@ -248,3 +248,14 @@ func TestStartWritesTheLogOfTheRun(t *testing.T) {
 		}
 	}
 }
+
+// The agent learns the ticket through dg show and ends through dg finish,
+// so the prompt must name both with the right id.
+func TestPromptNamesBothCommands(t *testing.T) {
+	got := prompt(42)
+	for _, want := range []string{"dg show 42", "dg finish 42"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
+	}
+}

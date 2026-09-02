@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -46,7 +47,7 @@ func Start(dataDir string, id int64, agent adapters.Adapter) error {
 	defer log.Close()
 
 	var out bytes.Buffer
-	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree})
+	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
 	cmd.Stdout = io.MultiWriter(&out, log)
 	cmd.Stderr = log
 	// Run returns only after the process exits and the copies into out and
@@ -81,4 +82,21 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 	}
 	name := time.Now().UTC().Format(logTime) + ".log"
 	return os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+}
+
+// prompt returns the first message to the agent for one ticket. It names the
+// two commands the agent uses and nothing else: dg show gives it the ticket,
+// so the prompt does not repeat the prose, and dg finish ends the run.
+func prompt(id int64) string {
+	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
+git worktree on a branch of its own.
+
+1. Run "dg show %[1]d" to read the ticket.
+2. Do what the ticket asks.
+3. Commit your work with git. The commit message is your report: say
+   what you did and why, and name anything that did not go as the
+   ticket said. If you changed nothing, commit with --allow-empty and
+   say why in the message.
+4. Run "dg finish %[1]d <hash>" with the hash of the commit you made.
+`, id)
 }
