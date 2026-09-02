@@ -8,7 +8,7 @@ PKG := github.com/alcubie/delegator
 COVER_MIN  := 60
 COVER_PKGS := ./internal/...
 
-.PHONY: build install test claude vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
+.PHONY: build install test integration release vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
 
 build:
 	go build -o $(BIN) ./cmd/dg
@@ -24,20 +24,27 @@ install:
 test:
 	go test ./...
 
-# claude runs the one test that drives a real ticket through claude. It costs
-# money and takes minutes, so it is behind a build tag and is not in check.
-claude:
-	go test -tags claude -run TestClaudeRunsOneTicket -timeout 15m -v ./internal/cli/
+# integration runs the tests behind the build tag "integration": each one
+# drives a real agent and costs money and time, so check compiles them and
+# release runs them. The tag adds files to the build rather than filtering
+# tests, so the ordinary tests run here too; go caches the ones it already ran.
+integration:
+	go test -tags integration -timeout 15m -v ./...
+
+# release is the gate before a release: everything check does, and then the
+# integration tests. It will grow the goreleaser build and the installer; for
+# now it is the one command that runs every test the repository has.
+release: check integration
 
 watch:
 	gotestsum --watch ./...
 
-# vet also compiles the tagged test behind make claude without running it. The
-# tag keeps that file out of every ordinary build, so without this a change to
-# the adapter could break it and nobody would know until the day it was needed.
+# vet also compiles the tests behind the integration tag without running them.
+# The tag keeps those files out of every ordinary build, so without this a
+# change to an adapter could break one and nobody would know until release.
 vet:
 	go vet ./...
-	go vet -tags claude ./internal/cli/
+	go vet -tags integration ./...
 
 # lint runs each check that staticcheck has, and not only the ones that it has
 # by default. The two that are not default earn their place: ST1000 asks each

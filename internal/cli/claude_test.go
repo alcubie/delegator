@@ -1,4 +1,4 @@
-//go:build claude
+//go:build integration
 
 package cli
 
@@ -15,8 +15,8 @@ import (
 
 // TestClaudeRunsOneTicket runs one real ticket through claude, end to end:
 // dg ticket, dg run, and the dg finish that claude itself calls. It costs
-// money and takes minutes, so it is behind the build tag "claude" and runs
-// with make claude, not with make check.
+// money and takes minutes, so it is behind the build tag "integration" and
+// runs with make integration or make release, not with make check.
 //
 // The agent's own dg calls must reach this test's database and this test's
 // build of dg, so XDG_DATA_HOME and PATH are set for the run.
