@@ -35,3 +35,37 @@ func TestClaudeResumeContinuesTheSession(t *testing.T) {
 		t.Errorf("argv = %q, want %q", got, want)
 	}
 }
+
+func TestClaudeSessionIDReadsTheJSON(t *testing.T) {
+	const session = "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"
+	out := []byte(`{"type":"result","session_id":"` + session + `","result":"done"}` + "\n")
+
+	got, err := Claude{}.SessionID(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != session {
+		t.Errorf("session = %q, want %q", got, session)
+	}
+}
+
+// A run that died early wrote no id, and that is the state of the run and not
+// an error in reading it: the ticket keeps no session, and the exit status
+// says the run failed.
+func TestClaudeSessionIDWithNothingReported(t *testing.T) {
+	for _, out := range []string{
+		"",
+		"panic: it stopped\n",
+		`{"type":"result","result":"done"}`,
+		`{"type":"result","session_id":""}`,
+		`{"type":"result","session_id":"e55e38`,
+	} {
+		got, err := Claude{}.SessionID([]byte(out))
+		if err != nil {
+			t.Errorf("out %q: err = %v, want nil", out, err)
+		}
+		if got != "" {
+			t.Errorf("out %q: session = %q, want nothing", out, got)
+		}
+	}
+}

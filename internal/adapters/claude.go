@@ -1,6 +1,9 @@
 package adapters
 
-import "os/exec"
+import (
+	"encoding/json"
+	"os/exec"
+)
 
 // claudeBinary is the command that Claude starts.
 const claudeBinary = "claude"
@@ -30,7 +33,20 @@ func (c Claude) Resume(session string) []string {
 	return []string{claudeBinary, "--resume", session}
 }
 
-func (c Claude) SessionID(out []byte) (string, error) { return "", nil }
+// SessionID reads session_id from the JSON result that a headless run writes.
+// Output that is not that JSON, or JSON with no id in it, gives no id and no
+// error: a run that died early is reported by its exit status, not here.
+func (c Claude) SessionID(out []byte) (string, error) {
+	var result struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		// Not the result object means the run died before writing one. The
+		// exit status already reports that; an error here would say it twice.
+		return "", nil
+	}
+	return result.SessionID, nil
+}
 
 // Name returns the agent's name.
 func (c Claude) Name() string { return claudeBinary }
