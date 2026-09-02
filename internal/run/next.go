@@ -9,12 +9,23 @@ import (
 // Next starts a run for the first ticket of the queue, if the queue holds one
 // and no run is active. It returns once the program has started, and does not
 // wait for it: the caller is a command a person typed, or a supervisor that is
-// about to exit, and neither should stay alive for the length of a run.
+// about to exit, and neither should stay alive for the length of a run. One run
+// at a time: a ticket in running, whatever its project, means nothing starts.
 //
 // launch returns the command for one ticket. dg passes its own executable with
 // "run <id>", and a test passes something it can observe.
 func Next(dataDir string, launch func(id int64) *exec.Cmd) error {
 	return store.With(dataDir, func(s *store.Store) error {
+
+		open, err := s.OpenTickets()
+		if err != nil {
+			return err
+		}
+		for _, t := range open {
+			if t.Status == store.Running {
+				return nil
+			}
+		}
 
 		queue, err := s.ListQueue()
 		if err != nil {

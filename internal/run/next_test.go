@@ -84,3 +84,23 @@ func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 		t.Errorf("a program was started for an empty queue: %s", waitFor(t, marker))
 	}
 }
+
+// One run at a time: a run already active means nothing starts, however long
+// the queue behind it.
+func TestNextWithARunActiveStartsNothing(t *testing.T) {
+	dataDir, first := queuedTicket(t, "the first")
+	secondTicket(t, dataDir)
+	if err := openStore(t, dataDir).Claim(first, "delegator/1-the-first"); err != nil {
+		t.Fatal(err)
+	}
+	launch, marker := recordingLaunch(t)
+
+	if err := Next(dataDir, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a second run was started while one is active: ticket %s", waitFor(t, marker))
+	}
+}
