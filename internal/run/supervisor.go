@@ -20,7 +20,8 @@ import (
 //
 // The worktree is created first. If git refuses, the ticket stays queued where
 // you can see it, rather than sitting in running with nowhere to work.
-func Start(s *store.Store, dataDir string, id int64, agent adapters.Adapter) error {
+func Start(s *store.Store, id int64, agent adapters.Adapter) error {
+	dataDir := s.DataDir()
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
