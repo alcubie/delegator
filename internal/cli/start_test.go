@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -27,5 +28,24 @@ func TestStartStartsAPausedQueue(t *testing.T) {
 	}
 	if !running {
 		t.Error("Queue should be running")
+	}
+}
+
+func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
+	dataDir := testfix.XDGDataDir(t)
+	s, ticketID, repo := queuedTicket(t, dataDir)
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	l, marker := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	_, err := runIn(t, dataDir, repo, "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.WaitFor(t, marker); got != strconv.FormatInt(ticketID, 10) {
+		t.Errorf("started ticket %s, want the new ticket %d", got, ticketID)
 	}
 }
