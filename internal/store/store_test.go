@@ -30,8 +30,8 @@ func emptyStore(t *testing.T) (*Store, int64) {
 	s, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
-		t.Cleanup(func() { s.Close() })
 	}
+	t.Cleanup(func() { s.Close() })
 
 	projectID, err := s.AddProject("/projects/path", "main")
 	if err != nil {
