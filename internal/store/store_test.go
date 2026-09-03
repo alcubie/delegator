@@ -221,6 +221,19 @@ func TestOpenMakesTheDirectories(t *testing.T) {
 	}
 }
 
+func TestDataDirIsTheDirectoryTheStoreWasOpenedIn(t *testing.T) {
+	dataDir := t.TempDir()
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if got := s.DataDir(); got != dataDir {
+		t.Errorf("DataDir() = %q, want %q", got, dataDir)
+	}
+}
+
 func TestOpenWithTheDataDirectoryAlreadyPresent(t *testing.T) {
 	dataDir := t.TempDir()
 	s, err := Open(dataDir)

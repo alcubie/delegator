@@ -80,7 +80,14 @@ func dsn(dataDir string) string {
 // Store holds the open database. Each command makes one Store, and closes it
 // when the command stops.
 type Store struct {
-	db *sql.DB
+	db  *sql.DB
+	dir string
+}
+
+// DataDir returns the directory the store was opened in. The database, the
+// worktrees, the runs, and the ticket prose all live below it.
+func (s *Store) DataDir() string {
+	return s.dir
 }
 
 // TicketStatus is the state of a ticket.  The constants below are the states.
@@ -160,7 +167,7 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, dir: dataDir}, nil
 }
 
 // With opens the store at dataDir, calls fn with it, and closes it. A command
