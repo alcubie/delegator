@@ -3,16 +3,21 @@ package project
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// These fixtures start git through Command rather than exec.Command, because
+// Command removes GIT_DIR, GIT_INDEX_FILE and the other gitEnv variables from
+// the environment. Git sets those variables when it runs a hook, and the
+// pre-commit hook runs make check, so every test inherits them. When GIT_DIR
+// is set, git works on the repository it names, whatever directory -C gives
+// it. A fixture that meant to build a temporary repository would then run its
+// git init and git commit inside the real repository of the person.
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
-	cmd := exec.Command("git", "init", dir)
-	if _, err := cmd.Output(); err != nil {
+	if _, err := Command(dir, "init").Output(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -80,8 +85,7 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 // because a repository that the test cannot build is not a result of the test.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	all := append([]string{"-C", dir}, args...)
-	if out, err := exec.Command("git", all...).CombinedOutput(); err != nil {
+	if out, err := Command(dir, args...).CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }
@@ -185,8 +189,7 @@ func TestDefaultBranchTakesTheBranchOfHeadLast(t *testing.T) {
 // newline. It stops the test if git gives an error.
 func gitLine(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	all := append([]string{"-C", dir}, args...)
-	out, err := exec.Command("git", all...).Output()
+	out, err := Command(dir, args...).Output()
 	if err != nil {
 		t.Fatalf("git %v: %v", args, err)
 	}
@@ -223,9 +226,9 @@ func TestFirstCommitWhenTheRepositoryHasNoCommit(t *testing.T) {
 // commit first, so the date controls the order of its result.
 func commitAt(t *testing.T, dir, date string) {
 	t.Helper()
-	cmd := exec.Command("git", "-C", dir, "-c", "user.email=test@example.com",
+	cmd := Command(dir, "-c", "user.email=test@example.com",
 		"-c", "user.name=Test", "commit", "--allow-empty", "-q", "-m", "commit")
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	cmd.Env = append(cmd.Env, "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v: %s", err, out)
 	}
