@@ -51,10 +51,10 @@ func runCommand(dataDir string) *cobra.Command {
 			// A run that could not start does not start the next one: the
 			// first ticket of the queue is the one that just failed, and the
 			// chain would start it again without end.
-			if err := run.Start(dataDir, id, agent); err != nil {
-				return err
-			}
 			return store.With(dataDir, func(s *store.Store) error {
+				if err := run.Start(s, dataDir, id, agent); err != nil {
+					return err
+				}
 				return run.Next(s, launch)
 			})
 		},

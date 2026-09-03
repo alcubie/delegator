@@ -20,49 +20,46 @@ import (
 //
 // The worktree is created first. If git refuses, the ticket stays queued where
 // you can see it, rather than sitting in running with nowhere to work.
-func Start(dataDir string, id int64, agent adapters.Adapter) error {
-	return store.With(dataDir, func(s *store.Store) error {
+func Start(s *store.Store, dataDir string, id int64, agent adapters.Adapter) error {
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		return err
+	}
 
-		ticket, err := s.Ticket(id)
-		if err != nil {
+	worktree, err := Worktree(dataDir, ticket)
+	if err != nil {
+		return err
+	}
+	if err := s.Claim(id, branch(id, ticket.Title)); err != nil {
+		return err
+	}
+
+	log, err := openLog(dataDir, id)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+
+	var out bytes.Buffer
+	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
+	cmd.Stdout = io.MultiWriter(&out, log)
+	cmd.Stderr = log
+	// Run returns only after the process exits and the copies into out and
+	// the log have drained, so out is complete below.
+	runErr := cmd.Run()
+
+	// The session is recorded before the run's failure is reported: a run
+	// that failed is the one a person most wants to open.
+	session, err := agent.SessionID(out.Bytes())
+	if err != nil {
+		return err
+	}
+	if session != "" {
+		if err := s.SetSession(id, session); err != nil {
 			return err
 		}
-
-		worktree, err := Worktree(dataDir, ticket)
-		if err != nil {
-			return err
-		}
-		if err := s.Claim(id, branch(id, ticket.Title)); err != nil {
-			return err
-		}
-
-		log, err := openLog(dataDir, id)
-		if err != nil {
-			return err
-		}
-		defer log.Close()
-
-		var out bytes.Buffer
-		cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
-		cmd.Stdout = io.MultiWriter(&out, log)
-		cmd.Stderr = log
-		// Run returns only after the process exits and the copies into out and
-		// the log have drained, so out is complete below.
-		runErr := cmd.Run()
-
-		// The session is recorded before the run's failure is reported: a run
-		// that failed is the one a person most wants to open.
-		session, err := agent.SessionID(out.Bytes())
-		if err != nil {
-			return err
-		}
-		if session != "" {
-			if err := s.SetSession(id, session); err != nil {
-				return err
-			}
-		}
-		return runErr
-	})
+	}
+	return runErr
 }
 
 // logTime is the layout of a log's name. It is RFC 3339 with the colons

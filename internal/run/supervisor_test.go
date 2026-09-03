@@ -49,7 +49,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
-	if err := Start(dataDir, id, fakeAgent(t, "exit 0")); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), dataDir, id, fakeAgent(t, "exit 0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,10 +90,11 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
+		s := testfix.OpenStore(t, dataDir)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- Start(dataDir, id, agent)
+			errs <- Start(s, dataDir, id, agent)
 		}()
 	}
 	wg.Wait()
@@ -130,7 +131,7 @@ func TestStartRunsTheAgentInTheWorktreeAndWaits(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run sleep 0.3", "write made-by-the-agent done", "exit 0")
 
-	if err := Start(dataDir, id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), dataDir, id, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,7 +166,7 @@ func TestStartRecordsTheSessionTheRunReported(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 0")
 
-	if err := Start(dataDir, id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), dataDir, id, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -180,7 +181,7 @@ func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 3")
 
-	if err := Start(dataDir, id, agent); err == nil {
+	if err := Start(testfix.OpenStore(t, dataDir), dataDir, id, agent); err == nil {
 		t.Fatal("err = nil, want the exit status of the run")
 	}
 
@@ -195,7 +196,7 @@ func TestStartWritesTheLogOfTheRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'to stdout\\n'", "run printf 'to stderr\\n' >&2", "exit 0")
 
-	if err := Start(dataDir, id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), dataDir, id, agent); err != nil {
 		t.Fatal(err)
 	}
 
