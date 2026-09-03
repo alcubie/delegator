@@ -665,10 +665,11 @@ func (s *Store) IsQueueRunning() (bool, error) {
 	return running, nil
 }
 
-// PauseQueue pauses the queue to prevent future tasks from being worked on
-// automatically.
-func (s *Store) PauseQueue() error {
-	result, err := s.db.Exec("UPDATE queue_state SET running = FALSE WHERE id = 1")
+// setQueueRunning adjusts the running status of the queue. When running, tickets
+// will be worked on automatically. When paused, running tickets will complete
+// and no new tickets will be worked on automatically.
+func (s *Store) setQueueRunning(running bool) error {
+	result, err := s.db.Exec("UPDATE queue_state SET running = ? WHERE id = 1", running)
 	if err != nil {
 		return err
 	}
@@ -680,4 +681,14 @@ func (s *Store) PauseQueue() error {
 		return fmt.Errorf("the queue_state row is missing")
 	}
 	return nil
+}
+
+// PauseQueue pauses the queue.
+func (s *Store) PauseQueue() error {
+	return s.setQueueRunning(false)
+}
+
+// ResumeQueue starts the queue.
+func (s *Store) ResumeQueue() error {
+	return s.setQueueRunning(true)
 }

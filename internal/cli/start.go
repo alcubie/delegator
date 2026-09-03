@@ -7,22 +7,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const pausedMessage = "The queue is paused. Current runs will finish."
+const startMessage = "The queue is running."
 
-// pauseCommand returns the command for dg pause.
-func pauseCommand(dataDir string) *cobra.Command {
+// startCommand returns the command for dg start.
+func startCommand(dataDir string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "pause",
-		Short: "Pause the queue.",
+		Use:   "start",
+		Short: "Start a paused queue.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return store.With(dataDir, func(s *store.Store) error {
-				err := s.PauseQueue()
+				err := s.ResumeQueue()
 				if err != nil {
 					return err
 				}
 
-				fmt.Fprintln(cmd.OutOrStdout(), pausedMessage)
+				fmt.Fprintln(cmd.OutOrStdout(), startMessage)
 				return nil
 			})
 		},
