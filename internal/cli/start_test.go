@@ -49,3 +49,23 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 		t.Errorf("started ticket %s, want the new ticket %d", got, ticketID)
 	}
 }
+
+func TestStartNoChangeWhenAlreadyRunning(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+
+	out, err := runIn(t, dataDir, t.TempDir(), "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, "The queue is running") {
+		t.Errorf("dg start wrote %q, want it to start with `The queue is running`", out)
+	}
+	running, err := s.IsQueueRunning()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !running {
+		t.Error("the queue should still be running")
+	}
+}
