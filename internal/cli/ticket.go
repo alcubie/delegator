@@ -47,7 +47,9 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), id)
-			return run.Next(dataDir, launch)
+			return store.With(dataDir, func(s *store.Store) error {
+				return run.Next(s, launch)
+			})
 		},
 	}
 }

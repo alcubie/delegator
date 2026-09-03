@@ -15,36 +15,33 @@ import (
 //
 // launch returns the command for one ticket. dg passes its own executable with
 // "run <id>", and a test passes something it can observe.
-func Next(dataDir string, launch func(id int64) *exec.Cmd) error {
-	return store.With(dataDir, func(s *store.Store) error {
+func Next(s *store.Store, launch func(id int64) *exec.Cmd) error {
+	running, err := s.IsQueueRunning()
+	if err != nil {
+		return err
+	}
+	if !running {
+		return nil
+	}
 
-		running, err := s.IsQueueRunning()
-		if err != nil {
-			return err
-		}
-		if !running {
+	open, err := s.OpenTickets()
+	if err != nil {
+		return err
+	}
+	for _, t := range open {
+		if t.Status == store.Running {
 			return nil
 		}
+	}
 
-		open, err := s.OpenTickets()
-		if err != nil {
-			return err
-		}
-		for _, t := range open {
-			if t.Status == store.Running {
-				return nil
-			}
-		}
-
-		queue, err := s.ListQueue()
-		if err != nil {
-			return err
-		}
-		if len(queue) == 0 {
-			return nil
-		}
-		return detach(launch(queue[0].ID))
-	})
+	queue, err := s.ListQueue()
+	if err != nil {
+		return err
+	}
+	if len(queue) == 0 {
+		return nil
+	}
+	return detach(launch(queue[0].ID))
 }
 
 // detach starts cmd so that it outlives the program that started it. The

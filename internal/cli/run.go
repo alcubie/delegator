@@ -10,6 +10,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/run"
+	"github.com/alcubie/delegator/internal/store"
 )
 
 // agent is the adapter that dg run starts. It is a variable so that a test can
@@ -53,7 +54,9 @@ func runCommand(dataDir string) *cobra.Command {
 			if err := run.Start(dataDir, id, agent); err != nil {
 				return err
 			}
-			return run.Next(dataDir, launch)
+			return store.With(dataDir, func(s *store.Store) error {
+				return run.Next(s, launch)
+			})
 		},
 	}
 }

@@ -17,19 +17,15 @@ func startCommand(dataDir string) *cobra.Command {
 		Short: "Start a paused queue.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			err := store.With(dataDir, func(s *store.Store) error {
+			return store.With(dataDir, func(s *store.Store) error {
 				err := s.ResumeQueue()
 				if err != nil {
 					return err
 				}
 
 				fmt.Fprintln(cmd.OutOrStdout(), startMessage)
-				return nil
+				return run.Next(s, launch)
 			})
-			if err != nil {
-				return err
-			}
-			return run.Next(dataDir, launch)
 		},
 	}
 }

@@ -17,7 +17,7 @@ func TestNextStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	testfix.SecondTicket(t, dataDir)
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -30,10 +30,10 @@ func TestNextStartsTheFirstTicketOfTheQueue(t *testing.T) {
 // a start with no ticket would be a dg run with no id.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
-	testfix.OpenStore(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(s, launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,12 +48,13 @@ func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 func TestNextWithARunActiveStartsNothing(t *testing.T) {
 	dataDir, first := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
-	if err := testfix.OpenStore(t, dataDir).Claim(first, "delegator/1-the-first"); err != nil {
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.Claim(first, "delegator/1-the-first"); err != nil {
 		t.Fatal(err)
 	}
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(s, launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,12 +66,13 @@ func TestNextWithARunActiveStartsNothing(t *testing.T) {
 
 func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
-	if err := testfix.OpenStore(t, dataDir).PauseQueue(); err != nil {
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.PauseQueue(); err != nil {
 		t.Fatal(err)
 	}
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(s, launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +93,7 @@ func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 		return exec.Command("sh", "-c", `ps -o pgid= -p $$ > "$1"`, "--", marker)
 	}
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,7 +114,7 @@ func TestNextGivesTheProgramNoneOfItsOwnStreams(t *testing.T) {
 		return started
 	}
 
-	if err := Next(dataDir, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), launch); err != nil {
 		t.Fatal(err)
 	}
 
