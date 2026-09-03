@@ -12,8 +12,12 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+
+	"github.com/mattn/go-isatty"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -36,12 +40,41 @@ const (
 	statusPaused  = "Status: Paused"
 )
 
+// The colour of the word on the status line, for a person at a terminal:
+// green for a queue that will start work, yellow for one that will not.
+const (
+	green  = "\x1b[32m"
+	yellow = "\x1b[33m"
+	plain  = "\x1b[0m"
+)
+
 // statusLine returns the first line of the inbox for the state of the queue.
-func statusLine(box inbox.Inbox) string {
+// The word is coloured only when out is a terminal, so a pipe, a script or a
+// test sees the plain text.
+func statusLine(out io.Writer, box inbox.Inbox) string {
 	if box.QueueRunning {
-		return statusRunning
+		return colour(isTerminal(out), green, statusRunning)
 	}
-	return statusPaused
+	return colour(isTerminal(out), yellow, statusPaused)
+}
+
+// colour wraps the word after "Status: " in an ANSI colour for a terminal, and
+// returns the line unchanged for anything else. The label stays plain so the
+// eye lands on the word that changes.
+func colour(tty bool, code, line string) string {
+	if !tty {
+		return line
+	}
+	label, word, _ := strings.Cut(line, " ")
+	return label + " " + code + word + plain
+}
+
+// isTerminal reports whether out is a real terminal. It rejects a pipe, a
+// file, the buffer of a test, and /dev/null, which a check of the file's mode
+// alone would accept because it is a character device.
+func isTerminal(out io.Writer) bool {
+	f, ok := out.(*os.File)
+	return ok && isatty.IsTerminal(f.Fd())
 }
 
 // group is one heading of the inbox and the tickets below it.
@@ -85,7 +118,7 @@ func widths(box inbox.Inbox) (id, project int) {
 }
 
 func writeInbox(out io.Writer, box inbox.Inbox) {
-	fmt.Fprintln(out, statusLine(box))
+	fmt.Fprintln(out, statusLine(out, box))
 	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
 		fmt.Fprintln(out, emptyInbox)
 		return

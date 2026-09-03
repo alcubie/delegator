@@ -531,7 +531,8 @@ QUEUED
 
 The first line says whether the queue will start work: `Status: Running`, or
 `Status: Paused` after `dg pause`. It is always there, so a person never has to know what
-the absence of a line means.
+the absence of a line means. At a terminal the word is green or yellow; in a pipe or a
+file it is plain text, so a log or a grep sees no escape code.
 
 The inbox gives no mark for a ticket that needs attention, and it gives no summary of a
 run. Each ticket below READY waits for the same thing: a person who reads its commit. A

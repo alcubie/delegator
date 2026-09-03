@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -202,5 +203,77 @@ func TestRunShowsTheStateOfTheQueue(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, statusPaused) {
 		t.Errorf("dg after dg pause does not start with %q:\n%s", statusPaused, out)
+	}
+}
+
+// A pipe, a file and a test see plain text: the colour is for a person at a
+// terminal, and it would be noise in a log or a grep.
+func TestStatusLineIsPlainOffATerminal(t *testing.T) {
+	for _, box := range []inbox.Inbox{{QueueRunning: true}, {}} {
+		var buf bytes.Buffer
+		if got := statusLine(&buf, box); strings.Contains(got, "\x1b") {
+			t.Errorf("the status line holds an escape code off a terminal: %q", got)
+		}
+	}
+}
+
+// Only the word is coloured. The label stays plain so the eye lands on the
+// thing that changes, and the reset follows the word so nothing after it is
+// coloured by accident.
+func TestColourWrapsOnlyTheWord(t *testing.T) {
+	if got, want := colour(true, green, statusRunning), "Status: "+green+"Running"+plain; got != want {
+		t.Errorf("coloured = %q, want %q", got, want)
+	}
+	if got := colour(false, green, statusRunning); got != statusRunning {
+		t.Errorf("uncoloured = %q, want %q", got, statusRunning)
+	}
+}
+
+// The check must say no for a buffer and for an ordinary file, and yes for a
+// terminal. A pseudo-terminal stands in for the terminal, and the test is
+// skipped where the system has none to give.
+func TestIsTerminal(t *testing.T) {
+	if isTerminal(&bytes.Buffer{}) {
+		t.Error("a buffer is a terminal")
+	}
+	file, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if isTerminal(file) {
+		t.Error("a file is a terminal")
+	}
+
+	pty, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	if err != nil {
+		t.Skipf("no pseudo-terminal to test with: %v", err)
+	}
+	defer pty.Close()
+	if !isTerminal(pty) {
+		t.Error("a pseudo-terminal is not a terminal")
+	}
+}
+
+// Green is for a queue that will start work and yellow for one that will not,
+// and the pairing has to hold through statusLine, which is what a terminal
+// actually gets.
+func TestStatusLineColoursAtATerminal(t *testing.T) {
+	pty, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	if err != nil {
+		t.Skipf("no pseudo-terminal to test with: %v", err)
+	}
+	defer pty.Close()
+
+	for _, c := range []struct {
+		box  inbox.Inbox
+		want string
+	}{
+		{inbox.Inbox{QueueRunning: true}, "Status: " + green + "Running" + plain},
+		{inbox.Inbox{}, "Status: " + yellow + "Paused" + plain},
+	} {
+		if got := statusLine(pty, c.box); got != c.want {
+			t.Errorf("status line = %q, want %q", got, c.want)
+		}
 	}
 }
