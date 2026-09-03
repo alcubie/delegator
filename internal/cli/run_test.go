@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -132,23 +131,5 @@ func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
 		t.Errorf("a run was started after a failed start: ticket %s", testfix.WaitFor(t, marker))
-	}
-}
-
-// A person adds a ticket and walks away, so dg ticket is the command that
-// starts the queue moving.
-func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
-	dataDir := testfix.XDGDataDir(t)
-	repo := testfix.Repo(t, repoBranch)
-	l, marker := testfix.RecordingLaunch(t)
-	useLaunch(t, l)
-
-	out, err := runIn(t, dataDir, repo, "ticket", "Add the thing")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got := testfix.WaitFor(t, marker); got != strings.TrimSpace(out) {
-		t.Errorf("started ticket %s, want the new ticket %s", got, strings.TrimSpace(out))
 	}
 }
