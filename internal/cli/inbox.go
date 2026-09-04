@@ -14,7 +14,9 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -64,6 +66,38 @@ func groups(box inbox.Inbox) []group {
 	}
 }
 
+// rowWidth is the width of a row that carries the duration of a run. It is the
+// width of the rule of dg show, so the inbox and one ticket in full make the
+// same shape on the screen.
+const rowWidth = ruleWidth
+
+// timeGap is the space between the title of a row and the duration of the run.
+const timeGap = 2
+
+// minTitleWidth is the least of a title that a row shows. A project with a
+// name long enough to push the title below it makes the row wider than
+// rowWidth instead, because a title cut to three characters names no ticket
+// and the person can still read the duration.
+const minTitleWidth = 8
+
+// ellipsis ends a title that a row cut.
+const ellipsis = "…"
+
+// fit returns text at exactly width characters: it pads a short text with
+// spaces, and it cuts a long one and puts an ellipsis at the end. The count is
+// in characters and not in bytes, because the ellipsis takes three bytes and
+// one column, and a title holds whatever the person wrote.
+func fit(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= width {
+		return text + strings.Repeat(" ", width-len(runes))
+	}
+	return string(runes[:width-1]) + ellipsis
+}
+
 // minIDWidth is the smallest width of the column of ids. A column that grows
 // with the largest id would move each row to the right at the id 10, and the
 // inbox is a list that a person reads each day.
@@ -105,17 +139,27 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) 
 			continue
 		}
 		for _, t := range g.tickets {
-			fmt.Fprintf(out, " %*d %-*s  %s",
-				idWidth, t.ID, projectWidth,
-				filepath.Base(t.Project), t.Title)
+			left := fmt.Sprintf(" %*d %-*s  ",
+				idWidth, t.ID, projectWidth, filepath.Base(t.Project))
+
 			// Only a ticket that runs now counts up. A ticket in READY holds
 			// the start of the run that made it ready, and that run stopped.
+			var since string
 			if t.Status == store.Running {
-				if since := elapsed(t.Started, now); since != "" {
-					fmt.Fprintf(out, "  %s", since)
-				}
+				since = elapsed(t.Started, now)
 			}
-			fmt.Fprintln(out)
+			if since == "" {
+				fmt.Fprintln(out, left+t.Title)
+				continue
+			}
+
+			// The duration ends the row at rowWidth, so the durations of two
+			// runs are in one column. The title takes what is left, and it is
+			// the field that gives way because it is the only one with no
+			// width of its own.
+			width := max(minTitleWidth,
+				rowWidth-utf8.RuneCountInString(left)-timeGap-len(since))
+			fmt.Fprintf(out, "%s%s%*s%s\n", left, fit(t.Title, width), timeGap, "", since)
 		}
 	}
 }
