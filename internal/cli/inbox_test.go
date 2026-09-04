@@ -3,7 +3,9 @@ package cli
 import (
 	"bytes"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +229,24 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}
+	}
+}
+
+// The duration on the row comes from the database and from the clock, and
+// writeInbox alone does not say that either one is connected. A claim writes
+// runs.started_at a moment before dg reads it, so the row holds a duration of
+// zero seconds or of one or two more.
+func TestRunShowsTheDurationOfTheRun(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo, _ := runningTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := regexp.MustCompile(`(?m)^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title  00:00:0\d$`)
+	if !row.MatchString(out) {
+		t.Errorf("no row of a run with a duration in the inbox:\n%s", out)
 	}
 }
 
