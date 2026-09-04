@@ -549,7 +549,11 @@ QUEUED
 The first line says whether the queue will start work: `Status: Running`, or
 `Status: Paused` after `dg pause`. It is always there, so a person never has to know what
 the absence of a line means. At a terminal the word is green or yellow; in a pipe or a
-file it is plain text, so a log or a grep sees no escape code.
+file it is plain text, so a log or a grep sees no escape code. The flag `--color` takes
+`always`, `never` or `auto`, as `ls` and `grep` do, and `auto` is the default. With
+`auto`, `NO_COLOR` in the environment turns the colour off and `CLICOLOR_FORCE` turns it
+on for a pipe; the flag wins over both. `watch -c -n 1 dg --color=always` therefore shows
+the status in colour.
 
 The inbox gives no mark for a ticket that needs attention, and it gives no summary of a
 run. Each ticket below READY waits for the same thing: a person who reads its commit. A

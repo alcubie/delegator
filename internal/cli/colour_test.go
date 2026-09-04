@@ -120,3 +120,26 @@ func TestColourEnvironmentDecidesAuto(t *testing.T) {
 		t.Errorf("CLICOLOR_FORCE with --color=never gives %q, want %q", got, statusRunning)
 	}
 }
+
+// The help describes the flag and names its three values, so a person who
+// runs dg --help sees what to write for watch -c.
+func TestHelpDescribesColor(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "--color") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("the help does not describe --color:\n%s", out)
+	}
+	for _, want := range []string{"always", "never", "auto"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the line for --color does not name %q: %q", want, line)
+		}
+	}
+}
