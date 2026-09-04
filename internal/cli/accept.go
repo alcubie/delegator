@@ -30,9 +30,13 @@ func acceptCommand(dataDir string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return s.ChangeStatusWith(id, store.Done, func() error {
+				err = s.ChangeStatusWith(id, store.Done, func() error {
 					return run.RemoveWorktree(dataDir, ticket)
 				})
+				if err != nil {
+					return err
+				}
+				return run.Next(s, launch)
 			})
 		},
 	}

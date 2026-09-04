@@ -174,3 +174,21 @@ func TestAcceptKeepsTheBranch(t *testing.T) {
 		t.Errorf("the branch is at %s, and the ticket holds %s", got, ticket.Commit)
 	}
 }
+
+// The queue continues from the review. A ticket in ready holds it, so the
+// command that closes the ticket is the one that starts the next.
+func TestAcceptStartsTheNextTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ticketID, repo := readyTicket(t, dataDir)
+	second := testfix.SecondTicket(t, dataDir)
+	l, marker := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.WaitFor(t, marker); got != fmt.Sprint(second) {
+		t.Errorf("started ticket %s, want %d", got, second)
+	}
+}
