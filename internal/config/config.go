@@ -36,6 +36,15 @@ func Dir() (string, error) {
 	return filepath.Join(home, ".config", "delegator"), nil
 }
 
+// file returns the path of config.toml below Dir.
+func file() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.toml"), nil
+}
+
 // Default is the config of a person who has written no file. A fresh
 // install has no config, and delegator must work before a person writes one.
 var Default = Config{Runs: 1, TimeoutMinutes: 60}
@@ -45,11 +54,10 @@ var Default = Config{Runs: 1, TimeoutMinutes: 60}
 // gives an error that names the key: a misspelt key that quietly became a
 // default would be the hardest fault to find.
 func Load() (Config, error) {
-	dir, err := Dir()
+	path, err := file()
 	if err != nil {
 		return Config{}, err
 	}
-	path := filepath.Join(dir, "config.toml")
 	cfg := Default
 	md, err := toml.DecodeFile(path, &cfg)
 	if errors.Is(err, fs.ErrNotExist) {
