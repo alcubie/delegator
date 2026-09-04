@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+# Wrap the body of a commit message at 72 characters.
+#
+# Git indents the body by four spaces in "git log", so 72 + 4 fits an
+# 80-column terminal. The hook rewrites the file git passes in $1, so the
+# writer of the message does not have to count columns and does not have to
+# read the message back to check it.
+#
+# It changes only what is over the limit. A paragraph whose lines all fit is
+# left byte for byte as it was, which keeps the footer one identifier per
+# line and keeps a list that was written short. A paragraph that holds a list
+# marker or an indented line is left alone as well: those line breaks carry
+# meaning that a reflow would lose.
+#
+# The subject is never touched. Truncating it would lose words, so an over-
+# long subject is reported and the commit goes through.
+import re
+import sys
+import textwrap
+
+WIDTH = 72
+SUBJECT = 50
+
+LIST = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s)")
+
+
+def reflow(paragraph):
+    lines = paragraph.split("\n")
+    if all(len(line) <= WIDTH for line in lines):
+        return paragraph
+    if any(LIST.match(line) or line.startswith((" ", "\t")) for line in lines):
+        return paragraph
+    return "\n".join(
+        textwrap.wrap(
+            " ".join(line.strip() for line in lines),
+            width=WIDTH,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    )
+
+
+def main(path):
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+
+    keep = [ln for ln in text.split("\n") if not ln.startswith("#")]
+    subject, _, body = "\n".join(keep).partition("\n")
+
+    if len(subject) > SUBJECT:
+        print(
+            f"commit-msg: the subject is {len(subject)} characters, over {SUBJECT}",
+            file=sys.stderr,
+        )
+
+    paragraphs = re.split(r"\n\s*\n", body.strip("\n"))
+    wrapped = "\n\n".join(reflow(p) for p in paragraphs if p.strip())
+
+    out = subject if not wrapped else subject + "\n\n" + wrapped
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(out + "\n")
+
+
+main(sys.argv[1])
