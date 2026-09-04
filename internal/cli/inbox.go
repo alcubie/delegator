@@ -14,7 +14,6 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -37,14 +36,6 @@ const (
 	statusPaused  = "Status: Paused"
 )
 
-// The colour of the word on the status line, for a person at a terminal:
-// green for a queue that will start work, yellow for one that will not.
-const (
-	green  = "\x1b[32m"
-	yellow = "\x1b[33m"
-	plain  = "\x1b[0m"
-)
-
 // statusLine returns the first line of the inbox for the state of the queue.
 // The mode says whether the word is coloured: by default only when out is a
 // terminal, so a pipe, a script or a test sees the plain text.
@@ -53,17 +44,6 @@ func statusLine(out io.Writer, box inbox.Inbox, mode colourMode) string {
 		return colour(mode.on(out), green, statusRunning)
 	}
 	return colour(mode.on(out), yellow, statusPaused)
-}
-
-// colour wraps the word after "Status: " in an ANSI colour for a terminal, and
-// returns the line unchanged for anything else. The label stays plain so the
-// eye lands on the word that changes.
-func colour(tty bool, code, line string) string {
-	if !tty {
-		return line
-	}
-	label, word, _ := strings.Cut(line, " ")
-	return label + " " + code + word + plain
 }
 
 // group is one heading of the inbox and the tickets below it.

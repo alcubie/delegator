@@ -217,18 +217,6 @@ func TestStatusLineIsPlainOffATerminal(t *testing.T) {
 	}
 }
 
-// Only the word is coloured. The label stays plain so the eye lands on the
-// thing that changes, and the reset follows the word so nothing after it is
-// coloured by accident.
-func TestColourWrapsOnlyTheWord(t *testing.T) {
-	if got, want := colour(true, green, statusRunning), "Status: "+green+"Running"+plain; got != want {
-		t.Errorf("coloured = %q, want %q", got, want)
-	}
-	if got := colour(false, green, statusRunning); got != statusRunning {
-		t.Errorf("uncoloured = %q, want %q", got, statusRunning)
-	}
-}
-
 // Green is for a queue that will start work and yellow for one that will not,
 // and the pairing has to hold through statusLine, which is what a terminal
 // actually gets.

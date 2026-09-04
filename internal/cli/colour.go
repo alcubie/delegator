@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/mattn/go-isatty"
 )
@@ -41,6 +42,25 @@ func (m *colourMode) Set(value string) error {
 		}
 	}
 	return fmt.Errorf("the value must be %s, %s or %s", colourModes[0], colourModes[1], colourModes[2])
+}
+
+// The colour of the word on the status line, for a person at a terminal:
+// green for a queue that will start work, yellow for one that will not.
+const (
+	green  = "\x1b[32m"
+	yellow = "\x1b[33m"
+	plain  = "\x1b[0m"
+)
+
+// colour wraps the word after "Status: " in an ANSI colour for a terminal, and
+// returns the line unchanged for anything else. The label stays plain so the
+// eye lands on the word that changes.
+func colour(tty bool, code, line string) string {
+	if !tty {
+		return line
+	}
+	label, word, _ := strings.Cut(line, " ")
+	return label + " " + code + word + plain
 }
 
 // on reports whether the output gets the colour codes. always and never say so

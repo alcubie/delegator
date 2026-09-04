@@ -50,6 +50,18 @@ func TestColorFlagDecidesTheColour(t *testing.T) {
 	}
 }
 
+// Only the word is coloured. The label stays plain so the eye lands on the
+// thing that changes, and the reset follows the word so nothing after it is
+// coloured by accident.
+func TestColourWrapsOnlyTheWord(t *testing.T) {
+	if got, want := colour(true, green, statusRunning), "Status: "+green+"Running"+plain; got != want {
+		t.Errorf("coloured = %q, want %q", got, want)
+	}
+	if got := colour(false, green, statusRunning); got != statusRunning {
+		t.Errorf("uncoloured = %q, want %q", got, statusRunning)
+	}
+}
+
 // The check must say no for a buffer and for an ordinary file, and yes for a
 // terminal. A pseudo-terminal stands in for the terminal, and the test is
 // skipped where the system has none to give.
