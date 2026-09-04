@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -311,5 +312,53 @@ func TestWriteTicketWithACommitThatGitDoesNotKnow(t *testing.T) {
 func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
 	if line := showCommit(t, testfix.Repo(t, repoBranch), ""); line != "" {
 		t.Errorf("the commit row is %q, want none", line)
+	}
+}
+
+// A person opens the conversation of a run while the agent works, with
+// claude --resume <session>, so dg show on a running ticket gives the
+// session. The agent reports its id and then sleeps, and dg show is read
+// while dg run is still waiting on it.
+func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+	useAgent(t, fakeAgent(t, "run printf 'session: s-1\\n'", "run sleep 1", "exit 0"))
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := runIn(t, dataDir, repo, "run", fmt.Sprint(id))
+		done <- err
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "session") && strings.Contains(out, "s-1") {
+			if !strings.Contains(out, "running") {
+				t.Errorf("dg show gives the session on a ticket that is not running:\n%s", out)
+			}
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("dg run returned (err = %v) and dg show had no session while the agent was alive:\n%s", err, out)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("dg show gave no session after 5s:\n%s", out)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("dg run returned (err = %v) before dg show gave the session", err)
+	default:
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
