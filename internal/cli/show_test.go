@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
@@ -46,7 +49,6 @@ func TestWrapKeepsEachEmptyLineOfTheProse(t *testing.T) {
 }
 
 func TestAgo(t *testing.T) {
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		when time.Time
 		want string
@@ -58,15 +60,14 @@ func TestAgo(t *testing.T) {
 		{time.Time{}, ""},
 	}
 	for _, test := range tests {
-		if got := ago(test.when, now); got != test.want {
+		if got := ago(test.when, testNow); got != test.want {
 			t.Errorf("ago(%v) = %q, want %q", test.when, got, test.want)
 		}
 	}
 }
 
 func TestAgoInTheFuture(t *testing.T) {
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	if got := ago(time.Date(2026, 8, 28, 13, 0, 0, 0, time.UTC), now); got != "just now" {
+	if got := ago(testNow.Add(time.Hour), testNow); got != "just now" {
 		t.Errorf("ago = %q, want %q", got, "just now")
 	}
 }
@@ -93,13 +94,26 @@ func TestTilde(t *testing.T) {
 	}
 }
 
-// showTicketLines writes one ticket and returns each line of it.
-func showTicketLines(t *testing.T, ticket store.Ticket, prose string) []string {
+// showTicketLines writes one ticket at testNow and returns each line of it.
+// started is the time the last run of the ticket began, and the zero time is a
+// ticket that no supervisor has claimed.
+func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	writeTicket(&out, "/data", ticket, prose, now)
+	writeTicket(&out, "/data", ticket, prose, started, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+}
+
+// timeOf returns the time that dg show puts between the title and the rule
+// below it, with no space around it. A ticket with no time has the rule on
+// that line, and gives the empty string.
+func timeOf(t *testing.T, lines []string) string {
+	t.Helper()
+	line := strings.TrimSpace(lines[1])
+	if strings.HasPrefix(line, "─") {
+		return ""
+	}
+	return line
 }
 
 func TestWriteTicketHoldsEachPart(t *testing.T) {
@@ -112,7 +126,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		Session:   "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
 		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
-	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume."), "\n")
+	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume.", time.Time{}), "\n")
 
 	for _, want := range []string{
 		"#4", "Remove the staging app", "ready", "2h ago",
@@ -126,6 +140,27 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the ticket does not hold %q:\n%s", want, out)
 		}
+	}
+}
+
+// The duration on the heading comes from the table runs through Store.Run, and
+// writeTicket alone does not say that the two are connected. A claim writes
+// runs.started_at a moment before dg show reads it, so the heading holds a
+// duration of zero seconds or of one or two more.
+func TestRunShowGivesTheDurationOfTheRun(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo, _ := runningTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo, "show", strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out, "\n")
+	if !strings.HasSuffix(lines[0], string(store.Running)) {
+		t.Errorf("the heading does not end with the status: %q", lines[0])
+	}
+	if !regexp.MustCompile(`^ +00:00:0\d$`).MatchString(lines[1]) {
+		t.Errorf("the line below the heading holds no duration of the run: %q", lines[1])
 	}
 }
 
@@ -186,7 +221,7 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 		"2. The second item.\n"
 	ticket := store.Ticket{ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Queued}
 
-	got := showTicketLines(t, ticket, prose)
+	got := showTicketLines(t, ticket, prose, time.Time{})
 	for _, want := range []string{
 		"  A line that is quite long and holds more than the width of the wrap for the flags.",
 		"  1. The first item of a list that is also long enough to go past the width.",
@@ -203,10 +238,11 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 	}
 }
 
-// The time beside the status is the time that the ticket became ready, and only
-// a ready ticket has one. A ticket that waits or runs keeps a completed from an
-// earlier run, because dg revise does not take it away, so a time beside those
-// two would say when a run stopped and read as when the ticket arrived.
+// The time of a ready ticket is the time that it became ready. A ticket that
+// waits keeps a completed from an earlier run, because dg revise does not take
+// it away, so a time on a queued or a failed ticket would say when a run
+// stopped and read as when the ticket arrived. A running ticket has the
+// duration of its run, and that ticket has no run here.
 func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
@@ -215,22 +251,108 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 	}
 	for _, test := range []struct {
 		status store.TicketStatus
-		want   bool
+		want   string
 	}{
-		{store.Ready, true},
-		{store.Queued, false},
-		{store.Running, false},
-		{store.Failed, false},
+		{store.Ready, "2h ago"},
+		{store.Queued, ""},
+		{store.Running, ""},
+		{store.Failed, ""},
 	} {
 		ticket := base
 		ticket.Status = test.status
-		heading := showTicketLines(t, ticket, "")[0]
-		if got := strings.Contains(heading, "ago"); got != test.want {
-			t.Errorf("a %s ticket has a time = %v, want %v: %q", test.status, got, test.want, heading)
+		lines := showTicketLines(t, ticket, "", time.Time{})
+		if got := timeOf(t, lines); got != test.want {
+			t.Errorf("a %s ticket has the time %q, want %q", test.status, got, test.want)
 		}
-		if !strings.Contains(heading, string(test.status)) {
-			t.Errorf("the heading does not hold the status: %q", heading)
+		if !strings.Contains(lines[0], string(test.status)) {
+			t.Errorf("the heading does not hold the status: %q", lines[0])
 		}
+	}
+}
+
+// The time is on its own line between the title and the rule, and it ends
+// where the status above it ends. A title as long as the line allows therefore
+// takes nothing away from the time, and the two values a person reads first
+// are one above the other.
+func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 4, Project: store.Project{Path: "/p/one"},
+		Title:     "a title that is long enough to have crowded the time",
+		Status:    store.Ready,
+		Completed: testNow.Add(-2 * time.Hour),
+	}
+
+	lines := showTicketLines(t, ticket, "", time.Time{})
+	if got := utf8.RuneCountInString(lines[0]); got > ruleWidth {
+		t.Errorf("the heading is %d characters wide, want %d at most: %q", got, ruleWidth, lines[0])
+	}
+	if !strings.HasSuffix(lines[0], string(store.Ready)) {
+		t.Errorf("the heading does not end with the status: %q", lines[0])
+	}
+	if want := strings.Repeat(" ", ruleWidth-len("2h ago")) + "2h ago"; lines[1] != want {
+		t.Errorf("the line of the time is %q, want %q", lines[1], want)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(lines[2]), "─") {
+		t.Errorf("the rule does not come below the time: %q", lines[2])
+	}
+}
+
+// A person who opens a running ticket gets the clock the inbox gives them,
+// where each other state gives the age of the ticket. The run of the ticket is
+// the thing that is going, so the time counts from the start of the run and
+// not from the moment the person wrote the ticket.
+func TestWriteTicketShowsTheDurationOfTheRun(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
+		Status:  store.Running,
+		Created: testNow.Add(-3 * 24 * time.Hour),
+	}
+
+	lines := showTicketLines(t, ticket, "", testNow.Add(-(14*time.Minute + 7*time.Second)))
+	if got := timeOf(t, lines); got != "00:14:07" {
+		t.Errorf("the time is %q, want %q", got, "00:14:07")
+	}
+	if !strings.Contains(lines[0], string(store.Running)) {
+		t.Errorf("the heading does not hold the status: %q", lines[0])
+	}
+}
+
+// A ticket that is not running holds the start of its last run, and dg show
+// gives it no clock: that run stopped, and a duration that counts up beside a
+// ready ticket would say that the agent is still at work.
+func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
+	base := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
+		Completed: testNow.Add(-2 * time.Hour),
+	}
+	started := testNow.Add(-(14*time.Minute + 7*time.Second))
+
+	for _, status := range []store.TicketStatus{store.Ready, store.Queued, store.Failed} {
+		ticket := base
+		ticket.Status = status
+		if got := timeOf(t, showTicketLines(t, ticket, "", started)); got == "00:14:07" {
+			t.Errorf("a %s ticket gives the duration of a run: %q", status, got)
+		}
+	}
+}
+
+// A ticket that a version before the table runs put in running has no row of
+// runs, so there is no time to count from. The rule comes below the title,
+// and no empty line stands where the time would be.
+func TestWriteTicketWithARunningTicketThatHasNoRun(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Running,
+	}
+
+	lines := showTicketLines(t, ticket, "", time.Time{})
+	if got := timeOf(t, lines); got != "" {
+		t.Errorf("a running ticket with no run gives the time %q, want none", got)
+	}
+	if !strings.HasPrefix(lines[1], "  ─") {
+		t.Errorf("the rule does not follow the title: %q", lines[1])
+	}
+	if !strings.Contains(lines[0], "running") {
+		t.Errorf("the heading does not hold the status: %q", lines[0])
 	}
 }
 
@@ -242,7 +364,7 @@ func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 		Branch:  "delegator/4-a-title",
 		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
 	}
-	for _, line := range showTicketLines(t, ticket, "") {
+	for _, line := range showTicketLines(t, ticket, "", time.Time{}) {
 		if n := len([]rune(line)); n > ruleWidth {
 			t.Errorf("the line takes %d columns and the rule takes %d: %q", n, ruleWidth, line)
 		}
@@ -260,7 +382,7 @@ func showCommit(t *testing.T, repo, hash string) string {
 		Title:   "a title",
 		Status:  store.Ready,
 		Commit:  hash,
-	}, "", time.Now())
+	}, "", time.Time{}, time.Now())
 
 	for line := range strings.SplitSeq(out.String(), "\n") {
 		if strings.Contains(line, "commit") {

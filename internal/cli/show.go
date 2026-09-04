@@ -140,25 +140,38 @@ func shortHash(hash string) string {
 	return hash[:shortHashLen]
 }
 
-// writeTicket writes one ticket in full
-func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, now time.Time) {
-	// Only a ready ticket has a time that the heading can name. dg finish
-	// writes completed, and no command takes it away, so a ticket that dg
-	// revise put back in the queue still holds the time that its earlier run
-	// stopped. A time beside queued or running would read as the time that the
-	// ticket entered that state, and it is not. Ticket 7 keeps the history of
-	// each change of state, and each status takes a time from it.
-	var when time.Time
-	if t.Status == store.Ready {
-		when = t.Completed
+// writeTicket writes one ticket in full. started is the time that the last run
+// of the ticket began, and the zero time is a ticket that no supervisor has
+// claimed.
+func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, started, now time.Time) {
+	// A ready ticket names the time it became ready, and a running ticket names
+	// how long its run has been going, which is the clock the inbox gives on
+	// the same run. dg finish writes completed, and no command takes it away,
+	// so a ticket that dg revise put back in the queue still holds the time
+	// that its earlier run stopped; a time beside queued or failed would read
+	// as the time that the ticket entered that state, and it is not. Ticket 7
+	// keeps the history of each change of state, and each status takes a time
+	// from it.
+	var when string
+	switch t.Status {
+	case store.Ready:
+		when = ago(t.Completed, now)
+	case store.Running:
+		when = elapsed(started, now)
 	}
 	heading := fmt.Sprintf("  #%d  %s", t.ID, t.Title)
-	right := string(t.Status)
-	if since := ago(when, now); since != "" {
-		right += " · " + since
+	status := string(t.Status)
+	pad := max(1, ruleWidth-len(heading)-len(status))
+	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), status)
+
+	// The time takes the line below the status and ends where the status ends.
+	// Beside the status it shared the line with the title, and a title of the
+	// length a person writes then pushed the pair past the rule. A ticket with
+	// no time takes no line, because an empty line above the rule reads as a
+	// value that failed to arrive.
+	if when != "" {
+		fmt.Fprintf(out, "%*s\n", ruleWidth, when)
 	}
-	pad := max(1, ruleWidth-len(heading)-len(right))
-	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), right)
 	fmt.Fprintf(out, "  %s\n", strings.Repeat("─", ruleWidth-2))
 
 	if t.Commit != "" {
@@ -205,7 +218,14 @@ func showTicket(out io.Writer, dataDir string, id int64) error {
 			return err
 		}
 
-		writeTicket(out, dataDir, ticket, string(prose), time.Now().UTC())
+		// A ticket with no run gives ErrNoRun, and its zero start time is what
+		// writeTicket takes for a ticket that no supervisor has claimed.
+		lastRun, err := s.Run(id)
+		if err != nil && !errors.Is(err, store.ErrNoRun) {
+			return err
+		}
+
+		writeTicket(out, dataDir, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
 		return nil
 	})
 }

@@ -176,6 +176,29 @@ func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
 	}
 }
 
+// The row of a running ticket shows how long the run has been going, so the
+// inbox carries the time that the run started. The value comes from the
+// source, which reads runs.started_at, and the inbox gives it out as it is:
+// the duration belongs to the moment it is written, and this package writes
+// no text.
+func TestGetCarriesTheStartOfTheRun(t *testing.T) {
+	started := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	source := fakeSource{tickets: []store.OpenTicket{
+		{ID: 3, Status: store.Running, Started: started},
+	}}
+
+	got, err := Get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Running) != 1 {
+		t.Fatalf("RUNNING holds %v, want the one ticket", ids(got.Running))
+	}
+	if got := got.Running[0].Started; !got.Equal(started) {
+		t.Errorf("started = %v, want %v", got, started)
+	}
+}
+
 // A person who sees tickets in QUEUED and no run must know whether delegator
 // is waiting or stopped, so the inbox carries the state of the queue.
 func TestGetSaysWhetherTheQueueIsRunning(t *testing.T) {

@@ -3,20 +3,37 @@ package cli
 import (
 	"bytes"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// render writes one inbox and returns each line of it.
+// render writes one inbox at testNow and returns each line of it.
 func render(t *testing.T, box inbox.Inbox) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeInbox(&out, box, colourAuto)
+	writeInbox(&out, box, colourAuto, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+}
+
+// wantLines compares an inbox with the lines it must hold.
+func wantLines(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
+		}
+	}
 }
 
 func TestWriteInboxHoldsTheThreeGroupsInOneOrder(t *testing.T) {
@@ -51,7 +68,7 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 		Queued:       []store.OpenTicket{{ID: 3, Project: "/projects/one", Title: "the title"}},
 	}
 
-	want := []string{
+	wantLines(t, render(t, box), []string{
 		statusRunning,
 		"READY",
 		"  none",
@@ -59,16 +76,7 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 		"  none",
 		"QUEUED",
 		"  3 one  the title",
-	}
-	got := render(t, box)
-	if len(got) != len(want) {
-		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
-		}
-	}
+	})
 }
 
 // The id is right of its column and each project takes the same width, so the
@@ -80,8 +88,7 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 		Queued:       []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
 	}
 
-	got := render(t, box)
-	want := []string{
+	wantLines(t, render(t, box), []string{
 		statusRunning,
 		"READY",
 		"  4 one            the first title",
@@ -89,15 +96,7 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 		"  none",
 		"QUEUED",
 		" 11 a-longer-name  the third title",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
-		}
-	}
+	})
 }
 
 // The project of a ticket is a path, and the inbox shows the name at the end of
@@ -111,6 +110,158 @@ func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
 	if want := "  1 the-name  the title"; got[6] != want {
 		t.Errorf("the row is %q, want %q", got[6], want)
 	}
+}
+
+// The person watches the inbox with watch -n 1 dg, and the row of the run
+// tells them how long it has been going. A ticket in READY holds the start of
+// the run that made it ready, and its row shows no duration: that run stopped,
+// and a clock that counts up beside it would say that it had not.
+func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Ready: []store.OpenTicket{{
+			ID: 4, Project: "/projects/one", Title: "the first title",
+			Status: store.Ready, Started: testNow.Add(-3 * time.Hour),
+		}},
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/one", Title: "the second title",
+			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  4 one  the first title",
+		"RUNNING",
+		"  9 one  the second title                                  00:14:07",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// The durations of two runs stand in one column at the right of the inbox, so
+// a person reads them against one another rather than against the end of each
+// title. Two runs are what a fault leaves behind, and version 1 has one run at
+// a time, so the column is what the person sees after that fault.
+func TestWriteInboxPutsTheDurationsInOneColumn(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
+		}, {
+			ID: 14, Project: "/projects/data-loader", Title: "Add a limit on the rate",
+			Status: store.Running, Started: testNow.Add(-(3*time.Hour + 42*time.Minute + time.Second)),
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  none",
+		"RUNNING",
+		"  9 web-api      Move to a new version of Go               00:14:07",
+		" 14 data-loader  Add a limit on the rate                   03:42:01",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// A title that would reach the column of the durations is cut, and an ellipsis
+// says that it was. The title of a ticket is the one field of a row that has
+// no width of its own, so it is the field that gives way.
+func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api",
+			Title:  "Show the duration of a run on the RUNNING row of the inbox",
+			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  none",
+		"RUNNING",
+		"  9 web-api  Show the duration of a run on the RUNNING r…  00:14:07",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// Each row of a run is as wide as the rule of dg show, whatever its title, so
+// the durations line up and nothing runs past the width the two commands
+// share. A title of a person can hold a character that takes more than one
+// byte, and the width of a row is a count of characters: a row measured in
+// bytes comes up short by one column for each byte past the first.
+func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
+	titles := []string{
+		"a",
+		"a title of a length that reaches no column",
+		"a title that is long enough to reach the duration and to go past it",
+		"Mové to a néw versión of Go — the ölder one is out",
+		"Mové to a néw versión of Go — the ölder one is out of maintenance now",
+	}
+	// The name of a project is on the row before the title, so a name that
+	// holds such a character moves the title by as much.
+	projects := []string{"/projects/web-api", "/projects/wéb-àpi"}
+
+	for _, project := range projects {
+		for _, title := range titles {
+			box := inbox.Inbox{Running: []store.OpenTicket{{
+				ID: 9, Project: project, Title: title,
+				Status: store.Running, Started: testNow.Add(-time.Minute),
+			}}}
+
+			row := render(t, box)[4]
+			if got := utf8.RuneCountInString(row); got != rowWidth {
+				t.Errorf("the row is %d characters wide, want %d: %q", got, rowWidth, row)
+			}
+		}
+	}
+}
+
+// A title that fits in the row keeps every character of itself. The count is
+// in characters: a title of 43 characters and 49 bytes fits a column of 44,
+// and a row that counted its bytes would cut a title that had room.
+func TestWriteInboxKeepsATitleThatFitsInCharacters(t *testing.T) {
+	title := "Mové to a néw versión — the ölder Go is out"
+	box := inbox.Inbox{Running: []store.OpenTicket{{
+		ID: 9, Project: "/projects/web-api", Title: title,
+		Status: store.Running, Started: testNow.Add(-time.Minute),
+	}}}
+
+	row := render(t, box)[4]
+	if !strings.Contains(row, title) {
+		t.Errorf("the row does not hold the whole title: %q", row)
+	}
+	if strings.Contains(row, ellipsis) {
+		t.Errorf("the row cut a title that fits: %q", row)
+	}
+}
+
+// A ticket that a version before the table runs put in running has no row of
+// runs, so there is no time to count from and the row ends with the title.
+func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/one", Title: "the title", Status: store.Running,
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  none",
+		"RUNNING",
+		"  9 one  the title",
+		"QUEUED",
+		"  none",
+	})
 }
 
 // The words of the flags are in no row of any group. They take up to 240
@@ -178,10 +329,28 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		"paused with none":     {inbox.Inbox{}, statusPaused},
 	} {
 		var out bytes.Buffer
-		writeInbox(&out, c.box, colourAuto)
+		writeInbox(&out, c.box, colourAuto, testNow)
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}
+	}
+}
+
+// The duration on the row comes from the database and from the clock, and
+// writeInbox alone does not say that either one is connected. A claim writes
+// runs.started_at a moment before dg reads it, so the row holds a duration of
+// zero seconds or of one or two more.
+func TestRunShowsTheDurationOfTheRun(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo, _ := runningTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := regexp.MustCompile(`(?m)^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title +00:00:0\d$`)
+	if !row.MatchString(out) {
+		t.Errorf("no row of a run with a duration in the inbox:\n%s", out)
 	}
 }
 
