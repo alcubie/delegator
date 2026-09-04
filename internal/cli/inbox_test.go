@@ -19,6 +19,19 @@ func render(t *testing.T, box inbox.Inbox) []string {
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
+// wantLines compares an inbox with the lines it must hold.
+func wantLines(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestWriteInboxHoldsTheThreeGroupsInOneOrder(t *testing.T) {
 	box := inbox.Inbox{
 		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
@@ -51,7 +64,7 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 		Queued:       []store.OpenTicket{{ID: 3, Project: "/projects/one", Title: "the title"}},
 	}
 
-	want := []string{
+	wantLines(t, render(t, box), []string{
 		statusRunning,
 		"READY",
 		"  none",
@@ -59,16 +72,7 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 		"  none",
 		"QUEUED",
 		"  3 one  the title",
-	}
-	got := render(t, box)
-	if len(got) != len(want) {
-		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
-		}
-	}
+	})
 }
 
 // The id is right of its column and each project takes the same width, so the
@@ -80,8 +84,7 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 		Queued:       []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
 	}
 
-	got := render(t, box)
-	want := []string{
+	wantLines(t, render(t, box), []string{
 		statusRunning,
 		"READY",
 		"  4 one            the first title",
@@ -89,15 +92,7 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 		"  none",
 		"QUEUED",
 		" 11 a-longer-name  the third title",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("the inbox is\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("line %d is %q, want %q", i, got[i], want[i])
-		}
-	}
+	})
 }
 
 // The project of a ticket is a path, and the inbox shows the name at the end of
