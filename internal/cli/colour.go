@@ -6,14 +6,15 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"os"
 
 	"github.com/mattn/go-isatty"
 )
 
-// colourMode is the value of --color. It is a pflag.Value, so the root holds
-// it as the type and not as a string that each reader converts.
+// colourMode is the value of --color. It is a pflag.Value, so cobra refuses a
+// value that is not one of the three at the parse, before a command runs.
 type colourMode string
 
 const (
@@ -26,10 +27,20 @@ func (m colourMode) String() string { return string(m) }
 
 func (m *colourMode) Type() string { return "mode" }
 
-// Set takes the value from the command line.
+// colourModes is each value in the order that the help and the error name them.
+var colourModes = []colourMode{colourAlways, colourNever, colourAuto}
+
+// Set takes the value from the command line. cobra puts the value and the
+// name of the flag in front of the error, so the error itself names the three
+// that are allowed, and a person who wrote --color=yes sees what to write.
 func (m *colourMode) Set(value string) error {
-	*m = colourMode(value)
-	return nil
+	for _, allowed := range colourModes {
+		if colourMode(value) == allowed {
+			*m = allowed
+			return nil
+		}
+	}
+	return fmt.Errorf("the value must be %s, %s or %s", colourModes[0], colourModes[1], colourModes[2])
 }
 
 // on reports whether the output gets the colour codes. always and never say so

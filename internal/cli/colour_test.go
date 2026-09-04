@@ -75,3 +75,17 @@ func TestIsTerminal(t *testing.T) {
 		t.Error("a pseudo-terminal is not a terminal")
 	}
 }
+
+// A value that is none of the three is refused with the value and the three
+// in the error, so a person who wrote --color=yes sees what to write instead.
+func TestColorFlagRefusesAnotherValue(t *testing.T) {
+	_, err := runIn(t, t.TempDir(), t.TempDir(), "--color=sometimes")
+	if err == nil {
+		t.Fatal("dg --color=sometimes gives no error")
+	}
+	for _, want := range []string{"sometimes", "always", "never", "auto"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not name %q: %v", want, err)
+		}
+	}
+}
