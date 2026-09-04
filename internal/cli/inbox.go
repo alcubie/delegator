@@ -12,12 +12,9 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/mattn/go-isatty"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -49,13 +46,13 @@ const (
 )
 
 // statusLine returns the first line of the inbox for the state of the queue.
-// The word is coloured only when out is a terminal, so a pipe, a script or a
-// test sees the plain text.
-func statusLine(out io.Writer, box inbox.Inbox) string {
+// The mode says whether the word is coloured: by default only when out is a
+// terminal, so a pipe, a script or a test sees the plain text.
+func statusLine(out io.Writer, box inbox.Inbox, mode colourMode) string {
 	if box.QueueRunning {
-		return colour(isTerminal(out), green, statusRunning)
+		return colour(mode.on(out), green, statusRunning)
 	}
-	return colour(isTerminal(out), yellow, statusPaused)
+	return colour(mode.on(out), yellow, statusPaused)
 }
 
 // colour wraps the word after "Status: " in an ANSI colour for a terminal, and
@@ -67,14 +64,6 @@ func colour(tty bool, code, line string) string {
 	}
 	label, word, _ := strings.Cut(line, " ")
 	return label + " " + code + word + plain
-}
-
-// isTerminal reports whether out is a real terminal. It rejects a pipe, a
-// file, the buffer of a test, and /dev/null, which a check of the file's mode
-// alone would accept because it is a character device.
-func isTerminal(out io.Writer) bool {
-	f, ok := out.(*os.File)
-	return ok && isatty.IsTerminal(f.Fd())
 }
 
 // group is one heading of the inbox and the tickets below it.
@@ -117,8 +106,8 @@ func widths(box inbox.Inbox) (id, project int) {
 	return id, project
 }
 
-func writeInbox(out io.Writer, box inbox.Inbox) {
-	fmt.Fprintln(out, statusLine(out, box))
+func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode) {
+	fmt.Fprintln(out, statusLine(out, box, mode))
 	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
 		fmt.Fprintln(out, emptyInbox)
 		return
@@ -140,14 +129,14 @@ func writeInbox(out io.Writer, box inbox.Inbox) {
 }
 
 // showInbox reads the tickets and writes the inbox.
-func showInbox(out io.Writer, dataDir string) error {
+func showInbox(out io.Writer, dataDir string, mode colourMode) error {
 	return store.With(dataDir, func(s *store.Store) error {
 
 		box, err := inbox.Get(s)
 		if err != nil {
 			return err
 		}
-		writeInbox(out, box)
+		writeInbox(out, box, mode)
 		return nil
 	})
 }

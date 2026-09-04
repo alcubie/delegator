@@ -28,6 +28,7 @@ func DataDir() (string, error) {
 // name of the program in front of it. cobra also keeps the usage back, because
 // a person who wrote a title that dg refused does not want each command again.
 func Root(dataDir, workDir string) *cobra.Command {
+	mode := colourAuto
 	root := &cobra.Command{
 		Use:           "dg",
 		Short:         "Delegate tasks to an agent",
@@ -36,9 +37,11 @@ func Root(dataDir, workDir string) *cobra.Command {
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showInbox(cmd.OutOrStdout(), dataDir)
+			return showInbox(cmd.OutOrStdout(), dataDir, mode)
 		},
 	}
+	root.PersistentFlags().Var(&mode, "color",
+		"colour the status: always, never or auto (a terminal only)")
 	root.AddCommand(ticketCommand(dataDir, workDir))
 	root.AddCommand(showCommand(dataDir))
 	root.AddCommand(moveCommand(dataDir))

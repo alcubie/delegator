@@ -15,7 +15,7 @@ import (
 func render(t *testing.T, box inbox.Inbox) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeInbox(&out, box)
+	writeInbox(&out, box, colourAuto)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -178,7 +178,7 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		"paused with none":     {inbox.Inbox{}, statusPaused},
 	} {
 		var out bytes.Buffer
-		writeInbox(&out, c.box)
+		writeInbox(&out, c.box, colourAuto)
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}
@@ -211,7 +211,7 @@ func TestRunShowsTheStateOfTheQueue(t *testing.T) {
 func TestStatusLineIsPlainOffATerminal(t *testing.T) {
 	for _, box := range []inbox.Inbox{{QueueRunning: true}, {}} {
 		var buf bytes.Buffer
-		if got := statusLine(&buf, box); strings.Contains(got, "\x1b") {
+		if got := statusLine(&buf, box, colourAuto); strings.Contains(got, "\x1b") {
 			t.Errorf("the status line holds an escape code off a terminal: %q", got)
 		}
 	}
@@ -226,32 +226,6 @@ func TestColourWrapsOnlyTheWord(t *testing.T) {
 	}
 	if got := colour(false, green, statusRunning); got != statusRunning {
 		t.Errorf("uncoloured = %q, want %q", got, statusRunning)
-	}
-}
-
-// The check must say no for a buffer and for an ordinary file, and yes for a
-// terminal. A pseudo-terminal stands in for the terminal, and the test is
-// skipped where the system has none to give.
-func TestIsTerminal(t *testing.T) {
-	if isTerminal(&bytes.Buffer{}) {
-		t.Error("a buffer is a terminal")
-	}
-	file, err := os.CreateTemp(t.TempDir(), "out")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	if isTerminal(file) {
-		t.Error("a file is a terminal")
-	}
-
-	pty, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
-	if err != nil {
-		t.Skipf("no pseudo-terminal to test with: %v", err)
-	}
-	defer pty.Close()
-	if !isTerminal(pty) {
-		t.Error("a pseudo-terminal is not a terminal")
 	}
 }
 
@@ -272,7 +246,7 @@ func TestStatusLineColoursAtATerminal(t *testing.T) {
 		{inbox.Inbox{QueueRunning: true}, "Status: " + green + "Running" + plain},
 		{inbox.Inbox{}, "Status: " + yellow + "Paused" + plain},
 	} {
-		if got := statusLine(pty, c.box); got != c.want {
+		if got := statusLine(pty, c.box, colourAuto); got != c.want {
 			t.Errorf("status line = %q, want %q", got, c.want)
 		}
 	}
