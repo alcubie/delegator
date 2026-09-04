@@ -643,17 +643,16 @@ func (s *Store) Claim(id int64, branch string) error {
 var ErrNoRun = errors.New("the ticket has no run")
 
 // Run is one row of the table runs. PID is the process id of the supervisor
-// that claimed the ticket, and StartedAt is the time of the claim in RFC 3339.
-// PID is an int and not a sql.Null, because no process has the id 0. EndedAt
-// is the empty string and ExitCode is not valid while the run is going; the
-// exit code is a sql.Null because 0 is an exit code and not the absence of
-// one.
+// that claimed the ticket, and StartedAt is the time of the claim. PID is an
+// int and not a sql.Null, because no process has the id 0. EndedAt is the
+// zero time and ExitCode is not valid while the run is going; the exit code
+// is a sql.Null because 0 is an exit code and not the absence of one.
 type Run struct {
 	ID        int64
 	TicketID  int64
 	PID       int
-	StartedAt string
-	EndedAt   string
+	StartedAt time.Time
+	EndedAt   time.Time
 	ExitCode  sql.Null[int]
 }
 
@@ -664,11 +663,12 @@ type Run struct {
 func (s *Store) Run(ticketID int64) (Run, error) {
 	var r Run
 	err := s.db.QueryRow(`
-		SELECT id, ticket_id, COALESCE(pid, 0), started_at, COALESCE(ended_at, ''), exit_code
+		SELECT id, ticket_id, COALESCE(pid, 0), started_at, ended_at, exit_code
 		FROM runs
 		WHERE ticket_id = ?
 		ORDER BY id DESC
-		LIMIT 1`, ticketID).Scan(&r.ID, &r.TicketID, &r.PID, &r.StartedAt, &r.EndedAt, &r.ExitCode)
+		LIMIT 1`, ticketID).Scan(
+		&r.ID, &r.TicketID, &r.PID, timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
 	}

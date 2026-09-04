@@ -224,8 +224,8 @@ func TestStartWritesTheEndTimeAndTheExitCodeWhenTheRunEnds(t *testing.T) {
 		if !run.ExitCode.Valid || run.ExitCode.V != exitCode {
 			t.Errorf("exit code = %+v, want %d", run.ExitCode, exitCode)
 		}
-		if run.EndedAt == "" || run.EndedAt < run.StartedAt {
-			t.Errorf("ended at = %q, want a time not before the start at %q", run.EndedAt, run.StartedAt)
+		if run.EndedAt.IsZero() || run.EndedAt.Before(run.StartedAt) {
+			t.Errorf("ended at = %v, want a time not before the start at %v", run.EndedAt, run.StartedAt)
 		}
 	}
 }

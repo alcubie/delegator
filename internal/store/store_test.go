@@ -1402,8 +1402,8 @@ func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	if got.PID != os.Getpid() {
 		t.Errorf("pid = %d, want %d", got.PID, os.Getpid())
 	}
-	if got.StartedAt != rows[0].startedAt {
-		t.Errorf("started at = %q, want %q", got.StartedAt, rows[0].startedAt)
+	if got := rfc3339(got.StartedAt); got != rows[0].startedAt {
+		t.Errorf("started at = %q, want %q", got, rows[0].startedAt)
 	}
 }
 
@@ -1489,8 +1489,8 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.EndedAt != rows[0].endedAt.String {
-			t.Errorf("Run gives ended at %q, want %q", got.EndedAt, rows[0].endedAt.String)
+		if got := rfc3339(got.EndedAt); got != rows[0].endedAt.String {
+			t.Errorf("Run gives ended at %q, want %q", got, rows[0].endedAt.String)
 		}
 		if !got.ExitCode.Valid || got.ExitCode.V != exitCode {
 			t.Errorf("Run gives exit code %+v, want %d", got.ExitCode, exitCode)
@@ -1510,8 +1510,8 @@ func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.EndedAt != "" || got.ExitCode.Valid {
-		t.Errorf("ended at = %q, exit code = %+v, want neither", got.EndedAt, got.ExitCode)
+	if !got.EndedAt.IsZero() || got.ExitCode.Valid {
+		t.Errorf("ended at = %v, exit code = %+v, want neither", got.EndedAt, got.ExitCode)
 	}
 }
 
