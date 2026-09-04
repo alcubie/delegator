@@ -160,6 +160,32 @@ func userVersion(t *testing.T, db *sql.DB) int {
 	return version
 }
 
+// columnsOf returns the name of each column of one table, in the order of the
+// table.
+func columnsOf(t *testing.T, db *sql.DB, table string) []string {
+	t.Helper()
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return names
+}
+
 // setMigrations puts a different list of steps in place for one test. Each test
 // of this package runs one after the other, so no test sees the list of another.
 func setMigrations(t *testing.T, list []string) {
@@ -191,6 +217,19 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 		if err != nil {
 			t.Errorf("table %s: %v", name, err)
 		}
+	}
+}
+
+// Section 7 of docs/RUN_CONTROL.md gives the table runs. The process id, the
+// start time, the end time and the exit code are facts of a run, and a ticket
+// has more than one run after dg restart and dg revise, so a column of tickets
+// cannot hold them.
+func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
+	s, _ := emptyStore(t)
+
+	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code"}
+	if got := columnsOf(t, s.db, "runs"); !slices.Equal(got, want) {
+		t.Errorf("the columns of runs = %v, want %v", got, want)
 	}
 }
 

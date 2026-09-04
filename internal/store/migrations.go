@@ -29,6 +29,7 @@ var migrations = []string{
 	dropTicketsColumns,
 	addTicketsCommitColumn,
 	addQueueTable,
+	addRunsTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -89,6 +90,22 @@ CREATE TABLE queue_state (
  running BOOLEAN NOT NULL DEFAULT 1 CHECK (running IN (0, 1))
 );
 INSERT INTO queue_state (id, running) VALUES (1, 1);
+`
+
+// addRunsTable makes the table of runs. A ticket has more than one run after
+// dg restart and dg revise, and the process id, the start time, the end time
+// and the exit code are facts of one run, so they are a row here and not a
+// column of tickets. A run that has not ended holds NULL in ended_at and
+// exit_code.
+const addRunsTable = `
+CREATE TABLE runs (
+  id         INTEGER PRIMARY KEY,
+  ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
+  pid        INTEGER,
+  started_at TEXT NOT NULL,
+  ended_at   TEXT,
+  exit_code  INTEGER
+);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then
