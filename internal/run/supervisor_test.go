@@ -218,3 +218,26 @@ func TestPromptNamesBothCommands(t *testing.T) {
 		}
 	}
 }
+
+// The supervisor reads the output line by line, and a reader of lines has two
+// ways to lose part of the output: a line longer than its buffer, which a
+// tool result in the stream of a real agent often is, and a last line that no
+// newline ends. The log must hold both whole.
+func TestStartWritesEachLineOfTheRunToTheLogInFull(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	longLine := strings.Repeat("x", 70_000)
+	agent := fakeAgent(t,
+		"run printf 'one\\n'",
+		"run head -c 70000 /dev/zero | tr '\\0' x; printf '\\n'",
+		"run printf 'last'",
+		"exit 0",
+	)
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := logOf(t, dataDir, id), "one\n"+longLine+"\nlast"; got != want {
+		t.Errorf("the log holds %d bytes, want %d:\n%.80s", len(got), len(want), got)
+	}
+}
