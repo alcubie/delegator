@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -184,6 +185,41 @@ func columnsOf(t *testing.T, db *sql.DB, table string) []string {
 		t.Fatal(err)
 	}
 	return names
+}
+
+// runRow is one row of the table runs as a test reads it, with each column
+// that can hold NULL as a sql.Null.
+type runRow struct {
+	pid       sql.Null[int]
+	startedAt string
+	endedAt   sql.NullString
+	exitCode  sql.Null[int]
+}
+
+// runRows returns each row of runs that belongs to one ticket, in the order of
+// id.
+func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
+	t.Helper()
+	rows, err := s.db.Query(
+		"SELECT pid, started_at, ended_at, exit_code FROM runs WHERE ticket_id = ? ORDER BY id",
+		ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var runs []runRow
+	for rows.Next() {
+		var r runRow
+		if err := rows.Scan(&r.pid, &r.startedAt, &r.endedAt, &r.exitCode); err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return runs
 }
 
 // setMigrations puts a different list of steps in place for one test. Each test
@@ -1288,5 +1324,54 @@ func TestChangeStatusOnATicketThatIsNotThere(t *testing.T) {
 
 	if err := s.ChangeStatus(9999, Running); !errors.Is(err, ErrNoTicket) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+}
+
+// The supervisor claims a ticket, so the process id of the caller of Claim is
+// the process id that the reconcile asks about. The start time is the moment
+// of the claim, in RFC 3339 and UTC like each other time of the store.
+func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
+	s, id := oneTicket(t)
+	before := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	runs := runRows(t, s, id)
+	if len(runs) != 1 {
+		t.Fatalf("runs = %+v, want one", runs)
+	}
+	if got := runs[0].pid; !got.Valid || got.V != os.Getpid() {
+		t.Errorf("pid = %+v, want %d", got, os.Getpid())
+	}
+	started, err := time.Parse(time.RFC3339, runs[0].startedAt)
+	if err != nil {
+		t.Fatalf("started_at = %q, want RFC 3339: %v", runs[0].startedAt, err)
+	}
+	if started.Before(before) || started.After(time.Now()) {
+		t.Errorf("started_at = %s, want between %s and now", started, before)
+	}
+	if runs[0].endedAt.Valid || runs[0].exitCode.Valid {
+		t.Errorf("a run that has not ended holds ended_at = %+v, exit_code = %+v", runs[0].endedAt, runs[0].exitCode)
+	}
+}
+
+// Two supervisors can reach one ticket, and the one that loses writes nothing:
+// the row of runs is below the transaction of the change of state, so a claim
+// that the state machine refuses leaves no run behind.
+func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.Claim(id, "delegator/1-my-ticket")
+	if !errors.Is(err, ErrInvalidTicketStateChange) {
+		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+
+	if runs := runRows(t, s, id); len(runs) != 1 {
+		t.Errorf("runs = %+v, want the one of the first claim", runs)
 	}
 }

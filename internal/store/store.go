@@ -571,9 +571,12 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 	return err
 }
 
-// Claim marks a queued ticket as running and records its branch, both in one
-// transaction. A second supervisor racing for the same ticket finds it already
-// running, gets ErrInvalidTicketStateChange, and writes nothing.
+// Claim marks a queued ticket as running, records its branch, and writes the
+// row of runs for this run, all in one transaction. The row holds the process
+// id of the caller, which is the supervisor, and the time of the claim, so a
+// ticket in running always has a process id to ask about. A second supervisor
+// racing for the same ticket finds it already running, gets
+// ErrInvalidTicketStateChange, and writes nothing.
 //
 // Create the worktree before calling this, never inside it: the transaction
 // holds SQLite's writer lock, and git worktree add runs long enough to park
@@ -589,6 +592,12 @@ func (s *Store) Claim(id int64, branch string) error {
 		return err
 	}
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
+		id, os.Getpid(), time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
 		return err
 	}
 	return tx.Commit()
