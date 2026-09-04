@@ -321,3 +321,33 @@ func TestStartAsksForTheSessionAfterEachLineUntilItHasOne(t *testing.T) {
 		t.Errorf("session = %q, want %q", got, "s-1")
 	}
 }
+
+// A run that ends before it reports an id keeps no session, and that is not
+// a fault of the run: its exit status already says what happened.
+func TestStartKeepsNoSessionWhenTheRunReportsNone(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'it stopped early\\n'", "exit 0")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "" {
+		t.Errorf("session = %q, want none", got)
+	}
+}
+
+// The id on the last line still reaches the ticket, and the last line of a
+// run has no newline after it when the agent stops without one.
+func TestStartRecordsTheSessionOnTheLastLineWithNoNewline(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'the work\\nsession: s-1'", "exit 0")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
+		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
