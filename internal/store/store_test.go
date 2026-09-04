@@ -190,6 +190,7 @@ func columnsOf(t *testing.T, db *sql.DB, table string) []string {
 // runRow is one row of the table runs as a test reads it, with each column
 // that can hold NULL as a sql.Null.
 type runRow struct {
+	id        int64
 	pid       sql.Null[int]
 	startedAt string
 	endedAt   sql.NullString
@@ -201,7 +202,7 @@ type runRow struct {
 func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	t.Helper()
 	rows, err := s.db.Query(
-		"SELECT pid, started_at, ended_at, exit_code FROM runs WHERE ticket_id = ? ORDER BY id",
+		"SELECT id, pid, started_at, ended_at, exit_code FROM runs WHERE ticket_id = ? ORDER BY id",
 		ticketID)
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +212,7 @@ func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	var runs []runRow
 	for rows.Next() {
 		var r runRow
-		if err := rows.Scan(&r.pid, &r.startedAt, &r.endedAt, &r.exitCode); err != nil {
+		if err := rows.Scan(&r.id, &r.pid, &r.startedAt, &r.endedAt, &r.exitCode); err != nil {
 			t.Fatal(err)
 		}
 		runs = append(runs, r)
@@ -1373,5 +1374,78 @@ func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 
 	if runs := runRows(t, s, id); len(runs) != 1 {
 		t.Errorf("runs = %+v, want the one of the first claim", runs)
+	}
+}
+
+// The reconcile of a ticket in running asks whether its supervisor is alive,
+// and it asks with the process id and the start time of the run.
+func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	rows := runRows(t, s, id)
+
+	got, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != rows[0].id {
+		t.Errorf("id = %d, want %d", got.ID, rows[0].id)
+	}
+	if got.TicketID != id {
+		t.Errorf("ticket id = %d, want %d", got.TicketID, id)
+	}
+	if got.PID != os.Getpid() {
+		t.Errorf("pid = %d, want %d", got.PID, os.Getpid())
+	}
+	if got.StartedAt != rows[0].startedAt {
+		t.Errorf("started at = %q, want %q", got.StartedAt, rows[0].startedAt)
+	}
+}
+
+// A ticket that failed and went back to the queue has a run for each claim,
+// and the run of the ticket is the last one: the earlier run ended, and its
+// process id belongs to nobody or to a different program by now.
+func TestRunGivesTheLastRunOfATicket(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Failed, Queued} {
+		if err := s.ChangeStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	rows := runRows(t, s, id)
+	if len(rows) != 2 {
+		t.Fatalf("runs = %+v, want two", rows)
+	}
+
+	got, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != rows[1].id {
+		t.Errorf("id = %d, want %d, the run of the second claim", got.ID, rows[1].id)
+	}
+}
+
+// A ticket in the queue has no run yet, and a ticket that is not there has
+// none either. Both give ErrNoRun, and the id is in the message.
+func TestRunOnATicketThatHasNoRun(t *testing.T) {
+	s, id := oneTicket(t)
+
+	for _, ticketID := range []int64{id, 9999} {
+		_, err := s.Run(ticketID)
+		if !errors.Is(err, ErrNoRun) {
+			t.Errorf("ticket %d: err = %v, want ErrNoRun", ticketID, err)
+		}
+		if err != nil && !strings.Contains(err.Error(), fmt.Sprint(ticketID)) {
+			t.Errorf("ticket %d: the message %q does not name the ticket", ticketID, err)
+		}
 	}
 }

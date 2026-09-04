@@ -603,6 +603,41 @@ func (s *Store) Claim(id int64, branch string) error {
 	return tx.Commit()
 }
 
+// ErrNoRun shows that a ticket has no run: no supervisor has claimed it, or no
+// ticket holds the id.
+var ErrNoRun = errors.New("the ticket has no run")
+
+// Run is one row of the table runs. PID is the process id of the supervisor
+// that claimed the ticket, and StartedAt is the time of the claim in RFC 3339.
+// PID is an int and not a sql.Null, because no process has the id 0.
+type Run struct {
+	ID        int64
+	TicketID  int64
+	PID       int
+	StartedAt string
+}
+
+// Run returns the last run of a ticket, which for a ticket in running is the
+// run that holds it: a ticket that failed and went back to the queue has one
+// row for each claim, and only the last one can still be alive. It gives
+// ErrNoRun when the ticket has no run.
+func (s *Store) Run(ticketID int64) (Run, error) {
+	var r Run
+	err := s.db.QueryRow(`
+		SELECT id, ticket_id, COALESCE(pid, 0), started_at
+		FROM runs
+		WHERE ticket_id = ?
+		ORDER BY id DESC
+		LIMIT 1`, ticketID).Scan(&r.ID, &r.TicketID, &r.PID, &r.StartedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
+	}
+	if err != nil {
+		return Run{}, err
+	}
+	return r, nil
+}
+
 // FinishTicket completes a Running ticket. It records the commit of the run and
 // the time the run stopped, which orders the ready tickets in the inbox.
 //
