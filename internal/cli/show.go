@@ -160,12 +160,18 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, st
 		when = elapsed(started, now)
 	}
 	heading := fmt.Sprintf("  #%d  %s", t.ID, t.Title)
-	right := string(t.Status)
+	status := string(t.Status)
+	pad := max(1, ruleWidth-len(heading)-len(status))
+	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), status)
+
+	// The time takes the line below the status and ends where the status ends.
+	// Beside the status it shared the line with the title, and a title of the
+	// length a person writes then pushed the pair past the rule. A ticket with
+	// no time takes no line, because an empty line above the rule reads as a
+	// value that failed to arrive.
 	if when != "" {
-		right += " · " + when
+		fmt.Fprintf(out, "%*s\n", ruleWidth, when)
 	}
-	pad := max(1, ruleWidth-len(heading)-len(right))
-	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), right)
 	fmt.Fprintf(out, "  %s\n", strings.Repeat("─", ruleWidth-2))
 
 	if t.Commit != "" {

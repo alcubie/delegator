@@ -570,8 +570,9 @@ The command `dg show 4` gives one ticket in full:
 
 ```
 $ dg show 4
-  #4  Remove the staging app                           ready · 2h ago
-  ───────────────────────────────────────────────────────────────────
+  #4  Remove the staging app                                  ready
+                                                             2h ago
+  ─────────────────────────────────────────────────────────────────
   commit    9f3a1c2 Remove the staging app and its DNS records
 
   ticket    …/delegator/tickets/4.md
@@ -585,8 +586,10 @@ $ dg show 4
 
 The subject of the commit is on the row. `dg open diff 4` gives the change itself.
 
-`dg show` gives the same time on the first line of a ticket in `running`, as HH:MM:SS.
-A ticket in `ready` shows the time from its completion in that position.
+`dg show` puts the time on the line below the status: HH:MM:SS for a ticket in
+`running`, and the time from the completion for a ticket in `ready`. The time ends where
+the status above it ends, so a long title does not push it off the line. A ticket with no
+time gives no line, and the rule comes below the title.
 
 ### 9.2 Commands of the person
 
