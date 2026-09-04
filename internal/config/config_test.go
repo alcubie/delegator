@@ -47,3 +47,15 @@ func TestLoadReadsTheFileBelowHomeWithNoXDGConfigHome(t *testing.T) {
 		t.Errorf("Runs = %d, want 3", cfg.Runs)
 	}
 }
+
+func TestLoadWithNoFileGivesTheDefaultsAndNoError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load with no file: %v", err)
+	}
+	if cfg.Runs != 1 {
+		t.Errorf("Runs = %d, want the default 1", cfg.Runs)
+	}
+}

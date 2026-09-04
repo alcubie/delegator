@@ -5,6 +5,8 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -31,14 +33,23 @@ func Dir() (string, error) {
 	return filepath.Join(home, ".config", "delegator"), nil
 }
 
-// Load reads config.toml from Dir.
+// Default is the config of a person who has written no file. A fresh
+// install has no config, and delegator must work before a person writes one.
+var Default = Config{Runs: 1}
+
+// Load reads config.toml from Dir. A file that is not there gives Default and
+// no error.
 func Load() (Config, error) {
 	dir, err := Dir()
 	if err != nil {
 		return Config{}, err
 	}
-	var cfg Config
-	if _, err := toml.DecodeFile(filepath.Join(dir, "config.toml"), &cfg); err != nil {
+	cfg := Default
+	_, err = toml.DecodeFile(filepath.Join(dir, "config.toml"), &cfg)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Default, nil
+	}
+	if err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
