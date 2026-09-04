@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -99,5 +100,33 @@ func TestLoadGivesTimeoutMinutesTheDefaultWhenTheFileDoesNotSetIt(t *testing.T) 
 	}
 	if cfg.TimeoutMinutes != 60 {
 		t.Errorf("TimeoutMinutes = %d, want the default 60", cfg.TimeoutMinutes)
+	}
+}
+
+func TestLoadRefusesAValueOfTheWrongTypeAndNamesTheKey(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runs = \"three\"\n")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load accepted runs = \"three\"")
+	}
+	if !strings.Contains(err.Error(), "runs") {
+		t.Errorf("the error does not name the key runs: %v", err)
+	}
+}
+
+func TestLoadRefusesAKeyItDoesNotKnowAndNamesIt(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "run = 3\n")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load accepted the key run, which it does not know")
+	}
+	if !strings.Contains(err.Error(), "run") {
+		t.Errorf("the error does not name the key run: %v", err)
 	}
 }

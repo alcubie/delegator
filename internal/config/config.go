@@ -6,6 +6,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,19 +41,25 @@ func Dir() (string, error) {
 var Default = Config{Runs: 1, TimeoutMinutes: 60}
 
 // Load reads config.toml from Dir. A file that is not there gives Default and
-// no error.
+// no error. A value of the wrong type, or a key that delegator does not know,
+// gives an error that names the key: a misspelt key that quietly became a
+// default would be the hardest fault to find.
 func Load() (Config, error) {
 	dir, err := Dir()
 	if err != nil {
 		return Config{}, err
 	}
+	path := filepath.Join(dir, "config.toml")
 	cfg := Default
-	_, err = toml.DecodeFile(filepath.Join(dir, "config.toml"), &cfg)
+	md, err := toml.DecodeFile(path, &cfg)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Default, nil
 	}
 	if err != nil {
 		return Config{}, err
+	}
+	if unknown := md.Undecoded(); len(unknown) > 0 {
+		return Config{}, fmt.Errorf("%s: unknown key %q", path, unknown[0].String())
 	}
 	return cfg, nil
 }
