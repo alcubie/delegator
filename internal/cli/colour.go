@@ -44,13 +44,21 @@ func (m *colourMode) Set(value string) error {
 }
 
 // on reports whether the output gets the colour codes. always and never say so
-// themselves; auto colours a terminal and nothing else.
+// themselves. auto reads the two variables that many programs honour: NO_COLOR
+// with any value turns the colour off, and CLICOLOR_FORCE turns it on for an
+// output that is not a terminal. With neither, auto colours a terminal only.
 func (m colourMode) on(out io.Writer) bool {
 	switch m {
 	case colourAlways:
 		return true
 	case colourNever:
 		return false
+	}
+	if _, set := os.LookupEnv("NO_COLOR"); set {
+		return false
+	}
+	if _, set := os.LookupEnv("CLICOLOR_FORCE"); set {
+		return true
 	}
 	return isTerminal(out)
 }

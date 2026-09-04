@@ -20,6 +20,10 @@ func TestMain(m *testing.M) {
 	// copy of the test binary, which would run these tests, which would start
 	// more. Tests that care what was launched put their own launch in place.
 	launch = func(int64) *exec.Cmd { return exec.Command("true") }
+	// The shell that runs the tests may set either variable, and each test of
+	// --color=auto would then see its colour. A test that wants one sets it.
+	os.Unsetenv("NO_COLOR")
+	os.Unsetenv("CLICOLOR_FORCE")
 	os.Exit(testfix.RunTests(m, true))
 }
 

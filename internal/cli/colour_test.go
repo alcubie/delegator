@@ -89,3 +89,34 @@ func TestColorFlagRefusesAnotherValue(t *testing.T) {
 		}
 	}
 }
+
+// NO_COLOR, with any value, turns the colour off when the flag is auto, and
+// CLICOLOR_FORCE turns it on when the output is not a terminal. The flag wins
+// over both, so a person can override what a shell profile set.
+func TestColourEnvironmentDecidesAuto(t *testing.T) {
+	box := inbox.Inbox{QueueRunning: true}
+	coloured := colour(true, green, statusRunning)
+
+	pty, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	if err != nil {
+		t.Skipf("no pseudo-terminal to test with: %v", err)
+	}
+	defer pty.Close()
+
+	t.Setenv("NO_COLOR", "")
+	if got := statusLine(pty, box, colourAuto); got != statusRunning {
+		t.Errorf("NO_COLOR at a terminal gives %q, want %q", got, statusRunning)
+	}
+	if got := statusLine(pty, box, colourAlways); got != coloured {
+		t.Errorf("NO_COLOR with --color=always gives %q, want %q", got, coloured)
+	}
+	os.Unsetenv("NO_COLOR")
+
+	t.Setenv("CLICOLOR_FORCE", "1")
+	if got := statusLine(&bytes.Buffer{}, box, colourAuto); got != coloured {
+		t.Errorf("CLICOLOR_FORCE into a pipe gives %q, want %q", got, coloured)
+	}
+	if got := statusLine(&bytes.Buffer{}, box, colourNever); got != statusRunning {
+		t.Errorf("CLICOLOR_FORCE with --color=never gives %q, want %q", got, statusRunning)
+	}
+}
