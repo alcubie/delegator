@@ -17,6 +17,8 @@ import (
 type Config struct {
 	// Runs is the number of tickets that can run at one time.
 	Runs int `toml:"runs"`
+	// TimeoutMinutes is the time a run can take before delegator stops it.
+	TimeoutMinutes int `toml:"timeout_minutes"`
 }
 
 // Dir returns the directory that holds config.toml. XDG_CONFIG_HOME names
@@ -35,7 +37,7 @@ func Dir() (string, error) {
 
 // Default is the config of a person who has written no file. A fresh
 // install has no config, and delegator must work before a person writes one.
-var Default = Config{Runs: 1}
+var Default = Config{Runs: 1, TimeoutMinutes: 60}
 
 // Load reads config.toml from Dir. A file that is not there gives Default and
 // no error.

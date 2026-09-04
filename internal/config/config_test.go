@@ -59,3 +59,45 @@ func TestLoadWithNoFileGivesTheDefaultsAndNoError(t *testing.T) {
 		t.Errorf("Runs = %d, want the default 1", cfg.Runs)
 	}
 }
+
+func TestLoadGivesRunsTheDefaultWhenTheFileDoesNotSetIt(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "timeout_minutes = 5\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runs != 1 {
+		t.Errorf("Runs = %d, want the default 1", cfg.Runs)
+	}
+}
+
+func TestLoadReadsTimeoutMinutes(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "timeout_minutes = 5\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TimeoutMinutes != 5 {
+		t.Errorf("TimeoutMinutes = %d, want 5", cfg.TimeoutMinutes)
+	}
+}
+
+func TestLoadGivesTimeoutMinutesTheDefaultWhenTheFileDoesNotSetIt(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runs = 3\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TimeoutMinutes != 60 {
+		t.Errorf("TimeoutMinutes = %d, want the default 60", cfg.TimeoutMinutes)
+	}
+}
