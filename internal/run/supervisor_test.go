@@ -259,6 +259,18 @@ func TestPromptNamesBothCommands(t *testing.T) {
 	}
 }
 
+// A run that reads the repository by cat carries every file it opened in the
+// context for the rest of the run, so the prompt must hold the rules that say
+// what to read instead.
+func TestPromptSaysHowToRead(t *testing.T) {
+	got := prompt(42)
+	for _, want := range []string{"grep", "200 lines", "100 lines"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
+	}
+}
+
 // The supervisor reads the output line by line, and a reader of lines has two
 // ways to lose part of the output: a line longer than its buffer, which a
 // tool result in the stream of a real agent often is, and a last line that no

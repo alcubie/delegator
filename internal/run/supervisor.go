@@ -145,8 +145,14 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 }
 
 // prompt returns the first message to the agent for one ticket. It names the
-// two commands the agent uses and nothing else: dg show gives it the ticket,
-// so the prompt does not repeat the prose, and dg finish ends the run.
+// two commands the agent uses: dg show gives it the ticket, so the prompt does
+// not repeat the prose, and dg finish ends the run.
+//
+// It also says how to read the repository. An agent that starts a run knows
+// nothing of the code and finds it by cat, and every file it reads that way
+// stays in the context and is sent again with each later call of the run. The
+// rules name the reading to avoid rather than the principle behind it, because
+// an agent that is told to read with care still cats the file.
 func prompt(id int64) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
@@ -158,5 +164,14 @@ git worktree on a branch of its own.
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
 4. Run "dg finish %[1]d <hash>" with the hash of the commit you made.
+
+How to read the repository:
+
+- To find code, grep for the identifier and read the lines around what
+  grep gives you. Do not cat a file to learn what is in it.
+- Do not read a source file of over 200 lines whole, or a document of
+  over 100 lines whole. Read the part you came for.
+- Read a document only when the ticket needs a decision that the code
+  does not hold. For what the code does, read the code.
 `, id)
 }
