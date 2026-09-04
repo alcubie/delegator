@@ -204,6 +204,32 @@ func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
 	}
 }
 
+// The end time and the exit code are facts of the run, and the supervisor is
+// the one program that has the exit code. An exit of 0 is recorded as much as
+// an exit of 3.
+func TestStartWritesTheEndTimeAndTheExitCodeWhenTheRunEnds(t *testing.T) {
+	for _, exitCode := range []int{0, 3} {
+		dataDir, id := queuedTicket(t, "Add the thing")
+		agent := fakeAgent(t, "exit "+strconv.Itoa(exitCode))
+
+		err := Start(testfix.OpenStore(t, dataDir), id, agent)
+		if (err != nil) != (exitCode != 0) {
+			t.Fatalf("exit %d: err = %v", exitCode, err)
+		}
+
+		run, err := testfix.OpenStore(t, dataDir).Run(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !run.ExitCode.Valid || run.ExitCode.V != exitCode {
+			t.Errorf("exit code = %+v, want %d", run.ExitCode, exitCode)
+		}
+		if run.EndedAt == "" || run.EndedAt < run.StartedAt {
+			t.Errorf("ended at = %q, want a time not before the start at %q", run.EndedAt, run.StartedAt)
+		}
+	}
+}
+
 // The log holds what the agent wrote on both streams, so a person can read a
 // run that produced no commit.
 func TestStartWritesTheLogOfTheRun(t *testing.T) {

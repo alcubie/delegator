@@ -18,7 +18,8 @@ import (
 // Start runs the ticket with the given id: it creates the worktree and its
 // branch, claims the ticket for this run, then runs the agent in the worktree
 // and waits for it to exit. What the agent writes goes to a log below
-// runs/<id>, and the session id it reports goes on the ticket.
+// runs/<id>, the session id it reports goes on the ticket, and the time it
+// exits and its exit code go on the row of the run.
 //
 // The worktree is created first. If git refuses, the ticket stays queued where
 // you can see it, rather than sitting in running with nowhere to work.
@@ -58,8 +59,15 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	// read above. The session is recorded before the run's failure is
 	// reported: a run that failed is the one a person most wants to open.
 	runErr := cmd.Wait()
+	// The end time and the exit code go on the row of the run whatever the
+	// exit was. ProcessState is there after Wait whether or not Wait gave an
+	// error, and its ExitCode is -1 for a process that a signal ended.
+	endErr := s.EndRun(id, cmd.ProcessState.ExitCode())
 	if followErr != nil {
 		return followErr
+	}
+	if endErr != nil {
+		return endErr
 	}
 	return runErr
 }

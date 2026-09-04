@@ -1449,3 +1449,105 @@ func TestRunOnATicketThatHasNoRun(t *testing.T) {
 		}
 	}
 }
+
+// The exit code 0 is a value and not the absence of one, so the column must
+// hold it and the store must give it back as a value.
+func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
+	for _, exitCode := range []int{0, 3} {
+		s, id := oneTicket(t)
+		if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+			t.Fatal(err)
+		}
+		before := time.Now().UTC().Truncate(time.Second)
+
+		if err := s.EndRun(id, exitCode); err != nil {
+			t.Fatal(err)
+		}
+
+		rows := runRows(t, s, id)
+		if len(rows) != 1 {
+			t.Fatalf("runs = %+v, want one", rows)
+		}
+		if got := rows[0].exitCode; !got.Valid || got.V != exitCode {
+			t.Errorf("exit_code = %+v, want %d", got, exitCode)
+		}
+		if !rows[0].endedAt.Valid {
+			t.Fatalf("ended_at is NULL after the run ended")
+		}
+		ended, err := time.Parse(time.RFC3339, rows[0].endedAt.String)
+		if err != nil {
+			t.Fatalf("ended_at = %q, want RFC 3339: %v", rows[0].endedAt.String, err)
+		}
+		if ended.Before(before) || ended.After(time.Now()) {
+			t.Errorf("ended_at = %s, want between %s and now", ended, before)
+		}
+
+		got, err := s.Run(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.EndedAt != rows[0].endedAt.String {
+			t.Errorf("Run gives ended at %q, want %q", got.EndedAt, rows[0].endedAt.String)
+		}
+		if !got.ExitCode.Valid || got.ExitCode.V != exitCode {
+			t.Errorf("Run gives exit code %+v, want %d", got.ExitCode, exitCode)
+		}
+	}
+}
+
+// A run that has not ended gives no exit code, so a reader can tell a run that
+// is going from one that ended with 0.
+func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EndedAt != "" || got.ExitCode.Valid {
+		t.Errorf("ended at = %q, exit code = %+v, want neither", got.EndedAt, got.ExitCode)
+	}
+}
+
+// The supervisor ends the run it holds, which is the last run of the ticket.
+// The run of an earlier claim keeps what it has.
+func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Failed, Queued} {
+		if err := s.ChangeStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.EndRun(id, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := runRows(t, s, id)
+	if len(rows) != 2 {
+		t.Fatalf("runs = %+v, want two", rows)
+	}
+	if rows[0].endedAt.Valid || rows[0].exitCode.Valid {
+		t.Errorf("the first run = %+v, want no end", rows[0])
+	}
+	if !rows[1].endedAt.Valid || !rows[1].exitCode.Valid {
+		t.Errorf("the second run = %+v, want an end", rows[1])
+	}
+}
+
+func TestEndRunOnATicketThatHasNoRun(t *testing.T) {
+	s, id := oneTicket(t)
+
+	if err := s.EndRun(id, 0); !errors.Is(err, ErrNoRun) {
+		t.Errorf("err = %v, want ErrNoRun", err)
+	}
+}

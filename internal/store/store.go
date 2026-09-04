@@ -609,12 +609,17 @@ var ErrNoRun = errors.New("the ticket has no run")
 
 // Run is one row of the table runs. PID is the process id of the supervisor
 // that claimed the ticket, and StartedAt is the time of the claim in RFC 3339.
-// PID is an int and not a sql.Null, because no process has the id 0.
+// PID is an int and not a sql.Null, because no process has the id 0. EndedAt
+// is the empty string and ExitCode is not valid while the run is going; the
+// exit code is a sql.Null because 0 is an exit code and not the absence of
+// one.
 type Run struct {
 	ID        int64
 	TicketID  int64
 	PID       int
 	StartedAt string
+	EndedAt   string
+	ExitCode  sql.Null[int]
 }
 
 // Run returns the last run of a ticket, which for a ticket in running is the
@@ -624,11 +629,11 @@ type Run struct {
 func (s *Store) Run(ticketID int64) (Run, error) {
 	var r Run
 	err := s.db.QueryRow(`
-		SELECT id, ticket_id, COALESCE(pid, 0), started_at
+		SELECT id, ticket_id, COALESCE(pid, 0), started_at, COALESCE(ended_at, ''), exit_code
 		FROM runs
 		WHERE ticket_id = ?
 		ORDER BY id DESC
-		LIMIT 1`, ticketID).Scan(&r.ID, &r.TicketID, &r.PID, &r.StartedAt)
+		LIMIT 1`, ticketID).Scan(&r.ID, &r.TicketID, &r.PID, &r.StartedAt, &r.EndedAt, &r.ExitCode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
 	}
@@ -636,6 +641,27 @@ func (s *Store) Run(ticketID int64) (Run, error) {
 		return Run{}, err
 	}
 	return r, nil
+}
+
+// EndRun writes the end time and the exit code on the last run of a ticket,
+// which is the run of the supervisor that calls it. It gives ErrNoRun when the
+// ticket has no run.
+func (s *Store) EndRun(ticketID int64, exitCode int) error {
+	result, err := s.db.Exec(`
+		UPDATE runs SET ended_at = ?, exit_code = ?
+		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`,
+		time.Now().UTC().Format(time.RFC3339), exitCode, ticketID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
+	}
+	return nil
 }
 
 // FinishTicket completes a Running ticket. It records the commit of the run and
