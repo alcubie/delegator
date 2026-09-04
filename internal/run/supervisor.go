@@ -53,17 +53,29 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 		return err
 	}
 
-	// Each line goes to the log as it arrives, and the output so far goes to
-	// the adapter after each line until it gives the session. The session goes
-	// on the ticket at once: a run that stops part way, from a cancel, the
-	// timeout or a restart, has then already left the id a person opens it
-	// with. Once the adapter has answered, the supervisor asks no more and
-	// keeps no more, because the log holds the output and nothing else reads
-	// it.
-	//
-	// A fault of the log or of the session does not stop the reading: a pipe
-	// that nobody reads fills, and the agent would then wait on it for ever.
-	// The first fault is kept and reported after the run.
+	followErr := follow(s, id, agent, stdout, log)
+	// Wait returns only after the process exits, and every line has been
+	// read above. The session is recorded before the run's failure is
+	// reported: a run that failed is the one a person most wants to open.
+	runErr := cmd.Wait()
+	if followErr != nil {
+		return followErr
+	}
+	return runErr
+}
+
+// follow reads the output of a run as it arrives. Each line goes to the log,
+// and the output so far goes to the adapter after each line until it gives
+// the session. The session goes on the ticket at once: a run that stops part
+// way, from a cancel, the timeout or a restart, has then already left the id
+// a person opens it with. Once the adapter has answered, follow asks no more
+// and keeps no more, because the log holds the output and nothing else reads
+// it.
+//
+// A fault of the log or of the session does not stop the reading: a pipe
+// that nobody reads fills, and the agent would then wait on it for ever.
+// follow reads to the end and returns the faults it kept.
+func follow(s *store.Store, id int64, agent adapters.Adapter, stdout io.Reader, log io.Writer) error {
 	var out bytes.Buffer
 	var logErr, sessionErr error
 	found := false
@@ -85,14 +97,7 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 		}
 		sessionErr = err
 	})
-	// Wait returns only after the process exits, and every line has been
-	// read above. The session is recorded before the run's failure is
-	// reported: a run that failed is the one a person most wants to open.
-	runErr := cmd.Wait()
-	if err := errors.Join(readErr, logErr, sessionErr); err != nil {
-		return err
-	}
-	return runErr
+	return errors.Join(readErr, logErr, sessionErr)
 }
 
 // eachLine calls each with every line of r as it arrives, newline included,
