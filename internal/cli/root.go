@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -36,6 +37,12 @@ func Root(dataDir, workDir string) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
+		// Each command starts with the config file, so the first command a
+		// person runs leaves a file to open. cobra runs this before the
+		// root and before each subcommand, as none has a hook of its own.
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			return config.Init()
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return showInbox(cmd.OutOrStdout(), dataDir, mode)
 		},

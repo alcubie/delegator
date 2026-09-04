@@ -49,6 +49,46 @@ func file() (string, error) {
 // install has no config, and delegator must work before a person writes one.
 var Default = Config{Runs: 1, TimeoutMinutes: 60}
 
+// defaultFile is the text of the config file that Init writes. Each key has
+// one comment that says what it does, because the file is where the person
+// changes a value. The values are the fields of Default, so the file that a
+// person opens and the config of a person who has no file cannot come apart.
+const defaultFile = `# runs is the number of tickets that can run at one time.
+runs = %d
+
+# timeout_minutes is the time in minutes that a run can take before delegator
+# stops it.
+timeout_minutes = %d
+`
+
+// Init writes config.toml with each key at its default when the file is not
+// there, and makes Dir when that is not there. A file that is there is left
+// as it is, whatever it holds: the person edits it, and delegator never
+// writes it again. O_EXCL makes that one step, so two commands that start at
+// the same time cannot each write it.
+func Init() error {
+	path, err := file()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	text := fmt.Sprintf(defaultFile, Default.Runs, Default.TimeoutMinutes)
+	if _, err := f.WriteString(text); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
 // Load reads config.toml from Dir. A file that is not there gives Default and
 // no error. A value of the wrong type, or a key that delegator does not know,
 // gives an error that names the key: a misspelt key that quietly became a
