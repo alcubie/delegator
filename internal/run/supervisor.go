@@ -1,7 +1,9 @@
 package run
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,13 +43,33 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	}
 	defer log.Close()
 
-	var out bytes.Buffer
 	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
-	cmd.Stdout = io.MultiWriter(&out, log)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
 	cmd.Stderr = log
-	// Run returns only after the process exits and the copies into out and
-	// the log have drained, so out is complete below.
-	runErr := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Each line goes to the log as it arrives. A fault of the log does not
+	// stop the reading: a pipe that nobody reads fills, and the agent would
+	// then wait on it for ever. The fault is kept and reported after the run.
+	var out bytes.Buffer
+	var lineErr error
+	readErr := eachLine(stdout, func(line []byte) {
+		if _, err := log.Write(line); err != nil && lineErr == nil {
+			lineErr = err
+		}
+		out.Write(line)
+	})
+	// Wait returns only after the process exits, and every line has been
+	// read above, so out is complete below.
+	runErr := cmd.Wait()
+	if err := errors.Join(readErr, lineErr); err != nil {
+		return err
+	}
 
 	// The session is recorded before the run's failure is reported: a run
 	// that failed is the one a person most wants to open.
@@ -61,6 +83,26 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 		}
 	}
 	return runErr
+}
+
+// eachLine calls each with every line of r as it arrives, newline included,
+// and with the last line whether or not a newline ends it. A line has no
+// limit on its length: a tool result in the stream of a real agent runs to
+// hundreds of kilobytes, which is past what a scanner takes.
+func eachLine(r io.Reader, each func(line []byte)) error {
+	lines := bufio.NewReader(r)
+	for {
+		line, err := lines.ReadBytes('\n')
+		if len(line) > 0 {
+			each(line)
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // logTime is the layout of a log's name. It is RFC 3339 with the colons
