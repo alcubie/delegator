@@ -377,12 +377,12 @@ CREATE TABLE tickets (
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
 
 CREATE TABLE runs (
-  id        INTEGER PRIMARY KEY,
-  ticket_id INTEGER NOT NULL REFERENCES tickets(id),
-  pid       INTEGER,
-  started   TEXT NOT NULL,
-  ended     TEXT,
-  exit_code INTEGER
+  id         INTEGER PRIMARY KEY,
+  ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
+  pid        INTEGER,
+  started_at TEXT NOT NULL,
+  ended_at   TEXT,
+  exit_code  INTEGER
 );
 ```
 

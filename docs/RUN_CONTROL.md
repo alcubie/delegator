@@ -225,16 +225,16 @@ the remaining columns:
 
 ```sql
 CREATE TABLE runs (
-  id        INTEGER PRIMARY KEY,
-  ticket_id INTEGER NOT NULL REFERENCES tickets(id),
-  pid       INTEGER,
-  started   TEXT NOT NULL,
-  ended     TEXT,
-  exit_code INTEGER
+  id         INTEGER PRIMARY KEY,
+  ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
+  pid        INTEGER,
+  started_at TEXT NOT NULL,
+  ended_at   TEXT,
+  exit_code  INTEGER
 );
 ```
 
-Ticket 7 then decides whether `started` and `ended` come from this table or from the
+Ticket 7 then decides whether `started_at` and `ended_at` come from this table or from the
 table of changes, and it writes both below one transaction if it keeps both.
 
 ## 8. Recommendation
@@ -296,12 +296,12 @@ flowchart TD
     N -->|"one dg run for each free slot"| S["dg run, apart from the trigger"]
     S --> C{"BEGIN IMMEDIATE<br>first ticket with room?"}
     C -->|"none"| X["Stop, no error"]
-    C -->|"a ticket"| W["Claim: status running,<br>row of runs with pid and started<br>COMMIT"]
+    C -->|"a ticket"| W["Claim: status running,<br>row of runs with pid and started_at<br>COMMIT"]
     W --> A["Run the agent in the worktree"]
     A -->|"dg finish"| R["ready"]
     A -->|"ends with no dg finish"| F["failed"]
     A -->|"timeout: SIGTERM, then SIGKILL,<br>to the process group"| F
-    R --> E["Write ended and exit_code"]
+    R --> E["Write ended_at and exit_code"]
     F --> E
     E --> N
 ```
@@ -312,8 +312,8 @@ The three checks are option B of section 4 with the timeout of section 6.3.
 ```mermaid
 flowchart TD
     K["Any command"] --> B["BEGIN IMMEDIATE"]
-    B --> L["For each ticket in running:<br>read pid and started from runs"]
-    L --> D1{"started before<br>the boot time?"}
+    B --> L["For each ticket in running:<br>read pid and started_at from runs"]
+    L --> D1{"started_at before<br>the boot time?"}
     D1 -->|"yes"| F["failed, ended written"]
     D1 -->|"no"| D2{"signal 0:<br>is the pid free?"}
     D2 -->|"yes"| F
@@ -336,7 +336,7 @@ flowchart LR
     P --> T["SIGTERM to the<br>process group"]
     T --> W["Wait"]
     W --> K["SIGKILL to the<br>process group"]
-    K --> S["Write cancelled,<br>ended and exit_code"]
+    K --> S["Write cancelled,<br>ended_at and exit_code"]
 ```
 
 ## 9. Answers
