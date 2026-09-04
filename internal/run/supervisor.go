@@ -53,34 +53,44 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 		return err
 	}
 
-	// Each line goes to the log as it arrives. A fault of the log does not
-	// stop the reading: a pipe that nobody reads fills, and the agent would
-	// then wait on it for ever. The fault is kept and reported after the run.
+	// Each line goes to the log as it arrives, and the output so far goes to
+	// the adapter after each line until it gives the session. The session goes
+	// on the ticket at once: a run that stops part way, from a cancel, the
+	// timeout or a restart, has then already left the id a person opens it
+	// with. Once the adapter has answered, the supervisor asks no more and
+	// keeps no more, because the log holds the output and nothing else reads
+	// it.
+	//
+	// A fault of the log or of the session does not stop the reading: a pipe
+	// that nobody reads fills, and the agent would then wait on it for ever.
+	// The first fault is kept and reported after the run.
 	var out bytes.Buffer
-	var lineErr error
+	var logErr, sessionErr error
+	found := false
 	readErr := eachLine(stdout, func(line []byte) {
-		if _, err := log.Write(line); err != nil && lineErr == nil {
-			lineErr = err
+		if _, err := log.Write(line); err != nil && logErr == nil {
+			logErr = err
+		}
+		if found || sessionErr != nil {
+			return
 		}
 		out.Write(line)
+		session, err := agent.SessionID(out.Bytes())
+		if err == nil && session != "" {
+			err = s.SetSession(id, session)
+			found = err == nil
+		}
+		if found {
+			out = bytes.Buffer{}
+		}
+		sessionErr = err
 	})
 	// Wait returns only after the process exits, and every line has been
-	// read above, so out is complete below.
+	// read above. The session is recorded before the run's failure is
+	// reported: a run that failed is the one a person most wants to open.
 	runErr := cmd.Wait()
-	if err := errors.Join(readErr, lineErr); err != nil {
+	if err := errors.Join(readErr, logErr, sessionErr); err != nil {
 		return err
-	}
-
-	// The session is recorded before the run's failure is reported: a run
-	// that failed is the one a person most wants to open.
-	session, err := agent.SessionID(out.Bytes())
-	if err != nil {
-		return err
-	}
-	if session != "" {
-		if err := s.SetSession(id, session); err != nil {
-			return err
-		}
 	}
 	return runErr
 }

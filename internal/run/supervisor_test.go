@@ -4,10 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/store"
@@ -44,6 +46,18 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 	testfix.GitIn(t, repo, "checkout", "-q", "-b", "other")
 	testfix.CommitIn(t, repo, "second")
 	return dataDir, id
+}
+
+// recordingAgent is an Adapter that keeps the output it was given at each
+// call of SessionID, so a test sees when the supervisor asked and with what.
+type recordingAgent struct {
+	adapters.Adapter
+	asked []string
+}
+
+func (r *recordingAgent) SessionID(out []byte) (string, error) {
+	r.asked = append(r.asked, string(out))
+	return r.Adapter.SessionID(out)
 }
 
 func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
@@ -239,5 +253,71 @@ func TestStartWritesEachLineOfTheRunToTheLogInFull(t *testing.T) {
 
 	if got, want := logOf(t, dataDir, id), "one\n"+longLine+"\nlast"; got != want {
 		t.Errorf("the log holds %d bytes, want %d:\n%.80s", len(got), len(want), got)
+	}
+}
+
+// The agent reports its session and then sleeps, and the test reads the
+// session from the ticket while the agent is alive. A supervisor that writes
+// the session after the run gives none until Start returns.
+func TestStartWritesTheSessionWhileTheAgentIsAlive(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "run sleep 1", "exit 0")
+
+	done := make(chan error, 1)
+	go func() { done <- Start(testfix.OpenStore(t, dataDir), id, agent) }()
+
+	s := testfix.OpenStore(t, dataDir)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Session == "s-1" {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("Start returned (err = %v) and the ticket had no session while the agent was alive", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session = %q after 5s, want %q", ticket.Session, "s-1")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("Start returned (err = %v) before the ticket had a session", err)
+	default:
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The supervisor gives the adapter the output so far after each line, and
+// stops asking once the adapter has answered. The first line holds no
+// session and the second does, so there are two calls and not four.
+func TestStartAsksForTheSessionAfterEachLineUntilItHasOne(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := &recordingAgent{Adapter: fakeAgent(t,
+		"run printf 'hello\\n'",
+		"run printf 'session: s-1\\n'",
+		"run printf 'more\\nmore\\n'",
+		"exit 0",
+	)}
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"hello\n", "hello\nsession: s-1\n"}
+	if !slices.Equal(agent.asked, want) {
+		t.Errorf("SessionID was asked with %q, want %q", agent.asked, want)
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
+		t.Errorf("session = %q, want %q", got, "s-1")
 	}
 }

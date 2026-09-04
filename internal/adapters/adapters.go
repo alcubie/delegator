@@ -33,12 +33,16 @@ type Adapter interface {
 	// terminal window.
 	Resume(session string) []string
 
-	// SessionID returns the id of the session a finished run made, parsed from
-	// out, which is what the run wrote. Every agent mints its own id and reports
-	// it, so there is one path here and not one per agent.
+	// SessionID returns the id of the session a run made, parsed from out,
+	// which is what the run has written so far. The supervisor calls it after
+	// each line the run writes, and stops once it has an id, so a run that
+	// stops part way has already left its id on the ticket. Every agent mints
+	// its own id and reports it, so there is one path here and not one per
+	// agent.
 	//
-	// An empty id and no error means the run reported none, which is what a run
-	// that died before it said anything looks like.
+	// An empty id and no error means the run has reported none yet, which
+	// after the last line is what a run that died before it said anything
+	// looks like.
 	SessionID(out []byte) (string, error)
 
 	// Name returns the agent's name, for use in messages.
