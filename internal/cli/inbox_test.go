@@ -12,15 +12,11 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// inboxNow is the moment that render writes an inbox at. A test of the
-// duration of a run puts the start of the run before it.
-var inboxNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-
-// render writes one inbox at inboxNow and returns each line of it.
+// render writes one inbox at testNow and returns each line of it.
 func render(t *testing.T, box inbox.Inbox) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeInbox(&out, box, colourAuto, inboxNow)
+	writeInbox(&out, box, colourAuto, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -122,11 +118,11 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 		QueueRunning: true,
 		Ready: []store.OpenTicket{{
 			ID: 4, Project: "/projects/one", Title: "the first title",
-			Status: store.Ready, Started: inboxNow.Add(-3 * time.Hour),
+			Status: store.Ready, Started: testNow.Add(-3 * time.Hour),
 		}},
 		Running: []store.OpenTicket{{
 			ID: 9, Project: "/projects/one", Title: "the second title",
-			Status: store.Running, Started: inboxNow.Add(-(14*time.Minute + 7*time.Second)),
+			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
 		}},
 	}
 
@@ -227,7 +223,7 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		"paused with none":     {inbox.Inbox{}, statusPaused},
 	} {
 		var out bytes.Buffer
-		writeInbox(&out, c.box, colourAuto, inboxNow)
+		writeInbox(&out, c.box, colourAuto, testNow)
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}

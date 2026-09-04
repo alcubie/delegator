@@ -46,7 +46,6 @@ func TestWrapKeepsEachEmptyLineOfTheProse(t *testing.T) {
 }
 
 func TestAgo(t *testing.T) {
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		when time.Time
 		want string
@@ -58,15 +57,14 @@ func TestAgo(t *testing.T) {
 		{time.Time{}, ""},
 	}
 	for _, test := range tests {
-		if got := ago(test.when, now); got != test.want {
+		if got := ago(test.when, testNow); got != test.want {
 			t.Errorf("ago(%v) = %q, want %q", test.when, got, test.want)
 		}
 	}
 }
 
 func TestAgoInTheFuture(t *testing.T) {
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	if got := ago(time.Date(2026, 8, 28, 13, 0, 0, 0, time.UTC), now); got != "just now" {
+	if got := ago(testNow.Add(time.Hour), testNow); got != "just now" {
 		t.Errorf("ago = %q, want %q", got, "just now")
 	}
 }
@@ -97,8 +95,7 @@ func TestTilde(t *testing.T) {
 func showTicketLines(t *testing.T, ticket store.Ticket, prose string) []string {
 	t.Helper()
 	var out bytes.Buffer
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	writeTicket(&out, "/data", ticket, prose, now)
+	writeTicket(&out, "/data", ticket, prose, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
