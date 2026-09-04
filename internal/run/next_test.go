@@ -64,6 +64,30 @@ func TestNextWithARunActiveStartsNothing(t *testing.T) {
 	}
 }
 
+// A ticket in ready is work in progress: the person has not examined it yet. The
+// queue holds until they close it, as it holds for a run.
+func TestNextWithATicketInReadyStartsNothing(t *testing.T) {
+	dataDir, first := queuedTicket(t, "the first")
+	testfix.SecondTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.Claim(first, "delegator/1-the-first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTicket(first, "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(s, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a run was started while a ticket is in ready: ticket %s", testfix.WaitFor(t, marker))
+	}
+}
+
 func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)

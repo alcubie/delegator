@@ -7,11 +7,13 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Next starts a run for the first ticket of the queue, if the queue holds one
-// and no run is active. It returns once the program has started, and does not
-// wait for it: the caller is a command a person typed, or a supervisor that is
-// about to exit, and neither should stay alive for the length of a run. One run
-// at a time: a ticket in running, whatever its project, means nothing starts.
+// Next starts a run for the first ticket of the queue, if the queue has one
+// and no ticket is in running or ready. It returns once the program has
+// started, and does not wait for it: the caller is a command a person typed,
+// or a supervisor that is about to exit, and neither should stay alive for the
+// length of a run. One ticket at a time: a ticket in running or in ready,
+// whatever its project, means nothing starts. A ticket in ready is work the
+// person has not examined yet, and the queue waits for them to close it.
 //
 // launch returns the command for one ticket. dg passes its own executable with
 // "run <id>", and a test passes something it can observe.
@@ -29,7 +31,7 @@ func Next(s *store.Store, launch func(id int64) *exec.Cmd) error {
 		return err
 	}
 	for _, t := range open {
-		if t.Status == store.Running {
+		if t.Status == store.Running || t.Status == store.Ready {
 			return nil
 		}
 	}

@@ -90,13 +90,14 @@ func TestRunIsHiddenFromTheHelp(t *testing.T) {
 	t.Error("dg run is not in the command tree")
 }
 
-// The queue goes on with no command from a person: the supervisor of a run
-// that ended starts the next ticket itself. The fake agent finishes its ticket
-// through dg finish, so the ticket leaves running and Next has a free slot.
-func TestRunStartsTheNextTicketWhenItEnds(t *testing.T) {
+// A run that ends in ready holds the queue. The supervisor calls Next when its
+// run ends, and Next finds the ticket in ready, which is work the person has
+// not examined yet, so the second ticket waits until dg accept closes the
+// first.
+func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, first, repo := queuedTicket(t, dataDir)
-	second := testfix.SecondTicket(t, dataDir)
+	testfix.SecondTicket(t, dataDir)
 	useAgent(t, fakeAgent(t, fmt.Sprintf("run dg finish %d abc123", first), "exit 0"))
 	l, marker := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
@@ -105,8 +106,9 @@ func TestRunStartsTheNextTicketWhenItEnds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := testfix.WaitFor(t, marker); got != fmt.Sprint(second) {
-		t.Errorf("started ticket %s, want %d", got, second)
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a run was started while a ticket is in ready: ticket %s", testfix.WaitFor(t, marker))
 	}
 }
 
