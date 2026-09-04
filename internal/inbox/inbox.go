@@ -76,7 +76,7 @@ func Get(source Source) (Inbox, error) {
 // The time holds one second and no part of a second, so two tickets can
 // hold the same one, and the id then keeps the order stable.
 func byCompletion(a, b store.OpenTicket) int {
-	if by := cmp.Compare(a.Completed, b.Completed); by != 0 {
+	if by := a.Completed.Compare(b.Completed); by != 0 {
 		return by
 	}
 	return cmp.Compare(a.ID, b.ID)

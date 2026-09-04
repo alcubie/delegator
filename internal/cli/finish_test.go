@@ -80,16 +80,16 @@ func TestFinishWritesTheTimeTheRunStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	completed, err := time.Parse(time.RFC3339, ticket.Completed)
-	if err != nil {
-		t.Fatalf("completed = %q, which is not RFC 3339: %v", ticket.Completed, err)
+	if ticket.Completed.IsZero() {
+		t.Fatal("completed is the zero time")
 	}
-	if since := time.Since(completed); since < 0 || since > time.Minute {
-		t.Errorf("completed = %v, and now is %v", completed, time.Now())
+	if since := time.Since(ticket.Completed); since < 0 || since > time.Minute {
+		t.Errorf("completed = %v, and now is %v", ticket.Completed, time.Now())
 	}
-	// inbox.byCompletion compares the strings, so a time held with an offset
-	// instead of Z sorts against a UTC time by its digits and not its instant.
-	if want := completed.UTC().Format(time.RFC3339); ticket.Completed != want {
-		t.Errorf("completed = %q, want the UTC form %q", ticket.Completed, want)
+	// The column sorts as text, so the store holds the UTC form and not an
+	// offset. A time read from that form carries UTC, and one read from an
+	// offset would carry a fixed zone.
+	if ticket.Completed.Location() != time.UTC {
+		t.Errorf("completed = %v, want the UTC form", ticket.Completed)
 	}
 }

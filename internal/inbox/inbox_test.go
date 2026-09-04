@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -106,9 +107,9 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 // inbox and not the query does this work.
 func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
 	source := fakeSource{tickets: []store.OpenTicket{
-		{ID: 1, Status: store.Ready, Completed: "2026-08-28T12:00:00Z"},
-		{ID: 2, Status: store.Ready, Completed: "2026-08-28T09:00:00Z"},
-		{ID: 3, Status: store.Ready, Completed: "2026-08-28T15:00:00Z"},
+		{ID: 1, Status: store.Ready, Completed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
+		{ID: 2, Status: store.Ready, Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+		{ID: 3, Status: store.Ready, Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
 	}}
 
 	got, err := Get(source)
@@ -123,7 +124,7 @@ func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
 // Two tickets can hold the same time, because the time has one second and no
 // part of a second. The id then keeps the order stable.
 func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
-	same := "2026-08-28T09:00:00Z"
+	same := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 	source := fakeSource{tickets: []store.OpenTicket{
 		{ID: 7, Status: store.Ready, Completed: same},
 		{ID: 3, Status: store.Ready, Completed: same},

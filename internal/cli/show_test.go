@@ -48,26 +48,25 @@ func TestWrapKeepsEachEmptyLineOfTheProse(t *testing.T) {
 func TestAgo(t *testing.T) {
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		when string
+		when time.Time
 		want string
 	}{
-		{"2026-08-28T11:59:30Z", "just now"},
-		{"2026-08-28T11:58:00Z", "2m ago"},
-		{"2026-08-28T10:00:00Z", "2h ago"},
-		{"2026-08-26T12:00:00Z", "2d ago"},
-		{"", ""},
-		{"not a time", ""},
+		{time.Date(2026, 8, 28, 11, 59, 30, 0, time.UTC), "just now"},
+		{time.Date(2026, 8, 28, 11, 58, 0, 0, time.UTC), "2m ago"},
+		{time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC), "2h ago"},
+		{time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC), "2d ago"},
+		{time.Time{}, ""},
 	}
 	for _, test := range tests {
 		if got := ago(test.when, now); got != test.want {
-			t.Errorf("ago(%q) = %q, want %q", test.when, got, test.want)
+			t.Errorf("ago(%v) = %q, want %q", test.when, got, test.want)
 		}
 	}
 }
 
 func TestAgoInTheFuture(t *testing.T) {
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	if got := ago("2026-08-28T13:00:00Z", now); got != "just now" {
+	if got := ago(time.Date(2026, 8, 28, 13, 0, 0, 0, time.UTC), now); got != "just now" {
 		t.Errorf("ago = %q, want %q", got, "just now")
 	}
 }
@@ -111,7 +110,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		Status:    store.Ready,
 		Branch:    "delegator/4-remove-the-staging-app",
 		Session:   "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
-		Completed: "2026-08-28T10:00:00Z",
+		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume."), "\n")
 
@@ -211,8 +210,8 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Created:   "2026-08-01T09:00:00Z",
-		Completed: "2026-08-28T10:00:00Z",
+		Created:   time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
+		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	for _, test := range []struct {
 		status store.TicketStatus

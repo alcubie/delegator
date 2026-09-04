@@ -77,6 +77,42 @@ func dsn(dataDir string) string {
 	return u.String()
 }
 
+// rfc3339 returns a time as the store holds it: RFC 3339 in UTC, to the
+// second, in a TEXT column, because SQLite has no type for a time. A time in
+// that form sorts as text in the order of time.
+func rfc3339(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+// timeColumn scans one TEXT column that holds a time in the form of rfc3339
+// into a time.Time. NULL gives the zero time, which no row can hold, so it
+// stands for no time the way the zero value of each other type stands for
+// NULL.
+type timeColumn struct {
+	t *time.Time
+}
+
+func (c timeColumn) Scan(v any) error {
+	var text string
+	switch v := v.(type) {
+	case nil:
+		*c.t = time.Time{}
+		return nil
+	case string:
+		text = v
+	case []byte:
+		text = string(v)
+	default:
+		return fmt.Errorf("a time column holds %T", v)
+	}
+	t, err := time.Parse(time.RFC3339, text)
+	if err != nil {
+		return err
+	}
+	*c.t = t
+	return nil
+}
+
 // Store holds the open database. Each command makes one Store, and closes it
 // when the command stops.
 type Store struct {
@@ -289,7 +325,7 @@ func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
 		projectID,
 		title,
 		Queued,
-		time.Now().UTC().Format(time.RFC3339),
+		rfc3339(time.Now()),
 	}
 
 	return s.create(query, args...)
@@ -431,9 +467,9 @@ func setPositions(tx *sql.Tx, ids []int64) error {
 //
 // A column that holds NULL arrives here as the zero value of its type, and not
 // as a sql.Null. The rule is that the zero value stands for NULL when no row
-// can hold that value: a position starts at 1, the empty string is no time and
-// no flags. A column that can hold its zero value would need a sql.Null, to keep
-// the two apart. The status says which group the ticket is in, so no field here
+// can hold that value: a position starts at 1, the zero time is no time, and
+// the empty string is no branch. A column that can hold its zero value would
+// need a sql.Null, to keep the two apart. The status says which group the ticket is in, so no field here
 // must answer that as well.
 type OpenTicket struct {
 	ID       int64
@@ -442,9 +478,9 @@ type OpenTicket struct {
 	Status   TicketStatus
 	Position int
 
-	// Completed is the time that the ticket became ready, in RFC 3339. A ticket
-	// that never became ready holds the empty string.
-	Completed string
+	// Completed is the time that the ticket became ready. A ticket that never
+	// became ready holds the zero time.
+	Completed time.Time
 }
 
 // OpenTickets returns each ticket that the inbox shows: the ones that wait, the
@@ -456,8 +492,7 @@ type OpenTicket struct {
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	rows, err := s.db.Query(`
 		SELECT tickets.id, projects.path, tickets.title, tickets.status,
-		       COALESCE(tickets.position, 0),
-		       COALESCE(tickets.completed, '')
+		       COALESCE(tickets.position, 0), tickets.completed
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.status IN (?, ?, ?)
@@ -471,7 +506,7 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	for rows.Next() {
 		var t OpenTicket
 		if err := rows.Scan(
-			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, &t.Completed); err != nil {
+			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, timeColumn{&t.Completed}); err != nil {
 			return nil, err
 		}
 		open = append(open, t)
@@ -494,8 +529,8 @@ type Ticket struct {
 	Branch    string
 	Session   string
 	Commit    string
-	Created   string
-	Completed string
+	Created   time.Time
+	Completed time.Time
 }
 
 // Ticket returns one ticket. It gives ErrNoTicket if the id holds none.
@@ -506,13 +541,13 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
-		       tickets.created, COALESCE(tickets.completed, '')
+		       tickets.created, tickets.completed
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Commit, &t.Created, &t.Completed)
+		&t.Session, &t.Commit, timeColumn{&t.Created}, timeColumn{&t.Completed})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
@@ -596,7 +631,7 @@ func (s *Store) Claim(id int64, branch string) error {
 	}
 	if _, err := tx.Exec(
 		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
-		id, os.Getpid(), time.Now().UTC().Format(time.RFC3339),
+		id, os.Getpid(), rfc3339(time.Now()),
 	); err != nil {
 		return err
 	}
@@ -650,7 +685,7 @@ func (s *Store) EndRun(ticketID int64, exitCode int) error {
 	result, err := s.db.Exec(`
 		UPDATE runs SET ended_at = ?, exit_code = ?
 		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`,
-		time.Now().UTC().Format(time.RFC3339), exitCode, ticketID)
+		rfc3339(time.Now()), exitCode, ticketID)
 	if err != nil {
 		return err
 	}
@@ -680,7 +715,7 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 	}
 	if _, err := tx.Exec(
 		"UPDATE tickets SET commit_id = ?, completed = ? WHERE id = ?",
-		commit, time.Now().UTC().Format(time.RFC3339), id,
+		commit, rfc3339(time.Now()), id,
 	); err != nil {
 		return err
 	}

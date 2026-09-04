@@ -58,15 +58,14 @@ func wrap(text string, width int) []string {
 	return lines
 }
 
-// ago returns how long before now the time in RFC 3339 was, in the shortest
-// form that a person reads at a glance. A time that is not there, or that no
-// clock wrote, gives the empty string.
-func ago(when string, now time.Time) string {
-	at, err := time.Parse(time.RFC3339, when)
-	if err != nil {
+// ago returns how long before now the time was, in the shortest form that a
+// person reads at a glance. The zero time is no time, and gives the empty
+// string.
+func ago(when time.Time, now time.Time) string {
+	if when.IsZero() {
 		return ""
 	}
-	switch d := now.Sub(at); {
+	switch d := now.Sub(when); {
 	case d < time.Minute:
 		return "just now"
 	case d < time.Hour:
@@ -149,7 +148,7 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, no
 	// stopped. A time beside queued or running would read as the time that the
 	// ticket entered that state, and it is not. Ticket 7 keeps the history of
 	// each change of state, and each status takes a time from it.
-	when := ""
+	var when time.Time
 	if t.Status == store.Ready {
 		when = t.Completed
 	}

@@ -1092,12 +1092,13 @@ func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
 	for _, ticket := range open {
 		byID[ticket.ID] = ticket
 	}
-	if got := byID[ids[0]].Completed; got != "2026-08-28T09:30:00Z" {
-		t.Errorf("completed = %q, want 2026-08-28T09:30:00Z", got)
+	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	if got := byID[ids[0]].Completed; !got.Equal(want) {
+		t.Errorf("completed = %v, want %v", got, want)
 	}
 	// a ticket that waits has no time of completion
-	if got := byID[ids[2]].Completed; got != "" {
-		t.Errorf("a queued ticket has completed = %q, want it empty", got)
+	if got := byID[ids[2]].Completed; !got.IsZero() {
+		t.Errorf("a queued ticket has completed = %v, want the zero time", got)
 	}
 }
 
@@ -1121,17 +1122,19 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 		{"status", string(got.Status), "ready"},
 		{"branch", got.Branch, "delegator/2-second"},
 		{"session", got.Session, "a-session-id"},
-		{"completed", got.Completed, "2026-08-28T09:30:00Z"},
 	} {
 		if test.got != test.want {
 			t.Errorf("%s = %q, want %q", test.name, test.got, test.want)
 		}
 	}
+	if want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC); !got.Completed.Equal(want) {
+		t.Errorf("completed = %v, want %v", got.Completed, want)
+	}
 	if got.ID != ids[1] {
 		t.Errorf("id = %d, want %d", got.ID, ids[1])
 	}
-	if got.Created == "" {
-		t.Error("created is empty")
+	if got.Created.IsZero() {
+		t.Error("created is the zero time")
 	}
 }
 
