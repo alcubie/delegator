@@ -1102,6 +1102,80 @@ func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
 	}
 }
 
+// setStarted writes the start time of one run. Claim writes the time of the
+// call, to the second, so two claims in one test hold the same text and only a
+// write like this one tells them apart.
+func setStarted(t *testing.T, s *Store, runID int64, started string) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		"UPDATE runs SET started_at = ? WHERE id = ?", started, runID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The inbox shows how long a run has been going, so each open ticket carries
+// the start of its run. A ticket that no supervisor has claimed has no run,
+// and holds the zero time.
+func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+		t.Fatal(err)
+	}
+	setStarted(t, s, runRows(t, s, ids[0])[0].id, "2026-08-28T09:30:00Z")
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	if got := byID[ids[0]].Started; !got.Equal(want) {
+		t.Errorf("started = %v, want %v", got, want)
+	}
+	if got := byID[ids[2]].Started; !got.IsZero() {
+		t.Errorf("a queued ticket that never ran has started = %v, want the zero time", got)
+	}
+}
+
+// A ticket that failed and went back to the queue has a run for each claim,
+// and the run that holds it now is the last one. The time of an earlier run
+// would give the inbox a duration of hours for a run of a minute.
+func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
+	s, id := oneTicket(t)
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Failed, Queued} {
+		if err := s.ChangeStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	rows := runRows(t, s, id)
+	if len(rows) != 2 {
+		t.Fatalf("runs = %+v, want two", rows)
+	}
+	setStarted(t, s, rows[0].id, "2026-08-28T09:00:00Z")
+	setStarted(t, s, rows[1].id, "2026-08-28T11:00:00Z")
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 1 {
+		t.Fatalf("OpenTickets gives %d tickets, want 1", len(open))
+	}
+	want := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
+	if got := open[0].Started; !got.Equal(want) {
+		t.Errorf("started = %v, want %v, the start of the second claim", got, want)
+	}
+}
+
 func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[1], Ready)

@@ -481,6 +481,12 @@ type OpenTicket struct {
 	// Completed is the time that the ticket became ready. A ticket that never
 	// became ready holds the zero time.
 	Completed time.Time
+
+	// Started is the time that the last run of the ticket began. For a ticket
+	// in running that is the run that holds it, and the inbox takes the
+	// duration of the run from it. A ticket that no supervisor has claimed
+	// holds the zero time.
+	Started time.Time
 }
 
 // OpenTickets returns each ticket that the inbox shows: the ones that wait, the
@@ -490,9 +496,14 @@ type OpenTicket struct {
 // One query returns the tickets of each project, because the inbox is one list
 // for all projects.
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
+	// The start of the run comes from a sub-query and not from a join, because
+	// a ticket has a row of runs for each claim and a join would give a ticket
+	// once for each of them.
 	rows, err := s.db.Query(`
 		SELECT tickets.id, projects.path, tickets.title, tickets.status,
-		       COALESCE(tickets.position, 0), tickets.completed
+		       COALESCE(tickets.position, 0), tickets.completed,
+		       (SELECT started_at FROM runs
+		        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.status IN (?, ?, ?)
@@ -506,7 +517,8 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	for rows.Next() {
 		var t OpenTicket
 		if err := rows.Scan(
-			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position, timeColumn{&t.Completed}); err != nil {
+			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
+			timeColumn{&t.Completed}, timeColumn{&t.Started}); err != nil {
 			return nil, err
 		}
 		open = append(open, t)
