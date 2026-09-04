@@ -41,3 +41,13 @@ above this directory, and this file holds what belongs to this repository only.
   prose that already held the line breaks of the person, and the text of a field
   went past the rule below the title. A test holds the data that its writer
   thought of, and a real ticket holds the data that a person wrote.
+
+## Comments
+
+- **A comment says what the code does now.** Do not write a comment that
+  refers to code that nothing uses yet, or to a ticket that will use it later:
+  `No command reads the values yet; ticket 22 is the first`. The sentence is
+  true on the day it is written and wrong on the day that ticket lands, and
+  nobody comes back to delete it. What a later ticket will do belongs in that
+  ticket and in the commit message, which is a record of a moment and does not
+  go stale.
