@@ -105,6 +105,7 @@ this item is the first one to examine again.
 | An automatic restart after an error | The person must see an error. An automatic restart can add cost on a ticket that is broken. | Errors from outside are frequent, and each one is a delay for you. |
 | Input of the tickets of the prototype | You will finish those tickets with the prototype. | Not applicable. |
 | An MCP server | The agent uses the CLI, and each agent can start a program. A server adds a port, a token and a life to control. | An agent cannot start a program, or a different program must control tickets. |
+| A `dg` command at login, as a unit of systemd or launchd | After a restart of the computer, the next command of the person does the reconcile and starts the queue. A person who goes away comes back to a command in each case. See §3.2 of [`RUN_CONTROL.md`](RUN_CONTROL.md). | The queue must continue through a restart of the computer with no person at it. |
 
 ## 11. The parent product
 

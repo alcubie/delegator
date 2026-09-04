@@ -183,8 +183,16 @@ A ticket has runs. Each run records the type of work, which is `initial`, `resta
 agent, the session, the worktree, the branch, the start time, the end time and the exit
 code.
 
-The reconcile in §5 asks which runs have no live program. No flag for an owner is
-necessary, and a run from a chat is not a special condition.
+A run is a row of the table `runs` in §7. The row holds the process id of the supervisor,
+the start time, the end time and the exit code. The supervisor writes the row in the
+transaction of its claim, so a ticket in `running` always has the process id of its
+supervisor.
+
+The reconcile in §5 reads that row to ask whether the supervisor is alive. The run is
+dead if its start time is before the boot time of the computer, if the process id is
+free, or if the run is older than the timeout. [`RUN_CONTROL.md`](RUN_CONTROL.md) gives
+the options and the reasons. No flag for an owner is necessary, and a run from a chat is
+not a special condition.
 
 ### 6.2 One run at a time, and two orders
 
@@ -367,6 +375,15 @@ CREATE TABLE tickets (
 );
 
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
+
+CREATE TABLE runs (
+  id        INTEGER PRIMARY KEY,
+  ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+  pid       INTEGER,
+  started   TEXT NOT NULL,
+  ended     TEXT,
+  exit_code INTEGER
+);
 ```
 
 The column `position` is the queue. The path of a worktree is `worktrees/<id>`, so it
@@ -607,7 +624,7 @@ installer.
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |
 | `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
-| `dg run <id>` | The supervisor. Delegator starts this, and a person does not. |
+| `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
 | `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |

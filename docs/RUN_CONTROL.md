@@ -284,11 +284,68 @@ table of changes, and it writes both below one transaction if it keeps both.
 - `DECISIONS.md`: one row for option B, and one row for the claim inside the supervisor.
 - Ticket 17: the two answers in its text become a reference to this document.
 
-## 9. Questions for you
+### 8.4 The process in three diagrams
 
-1. Do you accept the change to `dg run`? Today a person can type `dg run <id>` on a
-   queued ticket, and that stays. The new form with no id is for triggers.
-2. Does ticket 17 include the table `runs`, or does a new ticket before 17 make
-   the table alone?
-3. Is a `dg` command at login, as a small unit, wanted for the resume at boot? It is not
-   necessary for version 1, and it can go to `FEATURES.md` with a trigger.
+The first diagram gives the life of one run, from a trigger to the start of the next
+run. The claim and the row of `runs` are one transaction, so a ticket in `running`
+always has the process id of a live supervisor.
+
+```mermaid
+flowchart TD
+    T["Trigger: dg ticket, dg start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
+    N -->|"one dg run for each free slot"| S["dg run, apart from the trigger"]
+    S --> C{"BEGIN IMMEDIATE<br>first ticket with room?"}
+    C -->|"none"| X["Stop, no error"]
+    C -->|"a ticket"| W["Claim: status running,<br>row of runs with pid and started<br>COMMIT"]
+    W --> A["Run the agent in the worktree"]
+    A -->|"dg finish"| R["ready"]
+    A -->|"ends with no dg finish"| F["failed"]
+    A -->|"timeout: SIGTERM, then SIGKILL,<br>to the process group"| F
+    R --> E["Write ended and exit_code"]
+    F --> E
+    E --> N
+```
+
+The second diagram gives the reconcile, which each command does before its own work.
+The three checks are option B of section 4 with the timeout of section 6.3.
+
+```mermaid
+flowchart TD
+    K["Any command"] --> B["BEGIN IMMEDIATE"]
+    B --> L["For each ticket in running:<br>read pid and started from runs"]
+    L --> D1{"started before<br>the boot time?"}
+    D1 -->|"yes"| F["failed, ended written"]
+    D1 -->|"no"| D2{"signal 0:<br>is the pid free?"}
+    D2 -->|"yes"| F
+    D2 -->|"no"| D3{"older than<br>timeout_minutes?"}
+    D3 -->|"yes"| F
+    D3 -->|"no"| A["Alive: no change"]
+    F --> M["COMMIT"]
+    A --> M
+    M --> N["Next"]
+    N --> O["The work of the command"]
+```
+
+The third diagram gives `dg cancel` on a ticket in `running`. The command sends the
+signal and writes the state itself, so a supervisor that does not catch the signal
+leaves nothing undone.
+
+```mermaid
+flowchart LR
+    C["dg cancel id"] --> P["Read pid from runs"]
+    P --> T["SIGTERM to the<br>process group"]
+    T --> W["Wait"]
+    W --> K["SIGKILL to the<br>process group"]
+    K --> S["Write cancelled,<br>ended and exit_code"]
+```
+
+## 9. Answers
+
+The three questions of the first draft got their answers on 2026-09-03:
+
+1. The change to `dg run` is accepted. `dg run` with no id is for triggers, and
+   `dg run <id>` stays for a person.
+2. The changes that must come before ticket 17 are their own tickets, done first.
+   Ticket 28 makes the table `runs`. Ticket 21 puts the claim in the supervisor.
+   Ticket 17 then does the reconcile on top of both.
+3. The `dg` command at login goes to `FEATURES.md`, with a trigger.
