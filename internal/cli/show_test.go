@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -91,11 +93,13 @@ func TestTilde(t *testing.T) {
 	}
 }
 
-// showTicketLines writes one ticket and returns each line of it.
-func showTicketLines(t *testing.T, ticket store.Ticket, prose string) []string {
+// showTicketLines writes one ticket at testNow and returns each line of it.
+// started is the time the last run of the ticket began, and the zero time is a
+// ticket that no supervisor has claimed.
+func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, "/data", ticket, prose, testNow)
+	writeTicket(&out, "/data", ticket, prose, started, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -109,7 +113,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		Session:   "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
 		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
-	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume."), "\n")
+	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume.", time.Time{}), "\n")
 
 	for _, want := range []string{
 		"#4", "Remove the staging app", "ready", "2h ago",
@@ -123,6 +127,24 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the ticket does not hold %q:\n%s", want, out)
 		}
+	}
+}
+
+// The duration on the heading comes from the table runs through Store.Run, and
+// writeTicket alone does not say that the two are connected. A claim writes
+// runs.started_at a moment before dg show reads it, so the heading holds a
+// duration of zero seconds or of one or two more.
+func TestRunShowGivesTheDurationOfTheRun(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo, _ := runningTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo, "show", strconv.FormatInt(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	heading := strings.SplitN(out, "\n", 2)[0]
+	if !regexp.MustCompile(`running · 00:00:0\d$`).MatchString(heading) {
+		t.Errorf("the heading holds no duration of the run: %q", heading)
 	}
 }
 
@@ -183,7 +205,7 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 		"2. The second item.\n"
 	ticket := store.Ticket{ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Queued}
 
-	got := showTicketLines(t, ticket, prose)
+	got := showTicketLines(t, ticket, prose, time.Time{})
 	for _, want := range []string{
 		"  A line that is quite long and holds more than the width of the wrap for the flags.",
 		"  1. The first item of a list that is also long enough to go past the width.",
@@ -221,13 +243,66 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 	} {
 		ticket := base
 		ticket.Status = test.status
-		heading := showTicketLines(t, ticket, "")[0]
+		heading := showTicketLines(t, ticket, "", time.Time{})[0]
 		if got := strings.Contains(heading, "ago"); got != test.want {
 			t.Errorf("a %s ticket has a time = %v, want %v: %q", test.status, got, test.want, heading)
 		}
 		if !strings.Contains(heading, string(test.status)) {
 			t.Errorf("the heading does not hold the status: %q", heading)
 		}
+	}
+}
+
+// A person who opens a running ticket gets the clock the inbox gives them,
+// on the first line where each other state gives the age of the ticket. The
+// run of the ticket is the thing that is going, so the time counts from the
+// start of the run and not from the moment the person wrote the ticket.
+func TestWriteTicketShowsTheDurationOfTheRun(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
+		Status:  store.Running,
+		Created: testNow.Add(-3 * 24 * time.Hour),
+	}
+
+	heading := showTicketLines(t, ticket, "", testNow.Add(-(14*time.Minute + 7*time.Second)))[0]
+	if want := "running · 00:14:07"; !strings.Contains(heading, want) {
+		t.Errorf("the heading is %q, want it to hold %q", heading, want)
+	}
+}
+
+// A ticket that is not running holds the start of its last run, and dg show
+// gives it no clock: that run stopped, and a duration that counts up beside a
+// ready ticket would say that the agent is still at work.
+func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
+	base := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
+		Completed: testNow.Add(-2 * time.Hour),
+	}
+	started := testNow.Add(-(14*time.Minute + 7*time.Second))
+
+	for _, status := range []store.TicketStatus{store.Ready, store.Queued, store.Failed} {
+		ticket := base
+		ticket.Status = status
+		heading := showTicketLines(t, ticket, "", started)[0]
+		if strings.Contains(heading, "00:14:07") {
+			t.Errorf("a %s ticket gives the duration of a run: %q", status, heading)
+		}
+	}
+}
+
+// A ticket that a version before the table runs put in running has no row of
+// runs, so there is no time to count from and the status stands alone.
+func TestWriteTicketWithARunningTicketThatHasNoRun(t *testing.T) {
+	ticket := store.Ticket{
+		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Running,
+	}
+
+	heading := showTicketLines(t, ticket, "", time.Time{})[0]
+	if strings.Contains(heading, "·") {
+		t.Errorf("the heading holds a time beside the status: %q", heading)
+	}
+	if !strings.Contains(heading, "running") {
+		t.Errorf("the heading does not hold the status: %q", heading)
 	}
 }
 
@@ -239,7 +314,7 @@ func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 		Branch:  "delegator/4-a-title",
 		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
 	}
-	for _, line := range showTicketLines(t, ticket, "") {
+	for _, line := range showTicketLines(t, ticket, "", time.Time{}) {
 		if n := len([]rune(line)); n > ruleWidth {
 			t.Errorf("the line takes %d columns and the rule takes %d: %q", n, ruleWidth, line)
 		}
@@ -257,7 +332,7 @@ func showCommit(t *testing.T, repo, hash string) string {
 		Title:   "a title",
 		Status:  store.Ready,
 		Commit:  hash,
-	}, "", time.Now())
+	}, "", time.Time{}, time.Now())
 
 	for line := range strings.SplitSeq(out.String(), "\n") {
 		if strings.Contains(line, "commit") {

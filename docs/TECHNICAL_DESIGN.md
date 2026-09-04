@@ -583,6 +583,9 @@ $ dg show 4
 
 The subject of the commit is on the row. `dg open diff 4` gives the change itself.
 
+`dg show` gives the same time on the first line of a ticket in `running`, as HH:MM:SS.
+A ticket in `ready` shows the time from its completion in that position.
+
 ### 9.2 Commands of the person
 
 Delegator starts no external tool of its own. The person declares each command in the
