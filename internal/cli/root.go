@@ -37,11 +37,17 @@ func Root(dataDir, workDir string) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
-		// Each command starts with the config file, so the first command a
-		// person runs leaves a file to open. cobra runs this before the
-		// root and before each subcommand, as none has a hook of its own.
+		// Each command starts by loading the config, so the first command
+		// a person runs leaves a file to open, and a file that Load refuses
+		// stops the command with the key it names. cobra runs this before
+		// the root and before each subcommand, as none has a hook of its
+		// own.
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			return config.Init()
+			if err := config.Init(); err != nil {
+				return err
+			}
+			_, err := config.Load()
+			return err
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return showInbox(cmd.OutOrStdout(), dataDir, mode)

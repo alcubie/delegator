@@ -51,3 +51,44 @@ func TestACommandWritesTheConfigWhenItIsNotThere(t *testing.T) {
 		t.Errorf("the file sets no key:\n%s", data)
 	}
 }
+
+// A file the person edited is the one copy, and a file that Load refuses is
+// for the person to correct, not for delegator to replace. The refused file
+// also stops the command, naming the key, because a person cannot correct a
+// fault that nothing reports.
+func TestACommandLeavesAConfigThatIsThereAsItIs(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		refused    bool
+	}{
+		{name: "a file that loads", text: "runs = 3\n"},
+		{name: "a file that Load refuses", text: "run = 3\n", refused: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configDir := testfix.XDGConfigDir(t)
+			path := filepath.Join(configDir, "config.toml")
+			if err := os.MkdirAll(configDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tc.text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := runIn(t, t.TempDir(), t.TempDir(), "pause")
+			if !tc.refused && err != nil {
+				t.Errorf("the command refused a file that loads: %v", err)
+			}
+			if tc.refused && (err == nil || !strings.Contains(err.Error(), "run")) {
+				t.Errorf("the command did not refuse the file naming the key run: %v", err)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != tc.text {
+				t.Errorf("the command changed the file to %q, want %q as it was", data, tc.text)
+			}
+		})
+	}
+}
