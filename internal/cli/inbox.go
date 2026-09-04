@@ -14,6 +14,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -86,7 +87,10 @@ func widths(box inbox.Inbox) (id, project int) {
 	return id, project
 }
 
-func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode) {
+// writeInbox writes the inbox as of now. The time comes in rather than from
+// the clock, because the row of a run holds the duration at the moment the
+// text is written and a test has to name that moment.
+func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) {
 	fmt.Fprintln(out, statusLine(out, box, mode))
 	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
 		fmt.Fprintln(out, emptyInbox)
@@ -101,9 +105,17 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode) {
 			continue
 		}
 		for _, t := range g.tickets {
-			fmt.Fprintf(out, " %*d %-*s  %s\n",
+			fmt.Fprintf(out, " %*d %-*s  %s",
 				idWidth, t.ID, projectWidth,
 				filepath.Base(t.Project), t.Title)
+			// Only a ticket that runs now counts up. A ticket in READY holds
+			// the start of the run that made it ready, and that run stopped.
+			if t.Status == store.Running {
+				if since := elapsed(t.Started, now); since != "" {
+					fmt.Fprintf(out, "  %s", since)
+				}
+			}
+			fmt.Fprintln(out)
 		}
 	}
 }
@@ -116,7 +128,7 @@ func showInbox(out io.Writer, dataDir string, mode colourMode) error {
 		if err != nil {
 			return err
 		}
-		writeInbox(out, box, mode)
+		writeInbox(out, box, mode, time.Now())
 		return nil
 	})
 }

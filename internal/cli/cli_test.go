@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // repoBranch is the branch of each repository that these tests make. It is not
@@ -34,4 +35,37 @@ func proseOf(t *testing.T, dataDir string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// The duration of a run counts up while the person watches, so each part of it
+// keeps a fixed width and the seconds are there. A run of more than 99 hours
+// takes a wider field of hours rather than wrapping to zero.
+func TestElapsed(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		start time.Time
+		want  string
+	}{
+		{now, "00:00:00"},
+		{now.Add(-7 * time.Second), "00:00:07"},
+		{now.Add(-(14*time.Minute + 7*time.Second)), "00:14:07"},
+		{now.Add(-(2*time.Hour + 3*time.Minute + 4*time.Second)), "02:03:04"},
+		{now.Add(-100 * time.Hour), "100:00:00"},
+		{time.Time{}, ""},
+	}
+	for _, test := range tests {
+		if got := elapsed(test.start, now); got != test.want {
+			t.Errorf("elapsed(%v) = %q, want %q", test.start, got, test.want)
+		}
+	}
+}
+
+// A clock that moves back, or a run that started on another computer, gives a
+// start in the future. Zero is the honest answer, and a negative duration
+// would print as a row of minus signs.
+func TestElapsedWithAStartInTheFuture(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	if got := elapsed(now.Add(time.Hour), now); got != "00:00:00" {
+		t.Errorf("elapsed = %q, want %q", got, "00:00:00")
+	}
 }

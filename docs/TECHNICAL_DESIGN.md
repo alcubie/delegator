@@ -541,10 +541,14 @@ READY
   4  web-api      Remove the staging app
   7  data-loader  Add a limit on the rate
 RUNNING
-  9  web-api      Move to a new version of Go   14m
+  9  web-api      Move to a new version of Go  00:14:07
 QUEUED
  11  data-loader  Change the tool that measures the coverage
 ```
+
+The row of a run ends with the time from its start, as HH:MM:SS. The value changes
+each second, and a person who reads the inbox with `watch -n 1 dg` sees that the run
+continues.
 
 The first line says whether the queue will start work: `Status: Running`, or
 `Status: Paused` after `dg pause`. It is always there, so a person never has to know what

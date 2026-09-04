@@ -6,16 +6,21 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// render writes one inbox and returns each line of it.
+// inboxNow is the moment that render writes an inbox at. A test of the
+// duration of a run puts the start of the run before it.
+var inboxNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+// render writes one inbox at inboxNow and returns each line of it.
 func render(t *testing.T, box inbox.Inbox) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeInbox(&out, box, colourAuto)
+	writeInbox(&out, box, colourAuto, inboxNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -108,6 +113,55 @@ func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
 	}
 }
 
+// The person watches the inbox with watch -n 1 dg, and the row of the run
+// tells them how long it has been going. A ticket in READY holds the start of
+// the run that made it ready, and its row shows no duration: that run stopped,
+// and a clock that counts up beside it would say that it had not.
+func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Ready: []store.OpenTicket{{
+			ID: 4, Project: "/projects/one", Title: "the first title",
+			Status: store.Ready, Started: inboxNow.Add(-3 * time.Hour),
+		}},
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/one", Title: "the second title",
+			Status: store.Running, Started: inboxNow.Add(-(14*time.Minute + 7*time.Second)),
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  4 one  the first title",
+		"RUNNING",
+		"  9 one  the second title  00:14:07",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// A ticket that a version before the table runs put in running has no row of
+// runs, so there is no time to count from and the row ends with the title.
+func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/one", Title: "the title", Status: store.Running,
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"READY",
+		"  none",
+		"RUNNING",
+		"  9 one  the title",
+		"QUEUED",
+		"  none",
+	})
+}
+
 // The words of the flags are in no row of any group. They take up to 240
 // characters, and one of those wraps a row three times.
 func TestWriteInboxNeverShowsTheWordsOfTheFlags(t *testing.T) {
@@ -173,7 +227,7 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		"paused with none":     {inbox.Inbox{}, statusPaused},
 	} {
 		var out bytes.Buffer
-		writeInbox(&out, c.box, colourAuto)
+		writeInbox(&out, c.box, colourAuto, inboxNow)
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}
