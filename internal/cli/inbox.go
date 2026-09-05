@@ -25,8 +25,8 @@ import (
 // emptyGroup is the line below the heading of a group that holds no ticket.
 const emptyGroup = "  none"
 
-// emptyInbox is the whole inbox of a person who has no ticket. Four headings
-// with none below each of them say the same thing in eight lines, and a person
+// emptyInbox is the whole inbox of a person who has no ticket. A heading with
+// none below it for each group says the same thing over and over, and a person
 // who has no ticket has not made one yet, so the line says what makes one.
 const emptyInbox = "There are no active tickets. Use `dg ticket` to add."
 
