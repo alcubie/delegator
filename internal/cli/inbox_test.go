@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // render writes one inbox at testNow and returns each line of it.
@@ -21,6 +23,24 @@ func render(t *testing.T, box inbox.Inbox) []string {
 	var out bytes.Buffer
 	writeInbox(&out, box, colourAuto, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+}
+
+// rows returns the lines below one heading of an inbox, so a test names the
+// group it examines rather than a line number that a new group would move.
+func rows(t *testing.T, lines []string, heading string) []string {
+	t.Helper()
+	at := slices.Index(lines, heading)
+	if at < 0 {
+		t.Fatalf("the inbox holds no heading %q:\n%s", heading, strings.Join(lines, "\n"))
+	}
+	var out []string
+	for _, line := range lines[at+1:] {
+		if !strings.HasPrefix(line, " ") {
+			break
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // wantLines compares an inbox with the lines it must hold.
@@ -36,7 +56,7 @@ func wantLines(t *testing.T, got, want []string) {
 	}
 }
 
-func TestWriteInboxHoldsTheThreeGroupsInOneOrder(t *testing.T) {
+func TestWriteInboxHoldsTheFourGroupsInOneOrder(t *testing.T) {
 	box := inbox.Inbox{
 		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
 		Running: []store.OpenTicket{{ID: 9, Project: "/projects/one", Title: "the second title"}},
@@ -46,14 +66,14 @@ func TestWriteInboxHoldsTheThreeGroupsInOneOrder(t *testing.T) {
 	var headings []int
 	lines := render(t, box)
 	for i, line := range lines {
-		if line == "READY" || line == "RUNNING" || line == "QUEUED" {
+		if line == "DONE" || line == "READY" || line == "RUNNING" || line == "QUEUED" {
 			headings = append(headings, i)
 		}
 	}
-	if len(headings) != 3 {
-		t.Fatalf("the inbox holds %d headings, want 3:\n%s", len(headings), strings.Join(lines, "\n"))
+	if len(headings) != 4 {
+		t.Fatalf("the inbox holds %d headings, want 4:\n%s", len(headings), strings.Join(lines, "\n"))
 	}
-	for i, want := range []string{"READY", "RUNNING", "QUEUED"} {
+	for i, want := range []string{"DONE", "READY", "RUNNING", "QUEUED"} {
 		if got := lines[headings[i]]; got != want {
 			t.Errorf("heading %d is %q, want %q", i, got, want)
 		}
@@ -70,6 +90,8 @@ func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  none",
 		"RUNNING",
@@ -90,6 +112,8 @@ func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  4 one            the first title",
 		"RUNNING",
@@ -106,9 +130,9 @@ func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
 		QueueRunning: true,
 		Queued:       []store.OpenTicket{{ID: 1, Project: "/one/two/three/the-name", Title: "the title"}},
 	}
-	got := render(t, box)
-	if want := "  1 the-name  the title"; got[6] != want {
-		t.Errorf("the row is %q, want %q", got[6], want)
+	got := rows(t, render(t, box), "QUEUED")[0]
+	if want := "  1 the-name  the title"; got != want {
+		t.Errorf("the row is %q, want %q", got, want)
 	}
 }
 
@@ -131,6 +155,8 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  4 one  the first title",
 		"RUNNING",
@@ -158,6 +184,8 @@ func TestWriteInboxPutsTheDurationsInOneColumn(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  none",
 		"RUNNING",
@@ -183,6 +211,8 @@ func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  none",
 		"RUNNING",
@@ -216,7 +246,7 @@ func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
 				Status: store.Running, Started: testNow.Add(-time.Minute),
 			}}}
 
-			row := render(t, box)[4]
+			row := rows(t, render(t, box), "RUNNING")[0]
 			if got := utf8.RuneCountInString(row); got != rowWidth {
 				t.Errorf("the row is %d characters wide, want %d: %q", got, rowWidth, row)
 			}
@@ -234,7 +264,7 @@ func TestWriteInboxKeepsATitleThatFitsInCharacters(t *testing.T) {
 		Status: store.Running, Started: testNow.Add(-time.Minute),
 	}}}
 
-	row := render(t, box)[4]
+	row := rows(t, render(t, box), "RUNNING")[0]
 	if !strings.Contains(row, title) {
 		t.Errorf("the row does not hold the whole title: %q", row)
 	}
@@ -255,6 +285,8 @@ func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 
 	wantLines(t, render(t, box), []string{
 		statusRunning,
+		"DONE",
+		"  none",
 		"READY",
 		"  none",
 		"RUNNING",
@@ -294,7 +326,7 @@ func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	if !strings.Contains(got[1], "dg ticket") {
 		t.Errorf("the line does not say what makes a ticket: %q", got[1])
 	}
-	for _, heading := range []string{"READY", "RUNNING", "QUEUED"} {
+	for _, heading := range []string{"DONE", "READY", "RUNNING", "QUEUED"} {
 		if strings.Contains(got[1], heading) {
 			t.Errorf("the line holds the heading %q: %q", heading, got[1])
 		}
@@ -307,7 +339,7 @@ func TestWriteInboxWithOneGroupKeepsTheHeadings(t *testing.T) {
 	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
 
 	got := render(t, box)
-	for _, heading := range []string{"READY", "RUNNING", "QUEUED"} {
+	for _, heading := range []string{"DONE", "READY", "RUNNING", "QUEUED"} {
 		if !slices.Contains(got, heading) {
 			t.Errorf("the inbox does not hold the heading %q:\n%s", heading, strings.Join(got, "\n"))
 		}
@@ -375,6 +407,76 @@ func TestRunShowsTheStateOfTheQueue(t *testing.T) {
 	}
 }
 
+// DONE is at the top of the inbox: it is the group the person reads and
+// leaves, and what is left to do is below it, where the eyes stop. A row of a
+// closed ticket carries no duration, because its run stopped.
+func TestWriteInboxPutsDoneAtTheTop(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Done: []store.OpenTicket{{
+			ID: 2, Project: "/projects/one", Title: "the closed title",
+			Status: store.Done, Started: testNow.Add(-2 * time.Hour),
+		}},
+		Ready: []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the ready title"}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"DONE",
+		"  2 one  the closed title",
+		"READY",
+		"  4 one  the ready title",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// A person whose only tickets are in DONE finished work today, and the line
+// that says how to make a ticket would take that away.
+func TestWriteInboxWithOnlyDoneTicketsShowsThem(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Done: []store.OpenTicket{{
+			ID: 2, Project: "/projects/one", Title: "the closed title", Status: store.Done,
+		}},
+	}
+
+	got := render(t, box)
+	if slices.Contains(got, emptyInbox) {
+		t.Fatalf("the inbox says it holds no ticket:\n%s", strings.Join(got, "\n"))
+	}
+	if want := []string{"  2 one  the closed title"}; !slices.Equal(rows(t, got, "DONE"), want) {
+		t.Errorf("DONE holds %v, want %v", rows(t, got, "DONE"), want)
+	}
+}
+
+// The columns take DONE in with the other groups, so the title of a closed
+// ticket is below the title of an open one.
+func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Done: []store.OpenTicket{{
+			ID: 111, Project: "/projects/a-longer-name", Title: "the closed title",
+			Status: store.Done,
+		}},
+		Queued: []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the queued title"}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		"DONE",
+		" 111 a-longer-name  the closed title",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"   4 one            the queued title",
+	})
+}
+
 // A pipe, a file and a test see plain text: the colour is for a person at a
 // terminal, and it would be noise in a log or a grep.
 func TestStatusLineIsPlainOffATerminal(t *testing.T) {
@@ -406,5 +508,53 @@ func TestStatusLineColoursAtATerminal(t *testing.T) {
 		if got := statusLine(pty, c.box, colourAuto); got != c.want {
 			t.Errorf("status line = %q, want %q", got, c.want)
 		}
+	}
+}
+
+// The whole path: dg accept closes a ticket, and the inbox still shows it in
+// DONE. The store, the window from the config and the text of the group each
+// have their own test, and none of them says that the three are connected.
+func TestRunShowsAnAcceptedTicketInDone(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+	if _, err := runIn(t, dataDir, repo, "accept", strconv.FormatInt(id, 10)); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rows(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), "DONE")
+	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title$`)
+	if len(got) != 1 || !want.MatchString(got[0]) {
+		t.Errorf("DONE holds %v, want the row of ticket %d:\n%s", got, id, out)
+	}
+}
+
+// done_hours in the config file says how far back DONE reaches. At 0 the group
+// is empty, and a ticket accepted a moment ago is already out of the window.
+func TestRunTakesTheWindowOfDoneFromTheConfig(t *testing.T) {
+	configDir := testfix.XDGConfigDir(t)
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"),
+		[]byte("done_hours = 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+	if _, err := runIn(t, dataDir, repo, "accept", strconv.FormatInt(id, 10)); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "ticket title") {
+		t.Errorf("the inbox holds the accepted ticket with done_hours = 0:\n%s", out)
 	}
 }

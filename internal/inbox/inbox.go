@@ -15,6 +15,7 @@ package inbox
 import (
 	"cmp"
 	"slices"
+	"time"
 
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -23,12 +24,15 @@ import (
 // and a test has its own.
 type Source interface {
 	OpenTickets() ([]store.OpenTicket, error)
+	DoneTickets(since time.Time) ([]store.OpenTicket, error)
 	IsQueueRunning() (bool, error)
 }
 
-// Inbox holds one group for each state that the person acts on. READY waits for
-// the person, RUNNING has the one active run, and QUEUED waits for a run.
+// Inbox holds one group for each state that the person acts on. DONE holds the
+// tickets that the person accepted lately, READY waits for the person, RUNNING
+// has the one active run, and QUEUED waits for a run.
 type Inbox struct {
+	Done    []store.OpenTicket
 	Ready   []store.OpenTicket
 	Running []store.OpenTicket
 	Queued  []store.OpenTicket
@@ -39,8 +43,10 @@ type Inbox struct {
 	QueueRunning bool
 }
 
-// Get returns the inbox.
-func Get(source Source) (Inbox, error) {
+// Get returns the inbox. since is the earliest completion that DONE shows: a
+// ticket the person accepted before it has left the inbox. The caller gives
+// the time rather than a window, because this package reads no clock.
+func Get(source Source, since time.Time) (Inbox, error) {
 	tickets, err := source.OpenTickets()
 	if err != nil {
 		return Inbox{}, err
@@ -58,12 +64,18 @@ func Get(source Source) (Inbox, error) {
 		}
 	}
 
+	box.Done, err = source.DoneTickets(since)
+	if err != nil {
+		return Inbox{}, err
+	}
+
 	running, err := source.IsQueueRunning()
 	if err != nil {
 		return Inbox{}, err
 	}
 	box.QueueRunning = running
 
+	slices.SortFunc(box.Done, byCompletion)
 	slices.SortFunc(box.Ready, byCompletion)
 	slices.SortFunc(box.Running, byID)
 	slices.SortFunc(box.Queued, byPosition)
@@ -72,7 +84,9 @@ func Get(source Source) (Inbox, error) {
 
 // byCompletion orders the tickets by completion in ascending order. A ticket that
 // becomes ready therefore goes at the end which keeps the ordering stable as
-// new tickets are completed and added to the end of the list.
+// new tickets are completed and added to the end of the list. DONE takes the
+// same order for the same reason, and the newest finished ticket is at the
+// end of it.
 // The time holds one second and no part of a second, so two tickets can
 // hold the same one, and the id then keeps the order stable.
 func byCompletion(a, b store.OpenTicket) int {

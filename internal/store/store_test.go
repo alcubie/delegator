@@ -53,6 +53,16 @@ func oneTicket(t *testing.T) (*Store, int64) {
 	return s, id
 }
 
+// ticketIDs returns the id of each ticket of a list, in the order the list
+// holds them.
+func ticketIDs(tickets []OpenTicket) []int64 {
+	out := make([]int64, 0, len(tickets))
+	for _, ticket := range tickets {
+		out = append(out, ticket.ID)
+	}
+	return out
+}
+
 // threeTickets returns a store that holds one project and three tickets, in the
 // order first, second, third, with their ids.
 func threeTickets(t *testing.T) (*Store, []int64) {
@@ -1626,5 +1636,145 @@ func TestEndRunOnATicketThatHasNoRun(t *testing.T) {
 
 	if err := s.EndRun(id, 0); !errors.Is(err, ErrNoRun) {
 		t.Errorf("err = %v, want ErrNoRun", err)
+	}
+}
+
+// A ticket that dg accept closed stays in reach for a while, so the inbox can
+// show the person what they finished after it left the open list.
+func TestDoneTicketsGivesTheTicketsClosedSinceATime(t *testing.T) {
+	s, ids := threeTickets(t)
+	for _, id := range ids {
+		setStatus(t, s, id, Done)
+	}
+	setCompleted(t, s, ids[0], "2026-08-27T08:00:00Z")
+	setCompleted(t, s, ids[1], "2026-08-28T09:30:00Z")
+	setCompleted(t, s, ids[2], "2026-08-28T15:00:00Z")
+
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{ids[1], ids[2]}; !slices.Equal(ticketIDs(done), want) {
+		t.Errorf("DoneTickets gives %v, want %v", ticketIDs(done), want)
+	}
+}
+
+// A ticket that finished at the moment the window begins is inside it. The
+// bound has to fall one way, and a person who asks for the last day means the
+// day up to now.
+func TestDoneTicketsHoldsATicketAtTheEdgeOfTheWindow(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+	setCompleted(t, s, id, "2026-08-28T09:00:00Z")
+
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{id}; !slices.Equal(ticketIDs(done), want) {
+		t.Errorf("DoneTickets gives %v, want %v", ticketIDs(done), want)
+	}
+}
+
+// The window is a time in UTC whatever zone the caller holds, because the
+// column is in UTC and the comparison is of the text.
+func TestDoneTicketsTakesATimeInAnyZone(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+
+	// 06:00 in a zone four hours behind UTC is 10:00 UTC, which is after the
+	// ticket. A comparison that took the wall clock of the zone would hold it.
+	zone := time.FixedZone("west", -4*60*60)
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 6, 0, 0, 0, zone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 0 {
+		t.Errorf("DoneTickets gives %v, want none", ticketIDs(done))
+	}
+}
+
+// Only a ticket that dg accept closed is in the list. A cancelled ticket was
+// thrown away and never finished, and a ticket that is still open is in the
+// open list.
+func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[0], Cancelled)
+	setStatus(t, s, ids[1], Ready)
+	setStatus(t, s, ids[2], Done)
+	for _, id := range ids {
+		setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+	}
+
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{ids[2]}; !slices.Equal(ticketIDs(done), want) {
+		t.Errorf("DoneTickets gives %v, want %v", ticketIDs(done), want)
+	}
+}
+
+// A done ticket with no time of completion is in no window, and it does not
+// come out for one that reaches back to the zero time.
+func TestDoneTicketsLeavesOutATicketWithNoCompletion(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+
+	done, err := s.DoneTickets(time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 0 {
+		t.Errorf("DoneTickets gives %v, want none", ticketIDs(done))
+	}
+}
+
+// A row of DoneTickets holds the same fields as a row of OpenTickets, because
+// the inbox writes the two the same way.
+func TestDoneTicketsGivesTheProjectAndTheCompletion(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 1 {
+		t.Fatalf("DoneTickets gives %v, want the one ticket", ticketIDs(done))
+	}
+	if got := done[0].Project; got != "/projects/path" {
+		t.Errorf("project = %q, want /projects/path", got)
+	}
+	if got := done[0].Title; got != "My Ticket" {
+		t.Errorf("title = %q, want My Ticket", got)
+	}
+	if got := done[0].Status; got != Done {
+		t.Errorf("status = %q, want %q", got, Done)
+	}
+	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	if got := done[0].Completed; !got.Equal(want) {
+		t.Errorf("completed = %v, want %v", got, want)
+	}
+}
+
+// A window of no length holds no ticket, not even one that finished in the
+// second the window began in. A person who sets the window to nothing wants no
+// DONE at all.
+func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+	setCompleted(t, s, id, "2026-08-28T09:00:00Z")
+
+	// The second is the one the ticket finished in, and the window begins
+	// part of the way through it, as a clock in the middle of a second does.
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 500, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 0 {
+		t.Errorf("DoneTickets gives %v, want none", ticketIDs(done))
 	}
 }

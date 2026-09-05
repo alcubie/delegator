@@ -30,6 +30,10 @@ func DataDir() (string, error) {
 // a person who wrote a title that dg refused does not want each command again.
 func Root(dataDir, workDir string) *cobra.Command {
 	mode := colourAuto
+	// cfg is what the hook below read. The inbox needs the window of DONE, and
+	// a second Load in the RunE could read a file that the person edited in
+	// between and give one command two configs.
+	var cfg config.Config
 	root := &cobra.Command{
 		Use:           "dg",
 		Short:         "Delegate tasks to an agent",
@@ -46,11 +50,15 @@ func Root(dataDir, workDir string) *cobra.Command {
 			if err := config.Init(); err != nil {
 				return err
 			}
-			_, err := config.Load()
-			return err
+			loaded, err := config.Load()
+			if err != nil {
+				return err
+			}
+			cfg = loaded
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showInbox(cmd.OutOrStdout(), dataDir, mode)
+			return showInbox(cmd.OutOrStdout(), dataDir, mode, cfg.DoneWindow())
 		},
 	}
 	root.PersistentFlags().Var(&mode, "color",

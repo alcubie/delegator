@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // writeConfig writes text to config.toml below dir/delegator, so the test
@@ -128,5 +129,45 @@ func TestLoadRefusesAKeyItDoesNotKnowAndNamesIt(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "run") {
 		t.Errorf("the error does not name the key run: %v", err)
+	}
+}
+
+func TestLoadReadsDoneHours(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "done_hours = 72\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DoneHours != 72 {
+		t.Errorf("DoneHours = %d, want 72", cfg.DoneHours)
+	}
+}
+
+// The window of DONE is one day for a person who has set no value, so a
+// ticket accepted this morning is still in the inbox this evening.
+func TestLoadGivesDoneHoursTheDefaultOfOneDayWhenTheFileDoesNotSetIt(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runs = 3\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DoneHours != 24 {
+		t.Errorf("DoneHours = %d, want the default 24", cfg.DoneHours)
+	}
+}
+
+// The key is in hours, and DoneWindow is the one place that says so.
+func TestDoneWindowIsTheHoursOfTheKey(t *testing.T) {
+	if got := (Config{DoneHours: 3}).DoneWindow(); got != 3*time.Hour {
+		t.Errorf("DoneWindow = %v, want %v", got, 3*time.Hour)
+	}
+	if got := (Config{DoneHours: 0}).DoneWindow(); got != 0 {
+		t.Errorf("DoneWindow = %v, want 0", got)
 	}
 }
