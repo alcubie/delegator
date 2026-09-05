@@ -22,7 +22,7 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | commit | The one commit that a run makes. Its message is the report of the run. |
 | config | The file that holds the selections of the person. |
 | database | The one SQLite file that holds each field, the queue and the counter. |
-| DONE | The group in the inbox that contains each closed ticket. |
+| DONE | The group in the inbox that shows each ticket that the person accepted in the period that `done_hours` gives. |
 | Go | The programming language of delegator. |
 | goreleaser | The tool that makes the binary files and the installer. |
 | inbox | The one ordered list of tickets that the person examines. |
@@ -105,7 +105,7 @@ them. Section 4 gives that list.
 - Tickets as Markdown files, which the person can read and change with any editor.
 - One queue for all projects, with an order that the person can change.
 - Work in the background, in a worktree. One run at a time.
-- The inbox, with the groups READY, RUNNING, QUEUED and DONE.
+- The inbox, with the groups DONE, READY, RUNNING and QUEUED.
 - One commit for each run, and its hash on the ticket.
 - The four variables for each ticket, for use by other programs.
 - The option `--json` on each command that shows data.
@@ -537,6 +537,8 @@ recognition is easier than memory.
 ```
 $ dg
 Status: Running
+DONE
+  2 web-api      Remove the old health check
 READY
   4 web-api      Remove the staging app
   7 data-loader  Add a limit on the rate
@@ -545,6 +547,15 @@ RUNNING
 QUEUED
  11 data-loader  Change the tool that measures the coverage
 ```
+
+DONE is the first group. It shows each ticket that the person accepted with
+`dg accept` in the period that `done_hours` gives. The sequence is the time that
+the ticket completed, and the ticket that completed last is at the end. Only a
+ticket that completed is in DONE, and a ticket that `dg cancel` stopped is not.
+
+DONE keeps the work of a day in view after the person accepts each ticket of it.
+The person can read a commit again, and the group also shows what delegator
+completed.
 
 The row of a run ends with the time from its start, as HH:MM:SS. The value changes
 each second, and a person who reads the inbox with `watch -n 1 dg` sees that the run
@@ -600,6 +611,7 @@ config, with the variables from §7:
 terminal = "ptyxis --new-window -d {worktree} --"
 timeout_minutes = 60
 runs = 1
+done_hours = 24
 
 [commands.diff]
 run = "git difftool -d {base}...HEAD"
@@ -613,6 +625,10 @@ window = true
 run = "$EDITOR {ticket}"
 window = false
 ```
+
+The key `done_hours` gives the period of DONE in hours. The value is 24 if the
+config file does not give the key, so DONE shows the work of one day. A value of
+0 makes DONE empty.
 
 The variables are `{ticket}`, `{worktree}`, `{branch}`, `{base}`, `{session}` and
 `{project}`. The variable `{ticket}` gives the path of the prose, because the person

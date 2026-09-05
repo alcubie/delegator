@@ -25,8 +25,8 @@ import (
 // emptyGroup is the line below the heading of a group that holds no ticket.
 const emptyGroup = "  none"
 
-// emptyInbox is the whole inbox of a person who has no ticket. Three headings
-// with none below each of them say the same thing in six lines, and a person
+// emptyInbox is the whole inbox of a person who has no ticket. Four headings
+// with none below each of them say the same thing in eight lines, and a person
 // who has no ticket has not made one yet, so the line says what makes one.
 const emptyInbox = "There are no active tickets. Use `dg ticket` to add."
 
@@ -58,8 +58,12 @@ type group struct {
 // groups returns each group of the inbox, always in one order. A group that
 // holds no ticket keeps its place, so no heading moves below the eyes of the
 // person who reads the inbox each day.
+//
+// DONE is first because it is the group that the person reads and leaves. What
+// is left to do is below it, where the eyes stop.
 func groups(box inbox.Inbox) []group {
 	return []group{
+		{"DONE", box.Done},
 		{"READY", box.Ready},
 		{"RUNNING", box.Running},
 		{"QUEUED", box.Queued},
@@ -121,12 +125,24 @@ func widths(box inbox.Inbox) (id, project int) {
 	return id, project
 }
 
+// empty reports whether no group of the inbox holds a ticket. A person whose
+// only tickets are in DONE has done work today, and the line that says how to
+// make a ticket would take that away.
+func empty(box inbox.Inbox) bool {
+	for _, g := range groups(box) {
+		if len(g.tickets) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // writeInbox writes the inbox as of now. The time comes in rather than from
 // the clock, because the row of a run holds the duration at the moment the
 // text is written and a test has to name that moment.
 func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) {
 	fmt.Fprintln(out, statusLine(out, box, mode))
-	if len(box.Ready) == 0 && len(box.Running) == 0 && len(box.Queued) == 0 {
+	if empty(box) {
 		fmt.Fprintln(out, emptyInbox)
 		return
 	}
@@ -164,15 +180,17 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) 
 	}
 }
 
-// showInbox reads the tickets and writes the inbox.
-func showInbox(out io.Writer, dataDir string, mode colourMode) error {
+// showInbox reads the tickets and writes the inbox. done is how far back DONE
+// reaches, and it comes from the config file.
+func showInbox(out io.Writer, dataDir string, mode colourMode, done time.Duration) error {
 	return store.With(dataDir, func(s *store.Store) error {
 
-		box, err := inbox.Get(s)
+		now := time.Now()
+		box, err := inbox.Get(s, now.Add(-done))
 		if err != nil {
 			return err
 		}
-		writeInbox(out, box, mode, time.Now())
+		writeInbox(out, box, mode, now)
 		return nil
 	})
 }

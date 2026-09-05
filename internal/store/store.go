@@ -489,9 +489,10 @@ type OpenTicket struct {
 	Started time.Time
 }
 
-// OpenTickets returns each ticket that the inbox shows: the ones that wait, the
-// one that runs, and the ones that are complete. A ticket that is done or
-// cancelled is closed, and the inbox does not hold it.
+// OpenTickets returns each ticket that is still open: the ones that wait, the
+// one that runs, and the ones that are complete and wait for the person. A
+// ticket that is done or cancelled is closed, and DoneTickets returns the ones
+// of those that the inbox still shows.
 //
 // One query returns the tickets of each project, because the inbox is one list
 // for all projects.
@@ -499,6 +500,41 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	return s.inboxTickets(inboxTicketQuery+`
 		WHERE tickets.status IN (?, ?, ?)
 		ORDER BY tickets.id`, Queued, Running, Ready)
+}
+
+// DoneTickets returns each ticket that dg accept closed and that finished at
+// or after since. The inbox holds them for a while after they close, so a
+// person who accepted a ticket can still read what it was.
+//
+// A ticket that is cancelled is not one of these. It was never finished, and
+// its completed column is the time of a run that the person threw away.
+//
+// A done ticket with no completed column is not one either. dg finish writes
+// that column and only a ticket that dg finish made ready can become done, so
+// the column is empty for a row that a version before it left behind.
+func (s *Store) DoneTickets(since time.Time) ([]OpenTicket, error) {
+	// completed holds the form of rfc3339 in UTC, which is one width and one
+	// zone for every row, so a comparison of the text is a comparison of the
+	// times.
+	return s.inboxTickets(inboxTicketQuery+`
+		WHERE tickets.status = ? AND tickets.completed >= ?
+		ORDER BY tickets.id`, Done, rfc3339(ceilSecond(since)))
+}
+
+// ceilSecond rounds a time up to the next whole second, and leaves a time that
+// is already whole as it is.
+//
+// The column completed names a second and no part of one, so the window rounds
+// the same way: a ticket is in it only when the whole second its column names
+// is. Without this a window of no length would still hold each ticket that
+// finished in the second it began in, and a person who asked for no DONE at
+// all would see one.
+func ceilSecond(t time.Time) time.Time {
+	whole := t.Truncate(time.Second)
+	if whole.Equal(t) {
+		return t
+	}
+	return whole.Add(time.Second)
 }
 
 // inboxTicketQuery selects the columns of an OpenTicket, and a caller adds the

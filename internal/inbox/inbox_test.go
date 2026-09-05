@@ -13,16 +13,38 @@ import (
 // query of the store has its own test.
 type fakeSource struct {
 	tickets []store.OpenTicket
+	done    []store.OpenTicket
+	since   time.Time
 	running bool
 	err     error
+	// doneErr is the error of DoneTickets alone. err stops OpenTickets first,
+	// which is the call before it, so the error of DoneTickets needs a field
+	// of its own to reach Get at all.
+	doneErr error
 }
 
 func (f fakeSource) OpenTickets() ([]store.OpenTicket, error) {
 	return f.tickets, f.err
 }
 
+// DoneTickets keeps the time it was asked for, so a test can say that Get
+// passed the one it was given. The window itself is the work of the store.
+func (f *fakeSource) DoneTickets(since time.Time) ([]store.OpenTicket, error) {
+	f.since = since
+	if f.doneErr != nil {
+		return nil, f.doneErr
+	}
+	return f.done, f.err
+}
+
 func (f fakeSource) IsQueueRunning() (bool, error) {
 	return f.running, f.err
+}
+
+// get calls Get with a since that reaches back far enough to hold every ticket
+// a test makes, for the tests that are not about the window.
+func get(source *fakeSource) (Inbox, error) {
+	return Get(source, time.Time{})
 }
 
 // ids returns the id of each ticket of one group.
@@ -35,7 +57,7 @@ func ids(tickets []store.OpenTicket) []int64 {
 }
 
 func TestGetPutsEachTicketInItsGroup(t *testing.T) {
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Queued},
 		{ID: 2, Status: store.Ready},
 		{ID: 3, Status: store.Running},
@@ -43,7 +65,7 @@ func TestGetPutsEachTicketInItsGroup(t *testing.T) {
 		{ID: 5, Status: store.Ready},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +82,7 @@ func TestGetPutsEachTicketInItsGroup(t *testing.T) {
 }
 
 func TestGetWithNoTicket(t *testing.T) {
-	got, err := Get(fakeSource{})
+	got, err := get(&fakeSource{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,14 +95,14 @@ func TestGetWithNoTicket(t *testing.T) {
 // A status that no group shows is not a fault of the inbox, and it is not in a
 // group either.
 func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Done},
 		{ID: 2, Status: store.Cancelled},
 		{ID: 3, Status: store.Failed},
 		{ID: 4, Status: store.Queued},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +118,7 @@ func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
 func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 	want := errors.New("the database is not there")
 
-	_, err := Get(fakeSource{err: want})
+	_, err := get(&fakeSource{err: want})
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)
 	}
@@ -106,13 +128,13 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 // ready goes at the end. The source gives them in another order, so the
 // inbox and not the query does this work.
 func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Ready, Completed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
 		{ID: 2, Status: store.Ready, Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
 		{ID: 3, Status: store.Ready, Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +147,13 @@ func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
 // part of a second. The id then keeps the order stable.
 func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
 	same := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 7, Status: store.Ready, Completed: same},
 		{ID: 3, Status: store.Ready, Completed: same},
 		{ID: 5, Status: store.Ready, Completed: same},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,13 +163,13 @@ func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
 }
 
 func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Queued, Position: 2},
 		{ID: 2, Status: store.Queued, Position: 3},
 		{ID: 3, Status: store.Queued, Position: 1},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,13 +183,13 @@ func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
 // order is a decision here and not the ORDER BY of the query, which a change
 // for another reason would move.
 func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 9, Status: store.Running},
 		{ID: 3, Status: store.Running},
 		{ID: 7, Status: store.Running},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,11 +205,11 @@ func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
 // no text.
 func TestGetCarriesTheStartOfTheRun(t *testing.T) {
 	started := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
-	source := fakeSource{tickets: []store.OpenTicket{
+	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 3, Status: store.Running, Started: started},
 	}}
 
-	got, err := Get(source)
+	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,12 +225,80 @@ func TestGetCarriesTheStartOfTheRun(t *testing.T) {
 // is waiting or stopped, so the inbox carries the state of the queue.
 func TestGetSaysWhetherTheQueueIsRunning(t *testing.T) {
 	for _, running := range []bool{true, false} {
-		got, err := Get(fakeSource{running: running})
+		got, err := get(&fakeSource{running: running})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got.QueueRunning != running {
 			t.Errorf("queue running = %v, want %v", got.QueueRunning, running)
 		}
+	}
+}
+
+// DONE holds the tickets that the person accepted lately, so the work of a day
+// is still in the inbox after each one of them closed.
+func TestGetPutsTheAcceptedTicketsInDone(t *testing.T) {
+	source := &fakeSource{
+		tickets: []store.OpenTicket{{ID: 1, Status: store.Queued}},
+		done: []store.OpenTicket{
+			{ID: 4, Status: store.Done},
+			{ID: 6, Status: store.Done},
+		},
+	}
+
+	got, err := get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{4, 6}; !slices.Equal(ids(got.Done), want) {
+		t.Errorf("DONE holds %v, want %v", ids(got.Done), want)
+	}
+	if want := []int64{1}; !slices.Equal(ids(got.Queued), want) {
+		t.Errorf("QUEUED holds %v, want %v", ids(got.Queued), want)
+	}
+}
+
+// DONE is in the order of the time of completion, as READY is, and the newest
+// finished ticket is at the end. The source gives them in another order, so
+// the inbox and not the query does this work.
+func TestGetPutsDoneInTheOrderOfCompletion(t *testing.T) {
+	source := &fakeSource{done: []store.OpenTicket{
+		{ID: 1, Status: store.Done, Completed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
+		{ID: 2, Status: store.Done, Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+		{ID: 3, Status: store.Done, Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+	}}
+
+	got, err := get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{2, 1, 3}; !slices.Equal(ids(got.Done), want) {
+		t.Errorf("DONE holds %v, want %v", ids(got.Done), want)
+	}
+}
+
+// The caller says how far back DONE reaches, and Get asks the source for that
+// time and no other. A window that Get made up from a clock of its own would
+// put a decision of the person in a package that reads no clock.
+func TestGetAsksTheSourceForTheTimeItWasGiven(t *testing.T) {
+	since := time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)
+	source := &fakeSource{}
+
+	if _, err := Get(source, since); err != nil {
+		t.Fatal(err)
+	}
+	if !source.since.Equal(since) {
+		t.Errorf("the source was asked for %v, want %v", source.since, since)
+	}
+}
+
+// An error from the tickets of DONE stops Get, as an error from the open
+// tickets does.
+func TestGetGivesTheErrorOfTheDoneTickets(t *testing.T) {
+	want := errors.New("the database is not there")
+
+	_, err := get(&fakeSource{doneErr: want})
+	if !errors.Is(err, want) {
+		t.Errorf("err = %v, want %v", err, want)
 	}
 }

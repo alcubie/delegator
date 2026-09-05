@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -20,6 +21,16 @@ type Config struct {
 	Runs int `toml:"runs"`
 	// TimeoutMinutes is the time a run can take before delegator stops it.
 	TimeoutMinutes int `toml:"timeout_minutes"`
+	// DoneHours is how long a ticket the person accepted stays in DONE at the
+	// top of the inbox. DoneWindow gives it as a duration.
+	DoneHours int `toml:"done_hours"`
+}
+
+// DoneWindow is how far back DONE reaches. The name of the key holds the unit,
+// and this method is the one place that turns it into a duration, so no caller
+// multiplies by an hour of its own.
+func (c Config) DoneWindow() time.Duration {
+	return time.Duration(c.DoneHours) * time.Hour
 }
 
 // Dir returns the directory that holds config.toml. XDG_CONFIG_HOME names
@@ -47,7 +58,7 @@ func file() (string, error) {
 
 // Default is the config of a person who has written no file. A fresh
 // install has no config, and delegator must work before a person writes one.
-var Default = Config{Runs: 1, TimeoutMinutes: 60}
+var Default = Config{Runs: 1, TimeoutMinutes: 60, DoneHours: 24}
 
 // defaultFile is the text of the config file that Init writes. Each key has
 // one comment that says what it does, because the file is where the person
@@ -59,6 +70,10 @@ runs = %d
 # timeout_minutes is the time in minutes that a run can take before delegator
 # stops it.
 timeout_minutes = %d
+
+# done_hours is the time in hours that a ticket stays in DONE at the top of the
+# inbox after dg accept closes it. A value of 0 leaves DONE empty.
+done_hours = %d
 `
 
 // Init writes config.toml with each key at its default when the file is not
@@ -81,7 +96,8 @@ func Init() error {
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf(defaultFile, Default.Runs, Default.TimeoutMinutes)
+	text := fmt.Sprintf(defaultFile,
+		Default.Runs, Default.TimeoutMinutes, Default.DoneHours)
 	if _, err := f.WriteString(text); err != nil {
 		f.Close()
 		return err
