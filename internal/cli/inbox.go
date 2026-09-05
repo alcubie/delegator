@@ -55,15 +55,27 @@ type group struct {
 	tickets []store.OpenTicket
 }
 
+// doneHeading returns the heading of DONE for a window of that length. The
+// group holds what the person accepted inside the window and nothing older, so
+// the heading says how far back it reaches: a DONE with one ticket in it then
+// reads as the work of the last day rather than as all the work there has ever
+// been, and a DONE with none in it reads as a window that ends before the work.
+//
+// The window is whole hours because the config file asks for hours, and the
+// text says the same unit as the key the person edits.
+func doneHeading(window time.Duration) string {
+	return fmt.Sprintf("DONE (last %dh)", int(window.Hours()))
+}
+
 // groups returns each group of the inbox, always in one order. A group that
 // holds no ticket keeps its place, so no heading moves below the eyes of the
-// person who reads the inbox each day.
+// person who reads the inbox each day. done is how far back DONE reaches.
 //
 // DONE is first because it is the group that the person reads and leaves. What
 // is left to do is below it, where the eyes stop.
-func groups(box inbox.Inbox) []group {
+func groups(box inbox.Inbox, done time.Duration) []group {
 	return []group{
-		{"DONE", box.Done},
+		{doneHeading(done), box.Done},
 		{"READY", box.Ready},
 		{"RUNNING", box.Running},
 		{"QUEUED", box.Queued},
@@ -139,9 +151,10 @@ func empty(gs []group) bool {
 
 // writeInbox writes the inbox as of now. The time comes in rather than from
 // the clock, because the row of a run holds the duration at the moment the
-// text is written and a test has to name that moment.
-func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) {
-	gs := groups(box)
+// text is written and a test has to name that moment. done is the window of
+// DONE, which the heading of that group says.
+func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, done time.Duration) {
+	gs := groups(box, done)
 	fmt.Fprintln(out, statusLine(out, box, mode))
 	if empty(gs) {
 		fmt.Fprintln(out, emptyInbox)
@@ -191,7 +204,7 @@ func showInbox(out io.Writer, dataDir string, mode colourMode, done time.Duratio
 		if err != nil {
 			return err
 		}
-		writeInbox(out, box, mode, now)
+		writeInbox(out, box, mode, now, done)
 		return nil
 	})
 }
