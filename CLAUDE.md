@@ -3,6 +3,40 @@
 The code of the product. The ground rules of the prototype are in the CLAUDE.md
 above this directory, and this file holds what belongs to this repository only.
 
+## Layout
+
+Read this before you go looking. It is here so that a run does not have to
+derive the shape of the repository by reading it.
+
+- `cmd/dg` finds the directories and executes the cobra tree. `cmd/dg-fake-agent`
+  is the agent the tests drive instead of a real one.
+- `internal/cli` is the command layer: the cobra tree, the work behind each
+  command, and the text a command writes. One file per command, named for it,
+  so `dg move` is `move.go`.
+- `internal/store` keeps every field in one SQLite database, and owns the
+  migrations. The prose of a ticket is not in it; that is a file under
+  `tickets/` in the data directory.
+- `internal/run` starts a run and supervises it. The prompt the agent gets is
+  `prompt` in `supervisor.go`.
+- `internal/adapters` is the seam for an agent, and holds the argv that starts
+  claude.
+- `internal/project` is the only package that starts git.
+- `internal/inbox` decides which ticket is in which group and in what order,
+  and writes no text.
+- `internal/config` reads `config.toml`. State a command changes is not config
+  and belongs in the database.
+- `internal/testfix` holds the fixtures that more than one package's tests need.
+
+`make check` runs the formatter, vet, staticcheck and the coverage floor, and
+the pre-commit hook runs it. `make test` alone is faster while you work.
+`make integration` drives a real agent and costs money, so it is not in
+`make check`.
+
+Keep this section at the level of a directory. A section that named files
+would be wrong the first time a file was added, and an agent that trusts a
+wrong map spends more than one with no map at all. When a run goes looking in
+the wrong place, that is the signal to correct this.
+
 ## Tests
 
 - **Mutation testing needs `go test -a`.** After a test goes green, break the
