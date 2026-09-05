@@ -496,18 +496,31 @@ type OpenTicket struct {
 // One query returns the tickets of each project, because the inbox is one list
 // for all projects.
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
-	// The start of the run comes from a sub-query and not from a join, because
-	// a ticket has a row of runs for each claim and a join would give a ticket
-	// once for each of them.
-	rows, err := s.db.Query(`
-		SELECT tickets.id, projects.path, tickets.title, tickets.status,
-		       COALESCE(tickets.position, 0), tickets.completed,
-		       (SELECT started_at FROM runs
-		        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
-		FROM tickets
-		JOIN projects ON projects.id = tickets.project_id
+	return s.inboxTickets(inboxTicketQuery+`
 		WHERE tickets.status IN (?, ?, ?)
 		ORDER BY tickets.id`, Queued, Running, Ready)
+}
+
+// inboxTicketQuery selects the columns of an OpenTicket, and a caller adds the
+// WHERE and the ORDER BY that pick its rows.
+//
+// The start of the run comes from a sub-query and not from a join, because a
+// ticket has a row of runs for each claim and a join would give a ticket once
+// for each of them.
+const inboxTicketQuery = `
+	SELECT tickets.id, projects.path, tickets.title, tickets.status,
+	       COALESCE(tickets.position, 0), tickets.completed,
+	       (SELECT started_at FROM runs
+	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
+	FROM tickets
+	JOIN projects ON projects.id = tickets.project_id
+	`
+
+// inboxTickets runs a query that inboxTicketQuery starts and reads each row of
+// it into an OpenTicket. Store.Ticket does not use it: that one reads the
+// branch, the session and the commit as well, which no row of the inbox shows.
+func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
