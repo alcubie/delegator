@@ -110,9 +110,9 @@ const minIDWidth = 2
 // widths returns the width of the column of ids and the width of the column of
 // projects. One width holds for each group, so the titles of two groups are
 // below one another.
-func widths(box inbox.Inbox) (id, project int) {
+func widths(gs []group) (id, project int) {
 	id = minIDWidth
-	for _, g := range groups(box) {
+	for _, g := range gs {
 		for _, t := range g.tickets {
 			if w := len(strconv.FormatInt(t.ID, 10)); w > id {
 				id = w
@@ -128,8 +128,8 @@ func widths(box inbox.Inbox) (id, project int) {
 // empty reports whether no group of the inbox holds a ticket. A person whose
 // only tickets are in DONE has done work today, and the line that says how to
 // make a ticket would take that away.
-func empty(box inbox.Inbox) bool {
-	for _, g := range groups(box) {
+func empty(gs []group) bool {
+	for _, g := range gs {
 		if len(g.tickets) > 0 {
 			return false
 		}
@@ -141,14 +141,15 @@ func empty(box inbox.Inbox) bool {
 // the clock, because the row of a run holds the duration at the moment the
 // text is written and a test has to name that moment.
 func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time) {
+	gs := groups(box)
 	fmt.Fprintln(out, statusLine(out, box, mode))
-	if empty(box) {
+	if empty(gs) {
 		fmt.Fprintln(out, emptyInbox)
 		return
 	}
 
-	idWidth, projectWidth := widths(box)
-	for _, g := range groups(box) {
+	idWidth, projectWidth := widths(gs)
+	for _, g := range gs {
 		fmt.Fprintln(out, g.heading)
 		if len(g.tickets) == 0 {
 			fmt.Fprintln(out, emptyGroup)
