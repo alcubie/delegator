@@ -14,6 +14,47 @@ Status: in development. Nothing here is released yet.
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 ```
 
+## Questions
+
+### A run costs more tokens than I expected. What can I do?
+
+Give the agent a map of the repository so that it does not have to build one
+by reading.
+
+Almost all of what a run spends is the conversation being read back. Every
+token that goes into the context is read again on every later call, so the
+cost of a run grows with the square of its length, and the tokens that go in
+early are the ones that are read the most times. An agent that opens a
+repository it has never seen puts a lot in early: it reads whole files to
+learn what is where, and then carries all of it to the end of the run.
+
+Across seven runs of delegator on 2026-09-04, the reading each run did before
+it changed a single line left between 17,000 and 91,000 tokens in the
+context, and carrying that for the rest of the run cost between 21 and 48
+percent of the whole run. The seven runs opened 75 different files between
+them and only 13 of those were opened by four or more runs, so the runs were
+not reading the same things: each was answering the same question, "what is
+in this repository and where", from scratch.
+
+Write the answer down once, in the file the agent already reads at the start
+of a run. For claude that is CLAUDE.md at the root of the repository. Give it:
+
+- one line per directory saying what belongs in it
+- the commands to build, test and lint
+- where the conventions of the project are written
+- the few files that a person new to the code would open first
+
+Keep it at the level of a directory rather than a file. A map that names files
+is wrong as soon as a file is added, and an agent that trusts a wrong map
+spends more than one with no map at all. A map at the level of a directory
+goes out of date only when the shape of the project changes, and the signal
+that it has is a run that goes looking in the wrong place.
+
+Two smaller things help as well. Tell the agent in the ticket which files the
+work touches, when you already know. And prefer a ticket that names one change
+over a ticket that asks the agent to go and find out what needs changing,
+because the second pays the cost of the search inside the run.
+
 ## Documents
 
 - [Technical document](docs/TECHNICAL_DESIGN.md)
