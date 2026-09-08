@@ -58,7 +58,7 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project the ticket is for, when it is not this one")
+		"the directory of the project the ticket is for.  Defaults to current working directory.")
 	return cmd
 }
 
