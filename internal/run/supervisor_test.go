@@ -90,15 +90,10 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 }
 
 // A supervisor starts the next ticket when its own run ends, so two can reach
-// one ticket at the same time. The worktree is made first here, because a worktree
-// that git refuses would hide which layer does the refusing: with it already
-// there, only the database is left to say no.
+// one ticket at the same time. The claim is the first thing each one does, so
+// the database is what refuses the second.
 func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	ticket := testfix.ReadTicket(t, dataDir, id)
-	if _, err := Worktree(dataDir, ticket); err != nil {
-		t.Fatal(err)
-	}
 
 	agent := fakeAgent(t, "exit 0")
 	var wg sync.WaitGroup
@@ -128,6 +123,61 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	}
 	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Running {
 		t.Errorf("status = %q, want %q", got.Status, store.Running)
+	}
+}
+
+// A ticket in running is one that a different supervisor holds. The claim is
+// the first thing Start does, so the refusal comes before any worktree, and
+// the run the other supervisor is keeping is left as it was.
+func TestStartRefusesATicketThatIsAlreadyRunning(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Start(s, id, fakeAgent(t, "exit 0"))
+
+	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
+		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+	held, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !held.EndedAt.IsZero() {
+		t.Errorf("the refused start ended the run of the supervisor that holds the ticket at %v", held.EndedAt)
+	}
+	if _, err := os.Stat(WorktreePath(dataDir, id)); err == nil {
+		t.Error("the refused start made a worktree")
+	}
+}
+
+// The supervisor claims before it makes its worktree, because the claim is
+// what gives one ticket to one supervisor. A ticket whose worktree git will
+// not make is therefore already claimed, and the supervisor that holds it is
+// about to stop, so it marks the ticket failed and ends its run. Left in
+// running, the ticket would hold the queue with nothing working on it.
+func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	if err := os.RemoveAll(testfix.ReadTicket(t, dataDir, id).Project.Path); err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+
+	if err := Start(s, id, fakeAgent(t, "exit 0")); err == nil {
+		t.Fatal("err = nil, want the failure to make the worktree")
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id).Status; got != store.Failed {
+		t.Errorf("status = %q, want %q", got, store.Failed)
+	}
+	failed, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.EndedAt.IsZero() {
+		t.Error("the run of a ticket that never started has no end time")
 	}
 }
 

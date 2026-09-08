@@ -15,27 +15,43 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Start runs the ticket with the given id: it creates the worktree and its
-// branch, claims the ticket for this run, then runs the agent in the worktree
-// and waits for it to exit. What the agent writes goes to a log below
-// runs/<id>, the session id it reports goes on the ticket, and the time it
-// exits and its exit code go on the row of the run.
+// Start runs the ticket with the given id: it claims the ticket for this run,
+// creates the worktree and its branch, then runs the agent in the worktree and
+// waits for it to exit. What the agent writes goes to a log below runs/<id>,
+// the session id it reports goes on the ticket, and the time it exits and its
+// exit code go on the row of the run.
 //
-// The worktree is created first. If git refuses, the ticket stays queued where
-// you can see it, rather than sitting in running with nowhere to work.
+// The claim comes first, and it refuses a ticket that is not queued. A ticket
+// in running is one that a different supervisor holds, and this one stops
+// rather than run a second agent on the same worktree.
 func Start(s *store.Store, id int64, agent adapters.Adapter) error {
-	dataDir := s.DataDir()
 	ticket, err := s.Ticket(id)
-	if err != nil {
-		return err
-	}
-
-	worktree, err := Worktree(dataDir, ticket)
 	if err != nil {
 		return err
 	}
 	if _, err := s.Claim(id, branch(id, ticket.Title)); err != nil {
 		return err
+	}
+	return supervise(s, ticket, agent)
+}
+
+// noExitCode is the exit code of a run that ended with no process of its own
+// to give one. os/exec gives the same for a process that a signal ended.
+const noExitCode = -1
+
+// supervise works the ticket that the caller has claimed: it makes the
+// worktree and runs the agent in it.
+//
+// A worktree that git will not make ends the run before it starts. The ticket
+// is claimed by then, so this marks it failed and ends the run: a ticket left
+// in running would hold the queue with no supervisor working on it.
+func supervise(s *store.Store, ticket store.Ticket, agent adapters.Adapter) error {
+	dataDir := s.DataDir()
+	id := ticket.ID
+
+	worktree, err := Worktree(dataDir, ticket)
+	if err != nil {
+		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(id, noExitCode))
 	}
 
 	log, err := openLog(dataDir, id)

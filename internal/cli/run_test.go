@@ -116,11 +116,10 @@ func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
 	}
 }
 
-// A run that failed before it claimed its ticket leaves that ticket first in
-// the queue. If it then started the next ticket, it would start that same
-// ticket again, and each failure would start the next failure without end.
-// The repository is removed so the worktree cannot be made, which is a
-// failure before the claim.
+// A run that could not start leaves the queue where it is. What stopped it is
+// the repository of the project or the database, and a run started after it
+// would meet the same fault. The repository is removed here, so git cannot
+// make the worktree.
 func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, id, repo := queuedTicket(t, dataDir)

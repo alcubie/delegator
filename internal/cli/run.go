@@ -48,9 +48,9 @@ func runCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			// A run that could not start does not start the next one: the
-			// first ticket of the queue is the one that just failed, and the
-			// chain would start it again without end.
+			// A run that could not start does not start the next one. What
+			// stopped it is the database or the repository of the project,
+			// and the next run would meet the same fault.
 			return store.With(dataDir, func(s *store.Store) error {
 				if err := run.Start(s, id, agent); err != nil {
 					return err
