@@ -2,7 +2,9 @@ package cli
 
 import (
 	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,18 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
+
+// projectPath returns the path that a ticket made in dir writes to its project.
+// git gives it, and a test that built the path itself would pass on a machine
+// whose temporary directory is a symbolic link and fail on one where it is not.
+func projectPath(t *testing.T, dir string) string {
+	t.Helper()
+	root, err := project.Root(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
 
 // projectRows returns each project row of a data directory.
 func projectRows(t *testing.T, dataDir string) []store.Project {
@@ -78,6 +92,106 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	}
 	if want := "Remove staging infrastructure"; queue[0].Title != want {
 		t.Errorf("title = %q, want %q", queue[0].Title, want)
+	}
+}
+
+// The flag --project names the repository the ticket is for, so a person or an
+// agent in another directory can file a ticket without leaving it.
+func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	here := testfix.Repo(t, repoBranch)
+	elsewhere := testfix.Repo(t, "release")
+
+	out, err := runIn(t, dataDir, here, "ticket", "--project", elsewhere, "Remove staging infrastructure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "1\n" {
+		t.Errorf("the command wrote %q, want %q", out, "1\n")
+	}
+
+	rows := projectRows(t, dataDir)
+	if len(rows) != 1 {
+		t.Fatalf("the database holds %d projects, want 1", len(rows))
+	}
+	if want := projectPath(t, elsewhere); rows[0].Path != want {
+		t.Errorf("path = %q, want %q", rows[0].Path, want)
+	}
+}
+
+// The editor form takes the flag too. The title comes from the editor and the
+// project from the flag.
+func TestRunTicketWithAProjectAndNoArgumentsOpensTheEditor(t *testing.T) {
+	dataDir := t.TempDir()
+	withEditor(t, "Remove staging infrastructure\n")
+	elsewhere := testfix.Repo(t, "release")
+
+	if _, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", elsewhere); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := projectRows(t, dataDir)
+	if want := projectPath(t, elsewhere); len(rows) != 1 || rows[0].Path != want {
+		t.Errorf("the projects are %v, want the one at %q", rows, want)
+	}
+}
+
+// A path that is not absolute starts at the directory dg runs in, which is what
+// a person who typed it at a shell meant.
+func TestRunTicketWithARelativeProject(t *testing.T) {
+	dataDir := t.TempDir()
+	here := testfix.Repo(t, repoBranch)
+	elsewhere := testfix.Repo(t, "release")
+	relative, err := filepath.Rel(here, elsewhere)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, here, "ticket", "--project", relative, "Remove staging infrastructure"); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := projectRows(t, dataDir)
+	if want := projectPath(t, elsewhere); len(rows) != 1 || rows[0].Path != want {
+		t.Errorf("the projects are %v, want the one at %q", rows, want)
+	}
+}
+
+// A --project that names nothing costs no ticket, and the error is the path and
+// not a sentence about git.
+func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
+	dataDir := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "nowhere")
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", missing, "Remove staging infrastructure")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v, want a path that is not there", err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("the error is %q, and does not name %q", err, missing)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+}
+
+// A --project that names a file is not a project either.
+func TestRunTicketWithAProjectThatIsAFile(t *testing.T) {
+	dataDir := t.TempDir()
+	file := filepath.Join(t.TempDir(), "ticket.md")
+	if err := os.WriteFile(file, nil, filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", file, "Remove staging infrastructure")
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	if want := file + " is not a directory"; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
 	}
 }
 

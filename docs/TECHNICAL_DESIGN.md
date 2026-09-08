@@ -646,7 +646,7 @@ installer.
 
 | Command | Function |
 |---|---|
-| `dg ticket [title] [body]` | Add a ticket. With no arguments, it opens `$EDITOR`. |
+| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. |
 | `dg` | Show the inbox. |
 | `dg show <id>` | Show one ticket and its variables. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,20 +27,24 @@ var ErrNoTitle = errors.New("the ticket must have a title")
 // editor of the person, with one it takes the title, and with two it takes the
 // title and the prose.
 func ticketCommand(dataDir, workDir string) *cobra.Command {
-	return &cobra.Command{
+	var projectDir string
+	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
 		Short: "Add a ticket. With no arguments, it opens $EDITOR.",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := ticketProject(workDir, projectDir)
+			if err != nil {
+				return err
+			}
 			var id int64
-			var err error
 			switch len(args) {
 			case 0:
-				id, err = TicketFromEditor(dataDir, workDir)
+				id, err = TicketFromEditor(dataDir, dir)
 			case 1:
-				id, err = Ticket(dataDir, workDir, args[0], "")
+				id, err = Ticket(dataDir, dir, args[0], "")
 			case 2:
-				id, err = Ticket(dataDir, workDir, args[0], args[1])
+				id, err = Ticket(dataDir, dir, args[0], args[1])
 			default:
 				return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
 			}
@@ -52,6 +57,35 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"the directory of the project the ticket is for, when it is not this one")
+	return cmd
+}
+
+// ticketProject returns the directory whose project the new ticket belongs to.
+// It is the directory dg runs in, and the flag --project names another one. A
+// path that is not absolute is relative to the directory dg runs in, which is
+// what the person who typed it meant.
+//
+// A directory that is not there is an error here rather than at project.Root,
+// which asks git and would answer that a path nobody can find is not under
+// version control.
+func ticketProject(workDir, flag string) (string, error) {
+	if flag == "" {
+		return workDir, nil
+	}
+	dir := flag
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(workDir, dir)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", dir)
+	}
+	return dir, nil
 }
 
 // Ticket makes a ticket for the project that holds workDir, and puts it at the
