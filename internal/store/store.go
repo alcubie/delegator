@@ -711,6 +711,65 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 	return runID, nil
 }
 
+// ErrNoRoom shows that the queue had no ticket for a supervisor: the queue is
+// empty or paused, or a ticket that holds the queue is in running or in ready.
+// It is the ordinary end of a supervisor that a trigger started for a queue
+// that has since filled its room, and not a fault.
+var ErrNoRoom = errors.New("no ticket in the queue has room to run")
+
+// nextToClaim selects the ticket that a supervisor takes: the first of the
+// queue, and only while the queue runs and no other ticket holds it. A ticket
+// in running holds the queue because one run goes at a time, and a ticket in
+// ready holds it because the person has not examined that work yet.
+const nextToClaim = `
+	SELECT id FROM tickets
+	WHERE status = 'queued' AND position IS NOT NULL
+	  AND (SELECT running FROM queue_state WHERE id = 1)
+	  AND NOT EXISTS (SELECT 1 FROM tickets WHERE status IN ('running', 'ready'))
+	ORDER BY position
+	LIMIT 1`
+
+// ClaimNext claims the first ticket of the queue for this process, and returns
+// the ticket it claimed and the id of the run it wrote. The read of the queue
+// and the claim are one transaction, so two supervisors that start at the same
+// time cannot take the same ticket: the second one reads the queue after the
+// first one has committed, and finds the ticket in running. It gives ErrNoRoom
+// when the queue holds nothing for it.
+//
+// branch gives the name of the branch for the ticket, because only the
+// transaction knows which ticket that is. It runs while the transaction holds
+// the writer lock, so it must do no work of its own on the database.
+func (s *Store) ClaimNext(branch func(Ticket) string) (Ticket, int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	defer tx.Rollback()
+
+	var id int64
+	err = tx.QueryRow(nextToClaim).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Ticket{}, 0, ErrNoRoom
+	}
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	t, err := ticket(tx, id)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	t.Branch = branch(t)
+	runID, err := claim(tx, id, t.Branch)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Ticket{}, 0, err
+	}
+	t.Status = Running
+	return t, runID, nil
+}
+
 // claim is the writing of Claim without the transaction, so a caller that
 // reads the queue in the same one can do all of it together.
 func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
