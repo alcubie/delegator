@@ -16,30 +16,19 @@ import (
 //
 // It returns once the program has started, and does not wait for it: the
 // caller is a command a person typed, or a supervisor that is about to exit,
-// and neither should stay alive for the length of a run. One ticket at a time:
-// a ticket in running or in ready, whatever its project, means nothing starts.
-// A ticket in ready is work the person has not examined yet, and the queue
-// waits for them to close it.
+// and neither should stay alive for the length of a run. What room means is in
+// the store, with the claim that asks the same question: one ticket at a time,
+// and a paused queue starts nothing.
 //
 // launch returns the command that starts a supervisor. dg passes its own
 // executable with "run", and a test passes something it can observe.
 func Next(s *store.Store, launch func() *exec.Cmd) error {
-	running, err := s.IsQueueRunning()
+	room, err := s.HasRoom()
 	if err != nil {
 		return err
 	}
-	if !running {
+	if !room {
 		return nil
-	}
-
-	open, err := s.OpenTickets()
-	if err != nil {
-		return err
-	}
-	for _, t := range open {
-		if t.Status == store.Running || t.Status == store.Ready {
-			return nil
-		}
 	}
 
 	queue, err := s.ListQueue()
