@@ -1,6 +1,7 @@
 // The text of one ticket for a terminal. dg show gives a person the fields that
 // a run wrote, the four variables that connect the ticket to its work, and the
-// prose that the person wrote.
+// prose that the person wrote. A --*-only flag gives one of those values on a
+// line of its own, for the person who is writing another command line with it.
 
 package cli
 
@@ -204,10 +205,49 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, prose 
 	}
 }
 
+// onlyField names the one field that a --*-only flag asks for. The empty
+// value is no such flag, and dg show writes the whole ticket.
+type onlyField string
+
+const (
+	onlyNone     onlyField = ""
+	onlyProject  onlyField = "project"
+	onlyTicket   onlyField = "ticket"
+	onlyWorktree onlyField = "worktree"
+	onlyBranch   onlyField = "branch"
+	onlySession  onlyField = "session"
+)
+
+// writeOnly writes the one field a --*-only flag asks for, and nothing else.
+// The value goes out as the person wrote it into the next command line: no
+// label, no wrap and no tilde, because a shell does not expand a tilde that
+// came from a variable. A field with no value writes no line, as the whole
+// ticket leaves out the row of a field that has none.
+func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onlyField) {
+	var value string
+	switch only {
+	case onlyProject:
+		value = t.Project.Path
+	case onlyTicket:
+		value = proseFile(dataDir, t.ID)
+	case onlyWorktree:
+		value = worktree
+	case onlyBranch:
+		value = t.Branch
+	case onlySession:
+		value = t.Session
+	}
+	if value == "" {
+		return
+	}
+	fmt.Fprintln(out, value)
+}
+
 // showTicket reads one ticket and writes it. The fields come from the database,
 // and the prose comes from the file, because the person owns the prose and an
-// editor opens a file and not a row.
-func showTicket(out io.Writer, dataDir string, id int64) error {
+// editor opens a file and not a row. only names the one field to write in
+// place of the whole ticket.
+func showTicket(out io.Writer, dataDir string, id int64, only onlyField) error {
 	return store.With(dataDir, func(s *store.Store) error {
 
 		ticket, err := s.Ticket(id)
@@ -230,14 +270,58 @@ func showTicket(out io.Writer, dataDir string, id int64) error {
 			worktree = ""
 		}
 
+		if only != onlyNone {
+			writeOnly(out, dataDir, worktree, ticket, only)
+			return nil
+		}
+
 		writeTicket(out, dataDir, worktree, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
 		return nil
 	})
 }
 
+// onlyFlag is one --*-only flag. asks is the field of that flag, and field is
+// the one field dg show writes, which the five flags share. pflag calls Set in
+// the order that the person typed the flags, so the first of them takes the
+// field and the rest find it taken.
+type onlyFlag struct {
+	field *onlyField
+	asks  onlyField
+}
+
+func (f onlyFlag) String() string { return strconv.FormatBool(*f.field == f.asks) }
+
+// Type is bool, so the help gives the flag no value to write after it.
+func (f onlyFlag) Type() string { return "bool" }
+
+func (f onlyFlag) Set(value string) error {
+	on, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+	if on && *f.field == onlyNone {
+		*f.field = f.asks
+	}
+	return nil
+}
+
+// onlyFlags is each --*-only flag, with the words that its line of the help
+// gives for it.
+var onlyFlags = []struct {
+	field onlyField
+	what  string
+}{
+	{onlyProject, "the directory of the project"},
+	{onlyTicket, "the file that holds the prose"},
+	{onlyWorktree, "the directory the run works in"},
+	{onlyBranch, "the branch of the work"},
+	{onlySession, "the session of the last run"},
+}
+
 // showCommand returns the command dg show.
 func showCommand(dataDir string) *cobra.Command {
-	return &cobra.Command{
+	var only onlyField
+	cmd := &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show the details of a ticket.",
 		Args:  cobra.ExactArgs(1),
@@ -246,7 +330,15 @@ func showCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			return showTicket(cmd.OutOrStdout(), dataDir, id)
+			return showTicket(cmd.OutOrStdout(), dataDir, id, only)
 		},
 	}
+	for _, flag := range onlyFlags {
+		name := string(flag.field) + "-only"
+		usage := fmt.Sprintf("write %s and nothing else", flag.what)
+		cmd.Flags().Var(onlyFlag{field: &only, asks: flag.field}, name, usage)
+		// The flag takes no value, as a flag of cobra's own bool does.
+		cmd.Flags().Lookup(name).NoOptDefVal = "true"
+	}
+	return cmd
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -523,5 +524,112 @@ func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A --*-only flag writes one field and nothing else, in the form that another
+// command line takes: no label, no wrap and no tilde.
+func TestWriteOnlyGivesOneField(t *testing.T) {
+	ticket := store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api"},
+		Branch:  "delegator/4-remove-the-staging-app",
+		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+	}
+	tests := []struct {
+		only onlyField
+		want string
+	}{
+		{onlyProject, "/projects/web-api"},
+		{onlyTicket, "/data/tickets/4.md"},
+		{onlyWorktree, "/data/worktrees/4"},
+		{onlyBranch, "delegator/4-remove-the-staging-app"},
+		{onlySession, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"},
+	}
+	for _, test := range tests {
+		var out bytes.Buffer
+		writeOnly(&out, "/data", "/data/worktrees/4", ticket, test.only)
+		if got, want := out.String(), test.want+"\n"; got != want {
+			t.Errorf("--%s-only wrote %q, want %q", test.only, got, want)
+		}
+	}
+}
+
+// A field with no value writes no line. The text form leaves such a row out,
+// and a line with nothing on it reads as a value that failed to arrive.
+func TestWriteOnlyWithNoValueWritesNothing(t *testing.T) {
+	var out bytes.Buffer
+	writeOnly(&out, "/data", "", store.Ticket{ID: 4}, onlyWorktree)
+	if got := out.String(); got != "" {
+		t.Errorf("--worktree-only wrote %q for a worktree that is not on disk, want nothing", got)
+	}
+}
+
+// A path below the home of the person keeps the home. The text form writes a
+// tilde, and a shell that takes the path from a variable does not expand one.
+func TestWriteOnlyKeepsTheHomeOfAPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, "projects", "web-api")
+
+	var out bytes.Buffer
+	writeOnly(&out, "/data", "", store.Ticket{ID: 4, Project: store.Project{Path: path}}, onlyProject)
+	if got, want := out.String(), path+"\n"; got != want {
+		t.Errorf("--project-only wrote %q, want %q", got, want)
+	}
+}
+
+func TestRunShowWithAnOnlyFlagGivesTheFieldAlone(t *testing.T) {
+	dataDir := t.TempDir()
+	s, id, repo := readyTicket(t, dataDir)
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		flag string
+		want string
+	}{
+		{"--project-only", repo},
+		{"--ticket-only", proseFile(dataDir, id)},
+		{"--worktree-only", run.WorktreePath(dataDir, id)},
+		{"--branch-only", ticket.Branch},
+	}
+	for _, test := range tests {
+		out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id), test.flag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := test.want + "\n"; out != want {
+			t.Errorf("dg show %s wrote %q, want %q", test.flag, out, want)
+		}
+	}
+}
+
+// Two --*-only flags are one more than the person needs, and the first of them
+// on the command line is the one that dg show answers.
+func TestRunShowWithTwoOnlyFlagsTakesTheFirst(t *testing.T) {
+	dataDir := t.TempDir()
+	s, id, repo := readyTicket(t, dataDir)
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id), "--branch-only", "--project-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ticket.Branch + "\n"; out != want {
+		t.Errorf("dg show --branch-only --project-only wrote %q, want %q", out, want)
+	}
+
+	out, err = runIn(t, dataDir, repo, "show", fmt.Sprint(id), "--project-only", "--branch-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := repo + "\n"; out != want {
+		t.Errorf("dg show --project-only --branch-only wrote %q, want %q", out, want)
 	}
 }
