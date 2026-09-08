@@ -47,30 +47,26 @@ func runCommand(dataDir string) *cobra.Command {
 		Hidden: true,
 		Args:   cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// With no id the supervisor reads the queue and claims in one
+			// transaction, which is what a trigger starts; with one, a person
+			// named the ticket.
+			start := func(s *store.Store) error { return run.StartNext(s, agent) }
+			if len(args) == 1 {
+				id, err := strconv.ParseInt(args[0], 10, 64)
+				if err != nil {
+					return fmt.Errorf("%q is not the id of a ticket", args[0])
+				}
+				start = func(s *store.Store) error { return run.Start(s, id, agent) }
+			}
 			// A run that could not start does not start the next one. What
 			// stopped it is the database or the repository of the project,
 			// and the next run would meet the same fault.
 			return store.With(dataDir, func(s *store.Store) error {
-				if err := startRun(s, args); err != nil {
+				if err := start(s); err != nil {
 					return err
 				}
 				return run.Next(s, launch)
 			})
 		},
 	}
-}
-
-// startRun runs the ticket that the argument of dg run names, or the first
-// ticket of the queue when there is no argument. With no argument the
-// supervisor reads the queue and claims in one transaction, which is what a
-// trigger starts; with one, a person named the ticket.
-func startRun(s *store.Store, args []string) error {
-	if len(args) == 0 {
-		return run.StartNext(s, agent)
-	}
-	id, err := strconv.ParseInt(args[0], 10, 64)
-	if err != nil {
-		return fmt.Errorf("%q is not the id of a ticket", args[0])
-	}
-	return run.Start(s, id, agent)
 }
