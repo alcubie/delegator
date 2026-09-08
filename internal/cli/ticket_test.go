@@ -7,8 +7,19 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
+
+// projectRows returns each project row of a data directory.
+func projectRows(t *testing.T, dataDir string) []store.Project {
+	t.Helper()
+	rows, err := testfix.OpenStore(t, dataDir).Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
 
 func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	dataDir := t.TempDir()
@@ -139,10 +150,7 @@ func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	projects, err := testfix.OpenStore(t, dataDir).Projects()
-	if err != nil {
-		t.Fatal(err)
-	}
+	projects := projectRows(t, dataDir)
 	if len(projects) != 1 {
 		t.Fatalf("the database holds %d projects, want 1", len(projects))
 	}
@@ -164,10 +172,7 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	projects, err := testfix.OpenStore(t, dataDir).Projects()
-	if err != nil {
-		t.Fatal(err)
-	}
+	projects := projectRows(t, dataDir)
 	if len(projects) != 1 {
 		t.Errorf("the database holds %d projects, want 1", len(projects))
 	}
