@@ -1128,7 +1128,7 @@ func setStarted(t *testing.T, s *Store, runID int64, started string) {
 // and holds the zero time.
 func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 	s, ids := threeTickets(t)
-	if err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
 		t.Fatal(err)
 	}
 	setStarted(t, s, runRows(t, s, ids[0])[0].id, "2026-08-28T09:30:00Z")
@@ -1155,7 +1155,7 @@ func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 // would give the inbox a duration of hours for a run of a minute.
 func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []TicketStatus{Failed, Queued} {
@@ -1163,7 +1163,7 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -1422,7 +1422,7 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	s, id := oneTicket(t)
 	before := time.Now().UTC().Truncate(time.Second)
 
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1445,18 +1445,52 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	}
 }
 
+// A caller that writes on its run names the id, so Claim gives back the id of
+// the row it wrote and not the count of rows or nothing at all. The second
+// claim of a ticket is what tells those apart: it writes one row, and that row
+// is the second.
+func TestClaimGivesTheIDOfTheRunItWrote(t *testing.T) {
+	s, id := oneTicket(t)
+	first, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Failed, Queued} {
+		if err := s.ChangeStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	second, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows := runRows(t, s, id)
+	if len(rows) != 2 {
+		t.Fatalf("runs = %+v, want two", rows)
+	}
+	if first != rows[0].id || second != rows[1].id {
+		t.Errorf("the claims gave the run ids %d and %d, want %d and %d",
+			first, second, rows[0].id, rows[1].id)
+	}
+}
+
 // Two supervisors can reach one ticket, and the one that loses writes nothing:
 // the row of runs is below the transaction of the change of state, so a claim
 // that the state machine refuses leaves no run behind.
 func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 
-	err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
 	if !errors.Is(err, ErrInvalidTicketStateChange) {
 		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+	if runID != 0 {
+		t.Errorf("run id = %d, want 0 from a claim that wrote nothing", runID)
 	}
 
 	if runs := runRows(t, s, id); len(runs) != 1 {
@@ -1468,7 +1502,7 @@ func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 // and it asks with the process id and the start time of the run.
 func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -1496,7 +1530,7 @@ func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 // process id belongs to nobody or to a different program by now.
 func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []TicketStatus{Failed, Queued} {
@@ -1504,7 +1538,7 @@ func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -1542,7 +1576,7 @@ func TestRunOnATicketThatHasNoRun(t *testing.T) {
 func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	for _, exitCode := range []int{0, 3} {
 		s, id := oneTicket(t)
-		if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 			t.Fatal(err)
 		}
 		before := time.Now().UTC().Truncate(time.Second)
@@ -1586,7 +1620,7 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 // is going from one that ended with 0.
 func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1603,7 +1637,7 @@ func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
 // The run of an earlier claim keeps what it has.
 func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
 	s, id := oneTicket(t)
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []TicketStatus{Failed, Queued} {
@@ -1611,7 +1645,7 @@ func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
 

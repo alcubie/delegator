@@ -34,7 +34,7 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	if err != nil {
 		return err
 	}
-	if err := s.Claim(id, branch(id, ticket.Title)); err != nil {
+	if _, err := s.Claim(id, branch(id, ticket.Title)); err != nil {
 		return err
 	}
 

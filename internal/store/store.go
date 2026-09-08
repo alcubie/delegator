@@ -674,29 +674,43 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 // racing for the same ticket finds it already running, gets
 // ErrInvalidTicketStateChange, and writes nothing.
 //
+// It returns the id of the row it wrote, which is the run the caller holds.
+// Anything the caller writes on that run later names the id, because the last
+// run of a ticket is not always this one: dg restart takes a ticket that
+// failed and claims it again, and a supervisor still working on the run before
+// it would otherwise write on the row of the new one.
+//
 // Create the worktree before calling this, never inside it: the transaction
 // holds SQLite's writer lock, and git worktree add runs long enough to park
 // every other dg command on the busy_timeout.
-func (s *Store) Claim(id int64, branch string) error {
+func (s *Store) Claim(id int64, branch string) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 
 	if err := changeStatus(tx, id, Running); err != nil {
-		return err
+		return 0, err
 	}
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := tx.Exec(
+	result, err := tx.Exec(
 		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
 		id, os.Getpid(), rfc3339(time.Now()),
-	); err != nil {
-		return err
+	)
+	if err != nil {
+		return 0, err
 	}
-	return tx.Commit()
+	runID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return runID, nil
 }
 
 // ErrNoRun shows that a ticket has no run: no supervisor has claimed it, or no
