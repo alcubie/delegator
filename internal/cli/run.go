@@ -17,20 +17,23 @@ import (
 // put the fake agent in its place.
 var agent adapters.Adapter = adapters.Claude{}
 
-// launch returns the command that starts a run for one ticket: this program,
-// dg, with "run <id>". It is a variable so that a test can put a program it can
+// launch returns the command that starts a supervisor: this program, dg, with
+// "run" and no id. It is a variable so that a test can put a program it can
 // observe in its place; the real one would start the test binary.
 var launch = dgRun
 
-// dgRun returns dg run <id> for the executable that is running now. A dg
-// started as ./dg from a build directory is not on the PATH, and the
-// executable that is running is the one dg the person has.
-func dgRun(id int64) *exec.Cmd {
+// dgRun returns dg run for the executable that is running now. A dg started as
+// ./dg from a build directory is not on the PATH, and the executable that is
+// running is the one dg the person has.
+//
+// It names no ticket. The supervisor claims the ticket it works on, so a
+// trigger that named one would be reading the queue a second time.
+func dgRun() *exec.Cmd {
 	exe, err := os.Executable()
 	if err != nil {
 		exe = "dg"
 	}
-	return exec.Command(exe, "run", strconv.FormatInt(id, 10))
+	return exec.Command(exe, "run")
 }
 
 // runCommand returns the command dg run. It is hidden from dg help because
@@ -39,24 +42,35 @@ func dgRun(id int64) *exec.Cmd {
 // which is how a run is driven by hand.
 func runCommand(dataDir string) *cobra.Command {
 	return &cobra.Command{
-		Use:    "run <id>",
-		Short:  "Run one ticket: make its worktree, start the agent, and wait.",
+		Use:    "run [id]",
+		Short:  "Run a ticket: make its worktree, start the agent, and wait.",
 		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Args:   cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
-			}
 			// A run that could not start does not start the next one. What
 			// stopped it is the database or the repository of the project,
 			// and the next run would meet the same fault.
 			return store.With(dataDir, func(s *store.Store) error {
-				if err := run.Start(s, id, agent); err != nil {
+				if err := startRun(s, args); err != nil {
 					return err
 				}
 				return run.Next(s, launch)
 			})
 		},
 	}
+}
+
+// startRun runs the ticket that the argument of dg run names, or the first
+// ticket of the queue when there is no argument. With no argument the
+// supervisor reads the queue and claims in one transaction, which is what a
+// trigger starts; with one, a person named the ticket.
+func startRun(s *store.Store, args []string) error {
+	if len(args) == 0 {
+		return run.StartNext(s, agent)
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("%q is not the id of a ticket", args[0])
+	}
+	return run.Start(s, id, agent)
 }

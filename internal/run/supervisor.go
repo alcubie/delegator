@@ -35,6 +35,26 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	return supervise(s, ticket, agent)
 }
 
+// StartNext claims the first ticket of the queue for this run and works it,
+// the way Start works the ticket a person named. The read of the queue and the
+// claim are one transaction, so two supervisors that a trigger started at the
+// same time take two different tickets, or one takes a ticket and the other
+// finds none.
+//
+// A supervisor with nothing to claim stops and gives no error. The queue that
+// had room when the trigger counted it can be full by the time this one reads
+// it, and that is the ordinary end of the second supervisor.
+func StartNext(s *store.Store, agent adapters.Adapter) error {
+	ticket, _, err := s.ClaimNext(func(t store.Ticket) string { return branch(t.ID, t.Title) })
+	if errors.Is(err, store.ErrNoRoom) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return supervise(s, ticket, agent)
+}
+
 // noExitCode is the exit code of a run that ended with no process of its own
 // to give one. os/exec gives the same for a process that a signal ended.
 const noExitCode = -1

@@ -7,17 +7,23 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Next starts a run for the first ticket of the queue, if the queue has one
-// and no ticket is in running or ready. It returns once the program has
-// started, and does not wait for it: the caller is a command a person typed,
-// or a supervisor that is about to exit, and neither should stay alive for the
-// length of a run. One ticket at a time: a ticket in running or in ready,
-// whatever its project, means nothing starts. A ticket in ready is work the
-// person has not examined yet, and the queue waits for them to close it.
+// Next starts a supervisor, if the queue has a ticket and no ticket is in
+// running or ready. It names no ticket: the supervisor reads the queue and
+// claims a ticket for itself, in one transaction, so two triggers at the same
+// time cannot send two supervisors to one ticket. What Next decides is how
+// many supervisors to start, and a supervisor that finds no room by the time
+// it reads the queue stops.
 //
-// launch returns the command for one ticket. dg passes its own executable with
-// "run <id>", and a test passes something it can observe.
-func Next(s *store.Store, launch func(id int64) *exec.Cmd) error {
+// It returns once the program has started, and does not wait for it: the
+// caller is a command a person typed, or a supervisor that is about to exit,
+// and neither should stay alive for the length of a run. One ticket at a time:
+// a ticket in running or in ready, whatever its project, means nothing starts.
+// A ticket in ready is work the person has not examined yet, and the queue
+// waits for them to close it.
+//
+// launch returns the command that starts a supervisor. dg passes its own
+// executable with "run", and a test passes something it can observe.
+func Next(s *store.Store, launch func() *exec.Cmd) error {
 	running, err := s.IsQueueRunning()
 	if err != nil {
 		return err
@@ -43,7 +49,7 @@ func Next(s *store.Store, launch func(id int64) *exec.Cmd) error {
 	if len(queue) == 0 {
 		return nil
 	}
-	return detach(launch(queue[0].ID))
+	return detach(launch())
 }
 
 // detach starts cmd so that it outlives the program that started it. The

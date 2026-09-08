@@ -126,6 +126,51 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	}
 }
 
+// dg run with no id is what a trigger starts. The supervisor takes the first
+// ticket of the queue for itself and works it, so no trigger has to name one.
+func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	second := testfix.SecondTicket(t, dataDir)
+
+	if err := StartNext(testfix.OpenStore(t, dataDir), fakeAgent(t, "write made-by-the-agent done", "exit 0")); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket := testfix.ReadTicket(t, dataDir, id)
+	if ticket.Status != store.Running {
+		t.Errorf("status = %q, want %q", ticket.Status, store.Running)
+	}
+	if ticket.Branch != branch(id, "Add the thing") {
+		t.Errorf("branch = %q, want %q", ticket.Branch, branch(id, "Add the thing"))
+	}
+	made := filepath.Join(WorktreePath(dataDir, id), "made-by-the-agent")
+	if _, err := os.Stat(made); err != nil {
+		t.Errorf("the agent did not run in the worktree of the ticket it claimed: %v", err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, second).Status; got != store.Queued {
+		t.Errorf("the second ticket is %q, want %q", got, store.Queued)
+	}
+}
+
+// A trigger starts a supervisor for each free slot, and a supervisor that
+// finds the queue full or empty by the time it reads it has nothing to do. It
+// stops, and the trigger that started it reports no error.
+func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := StartNext(s, fakeAgent(t, "exit 0")); err != nil {
+		t.Fatalf("err = %v, want nil from a supervisor with nothing to claim", err)
+	}
+
+	if _, err := os.Stat(WorktreePath(dataDir, id)); err == nil {
+		t.Error("a supervisor with nothing to claim made a worktree")
+	}
+}
+
 // A ticket in running is one that a different supervisor holds. The claim is
 // the first thing Start does, so the refusal comes before any worktree, and
 // the run the other supervisor is keeping is left as it was.

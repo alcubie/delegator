@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 	// that is the test binary: every dg ticket in these tests would start a
 	// copy of the test binary, which would run these tests, which would start
 	// more. Tests that care what was launched put their own launch in place.
-	launch = func(int64) *exec.Cmd { return exec.Command("true") }
+	launch = func() *exec.Cmd { return exec.Command("true") }
 	// The shell that runs the tests may set either variable, and each test of
 	// --color=auto would then see its colour. A test that wants one sets it.
 	os.Unsetenv("NO_COLOR")
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 // useLaunch puts l in place of the launch of dg run, for one test. The tests
 // must replace it: the real launch starts this program's own executable, which
 // in a test is the test binary.
-func useLaunch(t *testing.T, l func(id int64) *exec.Cmd) {
+func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	t.Helper()
 	saved := launch
 	launch = l
@@ -80,6 +80,42 @@ func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	}
 }
 
+// dg run with no id is the command a trigger starts. It claims the first
+// ticket of the queue for itself, so no trigger has to read the queue and name
+// a ticket for it.
+func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := queuedTicket(t, dataDir)
+	second := testfix.SecondTicket(t, dataDir)
+	useAgent(t, fakeAgent(t, "write made-by-the-agent done", "exit 0"))
+
+	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Running {
+		t.Errorf("status = %q, want %q", ticket.Status, store.Running)
+	}
+	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
+	if _, err := os.Stat(made); err != nil {
+		t.Errorf("the agent did not run in the worktree of the first ticket: %v", err)
+	}
+	held, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held.PID != os.Getpid() {
+		t.Errorf("the run holds pid %d, want the supervisor's %d", held.PID, os.Getpid())
+	}
+	if got, err := s.Ticket(second); err != nil || got.Status != store.Queued {
+		t.Errorf("the second ticket is %q (err %v), want %q", got.Status, err, store.Queued)
+	}
+}
+
 // A person does not start a run; delegator does. The command stays out of
 // dg help so the help lists what a person types, and typing it still works.
 func TestRunIsHiddenFromTheHelp(t *testing.T) {
@@ -112,7 +148,7 @@ func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a run was started while a ticket is in ready: ticket %s", testfix.WaitFor(t, marker))
+		t.Error("a run was started while a ticket is in ready")
 	}
 }
 
@@ -135,6 +171,6 @@ func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a run was started after a failed start: ticket %s", testfix.WaitFor(t, marker))
+		t.Error("a run was started after a failed start")
 	}
 }

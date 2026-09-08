@@ -12,8 +12,11 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-func TestNextStartsTheFirstTicketOfTheQueue(t *testing.T) {
-	dataDir, first := queuedTicket(t, "the first")
+// Next names no ticket. It starts one supervisor, which claims the ticket it
+// works on, so the queue that Next reads is only how it decides whether to
+// start one at all.
+func TestNextStartsASupervisor(t *testing.T) {
+	dataDir, _ := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
 	launch, marker := testfix.RecordingLaunch(t)
 
@@ -21,13 +24,10 @@ func TestNextStartsTheFirstTicketOfTheQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := testfix.WaitFor(t, marker); got != fmt.Sprint(first) {
-		t.Errorf("started ticket %s, want %d", got, first)
-	}
+	testfix.WaitFor(t, marker)
 }
 
-// An empty queue starts nothing. The launch is what a supervisor would exec, so
-// a start with no ticket would be a dg run with no id.
+// An empty queue starts nothing.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
@@ -39,7 +39,7 @@ func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a program was started for an empty queue: %s", testfix.WaitFor(t, marker))
+		t.Error("a program was started for an empty queue")
 	}
 }
 
@@ -60,7 +60,7 @@ func TestNextWithARunActiveStartsNothing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a second run was started while one is active: ticket %s", testfix.WaitFor(t, marker))
+		t.Error("a second run was started while one is active")
 	}
 }
 
@@ -84,7 +84,7 @@ func TestNextWithATicketInReadyStartsNothing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a run was started while a ticket is in ready: ticket %s", testfix.WaitFor(t, marker))
+		t.Error("a run was started while a ticket is in ready")
 	}
 }
 
@@ -102,7 +102,7 @@ func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
-		t.Errorf("a run was started while the queue is paused %s", testfix.WaitFor(t, marker))
+		t.Error("a run was started while the queue is paused")
 	}
 }
 
@@ -113,7 +113,7 @@ func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	marker := filepath.Join(t.TempDir(), "pgid")
-	launch := func(id int64) *exec.Cmd {
+	launch := func() *exec.Cmd {
 		return exec.Command("sh", "-c", `ps -o pgid= -p $$ > "$1"`, "--", marker)
 	}
 
@@ -132,7 +132,7 @@ func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 func TestNextGivesTheProgramNoneOfItsOwnStreams(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	var started *exec.Cmd
-	launch := func(id int64) *exec.Cmd {
+	launch := func() *exec.Cmd {
 		started = exec.Command("true")
 		started.Stdin, started.Stdout, started.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return started
