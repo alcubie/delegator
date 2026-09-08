@@ -142,8 +142,9 @@ func shortHash(hash string) string {
 
 // writeTicket writes one ticket in full. started is the time that the last run
 // of the ticket began, and the zero time is a ticket that no supervisor has
-// claimed.
-func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, started, now time.Time) {
+// claimed. worktree is the directory the run works in, and the empty string is
+// a ticket whose worktree is not on disk.
+func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, prose string, started, now time.Time) {
 	// A ready ticket names the time it became ready, and a running ticket names
 	// how long its run has been going, which is the clock the inbox gives on
 	// the same run. dg finish writes completed, and no command takes it away,
@@ -182,7 +183,9 @@ func writeTicket(out io.Writer, dataDir string, t store.Ticket, prose string, st
 	home, _ := os.UserHomeDir()
 	writeField(out, "project", tilde(t.Project.Path, home))
 	writeField(out, "ticket", tilde(proseFile(dataDir, t.ID), home))
-	writeField(out, "worktree", tilde(run.WorktreePath(dataDir, t.ID), home))
+	if worktree != "" {
+		writeField(out, "worktree", tilde(worktree, home))
+	}
 	if t.Branch != "" {
 		writeField(out, "branch", t.Branch)
 	}
@@ -225,7 +228,15 @@ func showTicket(out io.Writer, dataDir string, id int64) error {
 			return err
 		}
 
-		writeTicket(out, dataDir, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
+		// A worktree is there from the start of a run until dg accept removes
+		// it, and a path to a directory that is not there reads as one a person
+		// can go to.
+		worktree := run.WorktreePath(dataDir, id)
+		if _, err := os.Stat(worktree); err != nil {
+			worktree = ""
+		}
+
+		writeTicket(out, dataDir, worktree, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
 		return nil
 	})
 }

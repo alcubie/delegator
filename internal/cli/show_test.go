@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -96,11 +97,12 @@ func TestTilde(t *testing.T) {
 
 // showTicketLines writes one ticket at testNow and returns each line of it.
 // started is the time the last run of the ticket began, and the zero time is a
-// ticket that no supervisor has claimed.
+// ticket that no supervisor has claimed. The worktree of the ticket is on
+// disk, which is what a ticket that a run has reached holds.
 func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, "/data", ticket, prose, started, testNow)
+	writeTicket(&out, "/data", fmt.Sprintf("/data/worktrees/%d", ticket.ID), ticket, prose, started, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -178,10 +180,50 @@ func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#1", title, "queued", body, "ticket", "worktree"} {
+	for _, want := range []string{"#1", title, "queued", body, "ticket"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg show does not hold %q:\n%s", want, out)
 		}
+	}
+}
+
+// A worktree is on disk from the start of a run until dg accept removes it.
+// The path of one that is not there names a directory the person cannot go to,
+// so a ticket in the queue gives no worktree line.
+func TestRunShowLeavesOutAWorktreeThatIsNotThere(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "worktree") {
+		t.Errorf("dg show holds a worktree for a ticket in the queue:\n%s", out)
+	}
+}
+
+func TestRunShowGivesTheWorktreeUntilAcceptTakesItAway(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := run.WorktreePath(dataDir, id); !strings.Contains(out, want) {
+		t.Errorf("dg show does not hold the worktree %q:\n%s", want, out)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(id)); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "worktree") {
+		t.Errorf("dg show holds a worktree that dg accept removed:\n%s", out)
 	}
 }
 
@@ -376,7 +418,7 @@ func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 func showCommit(t *testing.T, repo, hash string) string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, t.TempDir(), store.Ticket{
+	writeTicket(&out, t.TempDir(), "", store.Ticket{
 		ID:      4,
 		Project: store.Project{Path: repo},
 		Title:   "a title",
