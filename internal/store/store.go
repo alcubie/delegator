@@ -594,10 +594,21 @@ type Ticket struct {
 	Completed time.Time
 }
 
+// querier is the part of *sql.DB and *sql.Tx that one read needs, so a query
+// serves a caller inside a transaction and a caller outside one.
+type querier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // Ticket returns one ticket. It gives ErrNoTicket if the id holds none.
 func (s *Store) Ticket(id int64) (Ticket, error) {
+	return ticket(s.db, id)
+}
+
+// ticket is Ticket for any querier.
+func ticket(q querier, id int64) (Ticket, error) {
 	var t Ticket
-	err := s.db.QueryRow(`
+	err := q.QueryRow(`
 		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
@@ -690,6 +701,19 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 	}
 	defer tx.Rollback()
 
+	runID, err := claim(tx, id, branch)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return runID, nil
+}
+
+// claim is the writing of Claim without the transaction, so a caller that
+// reads the queue in the same one can do all of it together.
+func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
 	if err := changeStatus(tx, id, Running); err != nil {
 		return 0, err
 	}
@@ -703,14 +727,7 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	runID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return runID, nil
+	return result.LastInsertId()
 }
 
 // ErrNoRun shows that a ticket has no run: no supervisor has claimed it, or no
