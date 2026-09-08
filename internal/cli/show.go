@@ -215,22 +215,16 @@ func showTicket(out io.Writer, dataDir string, id int64) error {
 			return err
 		}
 
-		// A ticket that has no file of prose yet is not a fault of dg show.
 		prose, err := os.ReadFile(proseFile(dataDir, id))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 
-		// A ticket with no run gives ErrNoRun, and its zero start time is what
-		// writeTicket takes for a ticket that no supervisor has claimed.
 		lastRun, err := s.Run(id)
 		if err != nil && !errors.Is(err, store.ErrNoRun) {
 			return err
 		}
 
-		// A worktree is there from the start of a run until dg accept removes
-		// it, and a path to a directory that is not there reads as one a person
-		// can go to.
 		worktree := run.WorktreePath(dataDir, id)
 		if _, err := os.Stat(worktree); err != nil {
 			worktree = ""
