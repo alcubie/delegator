@@ -49,7 +49,7 @@ func TestNextWithARunActiveStartsNothing(t *testing.T) {
 	dataDir, first := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
-	if err := s.Claim(first, "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
 		t.Fatal(err)
 	}
 	launch, marker := testfix.RecordingLaunch(t)
@@ -70,7 +70,7 @@ func TestNextWithATicketInReadyStartsNothing(t *testing.T) {
 	dataDir, first := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
-	if err := s.Claim(first, "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(first, "abc123"); err != nil {

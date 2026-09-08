@@ -38,7 +38,7 @@ func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, s
 
 	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
 	testfix.GitIn(t, repo, "branch", branch)
-	if err := s.Claim(ticketID, branch); err != nil {
+	if _, err := s.Claim(ticketID, branch); err != nil {
 		t.Fatal(err)
 	}
 	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)
