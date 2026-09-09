@@ -774,6 +774,75 @@ func (s *Store) EndRun(ticketID int64, exitCode int) error {
 	return nil
 }
 
+// Reconcile marks failed each ticket in running whose supervisor is gone, and
+// gives its run the end time that the supervisor never wrote. It returns the
+// number of tickets it marked.
+//
+// A supervisor can stop with no report, from a crash or from a restart of the
+// computer, and a supervisor that is not there can write nothing, so only a
+// later command can correct the ticket it left in running. Each command does
+// this before its own work.
+//
+// dead answers for one run, and the caller owns the rule: this package holds
+// no way to ask the operating system about a program. The read and every write
+// are one transaction, so a command that runs beside a supervisor sees the
+// queue before the reconcile or after it, and never part way through.
+func (s *Store) Reconcile(dead func(Run) bool) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	runs, err := runningRuns(tx)
+	if err != nil {
+		return 0, err
+	}
+	marked := 0
+	for _, r := range runs {
+		if !dead(r) {
+			continue
+		}
+		if err := failRun(tx, r.TicketID, time.Now()); err != nil {
+			return 0, err
+		}
+		marked++
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return marked, nil
+}
+
+// runningRuns returns the last run of each ticket in running, which is the run
+// that holds the ticket. The rows are read into memory before the caller
+// writes, because one transaction gives one connection and a write on it would
+// wait for the rows to close.
+func runningRuns(tx *sql.Tx) ([]Run, error) {
+	rows, err := tx.Query(`
+		SELECT r.id, r.ticket_id, COALESCE(r.pid, 0), r.started_at, r.ended_at, r.exit_code
+		FROM runs r
+		JOIN tickets t ON t.id = r.ticket_id
+		WHERE t.status = ?
+		AND r.id = (SELECT MAX(id) FROM runs WHERE ticket_id = t.id)
+		ORDER BY r.ticket_id`, Running)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []Run
+	for rows.Next() {
+		var r Run
+		if err := rows.Scan(&r.ID, &r.TicketID, &r.PID,
+			timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode); err != nil {
+			return nil, err
+		}
+		runs = append(runs, r)
+	}
+	return runs, rows.Err()
+}
+
 // FailUnfinished marks a ticket failed when it is still running, and writes
 // the end time on its run when the run has none. A ticket in any other state
 // is left as it is, and that is not an error: dg finish made it ready, or a

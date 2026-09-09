@@ -233,6 +233,15 @@ func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	return runs
 }
 
+// askedRuns returns a dead for Reconcile that keeps each run it was asked
+// about, in the order of the asking, and answers that every one is alive.
+func askedRuns(asked *[]Run) func(Run) bool {
+	return func(r Run) bool {
+		*asked = append(*asked, r)
+		return false
+	}
+}
+
 // setEndedAt writes ended_at on the last run of a ticket, so that a test can
 // tell an end time that was there already from one that a call has just
 // written. Both would hold the same second otherwise.
@@ -1921,6 +1930,162 @@ func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 		}
 		if ticket.Status != status {
 			t.Errorf("status = %q, want %q", ticket.Status, status)
+		}
+	}
+}
+
+// A supervisor that stopped with no report leaves its ticket in running, and
+// only a later command can correct it. Reconcile is that correction: the
+// ticket becomes failed, and its run gets the end time it never wrote.
+func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC().Truncate(time.Second)
+
+	marked, err := s.Reconcile(func(Run) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked != 1 {
+		t.Errorf("Reconcile marked %d tickets, want 1", marked)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Failed {
+		t.Errorf("status = %q, want %q", ticket.Status, Failed)
+	}
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.EndedAt.Before(before) || run.EndedAt.After(time.Now()) {
+		t.Errorf("ended at = %s, want between %s and now", run.EndedAt, before)
+	}
+}
+
+// A supervisor that is alive holds its ticket, and the reconcile of a command
+// that runs beside it must leave the run alone.
+func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	marked, err := s.Reconcile(func(Run) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked != 0 {
+		t.Errorf("Reconcile marked %d tickets, want none", marked)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Running {
+		t.Errorf("status = %q, want %q", ticket.Status, Running)
+	}
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !run.EndedAt.IsZero() {
+		t.Errorf("ended at = %s, want no end: the run is going", run.EndedAt)
+	}
+}
+
+// The question is asked about the run, so Reconcile gives the whole row: the
+// process id to signal and the start time to compare with the boot time.
+func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(ids[1], "delegator/2-second"); err != nil {
+		t.Fatal(err)
+	}
+	// The second ticket ends in ready, so its run is over and no question
+	// belongs to it. The third was never claimed.
+	if err := s.FinishTicket(ids[1], "abc123"); err != nil {
+		t.Fatal(err)
+	}
+
+	var asked []Run
+	if _, err := s.Reconcile(askedRuns(&asked)); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(asked) != 1 {
+		t.Fatalf("Reconcile asked about %+v, want the run of ticket %d alone", asked, ids[0])
+	}
+	if asked[0].TicketID != ids[0] {
+		t.Errorf("Reconcile asked about ticket %d, want %d", asked[0].TicketID, ids[0])
+	}
+	if asked[0].PID != os.Getpid() {
+		t.Errorf("pid = %d, want %d", asked[0].PID, os.Getpid())
+	}
+	if asked[0].StartedAt.IsZero() {
+		t.Error("the run was given with no start time")
+	}
+}
+
+// A ticket that failed and was claimed again has one row for each claim, and
+// only the last one can still be alive.
+func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Failed, Queued} {
+		if err := s.ChangeStatus(id, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	last, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var asked []Run
+	if _, err := s.Reconcile(askedRuns(&asked)); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(asked) != 1 || asked[0].ID != last {
+		t.Errorf("Reconcile asked about %+v, want run %d alone", asked, last)
+	}
+}
+
+// Each dead run is marked in the one transaction, so no command sees the queue
+// part way through a reconcile.
+func TestReconcileMarksEachDeadRun(t *testing.T) {
+	s, ids := threeTickets(t)
+	for _, id := range ids[:2] {
+		if _, err := s.Claim(id, "delegator/branch"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	marked, err := s.Reconcile(func(Run) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked != 2 {
+		t.Errorf("Reconcile marked %d tickets, want 2", marked)
+	}
+	for _, id := range ids[:2] {
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Status != Failed {
+			t.Errorf("ticket %d is %q, want %q", id, ticket.Status, Failed)
 		}
 	}
 }
