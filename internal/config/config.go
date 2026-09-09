@@ -33,6 +33,14 @@ func (c Config) DoneWindow() time.Duration {
 	return time.Duration(c.DoneHours) * time.Hour
 }
 
+// Timeout is how long a run can take before delegator stops it. The name of
+// the key holds the unit, and this method is the one place that turns it into
+// a duration, so no caller multiplies by a minute of its own. A value of 0 is
+// no limit.
+func (c Config) Timeout() time.Duration {
+	return time.Duration(c.TimeoutMinutes) * time.Minute
+}
+
 // Dir returns the directory that holds config.toml. XDG_CONFIG_HOME names
 // it, and a person who has not set that variable gets the directory that the
 // XDG specification asks for.

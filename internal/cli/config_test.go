@@ -65,14 +65,7 @@ func TestACommandLeavesAConfigThatIsThereAsItIs(t *testing.T) {
 		{name: "a file that Load refuses", text: "run = 3\n", refused: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			configDir := testfix.XDGConfigDir(t)
-			path := filepath.Join(configDir, "config.toml")
-			if err := os.MkdirAll(configDir, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, []byte(tc.text), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			path := writeConfig(t, tc.text)
 
 			_, err := runIn(t, t.TempDir(), t.TempDir(), "pause")
 			if !tc.refused && err != nil {

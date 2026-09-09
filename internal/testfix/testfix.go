@@ -13,6 +13,7 @@
 package testfix
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
@@ -105,6 +108,63 @@ func SecondTicket(t *testing.T, dataDir string) int64 {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// FreePID returns a process id that no program holds, which is what the
+// reconcile sees for a supervisor that stopped. A child that has run and been
+// collected leaves its id free, and the system gives that id again only after
+// many thousands of other programs.
+func FreePID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd.Process.Pid
+}
+
+// StaleRun makes the last run of a ticket look like the run of a supervisor
+// that is gone, by putting a process id that no program holds on its row.
+func StaleRun(t *testing.T, dataDir string, ticketID int64) {
+	t.Helper()
+	setRunColumn(t, dataDir, ticketID, "pid", FreePID(t))
+}
+
+// AgeRun moves the start of the last run of a ticket that far into the past,
+// which is how a test reaches the timeout of a run without waiting for it.
+func AgeRun(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
+	t.Helper()
+	started := time.Now().Add(-age).UTC().Format(time.RFC3339)
+	setRunColumn(t, dataDir, ticketID, "started_at", started)
+}
+
+// setRunColumn writes one column of the last run of a ticket. It opens the
+// database itself, because no command can leave a run in the states above: a
+// claim writes the moment it happens and the id of the program that claims,
+// which in a test is the test, and the test can neither wait an hour nor crash
+// to make its own id free.
+func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, value any) {
+	t.Helper()
+	// The name of the file is the store's, and the store gives no way to
+	// reach the database it holds. The name of the column is this file's and
+	// never a test's, so it is safe in the text of the statement, where SQLite
+	// takes no parameter.
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	result, err := db.Exec(fmt.Sprintf(`
+		UPDATE runs SET %s = ?
+		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`, column),
+		value, ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
+		t.Fatalf("the %s of %d rows of ticket %d was written, want 1 row: %v", column, n, ticketID, err)
+	}
 }
 
 // XDGDataDir points XDG_DATA_HOME at a fresh directory for one test and

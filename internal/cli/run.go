@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/adapters"
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -37,7 +38,7 @@ func dgRun(id int64) *exec.Cmd {
 // delegator starts it and a person does not: a supervisor launches one for the
 // next ticket, and this is the program it launches. Typing it still works,
 // which is how a run is driven by hand.
-func runCommand(dataDir string) *cobra.Command {
+func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:    "run <id>",
 		Short:  "Run one ticket: make its worktree, start the agent, and wait.",
@@ -51,7 +52,7 @@ func runCommand(dataDir string) *cobra.Command {
 			// A run that could not start does not start the next one: the
 			// first ticket of the queue is the one that just failed, and the
 			// chain would start it again without end.
-			return store.With(dataDir, func(s *store.Store) error {
+			return withStore(dataDir, cfg, func(s *store.Store) error {
 				if err := run.Start(s, id, agent); err != nil {
 					return err
 				}

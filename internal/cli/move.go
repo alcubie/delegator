@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -31,7 +32,7 @@ func directionNames() []string {
 }
 
 // moveCommand returns the command dg move.
-func moveCommand(dataDir string) *cobra.Command {
+func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use: "move <id> <where>",
 		Short: "Move one ticket in the queue. <where> is " +
@@ -42,7 +43,7 @@ func moveCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			return store.With(dataDir, func(s *store.Store) error {
+			return withStore(dataDir, cfg, func(s *store.Store) error {
 
 				if move, there := directions[args[1]]; there {
 					return s.MoveTicket(id, move)

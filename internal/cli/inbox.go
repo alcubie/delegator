@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -194,10 +195,11 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 	}
 }
 
-// showInbox reads the tickets and writes the inbox. done is how far back DONE
-// reaches, and it comes from the config file.
-func showInbox(out io.Writer, dataDir string, mode colourMode, done time.Duration) error {
-	return store.With(dataDir, func(s *store.Store) error {
+// showInbox reads the tickets and writes the inbox. How far back DONE reaches
+// comes from the config file.
+func showInbox(out io.Writer, dataDir string, cfg *config.Config, mode colourMode) error {
+	done := cfg.DoneWindow()
+	return withStore(dataDir, cfg, func(s *store.Store) error {
 
 		now := time.Now()
 		box, err := inbox.Get(s, now.Add(-done))

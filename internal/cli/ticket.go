@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
@@ -26,7 +27,7 @@ var ErrNoTitle = errors.New("the ticket must have a title")
 // ticketCommand makes a ticket and shows its id. With no argument it opens the
 // editor of the person, with one it takes the title, and with two it takes the
 // title and the prose.
-func ticketCommand(dataDir, workDir string) *cobra.Command {
+func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
@@ -37,7 +38,7 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return store.With(dataDir, func(s *store.Store) error {
+			return withStore(dataDir, cfg, func(s *store.Store) error {
 				var id int64
 				var err error
 				switch len(args) {

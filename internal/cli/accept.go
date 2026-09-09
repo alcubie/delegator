@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -14,7 +15,7 @@ import (
 //
 // The worktree is removed inside the transaction that closes the ticket, so a
 // worktree git refuses leaves the ticket ready and a person sees it again.
-func acceptCommand(dataDir string) *cobra.Command {
+func acceptCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "accept <id>",
 		Short: "Close a ready ticket.",
@@ -24,7 +25,7 @@ func acceptCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			return store.With(dataDir, func(s *store.Store) error {
+			return withStore(dataDir, cfg, func(s *store.Store) error {
 
 				ticket, err := s.Ticket(id)
 				if err != nil {

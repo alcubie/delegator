@@ -3,25 +3,12 @@ package run
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
-
-// freePID returns a process id that no program holds. A child that has run and
-// been collected leaves its id free, and the system gives that id again only
-// after many thousands of other programs.
-func freePID(t *testing.T) int {
-	t.Helper()
-	cmd := exec.Command("true")
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
-	return cmd.Process.Pid
-}
 
 // liveRun returns a run that a reconcile must leave alone: this program holds
 // its process id, and it started after the last boot of the computer.
@@ -52,7 +39,7 @@ func TestGoneOnARunFromBeforeTheBoot(t *testing.T) {
 // program holds the id here, so the supervisor is gone.
 func TestGoneOnARunWhoseProcessIsNotThere(t *testing.T) {
 	r := liveRun()
-	r.PID = freePID(t)
+	r.PID = testfix.FreePID(t)
 
 	if !gone(r, bootBefore(r), time.Now(), time.Hour) {
 		t.Error("a run whose process id is free is alive, want gone")
@@ -99,7 +86,7 @@ func TestAliveOnTheProgramThatAsks(t *testing.T) {
 }
 
 func TestAliveOnAProcessIDThatIsFree(t *testing.T) {
-	if alive(freePID(t)) {
+	if alive(testfix.FreePID(t)) {
 		t.Error("a free process id is alive")
 	}
 }

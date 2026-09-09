@@ -171,3 +171,14 @@ func TestDoneWindowIsTheHoursOfTheKey(t *testing.T) {
 		t.Errorf("DoneWindow = %v, want 0", got)
 	}
 }
+
+// The key is in minutes, and Timeout is the one place that says so. A value of
+// 0 is no limit on a run, and not a limit of no time.
+func TestTimeoutIsTheMinutesOfTheKey(t *testing.T) {
+	if got := (Config{TimeoutMinutes: 90}).Timeout(); got != 90*time.Minute {
+		t.Errorf("Timeout = %v, want %v", got, 90*time.Minute)
+	}
+	if got := (Config{TimeoutMinutes: 0}).Timeout(); got != 0 {
+		t.Errorf("Timeout = %v, want 0", got)
+	}
+}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
@@ -247,8 +248,8 @@ func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onl
 // and the prose comes from the file, because the person owns the prose and an
 // editor opens a file and not a row. only names the one field to write in
 // place of the whole ticket.
-func showTicket(out io.Writer, dataDir string, id int64, only onlyField) error {
-	return store.With(dataDir, func(s *store.Store) error {
+func showTicket(out io.Writer, dataDir string, cfg *config.Config, id int64, only onlyField) error {
+	return withStore(dataDir, cfg, func(s *store.Store) error {
 
 		ticket, err := s.Ticket(id)
 		if err != nil {
@@ -319,7 +320,7 @@ var onlyFlags = []struct {
 }
 
 // showCommand returns the command dg show.
-func showCommand(dataDir string) *cobra.Command {
+func showCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
 	cmd := &cobra.Command{
 		Use:   "show <id>",
@@ -330,7 +331,7 @@ func showCommand(dataDir string) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			return showTicket(cmd.OutOrStdout(), dataDir, id, only)
+			return showTicket(cmd.OutOrStdout(), dataDir, cfg, id, only)
 		},
 	}
 	for _, flag := range onlyFlags {

@@ -10,7 +10,28 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/run"
+	"github.com/alcubie/delegator/internal/store"
 )
+
+// withStore opens the store, reconciles the runs whose supervisor is gone, and
+// then calls fn with the same store. Every command goes through it, so each
+// command has one open and one reconcile, and a supervisor that stopped with
+// no report is corrected by the next command whatever the person typed.
+//
+// cfg is the config that the hook of the root loaded, and it is a pointer
+// because the hook runs after the command tree is built. The reconcile takes
+// the timeout from it.
+func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) error {
+	return store.With(dataDir, func(s *store.Store) error {
+		if err := run.Reconcile(s, launch, cfg.Timeout()); err != nil {
+			return err
+		}
+		return fn(s)
+	})
+}
 
 // proseFile returns the path of the file that holds the prose of one ticket.
 func proseFile(dataDir string, id int64) string {

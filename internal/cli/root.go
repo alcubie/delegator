@@ -30,9 +30,11 @@ func DataDir() (string, error) {
 // a person who wrote a title that dg refused does not want each command again.
 func Root(dataDir, workDir string) *cobra.Command {
 	mode := colourAuto
-	// cfg is what the hook below read. The inbox needs the window of DONE, and
-	// a second Load in the RunE could read a file that the person edited in
-	// between and give one command two configs.
+	// cfg is what the hook below read. The inbox needs the window of DONE and
+	// the reconcile of each command needs the timeout, and a second Load in a
+	// RunE could read a file that the person edited in between and give one
+	// command two configs. Each command takes the address, because the hook
+	// runs after this function has built the tree.
 	var cfg config.Config
 	root := &cobra.Command{
 		Use:           "dg",
@@ -58,18 +60,18 @@ func Root(dataDir, workDir string) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showInbox(cmd.OutOrStdout(), dataDir, mode, cfg.DoneWindow())
+			return showInbox(cmd.OutOrStdout(), dataDir, &cfg, mode)
 		},
 	}
 	root.PersistentFlags().Var(&mode, "color",
 		"colour the status: always, never or auto (a terminal only)")
-	root.AddCommand(ticketCommand(dataDir, workDir))
-	root.AddCommand(showCommand(dataDir))
-	root.AddCommand(moveCommand(dataDir))
-	root.AddCommand(finishCommand(dataDir))
-	root.AddCommand(acceptCommand(dataDir))
-	root.AddCommand(runCommand(dataDir))
-	root.AddCommand(pauseCommand(dataDir))
-	root.AddCommand(startCommand(dataDir))
+	root.AddCommand(ticketCommand(dataDir, workDir, &cfg))
+	root.AddCommand(showCommand(dataDir, &cfg))
+	root.AddCommand(moveCommand(dataDir, &cfg))
+	root.AddCommand(finishCommand(dataDir, &cfg))
+	root.AddCommand(acceptCommand(dataDir, &cfg))
+	root.AddCommand(runCommand(dataDir, &cfg))
+	root.AddCommand(pauseCommand(dataDir, &cfg))
+	root.AddCommand(startCommand(dataDir, &cfg))
 	return root
 }
