@@ -50,7 +50,7 @@ func TestTicketFromEditorTakesTheFirstLineAsTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app and the volume.\n")
 
-	id, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch))
+	id, err := ticketFromEditorIn(t, dataDir, testfix.Repo(t, repoBranch))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestTicketFromEditorWithOneLineWritesNoProse(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n")
 
-	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
+	if _, err := ticketFromEditorIn(t, dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func TestTicketFromEditorKeepsEachLineOfTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Title\n\nOne.\n\nTwo.\n")
 
-	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
+	if _, err := ticketFromEditorIn(t, dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,7 +113,7 @@ func TestTicketFromEditorTrimsTheEndOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure  \r\n\nRemove the staging app.\n")
 
-	if _, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch)); err != nil {
+	if _, err := ticketFromEditorIn(t, dataDir, testfix.Repo(t, repoBranch)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -193,7 +193,7 @@ func TestTicketFromEditorWithNoTitle(t *testing.T) {
 			dataDir := t.TempDir()
 			withEditor(t, test.text)
 
-			_, err := TicketFromEditor(dataDir, testfix.Repo(t, repoBranch))
+			_, err := ticketFromEditorIn(t, dataDir, testfix.Repo(t, repoBranch))
 			if !errors.Is(err, ErrNoTitle) {
 				t.Fatalf("err = %v, want ErrNoTitle", err)
 			}
@@ -219,12 +219,12 @@ func TestTicketFromEditorWithNoTitleUsesNoID(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 
 	withEditor(t, "")
-	if _, err := TicketFromEditor(dataDir, repo); !errors.Is(err, ErrNoTitle) {
+	if _, err := ticketFromEditorIn(t, dataDir, repo); !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}
 
 	withEditor(t, "Remove staging infrastructure\n")
-	id, err := TicketFromEditor(dataDir, repo)
+	id, err := ticketFromEditorIn(t, dataDir, repo)
 	if err != nil {
 		t.Fatal(err)
 	}

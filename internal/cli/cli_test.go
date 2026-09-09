@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // repoBranch is the branch of each repository that these tests make. It is not
@@ -17,6 +19,20 @@ const repoBranch = "trunk"
 // that text, and the six copies of the same date these tests held said nothing
 // that this one name does not.
 var testNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+// ticketIn makes one ticket in a data directory, with a store the test opens,
+// as dg ticket makes it with the store of the command.
+func ticketIn(t *testing.T, dataDir, workDir, title, body string) (int64, error) {
+	t.Helper()
+	return Ticket(testfix.OpenStore(t, dataDir), workDir, title, body)
+}
+
+// ticketFromEditorIn makes one ticket from the editor of the person, with a
+// store the test opens.
+func ticketFromEditorIn(t *testing.T, dataDir, workDir string) (int64, error) {
+	t.Helper()
+	return TicketFromEditor(testfix.OpenStore(t, dataDir), workDir)
+}
 
 // proseFiles returns each file of prose that a command made. The test does not
 // build the name itself, because the name is condition 5 of the ticket.

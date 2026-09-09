@@ -37,22 +37,23 @@ func ticketCommand(dataDir, workDir string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var id int64
-			switch len(args) {
-			case 0:
-				id, err = TicketFromEditor(dataDir, dir)
-			case 1:
-				id, err = Ticket(dataDir, dir, args[0], "")
-			case 2:
-				id, err = Ticket(dataDir, dir, args[0], args[1])
-			default:
-				return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
-			}
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), id)
 			return store.With(dataDir, func(s *store.Store) error {
+				var id int64
+				var err error
+				switch len(args) {
+				case 0:
+					id, err = TicketFromEditor(s, dir)
+				case 1:
+					id, err = Ticket(s, dir, args[0], "")
+				case 2:
+					id, err = Ticket(s, dir, args[0], args[1])
+				default:
+					return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
+				}
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), id)
 				return run.Next(s, launch)
 			})
 		},
@@ -91,7 +92,11 @@ func ticketProject(workDir, flag string) (string, error) {
 // Ticket makes a ticket for the project that holds workDir, and puts it at the
 // end of the queue. It returns the id. The body is the prose of the ticket, and
 // it can be empty.
-func Ticket(dataDir, workDir, title, body string) (int64, error) {
+//
+// The caller gives the store, so that one command has one open: dg ticket
+// writes the ticket and then starts the next run, and both are the work of the
+// one command.
+func Ticket(s *store.Store, workDir, title, body string) (int64, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return 0, ErrNoTitle
@@ -106,26 +111,18 @@ func Ticket(dataDir, workDir, title, body string) (int64, error) {
 		return 0, err
 	}
 
-	var id int64
-	err = store.With(dataDir, func(s *store.Store) error {
-
-		projectID, err := s.ProjectID(root, branch)
-		if err != nil {
-			return err
-		}
-		id, err = s.AddTicket(projectID, title)
-		if err != nil {
-			return err
-		}
-
-		// The person owns the prose after this write. Only dg revise adds to the
-		// file, and no command writes it again from what it holds in memory.
-		if err := os.WriteFile(proseFile(dataDir, id), []byte(body), filePerm); err != nil {
-			return err
-		}
-		return nil
-	})
+	projectID, err := s.ProjectID(root, branch)
 	if err != nil {
+		return 0, err
+	}
+	id, err := s.AddTicket(projectID, title)
+	if err != nil {
+		return 0, err
+	}
+
+	// The person owns the prose after this write. Only dg revise adds to the
+	// file, and no command writes it again from what it holds in memory.
+	if err := os.WriteFile(proseFile(s.DataDir(), id), []byte(body), filePerm); err != nil {
 		return 0, err
 	}
 	return id, nil

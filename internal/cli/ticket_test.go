@@ -212,7 +212,7 @@ func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	const title = "Remove staging infrastructure"
 
-	id, err := Ticket(dataDir, testfix.Repo(t, repoBranch), title, "")
+	id, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), title, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,12 +241,12 @@ func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := Ticket(dataDir, t.TempDir(), "Remove staging infrastructure", "")
+	_, err := ticketIn(t, dataDir, t.TempDir(), "Remove staging infrastructure", "")
 	if !errors.Is(err, project.ErrNotARepository) {
 		t.Fatalf("err = %v, want %v", err, project.ErrNotARepository)
 	}
 
-	id, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Add rate limiting", "")
+	id, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "Add rate limiting", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
+	if _, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -279,10 +279,10 @@ func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	if _, err := Ticket(dataDir, repo, "Remove staging infrastructure", ""); err != nil {
+	if _, err := ticketIn(t, dataDir, repo, "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Ticket(dataDir, repo, "Add rate limiting", ""); err != nil {
+	if _, err := ticketIn(t, dataDir, repo, "Add rate limiting", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -296,7 +296,7 @@ func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	const body = "Remove the staging app, the volume and the records of the DNS."
 
-	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", body); err != nil {
+	if _, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", body); err != nil {
 		t.Fatal(err)
 	}
 
@@ -308,7 +308,7 @@ func TestTicketWritesTheBodyIntoTheProse(t *testing.T) {
 func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
+	if _, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -322,7 +322,7 @@ func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
 func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if _, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", "body"); err != nil {
+	if _, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "Remove staging infrastructure", "body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -344,7 +344,7 @@ func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 func TestTicketWithNoTitle(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := Ticket(dataDir, testfix.Repo(t, repoBranch), "   ", "Remove the staging app.")
+	_, err := ticketIn(t, dataDir, testfix.Repo(t, repoBranch), "   ", "Remove the staging app.")
 	if !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}

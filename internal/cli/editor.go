@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/alcubie/delegator/internal/store"
 )
 
 // defaultEditor is the editor that delegator starts when the person has set no
@@ -43,7 +45,7 @@ func splitTitle(text string) (title, body string) {
 
 // TicketFromEditor makes a ticket from what the person writes in an editor. The
 // first line is the title, and each line below it is the prose.
-func TicketFromEditor(dataDir, workDir string) (int64, error) {
+func TicketFromEditor(s *store.Store, workDir string) (int64, error) {
 	f, err := os.CreateTemp("", "dg-*.md")
 	if err != nil {
 		return 0, err
@@ -61,5 +63,5 @@ func TicketFromEditor(dataDir, workDir string) (int64, error) {
 	}
 
 	title, body := splitTitle(string(data))
-	return Ticket(dataDir, workDir, title, body)
+	return Ticket(s, workDir, title, body)
 }
