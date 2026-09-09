@@ -774,6 +774,54 @@ func (s *Store) EndRun(ticketID int64, exitCode int) error {
 	return nil
 }
 
+// FailUnfinished marks a ticket failed when it is still running, and writes
+// the end time on its run when the run has none. A ticket in any other state
+// is left as it is, and that is not an error: dg finish made it ready, or a
+// cancel made it cancelled, and both of those are a report.
+//
+// The supervisor calls it as its own run ends. Only dg finish makes a ticket
+// ready, so a ticket still in running at that moment is a run that stopped
+// early, and a run that gave no report did not succeed. The reconcile answers
+// for a supervisor that is gone, and this answers for one that is there.
+func (s *Store) FailUnfinished(id int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status TicketStatus
+	err = tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	if err != nil {
+		return err
+	}
+	if status != Running {
+		return nil
+	}
+	if err := failRun(tx, id, time.Now()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// failRun marks a ticket failed and gives its last run an end time. An end
+// time that is there stays: the supervisor wrote it with the exit code before
+// it stopped, and that is the moment the run ended.
+func failRun(tx *sql.Tx, ticketID int64, at time.Time) error {
+	if err := changeStatus(tx, ticketID, Failed); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`
+		UPDATE runs SET ended_at = ?
+		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)
+		AND ended_at IS NULL`,
+		rfc3339(at), ticketID)
+	return err
+}
+
 // FinishTicket completes a Running ticket. It records the commit of the run and
 // the time the run stopped, which orders the ready tickets in the inbox.
 //

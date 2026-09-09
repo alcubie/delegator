@@ -71,8 +71,10 @@ func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ticket.Status != store.Running {
-		t.Errorf("status = %q, want %q", ticket.Status, store.Running)
+	// The agent of this test does not call dg finish, so the run gave no
+	// report and the supervisor failed the ticket as it stopped.
+	if ticket.Status != store.Failed {
+		t.Errorf("status = %q, want %q", ticket.Status, store.Failed)
 	}
 	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
 	if _, err := os.Stat(made); err != nil {

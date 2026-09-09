@@ -23,7 +23,11 @@ import (
 //
 // The worktree is created first. If git refuses, the ticket stays queued where
 // you can see it, rather than sitting in running with nowhere to work.
-func Start(s *store.Store, id int64, agent adapters.Adapter) error {
+//
+// A ticket the run claimed and did not finish is failed before Start returns.
+// dg finish is the only thing that makes a ticket ready, so a run that reached
+// its end with the ticket still in running gave no report, whatever ended it.
+func Start(s *store.Store, id int64, agent adapters.Adapter) (err error) {
 	dataDir := s.DataDir()
 	ticket, err := s.Ticket(id)
 	if err != nil {
@@ -37,6 +41,9 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	if _, err := s.Claim(id, branch(id, ticket.Title)); err != nil {
 		return err
 	}
+	// From the claim on, this run holds the ticket, and every way out of the
+	// function below is a way out with no report.
+	defer func() { err = errors.Join(err, s.FailUnfinished(id)) }()
 
 	log, err := openLog(dataDir, id)
 	if err != nil {

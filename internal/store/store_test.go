@@ -233,6 +233,19 @@ func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	return runs
 }
 
+// setEndedAt writes ended_at on the last run of a ticket, so that a test can
+// tell an end time that was there already from one that a call has just
+// written. Both would hold the same second otherwise.
+func setEndedAt(t *testing.T, s *Store, ticketID int64, ended string) {
+	t.Helper()
+	if _, err := s.db.Exec(`
+		UPDATE runs SET ended_at = ?
+		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`,
+		ended, ticketID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // setMigrations puts a different list of steps in place for one test. Each test
 // of this package runs one after the other, so no test sees the list of another.
 func setMigrations(t *testing.T, list []string) {
@@ -1810,5 +1823,104 @@ func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 	}
 	if len(done) != 0 {
 		t.Errorf("DoneTickets gives %v, want none", ticketIDs(done))
+	}
+}
+
+// A run that gave no report did not succeed. Only dg finish makes a ticket
+// ready, so a ticket still in running when its supervisor ends is a run that
+// stopped early, and the supervisor says so before it stops.
+func TestFailUnfinishedFailsATicketThatIsRunning(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.FailUnfinished(id); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Failed {
+		t.Errorf("status = %q, want %q", ticket.Status, Failed)
+	}
+}
+
+// The supervisor writes the end time and the exit code before it fails the
+// ticket, and those are the times of the run itself. A second end time from
+// here would move the end of the run to a moment after it.
+func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EndRun(id, 2); err != nil {
+		t.Fatal(err)
+	}
+	const ended = "2026-08-28T09:00:00Z"
+	setEndedAt(t, s, id, ended)
+
+	if err := s.FailUnfinished(id); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := runRows(t, s, id)
+	if rows[0].endedAt.String != ended {
+		t.Errorf("ended_at = %+v, want %q", rows[0].endedAt, ended)
+	}
+	if got := rows[0].exitCode; !got.Valid || got.V != 2 {
+		t.Errorf("exit_code = %+v, want 2", got)
+	}
+}
+
+// A run that stopped before it could write its own end still gets one, so no
+// run of a ticket that is not running is open.
+func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.FailUnfinished(id); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.EndedAt.Before(before) || run.EndedAt.After(time.Now()) {
+		t.Errorf("ended at = %s, want between %s and now", run.EndedAt, before)
+	}
+	if run.ExitCode.Valid {
+		t.Errorf("exit code = %+v, want none: nothing collected the program", run.ExitCode)
+	}
+}
+
+// dg finish made the ticket ready, so the run gave its report and there is
+// nothing to fail. A cancelled ticket is the same: the state it has is the one
+// the person asked for.
+func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
+	for _, status := range []TicketStatus{Ready, Failed, Cancelled} {
+		s, id := oneTicket(t)
+		if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+			t.Fatal(err)
+		}
+		setStatus(t, s, id, status)
+
+		if err := s.FailUnfinished(id); err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Status != status {
+			t.Errorf("status = %q, want %q", ticket.Status, status)
+		}
 	}
 }

@@ -60,7 +60,11 @@ func (r *recordingAgent) SessionID(out []byte) (string, error) {
 	return r.Adapter.SessionID(out)
 }
 
-func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
+// The branch on the ticket is the mark of the claim: only Claim writes it,
+// and it names the branch the worktree is on. The status when Start returns
+// is failed, because this agent gives no report, and the tests below are the
+// ones that examine it.
+func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 0")); err != nil {
@@ -68,10 +72,6 @@ func TestStartMakesTheWorktreeAndPutsTheTicketInRunning(t *testing.T) {
 	}
 
 	ticket := testfix.ReadTicket(t, dataDir, id)
-	if ticket.Status != store.Running {
-		t.Errorf("status = %q, want %q", ticket.Status, store.Running)
-	}
-
 	want := branch(id, "Add the thing")
 	if ticket.Branch != want {
 		t.Errorf("branch = %q, want %q", ticket.Branch, want)
@@ -126,8 +126,10 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	if won != 1 {
 		t.Errorf("%d supervisors took the ticket, want 1", won)
 	}
-	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Running {
-		t.Errorf("status = %q, want %q", got.Status, store.Running)
+	// The one that won ran the agent to its end, and the agent gave no
+	// report, so the ticket it holds is failed and not running.
+	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
+		t.Errorf("status = %q, want %q", got.Status, store.Failed)
 	}
 }
 
@@ -387,5 +389,37 @@ func TestStartRecordsTheSessionOnTheLastLineWithNoNewline(t *testing.T) {
 
 	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
 		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
+
+// A run that gave no report did not succeed. The agent here exits without
+// dg finish, which is the only thing that makes a ticket ready, so the
+// supervisor fails the ticket itself before it stops. Without this a ticket
+// whose supervisor is there and whose run ended would stay in running, and
+// only the reconcile of a later command would move it.
+func TestStartFailsATicketThatTheAgentDidNotFinish(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 0")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
+		t.Errorf("status = %q, want %q", got.Status, store.Failed)
+	}
+}
+
+// The agent stops with an error rather than at its own end, and the answer is
+// the same: the run gave no report. The error of the run still reaches the
+// caller, which writes it to the person.
+func TestStartFailsTheTicketWhenTheAgentGivesAnError(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 3")); err == nil {
+		t.Fatal("err = nil, want the error of the agent")
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
+		t.Errorf("status = %q, want %q", got.Status, store.Failed)
 	}
 }
