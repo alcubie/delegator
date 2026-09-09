@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -141,7 +142,8 @@ func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Reconcile(s, time.Nanosecond); err != nil {
+	launch, _ := testfix.RecordingLaunch(t)
+	if err := Reconcile(s, launch, time.Nanosecond); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,11 +168,54 @@ func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Reconcile(s, time.Hour); err != nil {
+	launch, _ := testfix.RecordingLaunch(t)
+	if err := Reconcile(s, launch, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
 	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Running {
 		t.Errorf("status = %q, want %q", got.Status, store.Running)
+	}
+}
+
+// A ticket in running holds every ticket below it, so the reconcile that
+// frees one must start the next. After a restart of the computer no
+// supervisor is alive, and the command of the person that finds that out is
+// what makes the queue go again.
+func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
+	dataDir, first := queuedTicket(t, "the first")
+	second := testfix.SecondTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
+		t.Fatal(err)
+	}
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Reconcile(s, launch, time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.WaitFor(t, marker); got != fmt.Sprint(second) {
+		t.Errorf("started ticket %s, want %d", got, second)
+	}
+}
+
+// A reconcile that found nothing to correct starts nothing. The queue that a
+// supervisor holds is going already, and each supervisor starts the next
+// ticket as it ends, so a command that adds a start of its own would put two
+// runs on one queue that takes one.
+func TestReconcileThatMarksNothingStartsNothing(t *testing.T) {
+	dataDir, _ := queuedTicket(t, "the first")
+	testfix.SecondTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Reconcile(s, launch, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a run was started after a reconcile that marked nothing: ticket %s", testfix.WaitFor(t, marker))
 	}
 }

@@ -2,6 +2,7 @@ package run
 
 import (
 	"errors"
+	"os/exec"
 	"syscall"
 	"time"
 
@@ -14,15 +15,27 @@ import (
 // computer, and a supervisor that is not there can write nothing, so only a
 // later command can correct the ticket it left behind.
 //
+// A reconcile that marked a run then starts the next ticket. One ticket runs
+// at a time, so the ticket it just freed was holding every ticket below it,
+// and after a restart of the computer this is what makes the queue go again.
+// A reconcile that found nothing to correct starts nothing: the queue it
+// looked at is one that a supervisor holds and will continue itself.
+//
 // timeout is how long a run may take, which the config of the person gives.
-func Reconcile(s *store.Store, timeout time.Duration) error {
+func Reconcile(s *store.Store, launch func(id int64) *exec.Cmd, timeout time.Duration) error {
 	boot, err := bootTime()
 	if err != nil {
 		return err
 	}
 	now := time.Now()
-	_, err = s.Reconcile(func(r store.Run) bool { return gone(r, boot, now, timeout) })
-	return err
+	marked, err := s.Reconcile(func(r store.Run) bool { return gone(r, boot, now, timeout) })
+	if err != nil {
+		return err
+	}
+	if marked == 0 {
+		return nil
+	}
+	return Next(s, launch)
 }
 
 // gone reports whether the supervisor of a run has stopped. Section 4 of
