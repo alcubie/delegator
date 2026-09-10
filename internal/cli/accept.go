@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -11,21 +10,23 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// acceptCommand returns the command dg accept.
+// acceptCommand returns the command dg accept. With no id it closes the head of
+// READY, which is the ticket the person has just reviewed.
 //
 // The worktree is removed inside the transaction that closes the ticket, so a
 // worktree git refuses leaves the ticket ready and a person sees it again.
-func acceptCommand(dataDir string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
-		Use:   "accept <id>",
-		Short: "Close a ready ticket.",
-		Args:  cobra.ExactArgs(1),
+func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+	var projectDir string
+	cmd := &cobra.Command{
+		Use:   "accept [id]",
+		Short: "Close a ready ticket. Defaults to the first Ready ticket for the project.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
-			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
+				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
+				if err != nil {
+					return err
+				}
 
 				ticket, err := s.Ticket(id)
 				if err != nil {
@@ -37,8 +38,16 @@ func acceptCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// The person who typed an id knows which ticket went, and the
+				// one who did not gets the id of the ticket this chose.
+				if len(args) == 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), id)
+				}
 				return run.Next(s, launch)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"the directory of the project whose first ready ticket to close.  Defaults to current working directory.")
+	return cmd
 }
