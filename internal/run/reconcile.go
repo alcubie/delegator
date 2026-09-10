@@ -28,7 +28,7 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, timeout time.Duration) e
 		return err
 	}
 	now := time.Now()
-	marked, err := s.Reconcile(func(r store.Run) bool { return gone(r, boot, now, timeout) })
+	marked, err := s.Reconcile(func(r store.Run) bool { return running(r, boot, now, timeout) })
 	if err != nil {
 		return err
 	}
@@ -38,30 +38,31 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, timeout time.Duration) e
 	return Next(s, launch)
 }
 
-// gone reports whether the supervisor of a run has stopped. Section 4 of
-// RUN_CONTROL.md examines six ways to ask and selects this one, which is the
-// process id with the boot time:
+// running reports whether the supervisor of a run is still working. Section 4
+// of RUN_CONTROL.md examines six ways to ask and selects this one, which is
+// the process id with the boot time. A run is over when any of the three
+// answers below says so:
 //
-//   - A run that began before the boot is gone, whatever its process id says.
-//     Each id is free after a restart of the computer, and the program that
-//     asks is itself a dg, so an id that the system gave again would look like
-//     a live supervisor and hold the ticket in running for ever.
-//   - A process id that no program holds is gone. This is signal 0.
-//   - A run past the timeout is gone. It is the backstop for the one case the
-//     two rules above leave: an id that the system gave again, inside one
-//     boot, to a program that is alive.
+//   - It began before the boot, whatever its process id says. Each id is free
+//     after a restart of the computer, and the program that asks is itself a
+//     dg, so an id that the system gave again would look like a live
+//     supervisor and hold the ticket in running for ever.
+//   - No program holds its process id. This is signal 0.
+//   - It is past the timeout. That is the backstop for the one case the two
+//     rules above leave: an id that the system gave again, inside one boot, to
+//     a program that is alive.
 //
 // A timeout of nothing is no timeout. A person who writes 0 in the config asks
 // for no limit on a run, and the other reading marks every run failed as it
 // starts.
-func gone(r store.Run, boot, now time.Time, timeout time.Duration) bool {
+func running(r store.Run, boot, now time.Time, timeout time.Duration) bool {
 	if r.StartedAt.Before(boot) {
-		return true
+		return false
 	}
 	if timeout > 0 && now.Sub(r.StartedAt) >= timeout {
-		return true
+		return false
 	}
-	return !alive(r.PID)
+	return alive(r.PID)
 }
 
 // alive reports whether a process id has a program. Signal 0 sends nothing and

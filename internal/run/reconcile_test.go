@@ -25,56 +25,56 @@ func bootBefore(r store.Run) time.Time {
 // Each process id is free after a restart, and the reconcile that asks is
 // itself a dg program, so a dg that got the old number would see a live
 // supervisor and leave the ticket in running for ever.
-func TestGoneOnARunFromBeforeTheBoot(t *testing.T) {
+func TestRunningOnARunFromBeforeTheBoot(t *testing.T) {
 	r := liveRun()
 	boot := r.StartedAt.Add(time.Second)
 
-	if !gone(r, boot, time.Now(), time.Hour) {
-		t.Error("a run that began before the boot is alive, want gone")
+	if running(r, boot, time.Now(), time.Hour) {
+		t.Error("a run that began before the boot is running, want over")
 	}
 }
 
 // Signal 0 asks the operating system whether a process id has a program. No
 // program holds the id here, so the supervisor is gone.
-func TestGoneOnARunWhoseProcessIsNotThere(t *testing.T) {
+func TestRunningOnARunWhoseProcessIsNotThere(t *testing.T) {
 	r := liveRun()
 	r.PID = testfix.FreePID(t)
 
-	if !gone(r, bootBefore(r), time.Now(), time.Hour) {
-		t.Error("a run whose process id is free is alive, want gone")
+	if running(r, bootBefore(r), time.Now(), time.Hour) {
+		t.Error("a run whose process id is free is running, want over")
 	}
 }
 
 // The timeout is the backstop of section 6.3: whatever the process id says, a
 // run that has taken longer than the person allows is over.
-func TestGoneOnARunThatIsPastTheTimeout(t *testing.T) {
+func TestRunningOnARunThatIsPastTheTimeout(t *testing.T) {
 	r := liveRun()
 	now := r.StartedAt.Add(90 * time.Minute)
 
-	if !gone(r, bootBefore(r), now, time.Hour) {
-		t.Error("a run past the timeout is alive, want gone")
+	if running(r, bootBefore(r), now, time.Hour) {
+		t.Error("a run past the timeout is running, want over")
 	}
 }
 
 // A supervisor that is there, on a run of this boot that is inside the
 // timeout, holds its ticket. The command that asked leaves it alone.
-func TestGoneOnARunThatIsGoing(t *testing.T) {
+func TestRunningOnARunThatIsGoing(t *testing.T) {
 	r := liveRun()
 
-	if gone(r, bootBefore(r), r.StartedAt.Add(time.Minute), time.Hour) {
-		t.Error("a run of a live supervisor is gone, want alive")
+	if !running(r, bootBefore(r), r.StartedAt.Add(time.Minute), time.Hour) {
+		t.Error("a run of a live supervisor is over, want running")
 	}
 }
 
 // A timeout of nothing is no timeout, and not a timeout that every run is
 // past. The person who writes 0 in the config asks for no limit, and a run
 // that is marked failed the moment it starts would be the other reading.
-func TestGoneWithNoTimeout(t *testing.T) {
+func TestRunningWithNoTimeout(t *testing.T) {
 	r := liveRun()
 	now := r.StartedAt.Add(100 * time.Hour)
 
-	if gone(r, bootBefore(r), now, 0) {
-		t.Error("a run is gone with no timeout, want alive")
+	if !running(r, bootBefore(r), now, 0) {
+		t.Error("a run is over with no timeout, want running")
 	}
 }
 

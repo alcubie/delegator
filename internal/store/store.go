@@ -881,11 +881,11 @@ func (s *Store) EndRun(runID int64, exitCode int) error {
 // later command can correct the ticket it left in running. Each command does
 // this before its own work.
 //
-// dead answers for one run, and the caller owns the rule: this package holds
-// no way to ask the operating system about a program. The read and every write
-// are one transaction, so a command that runs beside a supervisor sees the
-// queue before the reconcile or after it, and never part way through.
-func (s *Store) Reconcile(dead func(Run) bool) (int, error) {
+// running answers for one run, and the caller owns the rule: this package
+// holds no way to ask the operating system about a program. The read and every
+// write are one transaction, so a command that runs beside a supervisor sees
+// the queue before the reconcile or after it, and never part way through.
+func (s *Store) Reconcile(running func(Run) bool) (int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -898,7 +898,7 @@ func (s *Store) Reconcile(dead func(Run) bool) (int, error) {
 	}
 	marked := 0
 	for _, r := range runs {
-		if !dead(r) {
+		if running(r) {
 			continue
 		}
 		if err := failRun(tx, r.ID, r.TicketID, time.Now()); err != nil {

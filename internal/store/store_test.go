@@ -240,12 +240,18 @@ func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	return runs
 }
 
-// askedRuns returns a dead for Reconcile that keeps each run it was asked
-// about, in the order of the asking, and answers that every one is alive.
+// allRunning and noneRunning are the two answers a test gives Reconcile about
+// the runs it finds.
+func allRunning(Run) bool { return true }
+
+func noneRunning(Run) bool { return false }
+
+// askedRuns returns an answer for Reconcile that keeps each run it was asked
+// about, in the order of the asking, and says that every one is running.
 func askedRuns(asked *[]Run) func(Run) bool {
 	return func(r Run) bool {
 		*asked = append(*asked, r)
-		return false
+		return true
 	}
 }
 
@@ -2107,7 +2113,7 @@ func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
 	}
 	before := time.Now().UTC().Truncate(time.Second)
 
-	marked, err := s.Reconcile(func(Run) bool { return true })
+	marked, err := s.Reconcile(noneRunning)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2139,7 +2145,7 @@ func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	marked, err := s.Reconcile(func(Run) bool { return false })
+	marked, err := s.Reconcile(allRunning)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2235,7 +2241,7 @@ func TestReconcileMarksEachDeadRun(t *testing.T) {
 		}
 	}
 
-	marked, err := s.Reconcile(func(Run) bool { return true })
+	marked, err := s.Reconcile(noneRunning)
 	if err != nil {
 		t.Fatal(err)
 	}
