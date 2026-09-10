@@ -121,11 +121,14 @@ type ReadySource interface {
 
 // FirstReady returns the ticket at the head of READY for the project at path,
 // which is the ticket a person reviews next. found is false when that project
-// has no ready ticket.
+// has no ready ticket. A command that takes a ticket with no id calls this.
 //
 // The head is the ready ticket that byCompletion puts first, so it is the same
-// ticket the inbox shows at the top of READY. A command that takes a ticket
-// with no id calls this, and the rule of the order stays here.
+// ticket the inbox shows at the top of READY. It is here, and not a query of
+// the store that orders by completed, because the order of READY is written
+// once: every query of the store orders by id, and this package turns that
+// into the order the person sees. A copy of the rule in SQL would let the head
+// of READY and the top of READY come apart, and no test would say so.
 func FirstReady(source ReadySource, path string) (ticket store.OpenTicket, found bool, err error) {
 	tickets, err := source.OpenTickets()
 	if err != nil {
