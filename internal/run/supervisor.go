@@ -33,10 +33,11 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.Claim(id, branch(id, ticket.Title)); err != nil {
+	runID, err := s.Claim(id, branch(id, ticket.Title))
+	if err != nil {
 		return err
 	}
-	return supervise(s, ticket, agent)
+	return supervise(s, ticket, runID, agent)
 }
 
 // StartNext claims the first ticket of the queue for this run and works it,
@@ -49,14 +50,14 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 // had room when the trigger counted it can be full by the time this one reads
 // it, and that is the ordinary end of the second supervisor.
 func StartNext(s *store.Store, agent adapters.Adapter) error {
-	ticket, _, err := s.ClaimNext(func(t store.Ticket) string { return branch(t.ID, t.Title) })
+	ticket, runID, err := s.ClaimNext(func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return supervise(s, ticket, agent)
+	return supervise(s, ticket, runID, agent)
 }
 
 // noExitCode is the exit code of a run that ended with no process of its own
@@ -64,21 +65,23 @@ func StartNext(s *store.Store, agent adapters.Adapter) error {
 const noExitCode = -1
 
 // supervise works the ticket that the caller has claimed: it makes the
-// worktree and runs the agent in it.
+// worktree and runs the agent in it. runID is the run that the claim wrote,
+// and everything this function puts on the row of a run names it, because the
+// last run of a ticket is not always the one this supervisor holds.
 //
 // A worktree that git will not make ends the run before it starts. The ticket
 // is claimed by then, so this marks it failed and ends the run: a ticket left
 // in running would hold the queue with no supervisor working on it.
-func supervise(s *store.Store, ticket store.Ticket, agent adapters.Adapter) (err error) {
+func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.Adapter) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// The caller has claimed the ticket, so this run holds it, and every way
 	// out of the function below is a way out with no report.
-	defer func() { err = errors.Join(err, s.FailUnfinished(id)) }()
+	defer func() { err = errors.Join(err, s.FailUnfinished(runID)) }()
 
 	worktree, err := Worktree(dataDir, ticket)
 	if err != nil {
-		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(id, noExitCode))
+		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(runID, noExitCode))
 	}
 
 	log, err := openLog(dataDir, id)
@@ -105,7 +108,7 @@ func supervise(s *store.Store, ticket store.Ticket, agent adapters.Adapter) (err
 	// The end time and the exit code go on the row of the run whatever the
 	// exit was. ProcessState is there after Wait whether or not Wait gave an
 	// error, and its ExitCode is -1 for a process that a signal ended.
-	endErr := s.EndRun(id, cmd.ProcessState.ExitCode())
+	endErr := s.EndRun(runID, cmd.ProcessState.ExitCode())
 	if followErr != nil {
 		return followErr
 	}

@@ -1754,12 +1754,13 @@ func TestRunOnATicketThatHasNoRun(t *testing.T) {
 func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	for _, exitCode := range []int{0, 3} {
 		s, id := oneTicket(t)
-		if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		runID, err := s.Claim(id, "delegator/1-my-ticket")
+		if err != nil {
 			t.Fatal(err)
 		}
 		before := time.Now().UTC().Truncate(time.Second)
 
-		if err := s.EndRun(id, exitCode); err != nil {
+		if err := s.EndRun(runID, exitCode); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1811,11 +1812,13 @@ func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
 	}
 }
 
-// The supervisor ends the run it holds, which is the last run of the ticket.
-// The run of an earlier claim keeps what it has.
-func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
+// The supervisor ends the run it holds, and it names that run. A ticket that
+// failed and was claimed again has a later run that a different supervisor
+// holds, and the end of this one must not land on that row.
+func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	first, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []TicketStatus{Failed, Queued} {
@@ -1827,7 +1830,7 @@ func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.EndRun(id, 1); err != nil {
+	if err := s.EndRun(first, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1835,18 +1838,18 @@ func TestEndRunEndsTheLastRunOfTheTicket(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("runs = %+v, want two", rows)
 	}
-	if rows[0].endedAt.Valid || rows[0].exitCode.Valid {
-		t.Errorf("the first run = %+v, want no end", rows[0])
+	if !rows[0].endedAt.Valid || !rows[0].exitCode.Valid {
+		t.Errorf("the first run = %+v, want an end", rows[0])
 	}
-	if !rows[1].endedAt.Valid || !rows[1].exitCode.Valid {
-		t.Errorf("the second run = %+v, want an end", rows[1])
+	if rows[1].endedAt.Valid || rows[1].exitCode.Valid {
+		t.Errorf("the second run = %+v, want no end", rows[1])
 	}
 }
 
-func TestEndRunOnATicketThatHasNoRun(t *testing.T) {
-	s, id := oneTicket(t)
+func TestEndRunOnARunThatIsNotThere(t *testing.T) {
+	s, _ := oneTicket(t)
 
-	if err := s.EndRun(id, 0); !errors.Is(err, ErrNoRun) {
+	if err := s.EndRun(404, 0); !errors.Is(err, ErrNoRun) {
 		t.Errorf("err = %v, want ErrNoRun", err)
 	}
 }
@@ -1996,11 +1999,12 @@ func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 // stopped early, and the supervisor says so before it stops.
 func TestFailUnfinishedFailsATicketThatIsRunning(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := s.FailUnfinished(id); err != nil {
+	if err := s.FailUnfinished(runID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2018,16 +2022,17 @@ func TestFailUnfinishedFailsATicketThatIsRunning(t *testing.T) {
 // here would move the end of the run to a moment after it.
 func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(id, 2); err != nil {
+	if err := s.EndRun(runID, 2); err != nil {
 		t.Fatal(err)
 	}
 	const ended = "2026-08-28T09:00:00Z"
 	setEndedAt(t, s, id, ended)
 
-	if err := s.FailUnfinished(id); err != nil {
+	if err := s.FailUnfinished(runID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2044,12 +2049,13 @@ func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 // run of a ticket that is not running is open.
 func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
 		t.Fatal(err)
 	}
 	before := time.Now().UTC().Truncate(time.Second)
 
-	if err := s.FailUnfinished(id); err != nil {
+	if err := s.FailUnfinished(runID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2071,12 +2077,13 @@ func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 	for _, status := range []TicketStatus{Ready, Failed, Cancelled} {
 		s, id := oneTicket(t)
-		if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		runID, err := s.Claim(id, "delegator/1-my-ticket")
+		if err != nil {
 			t.Fatal(err)
 		}
 		setStatus(t, s, id, status)
 
-		if err := s.FailUnfinished(id); err != nil {
+		if err := s.FailUnfinished(runID); err != nil {
 			t.Fatalf("%s: %v", status, err)
 		}
 
@@ -2243,5 +2250,13 @@ func TestReconcileMarksEachDeadRun(t *testing.T) {
 		if ticket.Status != Failed {
 			t.Errorf("ticket %d is %q, want %q", id, ticket.Status, Failed)
 		}
+	}
+}
+
+func TestFailUnfinishedOnARunThatIsNotThere(t *testing.T) {
+	s, _ := oneTicket(t)
+
+	if err := s.FailUnfinished(404); !errors.Is(err, ErrNoRun) {
+		t.Errorf("err = %v, want ErrNoRun", err)
 	}
 }
