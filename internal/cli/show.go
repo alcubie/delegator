@@ -319,23 +319,27 @@ var onlyFlags = []struct {
 	{onlySession, "the session of the last run"},
 }
 
-// showCommand returns the command dg show.
-func showCommand(dataDir string, cfg *config.Config) *cobra.Command {
+// showCommand returns the command dg show. With no id it shows the head of
+// READY, because that is the ticket the person is nearly always reading.
+func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
+	var projectDir string
 	cmd := &cobra.Command{
-		Use:   "show <id>",
-		Short: "Show the details of a ticket.",
-		Args:  cobra.ExactArgs(1),
+		Use:   "show [id]",
+		Short: "Show the details of a ticket.  With no id, the first ready ticket.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
-			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
+				id, err := resolveTicketID(s, args, workDir, projectDir)
+				if err != nil {
+					return err
+				}
 				return showTicket(cmd.OutOrStdout(), s, dataDir, id, only)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"the directory of the project whose first ready ticket to show.  Defaults to current working directory.")
 	for _, flag := range onlyFlags {
 		name := string(flag.field) + "-only"
 		usage := fmt.Sprintf("write %s and nothing else", flag.what)

@@ -302,3 +302,54 @@ func TestGetGivesTheErrorOfTheDoneTickets(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, want)
 	}
 }
+
+// The ticket a person reviews is the head of READY of one project, which is
+// the ready ticket with the oldest completion. A ticket of another project is
+// not it, and neither is a ticket that is queued or running.
+func TestFirstReadyTakesTheOldestCompletionOfTheProject(t *testing.T) {
+	older := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	source := &fakeSource{tickets: []store.OpenTicket{
+		{ID: 1, Project: "/projects/web-api", Status: store.Ready, Completed: newer},
+		{ID: 2, Project: "/projects/billing", Status: store.Ready, Completed: older},
+		{ID: 3, Project: "/projects/web-api", Status: store.Queued},
+		{ID: 4, Project: "/projects/web-api", Status: store.Ready, Completed: older},
+		{ID: 5, Project: "/projects/web-api", Status: store.Running},
+	}}
+
+	got, found, err := FirstReady(source, "/projects/web-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("FirstReady found no ticket, want ticket 4")
+	}
+	if got.ID != 4 {
+		t.Errorf("FirstReady = %d, want 4", got.ID)
+	}
+}
+
+// A project whose tickets are all queued or running has no head of READY, and
+// the caller says so in its own words rather than taking a ticket of another
+// project.
+func TestFirstReadyWithNoReadyTicketOfTheProject(t *testing.T) {
+	source := &fakeSource{tickets: []store.OpenTicket{
+		{ID: 1, Project: "/projects/billing", Status: store.Ready},
+		{ID: 2, Project: "/projects/web-api", Status: store.Queued},
+	}}
+
+	got, found, err := FirstReady(source, "/projects/web-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Errorf("FirstReady found ticket %d, want none", got.ID)
+	}
+}
+
+func TestFirstReadyWithASourceThatFails(t *testing.T) {
+	fail := errors.New("the database is not there")
+	if _, _, err := FirstReady(&fakeSource{err: fail}, "/projects/web-api"); !errors.Is(err, fail) {
+		t.Errorf("FirstReady gave %v, want %v", err, fail)
+	}
+}

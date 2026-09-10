@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/inbox"
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -31,6 +33,40 @@ func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) 
 		}
 		return fn(s)
 	})
+}
+
+// resolveTicketID returns the id of the ticket that a command acts on. args is
+// what the person typed after the name of the command: one id, or nothing.
+//
+// Nothing takes the head of READY of one project, which is the ticket that a
+// person reviews next, and it saves reading that id off the inbox and typing
+// it. The project is the one that holds the directory dg runs in, and
+// projectFlag names another directory when the person gave --project.
+func resolveTicketID(s *store.Store, args []string, workDir, projectFlag string) (int64, error) {
+	if len(args) > 0 {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%q is not the id of a ticket", args[0])
+		}
+		return id, nil
+	}
+
+	dir, err := ticketProject(workDir, projectFlag)
+	if err != nil {
+		return 0, err
+	}
+	root, err := project.Root(dir)
+	if err != nil {
+		return 0, err
+	}
+	ticket, found, err := inbox.FirstReady(s, root)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, fmt.Errorf("no ticket of %s is ready", root)
+	}
+	return ticket.ID, nil
 }
 
 // proseFile returns the path of the file that holds the prose of one ticket.

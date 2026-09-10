@@ -13,10 +13,52 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
+
+// queuedIn adds one ticket to the queue of the project at repo, and returns its
+// id. The project arrives with the first ticket of it.
+func queuedIn(t *testing.T, s *store.Store, repo, title string) int64 {
+	t.Helper()
+	projectID, err := s.ProjectID(repo, repoBranch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.AddTicket(projectID, title)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// finishIn takes a queued ticket through a run, so that it arrives at READY
+// with the completion of this moment. It returns the branch of the run.
+func finishIn(t *testing.T, s *store.Store, id int64) string {
+	t.Helper()
+	branch := fmt.Sprintf("delegator/%d-a-title", id)
+	if _, err := s.Claim(id, branch); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTicket(id, ""); err != nil {
+		t.Fatal(err)
+	}
+	return branch
+}
+
+// nextSecond waits for the clock to reach the next second. A completion holds
+// one second and no part of a second, so two tickets that finish inside one
+// second hold the same time and the id decides the order between them. A test
+// of the order waits, so that the completions differ.
+func nextSecond(t *testing.T) {
+	t.Helper()
+	start := time.Now().Truncate(time.Second)
+	for time.Now().Truncate(time.Second).Equal(start) {
+		time.Sleep(time.Millisecond)
+	}
+}
 
 func TestWrapBreaksAtASpace(t *testing.T) {
 	got := wrap("the quick brown fox jumps over the lazy dog", 20)
@@ -245,12 +287,6 @@ func TestRunShowWithAnIDThatIsNotANumber(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "banana") {
 		t.Errorf("err = %v, and it does not name what the person wrote", err)
-	}
-}
-
-func TestRunShowWithNoID(t *testing.T) {
-	if _, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show"); err == nil {
-		t.Fatal("dg show took no id")
 	}
 }
 
@@ -631,5 +667,146 @@ func TestRunShowWithTwoOnlyFlagsTakesTheFirst(t *testing.T) {
 	}
 	if want := repo + "\n"; out != want {
 		t.Errorf("dg show --project-only --branch-only wrote %q, want %q", out, want)
+	}
+}
+
+// The ticket a person reviews is nearly always the head of READY, so dg show
+// with no id takes it. The head is the ready ticket with the oldest
+// completion, which is the one the inbox shows at the top of READY, and it is
+// not the smallest id: the ticket that finished first here is the second one
+// made.
+func TestRunShowWithNoIDTakesTheHeadOfReady(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "first")
+	s := testfix.OpenStore(t, dataDir)
+
+	later := queuedIn(t, s, repo, "the ticket that finished last")
+	head := queuedIn(t, s, repo, "the ticket that finished first")
+	branch := finishIn(t, s, head)
+	nextSecond(t)
+	finishIn(t, s, later)
+
+	out, err := runIn(t, dataDir, repo, "show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the ticket that finished first") {
+		t.Errorf("dg show with no id gave:\n%s\nwant the ticket %d", out, head)
+	}
+
+	out, err = runIn(t, dataDir, repo, "show", "--branch-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := branch + "\n"; out != want {
+		t.Errorf("dg show --branch-only with no id wrote %q, want %q", out, want)
+	}
+}
+
+// twoProjects makes a data directory holding two projects, each with one ready
+// ticket. The ticket of the other project finished first, so a dg show that
+// ignored the project would take it. It returns the store, the two
+// repositories and the id of the ticket of each.
+func twoProjects(t *testing.T) (dataDir, mine, other string, mineID, otherID int64) {
+	t.Helper()
+	dataDir = t.TempDir()
+	mine = testfix.Repo(t, repoBranch)
+	other = testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+
+	otherID = queuedIn(t, s, other, "the ticket of the other project")
+	mineID = queuedIn(t, s, mine, "the ticket of this project")
+	finishIn(t, s, otherID)
+	finishIn(t, s, mineID)
+	return dataDir, mine, other, mineID, otherID
+}
+
+// The head of READY is the head for one project. A person who reviews the work
+// of this repository is not offered the ticket of another one, whatever the
+// order of the inbox as a whole.
+func TestRunShowWithNoIDSkipsAnotherProject(t *testing.T) {
+	dataDir, mine, _, _, _ := twoProjects(t)
+
+	out, err := runIn(t, dataDir, mine, "show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the ticket of this project") {
+		t.Errorf("dg show with no id gave:\n%s\nwant the ticket of the project it ran in", out)
+	}
+}
+
+// --project names the project, as it does on dg ticket, so a person reviews
+// the work of a repository from somewhere else.
+func TestRunShowWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
+	dataDir, mine, other, _, _ := twoProjects(t)
+
+	relative, err := filepath.Rel(mine, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{other, relative} {
+		out, err := runIn(t, dataDir, mine, "show", "--project", dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "the ticket of the other project") {
+			t.Errorf("dg show --project %s gave:\n%s\nwant the ticket of that project", dir, out)
+		}
+	}
+}
+
+// A project with nothing ready has no ticket to show, and the error names it,
+// because a person who gave --project may be looking at a project that is not
+// the one they meant. Another project's ticket is not an answer to the
+// question that was asked.
+func TestRunShowWithNoIDAndNoReadyTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	mine := testfix.Repo(t, repoBranch)
+	other := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+
+	finishIn(t, s, queuedIn(t, s, other, "the ticket of the other project"))
+	queuedIn(t, s, mine, "the ticket that waits for a run")
+
+	out, err := runIn(t, dataDir, mine, "show")
+	if err == nil {
+		t.Fatalf("dg show with no ready ticket wrote:\n%s\nwant an error", out)
+	}
+	if !strings.Contains(err.Error(), "ready") {
+		t.Errorf("err = %v, and it does not say that no ticket is ready", err)
+	}
+	if !strings.Contains(err.Error(), mine) {
+		t.Errorf("err = %v, and it does not name the project %s", err, mine)
+	}
+	if out != "" {
+		t.Errorf("dg show wrote %q, want nothing", out)
+	}
+}
+
+// A directory outside any repository names no project, so there is no head of
+// READY to take.
+func TestRunShowWithNoIDOutsideAProject(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "show")
+	if !errors.Is(err, project.ErrNotARepository) {
+		t.Fatalf("err = %v, want ErrNotARepository", err)
+	}
+	if out != "" {
+		t.Errorf("dg show wrote %q, want nothing", out)
+	}
+}
+
+// An id is still an id, and it names a ticket of any project: the id comes off
+// the inbox, which is one list for every project.
+func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
+	dataDir, mine, _, _, otherID := twoProjects(t)
+
+	out, err := runIn(t, dataDir, mine, "show", fmt.Sprint(otherID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the ticket of the other project") {
+		t.Errorf("dg show %d gave:\n%s\nwant the ticket of the other project", otherID, out)
 	}
 }

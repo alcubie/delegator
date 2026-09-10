@@ -112,3 +112,33 @@ func byPosition(a, b store.OpenTicket) int {
 func byID(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
+
+// ReadySource is the part of Source that FirstReady reads. A caller that wants
+// one ticket asks the store for the open tickets and nothing else.
+type ReadySource interface {
+	OpenTickets() ([]store.OpenTicket, error)
+}
+
+// FirstReady returns the ticket at the head of READY for the project at path,
+// which is the ticket a person reviews next. found is false when that project
+// has no ready ticket.
+//
+// The head is the ready ticket that byCompletion puts first, so it is the same
+// ticket the inbox shows at the top of READY. A command that takes a ticket
+// with no id calls this, and the rule of the order stays here.
+func FirstReady(source ReadySource, path string) (ticket store.OpenTicket, found bool, err error) {
+	tickets, err := source.OpenTickets()
+	if err != nil {
+		return store.OpenTicket{}, false, err
+	}
+
+	for _, t := range tickets {
+		if t.Status != store.Ready || t.Project != path {
+			continue
+		}
+		if !found || byCompletion(t, ticket) < 0 {
+			ticket, found = t, true
+		}
+	}
+	return ticket, found, nil
+}

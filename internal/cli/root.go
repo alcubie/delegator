@@ -66,7 +66,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 	root.PersistentFlags().Var(&mode, "color",
 		"colour the status: always, never or auto (a terminal only)")
 	root.AddCommand(ticketCommand(dataDir, workDir, &cfg))
-	root.AddCommand(showCommand(dataDir, &cfg))
+	root.AddCommand(showCommand(dataDir, workDir, &cfg))
 	root.AddCommand(moveCommand(dataDir, &cfg))
 	root.AddCommand(finishCommand(dataDir, &cfg))
 	root.AddCommand(acceptCommand(dataDir, &cfg))
