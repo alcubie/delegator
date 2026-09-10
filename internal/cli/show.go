@@ -248,37 +248,37 @@ func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onl
 // and the prose comes from the file, because the person owns the prose and an
 // editor opens a file and not a row. only names the one field to write in
 // place of the whole ticket.
-func showTicket(out io.Writer, dataDir string, cfg *config.Config, id int64, only onlyField) error {
-	return withStore(dataDir, cfg, func(s *store.Store) error {
+//
+// The caller gives the store, because a command opens one and reconciles once,
+// whatever else it reads from the database.
+func showTicket(out io.Writer, s *store.Store, dataDir string, id int64, only onlyField) error {
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		return err
+	}
 
-		ticket, err := s.Ticket(id)
-		if err != nil {
-			return err
-		}
+	prose, err := os.ReadFile(proseFile(dataDir, id))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 
-		prose, err := os.ReadFile(proseFile(dataDir, id))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
+	lastRun, err := s.Run(id)
+	if err != nil && !errors.Is(err, store.ErrNoRun) {
+		return err
+	}
 
-		lastRun, err := s.Run(id)
-		if err != nil && !errors.Is(err, store.ErrNoRun) {
-			return err
-		}
+	worktree := run.WorktreePath(dataDir, id)
+	if _, err := os.Stat(worktree); err != nil {
+		worktree = ""
+	}
 
-		worktree := run.WorktreePath(dataDir, id)
-		if _, err := os.Stat(worktree); err != nil {
-			worktree = ""
-		}
-
-		if only != onlyNone {
-			writeOnly(out, dataDir, worktree, ticket, only)
-			return nil
-		}
-
-		writeTicket(out, dataDir, worktree, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
+	if only != onlyNone {
+		writeOnly(out, dataDir, worktree, ticket, only)
 		return nil
-	})
+	}
+
+	writeTicket(out, dataDir, worktree, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
+	return nil
 }
 
 // onlyFlag is one --*-only flag. asks is the field of that flag, and field is
@@ -331,7 +331,9 @@ func showCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
-			return showTicket(cmd.OutOrStdout(), dataDir, cfg, id, only)
+			return withStore(dataDir, cfg, func(s *store.Store) error {
+				return showTicket(cmd.OutOrStdout(), s, dataDir, id, only)
+			})
 		},
 	}
 	for _, flag := range onlyFlags {
