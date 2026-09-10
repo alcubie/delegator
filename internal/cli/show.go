@@ -326,7 +326,7 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "show [id]",
-		Short: "Show the details of a ticket.  With no id, the first ready ticket.",
+		Short: "Show the details of a ticket. Defaults to the first Ready ticket for the project.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(dataDir, cfg, func(s *store.Store) error {
