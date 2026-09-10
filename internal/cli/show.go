@@ -250,8 +250,12 @@ func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onl
 // place of the whole ticket.
 //
 // The caller gives the store, because a command opens one and reconciles once,
-// whatever else it reads from the database.
-func showTicket(out io.Writer, s *store.Store, dataDir string, id int64, only onlyField) error {
+// whatever else it reads from the database. The data directory comes off the
+// store, which is the directory it was opened on, so there is no second value
+// that could name another one.
+func showTicket(out io.Writer, s *store.Store, id int64, only onlyField) error {
+	dataDir := s.DataDir()
+
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -334,7 +338,7 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return showTicket(cmd.OutOrStdout(), s, dataDir, id, only)
+				return showTicket(cmd.OutOrStdout(), s, id, only)
 			})
 		},
 	}
