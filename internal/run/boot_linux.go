@@ -1,3 +1,8 @@
+// The boot time on Linux. A name that ends in _linux or _darwin is a build
+// constraint of the go tool, so a build takes this file or boot_darwin.go and
+// never both, and the bootTime that the reconcile calls is the one for the
+// system the build is for.
+
 package run
 
 import (
