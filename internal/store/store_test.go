@@ -111,6 +111,13 @@ func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	return first, second, ids
 }
 
+// claimBranch is the branch of a claim in these tests. ClaimNext takes a
+// function and not a name, because only the transaction knows which ticket it
+// claimed.
+func claimBranch(t Ticket) string {
+	return fmt.Sprintf("delegator/%d-%s", t.ID, t.Title)
+}
+
 // mustProject returns the id of the one project that a fixture made.
 func mustProject(t *testing.T, s *Store) int64 {
 	t.Helper()
@@ -1517,6 +1524,155 @@ func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 
 	if runs := runRows(t, s, id); len(runs) != 1 {
 		t.Errorf("runs = %+v, want the one of the first claim", runs)
+	}
+}
+
+// The supervisor claims its own ticket, so the read of the queue and the write
+// of the claim are one transaction. What it claims is the first ticket of the
+// queue, which is what the trigger used to read for it.
+func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
+	s, ids := threeTickets(t)
+	// The queue is in the order of position and not of id, so the ticket the
+	// person moved to the top is the one the supervisor takes.
+	if err := s.MoveTicket(ids[2], Top); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, runID, err := s.ClaimNext(claimBranch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if claimed.ID != ids[2] {
+		t.Errorf("claimed ticket %d, want the first of the queue %d", claimed.ID, ids[2])
+	}
+	if claimed.Status != Running {
+		t.Errorf("status = %q, want %q", claimed.Status, Running)
+	}
+	want := claimBranch(claimed)
+	if claimed.Branch != want {
+		t.Errorf("branch = %q, want %q", claimed.Branch, want)
+	}
+
+	stored, err := s.Ticket(ids[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != Running || stored.Branch != want {
+		t.Errorf("the row holds status %q and branch %q, want %q and %q",
+			stored.Status, stored.Branch, Running, want)
+	}
+	runs := runRows(t, s, ids[2])
+	if len(runs) != 1 {
+		t.Fatalf("runs = %+v, want one", runs)
+	}
+	if runs[0].id != runID {
+		t.Errorf("the claim gave the run id %d, want %d", runID, runs[0].id)
+	}
+	if got := runs[0].pid; !got.Valid || got.V != os.Getpid() {
+		t.Errorf("pid = %+v, want %d", got, os.Getpid())
+	}
+}
+
+// A supervisor that finds nothing to claim stops, and the queue with no ticket
+// at all is the plainest way to find nothing.
+func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
+	s, _ := emptyStore(t)
+
+	claimed, runID, err := s.ClaimNext(claimBranch)
+
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 || runID != 0 {
+		t.Errorf("claimed ticket %d as run %d, want nothing", claimed.ID, runID)
+	}
+}
+
+// One run at a time. A ticket in running holds the queue however long the
+// queue behind it, and the ticket in ready is work the person has not examined
+// yet, which holds it in the same way.
+func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
+	for _, status := range []TicketStatus{Running, Ready} {
+		s, ids := threeTickets(t)
+		if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+			t.Fatal(err)
+		}
+		if status == Ready {
+			if err := s.ChangeStatus(ids[0], Ready); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		claimed, _, err := s.ClaimNext(claimBranch)
+
+		if !errors.Is(err, ErrNoRoom) {
+			t.Errorf("with a ticket in %s: err = %v, want ErrNoRoom", status, err)
+		}
+		if claimed.ID != 0 {
+			t.Errorf("with a ticket in %s: claimed ticket %d, want nothing", status, claimed.ID)
+		}
+	}
+}
+
+// A paused queue starts no run of its own. dg run with an id still claims,
+// because a person typed it, and this is the claim that no person asked for.
+func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
+	s, _ := threeTickets(t)
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(claimBranch)
+
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 {
+		t.Errorf("claimed ticket %d on a paused queue, want nothing", claimed.ID)
+	}
+}
+
+// Two triggers at the same time start two supervisors, and both read the same
+// queue. The claim is one transaction with the read, so one takes the ticket
+// and the other finds nothing.
+func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
+	first, second, ids := twoPrograms(t)
+
+	var wg sync.WaitGroup
+	claims := make(chan Ticket, 2)
+	errs := make(chan error, 2)
+	for _, s := range []*Store{first, second} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			claimed, _, err := s.ClaimNext(claimBranch)
+			claims <- claimed
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(claims)
+	close(errs)
+
+	won := 0
+	for claimed := range claims {
+		if claimed.ID == ids[0] {
+			won++
+		} else if claimed.ID != 0 {
+			t.Errorf("a supervisor claimed ticket %d, want the first of the queue or nothing", claimed.ID)
+		}
+	}
+	if won != 1 {
+		t.Errorf("%d supervisors claimed the ticket, want 1", won)
+	}
+	for err := range errs {
+		if err != nil && !errors.Is(err, ErrNoRoom) {
+			t.Errorf("err = %v, want nil or ErrNoRoom", err)
+		}
+	}
+	if runs := runRows(t, first, ids[0]); len(runs) != 1 {
+		t.Errorf("runs = %+v, want the one of the supervisor that claimed", runs)
 	}
 }
 

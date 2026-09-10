@@ -15,35 +15,71 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Start runs the ticket with the given id: it creates the worktree and its
-// branch, claims the ticket for this run, then runs the agent in the worktree
-// and waits for it to exit. What the agent writes goes to a log below
-// runs/<id>, the session id it reports goes on the ticket, and the time it
-// exits and its exit code go on the row of the run.
+// Start runs the ticket with the given id: it claims the ticket for this run,
+// creates the worktree and its branch, then runs the agent in the worktree and
+// waits for it to exit. What the agent writes goes to a log below runs/<id>,
+// the session id it reports goes on the ticket, and the time it exits and its
+// exit code go on the row of the run.
 //
-// The worktree is created first. If git refuses, the ticket stays queued where
-// you can see it, rather than sitting in running with nowhere to work.
+// The claim comes first, and it refuses a ticket that is not queued. A ticket
+// in running is one that a different supervisor holds, and this one stops
+// rather than run a second agent on the same worktree.
 //
 // A ticket the run claimed and did not finish is failed before Start returns.
 // dg finish is the only thing that makes a ticket ready, so a run that reached
 // its end with the ticket still in running gave no report, whatever ended it.
-func Start(s *store.Store, id int64, agent adapters.Adapter) (err error) {
-	dataDir := s.DataDir()
+func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	ticket, err := s.Ticket(id)
-	if err != nil {
-		return err
-	}
-
-	worktree, err := Worktree(dataDir, ticket)
 	if err != nil {
 		return err
 	}
 	if _, err := s.Claim(id, branch(id, ticket.Title)); err != nil {
 		return err
 	}
-	// From the claim on, this run holds the ticket, and every way out of the
-	// function below is a way out with no report.
+	return supervise(s, ticket, agent)
+}
+
+// StartNext claims the first ticket of the queue for this run and works it,
+// the way Start works the ticket a person named. The read of the queue and the
+// claim are one transaction, so two supervisors that a trigger started at the
+// same time take two different tickets, or one takes a ticket and the other
+// finds none.
+//
+// A supervisor with nothing to claim stops and gives no error. The queue that
+// had room when the trigger counted it can be full by the time this one reads
+// it, and that is the ordinary end of the second supervisor.
+func StartNext(s *store.Store, agent adapters.Adapter) error {
+	ticket, _, err := s.ClaimNext(func(t store.Ticket) string { return branch(t.ID, t.Title) })
+	if errors.Is(err, store.ErrNoRoom) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return supervise(s, ticket, agent)
+}
+
+// noExitCode is the exit code of a run that ended with no process of its own
+// to give one. os/exec gives the same for a process that a signal ended.
+const noExitCode = -1
+
+// supervise works the ticket that the caller has claimed: it makes the
+// worktree and runs the agent in it.
+//
+// A worktree that git will not make ends the run before it starts. The ticket
+// is claimed by then, so this marks it failed and ends the run: a ticket left
+// in running would hold the queue with no supervisor working on it.
+func supervise(s *store.Store, ticket store.Ticket, agent adapters.Adapter) (err error) {
+	dataDir := s.DataDir()
+	id := ticket.ID
+	// The caller has claimed the ticket, so this run holds it, and every way
+	// out of the function below is a way out with no report.
 	defer func() { err = errors.Join(err, s.FailUnfinished(id)) }()
+
+	worktree, err := Worktree(dataDir, ticket)
+	if err != nil {
+		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(id, noExitCode))
+	}
 
 	log, err := openLog(dataDir, id)
 	if err != nil {

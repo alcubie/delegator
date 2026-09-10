@@ -198,14 +198,15 @@ func Script(t *testing.T, lines ...string) string {
 	return path
 }
 
-// RecordingLaunch returns a launch that writes the id it was given to a file,
-// and the path of that file. It stands in for the launch of dg run, so a test
-// sees which ticket was chosen without starting a real run.
-func RecordingLaunch(t *testing.T) (func(id int64) *exec.Cmd, string) {
+// RecordingLaunch returns a launch that writes a file, and the path of that
+// file. It stands in for the launch of dg run, so a test sees that a
+// supervisor was started without starting a real run. The supervisor takes the
+// ticket for itself, so there is no ticket for the launch to record.
+func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	t.Helper()
 	marker := filepath.Join(t.TempDir(), "started")
-	return func(id int64) *exec.Cmd {
-		return exec.Command("sh", "-c", `echo "$1" > "$2"`, "--", fmt.Sprint(id), marker)
+	return func() *exec.Cmd {
+		return exec.Command("sh", "-c", `echo started > "$1"`, "--", marker)
 	}, marker
 }
 

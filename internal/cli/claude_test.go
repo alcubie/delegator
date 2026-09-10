@@ -3,7 +3,6 @@
 package cli
 
 import (
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -23,8 +22,8 @@ import (
 // build of dg, so XDG_DATA_HOME and PATH are set for the run.
 func TestClaudeRunsOneTicket(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
-	useLaunch(t, func(id int64) *exec.Cmd {
-		return exec.Command("dg", "run", fmt.Sprint(id))
+	useLaunch(t, func() *exec.Cmd {
+		return exec.Command("dg", "run")
 	})
 
 	repo := testfix.Repo(t, repoBranch)

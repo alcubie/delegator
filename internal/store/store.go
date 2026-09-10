@@ -113,6 +113,13 @@ func (c timeColumn) Scan(v any) error {
 	return nil
 }
 
+// querier is the part of *sql.DB and *sql.Tx that a read needs, so one query
+// serves a caller inside a transaction and a caller outside one.
+type querier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // Store holds the open database. Each command makes one Store, and closes it
 // when the command stops.
 type Store struct {
@@ -344,7 +351,14 @@ type QueuedTicket struct {
 // is not enough: a ticket with a position and another status left the queue,
 // and a ticket with the status queued and no position is in no queue at all.
 func (s *Store) ListQueue() ([]QueuedTicket, error) {
-	rows, err := s.db.Query(`
+	return listQueue(s.db)
+}
+
+// listQueue is ListQueue for any querier, so the claim of a supervisor reads
+// the queue inside its own transaction and no second query has to say what a
+// ticket of the queue is.
+func listQueue(q querier) ([]QueuedTicket, error) {
+	rows, err := q.Query(`
 		SELECT id, title FROM tickets
 		WHERE status = ? AND position IS NOT NULL
 		ORDER BY position`, Queued)
@@ -596,8 +610,13 @@ type Ticket struct {
 
 // Ticket returns one ticket. It gives ErrNoTicket if the id holds none.
 func (s *Store) Ticket(id int64) (Ticket, error) {
+	return ticket(s.db, id)
+}
+
+// ticket is Ticket for any querier.
+func ticket(q querier, id int64) (Ticket, error) {
 	var t Ticket
-	err := s.db.QueryRow(`
+	err := q.QueryRow(`
 		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
@@ -690,6 +709,93 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 	}
 	defer tx.Rollback()
 
+	runID, err := claim(tx, id, branch)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return runID, nil
+}
+
+// ErrNoRoom shows that the queue had no ticket for a supervisor: the queue is
+// empty or paused, or a ticket that holds the queue is in running or in ready.
+// It is the ordinary end of a supervisor that a trigger started for a queue
+// that has since filled its room, and not a fault.
+var ErrNoRoom = errors.New("no ticket in the queue has room to run")
+
+// hasRoom reports whether a run can start: the queue runs, and no ticket holds
+// it. A ticket in running holds the queue because one run goes at a time, and
+// a ticket in ready holds it because the person has not examined that work
+// yet. An empty queue is not this question; it is what the queue itself says.
+func hasRoom(q querier) (bool, error) {
+	var room bool
+	err := q.QueryRow(`
+		SELECT (SELECT running FROM queue_state WHERE id = 1)
+		   AND NOT EXISTS (SELECT 1 FROM tickets WHERE status IN (?, ?))`,
+		Running, Ready).Scan(&room)
+	return room, err
+}
+
+// HasRoom reports whether the queue has room for a run. A trigger asks it to
+// decide whether to start a supervisor at all; the claim of a supervisor asks
+// it again inside its own transaction, which is the answer that counts.
+func (s *Store) HasRoom() (bool, error) {
+	return hasRoom(s.db)
+}
+
+// ClaimNext claims the first ticket of the queue for this process, and returns
+// the ticket it claimed and the id of the run it wrote. The room, the read of
+// the queue and the claim are one transaction, so two supervisors that start
+// at the same time cannot take the same ticket: the second one reads the queue
+// after the first one has committed, and finds the ticket in running. It gives
+// ErrNoRoom when the queue holds nothing for it.
+//
+// branch gives the name of the branch for the ticket, because only the
+// transaction knows which ticket that is. It runs while the transaction holds
+// the writer lock, so it must do no work of its own on the database.
+func (s *Store) ClaimNext(branch func(Ticket) string) (Ticket, int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	defer tx.Rollback()
+
+	room, err := hasRoom(tx)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	if !room {
+		return Ticket{}, 0, ErrNoRoom
+	}
+	queue, err := listQueue(tx)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	if len(queue) == 0 {
+		return Ticket{}, 0, ErrNoRoom
+	}
+
+	t, err := ticket(tx, queue[0].ID)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	t.Branch = branch(t)
+	runID, err := claim(tx, t.ID, t.Branch)
+	if err != nil {
+		return Ticket{}, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Ticket{}, 0, err
+	}
+	t.Status = Running
+	return t, runID, nil
+}
+
+// claim is the writing of Claim without the transaction, so a caller that
+// reads the queue in the same one can do all of it together.
+func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
 	if err := changeStatus(tx, id, Running); err != nil {
 		return 0, err
 	}
@@ -703,14 +809,7 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	runID, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return runID, nil
+	return result.LastInsertId()
 }
 
 // ErrNoRun shows that a ticket has no run: no supervisor has claimed it, or no

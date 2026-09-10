@@ -148,9 +148,10 @@ earlier draft, and it removes lesson 1 and lesson 7 completely.
            └───────┬───────┘
                    ▼
            ┌───────────────┐
-           │ dg run <id>   │   one supervisor for each run. It starts the
-           │ (supervisor)  │   agent, applies the timeout, writes the state,
-           └───────┬───────┘   starts the next ticket, and then stops.
+           │ dg run [id]   │   one supervisor for each run. It claims its
+           │ (supervisor)  │   own ticket, starts the agent, applies the
+           └───────┬───────┘   timeout, writes the state, starts the next
+                   │           ticket, and then stops.
                    ▼
              claude process ──► git worktree
 ```

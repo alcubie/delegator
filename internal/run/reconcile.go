@@ -22,7 +22,7 @@ import (
 // looked at is one that a supervisor holds and will continue itself.
 //
 // timeout is how long a run may take, which the config of the person gives.
-func Reconcile(s *store.Store, launch func(id int64) *exec.Cmd, timeout time.Duration) error {
+func Reconcile(s *store.Store, launch func() *exec.Cmd, timeout time.Duration) error {
 	boot, err := bootTime()
 	if err != nil {
 		return err
