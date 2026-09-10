@@ -113,35 +113,20 @@ func byID(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// ReadySource is the part of Source that FirstReady reads. A caller that wants
-// one ticket asks the store for the open tickets and nothing else.
-type ReadySource interface {
-	OpenTickets() ([]store.OpenTicket, error)
-}
-
 // FirstReady returns the ticket at the head of READY for the project at path,
 // which is the ticket a person reviews next. found is false when that project
-// has no ready ticket. A command that takes a ticket with no id calls this.
+// has no ready ticket. A command that takes a ticket with no id calls it.
 //
-// The head is the ready ticket that byCompletion puts first, so it is the same
-// ticket the inbox shows at the top of READY. It is here, and not a query of
-// the store that orders by completed, because the order of READY is written
-// once: every query of the store orders by id, and this package turns that
-// into the order the person sees. A copy of the rule in SQL would let the head
-// of READY and the top of READY come apart, and no test would say so.
-func FirstReady(source ReadySource, path string) (ticket store.OpenTicket, found bool, err error) {
-	tickets, err := source.OpenTickets()
-	if err != nil {
-		return store.OpenTicket{}, false, err
-	}
-
-	for _, t := range tickets {
-		if t.Status != store.Ready || t.Project != path {
-			continue
-		}
-		if !found || byCompletion(t, ticket) < 0 {
-			ticket, found = t, true
+// Get has already put READY in the order of completion, so the first ticket of
+// the project is the head of it. Nothing here reads a column or orders a
+// ticket: the head of READY is the ticket at the top of READY that the person
+// is looking at, and a second walk of the tickets could disagree with the list
+// the person can see.
+func (b Inbox) FirstReady(path string) (store.OpenTicket, bool) {
+	for _, t := range b.Ready {
+		if t.Project == path {
+			return t, true
 		}
 	}
-	return ticket, found, nil
+	return store.OpenTicket{}, false
 }

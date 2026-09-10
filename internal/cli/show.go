@@ -334,7 +334,7 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(dataDir, cfg, func(s *store.Store) error {
-				id, err := resolveTicketID(s, args, workDir, projectDir)
+				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err
 				}

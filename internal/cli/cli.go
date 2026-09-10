@@ -42,7 +42,13 @@ func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) 
 // person reviews next, and it saves reading that id off the inbox and typing
 // it. The project is the one that holds the directory dg runs in, and
 // projectFlag names another directory when the person gave --project.
-func resolveTicketID(s *store.Store, args []string, workDir, projectFlag string) (int64, error) {
+//
+// It reads the inbox that the person would see, with the window of DONE their
+// config gives, and takes the head of READY off it. That costs one query for a
+// group the command never reads, and it buys the ticket a command takes being
+// the ticket at the top of the list the person is looking at, decided in one
+// place rather than worked out a second way here.
+func resolveTicketID(s *store.Store, cfg *config.Config, args []string, workDir, projectFlag string) (int64, error) {
 	if len(args) > 0 {
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
@@ -59,10 +65,11 @@ func resolveTicketID(s *store.Store, args []string, workDir, projectFlag string)
 	if err != nil {
 		return 0, err
 	}
-	ticket, found, err := inbox.FirstReady(s, root)
+	box, err := inbox.Get(s, time.Now().Add(-cfg.DoneWindow()))
 	if err != nil {
 		return 0, err
 	}
+	ticket, found := box.FirstReady(root)
 	if !found {
 		return 0, fmt.Errorf("no ticket of %s is ready", root)
 	}

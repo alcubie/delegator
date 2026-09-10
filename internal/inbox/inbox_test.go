@@ -317,10 +317,12 @@ func TestFirstReadyTakesTheOldestCompletionOfTheProject(t *testing.T) {
 		{ID: 5, Project: "/projects/web-api", Status: store.Running},
 	}}
 
-	got, found, err := FirstReady(source, "/projects/web-api")
+	box, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	got, found := box.FirstReady("/projects/web-api")
 	if !found {
 		t.Fatal("FirstReady found no ticket, want ticket 4")
 	}
@@ -338,18 +340,12 @@ func TestFirstReadyWithNoReadyTicketOfTheProject(t *testing.T) {
 		{ID: 2, Project: "/projects/web-api", Status: store.Queued},
 	}}
 
-	got, found, err := FirstReady(source, "/projects/web-api")
+	box, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if found {
-		t.Errorf("FirstReady found ticket %d, want none", got.ID)
-	}
-}
 
-func TestFirstReadyWithASourceThatFails(t *testing.T) {
-	fail := errors.New("the database is not there")
-	if _, _, err := FirstReady(&fakeSource{err: fail}, "/projects/web-api"); !errors.Is(err, fail) {
-		t.Errorf("FirstReady gave %v, want %v", err, fail)
+	if got, found := box.FirstReady("/projects/web-api"); found {
+		t.Errorf("FirstReady found ticket %d, want none", got.ID)
 	}
 }
