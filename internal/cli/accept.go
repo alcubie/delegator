@@ -11,7 +11,8 @@ import (
 )
 
 // acceptCommand returns the command dg accept. With no id it closes the head of
-// READY, which is the ticket the person has just reviewed.
+// READY, which is the ticket the person has just reviewed, and writes the id of
+// the ticket it closed. A person who typed an id already knows which one went.
 //
 // The worktree is removed inside the transaction that closes the ticket, so a
 // worktree git refuses leaves the ticket ready and a person sees it again.
@@ -38,8 +39,6 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				// The person who typed an id knows which ticket went, and the
-				// one who did not gets the id of the ticket this chose.
 				if len(args) == 0 {
 					fmt.Fprintln(cmd.OutOrStdout(), id)
 				}
