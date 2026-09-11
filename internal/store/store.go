@@ -998,6 +998,39 @@ func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
 	return err
 }
 
+// Cancel closes a ticket the person has stopped, and gives its last run the
+// end time when that run has none. It works from each state that is not the
+// end, and gives ErrInvalidTicketStateChange from done and cancelled, so a
+// ticket that is already closed does not reopen.
+//
+// A ticket in running has a supervisor, and the caller stops that supervisor
+// before it calls this: the signal goes outside the transaction, because this
+// one holds SQLite's writer lock and the wait between the two signals is
+// seconds. A supervisor that a signal ended writes nothing, so the end time of
+// its run comes from here.
+//
+// Only the last run is closed. A ticket that failed and was claimed again has
+// a row for each claim, and each earlier one ended when that claim ended.
+func (s *Store) Cancel(id int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := changeStatus(tx, id, Cancelled); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		UPDATE runs SET ended_at = ?
+		WHERE ended_at IS NULL
+		AND id = (SELECT MAX(id) FROM runs WHERE ticket_id = ?)`,
+		rfc3339(time.Now()), id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // FinishTicket completes a Running ticket. It records the commit of the run and
 // the time the run stopped, which orders the ready tickets in the inbox.
 //

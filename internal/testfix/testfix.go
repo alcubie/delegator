@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -121,6 +122,77 @@ func FreePID(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return cmd.Process.Pid
+}
+
+// Group starts sh with script in a session of its own and returns the id of
+// the process group it leads. A script that starts a child of its own puts
+// that child in the same group, so one group stands for a supervisor with an
+// agent below it, and a test can stop the group and see that each program of
+// it ended.
+//
+// The script gets the path of a marker file as $1, and must create the marker
+// once it has done everything a signal has to find: its trap set, its child
+// started. Group returns after the marker is there. Without that the test
+// races the shell reading its own script, and a signal that arrives first
+// reaches a shell with no trap and no child.
+//
+// The shell is a child of the test, so a goroutine waits on it: a child that
+// nobody collects stays as a zombie, and a zombie still answers a signal, so
+// the group would never look gone. The group is killed when the test ends, for
+// a test whose own work leaves it alive.
+func Group(t *testing.T, script string) int {
+	t.Helper()
+	marker := filepath.Join(t.TempDir(), "ready")
+	cmd := exec.Command("sh", "-c", script, "--", marker)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go cmd.Wait()
+
+	pgid := cmd.Process.Pid
+	t.Cleanup(func() { syscall.Kill(-pgid, syscall.SIGKILL) })
+	WaitFor(t, marker)
+	return pgid
+}
+
+// supervisorScript is the script of a Group that stands for a supervisor with
+// an agent below it: one shell and one child of the shell, both in the group,
+// and neither of them keeping a signal.
+const supervisorScript = `sleep 60 & : > "$1"; sleep 60`
+
+// GroupAlive reports whether a process group still holds a program. Signal 0
+// sends nothing, and to a group it gives ESRCH only when the group holds no
+// program at all, so one call answers for the supervisor and for each program
+// below it together.
+func GroupAlive(pgid int) bool {
+	return !errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH)
+}
+
+// WaitForGroupGone fails the test if the group still holds a program after a
+// short wait. A signal is delivered while the program that sent it continues,
+// so the test waits for the programs to go rather than reading once.
+func WaitForGroupGone(t *testing.T, pgid int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !GroupAlive(pgid) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("the process group %d still holds a program", pgid)
+}
+
+// LiveRun makes the last run of a ticket look like the run of a supervisor
+// that is working, by starting a program in a session of its own and putting
+// its process id on the row. The program starts a child, which stands for the
+// agent below a supervisor. It returns the process group that holds both.
+func LiveRun(t *testing.T, dataDir string, ticketID int64) int {
+	t.Helper()
+	pgid := Group(t, supervisorScript)
+	setRunColumn(t, dataDir, ticketID, "pid", pgid)
+	return pgid
 }
 
 // StaleRun makes the last run of a ticket look like the run of a supervisor

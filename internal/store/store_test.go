@@ -2266,3 +2266,147 @@ func TestFailUnfinishedOnARunThatIsNotThere(t *testing.T) {
 		t.Errorf("err = %v, want ErrNoRun", err)
 	}
 }
+
+// A cancel closes a ticket from each state that is not the end, whether or not
+// it ever had a run.
+func TestCancelClosesATicket(t *testing.T) {
+	for _, status := range []TicketStatus{Queued, Running, Ready, Failed} {
+		s, id := oneTicket(t)
+		// A new ticket is queued already, and setStatus clears the position,
+		// which the CHECK of the table does not allow for that state.
+		if status != Queued {
+			setStatus(t, s, id, status)
+		}
+
+		if err := s.Cancel(id); err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Status != Cancelled {
+			t.Errorf("%s gave the status %q, want %q", status, ticket.Status, Cancelled)
+		}
+	}
+}
+
+// The run of a ticket that a person cancels stops with the ticket, so the row
+// of that run is closed and no run of a ticket that is not running is open.
+func TestCancelWritesTheEndOfTheRun(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.EndedAt.Before(before) || run.EndedAt.After(time.Now()) {
+		t.Errorf("ended at = %s, want between %s and now", run.EndedAt, before)
+	}
+}
+
+// The end time of a run that has one is the moment that run ended, and the
+// cancel comes after it: the reconcile wrote it, or the supervisor did before
+// it stopped.
+func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	const ended = "2026-08-28T09:00:00Z"
+	setEndedAt(t, s, id, ended)
+	setStatus(t, s, id, Failed)
+
+	if err := s.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := runRows(t, s, id)
+	if rows[0].endedAt.String != ended {
+		t.Errorf("ended_at = %+v, want %q", rows[0].endedAt, ended)
+	}
+}
+
+// A ticket that failed and was claimed again has more than one run, and only
+// the last one can still be open. An end time on an earlier row would move the
+// end of a run that ended long before.
+func TestCancelWritesTheEndOfTheLastRunOnly(t *testing.T) {
+	s, id := oneTicket(t)
+	first, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FailUnfinished(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(id, Queued); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	const ended = "2026-08-28T09:00:00Z"
+	setEndedAt(t, s, id, ended)
+	// The first run is open again, so a cancel that wrote on every row of the
+	// ticket would close it a second time.
+	if _, err := s.db.Exec("UPDATE runs SET ended_at = NULL WHERE id = ?", first); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := runRows(t, s, id)
+	if rows[0].endedAt.Valid {
+		t.Errorf("the first run ended at %+v, want no end", rows[0].endedAt)
+	}
+	if rows[1].endedAt.String != ended {
+		t.Errorf("the last run ended at %+v, want %q", rows[1].endedAt, ended)
+	}
+}
+
+// done and cancelled are the end, and a cancel that reached one would reopen a
+// ticket that is closed. The run of the ticket is left as it is with the state.
+func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
+	for _, status := range []TicketStatus{Done, Cancelled} {
+		s, id := oneTicket(t)
+		if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+			t.Fatal(err)
+		}
+		setStatus(t, s, id, status)
+
+		err := s.Cancel(id)
+		if !errors.Is(err, ErrInvalidTicketStateChange) {
+			t.Fatalf("%s: err = %v, want ErrInvalidTicketStateChange", status, err)
+		}
+
+		ticket, err := s.Ticket(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Status != status {
+			t.Errorf("status = %q, want %q", ticket.Status, status)
+		}
+		if rows := runRows(t, s, id); rows[0].endedAt.Valid {
+			t.Errorf("the run ended at %+v, want no end", rows[0].endedAt)
+		}
+	}
+}
+
+// A cancel on an id that no ticket has writes nothing and says so.
+func TestCancelWithNoSuchTicket(t *testing.T) {
+	s, _ := oneTicket(t)
+	if err := s.Cancel(404); !errors.Is(err, ErrNoTicket) {
+		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+}

@@ -58,3 +58,16 @@ func TestPauseNoChangeWhenAlreadyPaused(t *testing.T) {
 	}
 
 }
+
+// A pause leaves the run that is going, and a person who wants that run to
+// stop has to be told what stops it. The command was not there when dg pause
+// was written, so the message could not name it.
+func TestPauseNamesTheCommandThatStopsARun(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "pause")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "dg cancel") {
+		t.Errorf("dg pause wrote %q, want it to name dg cancel", out)
+	}
+}
