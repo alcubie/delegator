@@ -25,7 +25,7 @@ func startCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				}
 
 				fmt.Fprintln(cmd.OutOrStdout(), startMessage)
-				return run.Next(s, cfg.Runs, launch)
+				return run.Next(s, *cfg, launch)
 			})
 		},
 	}

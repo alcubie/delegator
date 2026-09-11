@@ -13,6 +13,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/alcubie/delegator/internal/config"
+
 	// The blank name imports this package for its init function only. The init
 	// function puts the driver in the registry of database/sql below the name
 	// "sqlite", and each call of this package goes through database/sql.
@@ -726,14 +728,14 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 // fault.
 var ErrNoRoom = errors.New("no ticket in the queue has room to run")
 
-// freeSlots reports how many runs can start: runs, the limit of the person,
-// less the tickets that hold a slot. A ticket in running holds one because its
-// supervisor is working on it, and a ticket in ready holds one because the
-// person has not examined that work yet. A paused queue has no free slot
-// whatever the limit, and a limit the tickets have already passed gives none
-// rather than a count below zero. An empty queue is not this question; it is
-// what the queue itself says.
-func freeSlots(q querier, runs int) (int, error) {
+// freeSlots reports how many runs can start: cfg.Runs, the limit of the
+// person, less the tickets that hold a slot. A ticket in running holds one
+// because its supervisor is working on it, and a ticket in ready holds one
+// because the person has not examined that work yet. A paused queue has no
+// free slot whatever the limit, and a limit the tickets have already passed
+// gives none rather than a count below zero. An empty queue is not this
+// question; it is what the queue itself says.
+func freeSlots(q querier, cfg config.Config) (int, error) {
 	var running bool
 	var held int
 	err := q.QueryRow(`
@@ -746,14 +748,18 @@ func freeSlots(q querier, runs int) (int, error) {
 	if !running {
 		return 0, nil
 	}
-	return max(runs-held, 0), nil
+	return max(cfg.Runs-held, 0), nil
 }
 
 // FreeSlots reports how many runs the queue has room for. A trigger asks it to
 // decide how many supervisors to start; the claim of each supervisor asks it
 // again inside its own transaction, which is the answer that counts.
-func (s *Store) FreeSlots(runs int) (int, error) {
-	return freeSlots(s.db, runs)
+//
+// It takes the whole config, and not the one key it reads, because the rule
+// for a slot belongs to the person and grows with their file: a limit for each
+// project is the next key that this count has to read.
+func (s *Store) FreeSlots(cfg config.Config) (int, error) {
+	return freeSlots(s.db, cfg)
 }
 
 // ClaimNext claims the first ticket of the queue for this process, and returns
@@ -763,21 +769,21 @@ func (s *Store) FreeSlots(runs int) (int, error) {
 // after the first one has committed, and finds the ticket in running. It gives
 // ErrNoRoom when the queue holds nothing for it.
 //
-// runs is the limit of the person, and the claim counts the slots inside its
+// cfg gives the limit of the person, and the claim counts the slots inside its
 // own transaction: a supervisor that a trigger started for a slot that has
 // since been taken finds none and stops.
 //
 // branch gives the name of the branch for the ticket, because only the
 // transaction knows which ticket that is. It runs while the transaction holds
 // the writer lock, so it must do no work of its own on the database.
-func (s *Store) ClaimNext(runs int, branch func(Ticket) string) (Ticket, int64, error) {
+func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket, int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Ticket{}, 0, err
 	}
 	defer tx.Rollback()
 
-	free, err := freeSlots(tx, runs)
+	free, err := freeSlots(tx, cfg)
 	if err != nil {
 		return Ticket{}, 0, err
 	}

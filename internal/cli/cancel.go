@@ -73,5 +73,5 @@ func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 	}
 	// The supervisor this stopped is the program that would have started the
 	// next run as its own ended, so the command starts it in its place.
-	return run.Next(s, cfg.Runs, launch)
+	return run.Next(s, *cfg, launch)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/adapters"
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -50,9 +51,9 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 // was free when the trigger counted it can be taken by the time this one reads
 // the queue, and that is the ordinary end of the second supervisor.
 //
-// runs is the limit of the person, which the claim counts the slots against.
-func StartNext(s *store.Store, runs int, agent adapters.Adapter) error {
-	ticket, runID, err := s.ClaimNext(runs, func(t store.Ticket) string { return branch(t.ID, t.Title) })
+// cfg is the config of the person, which the claim counts the slots against.
+func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) error {
+	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
 		return nil
 	}

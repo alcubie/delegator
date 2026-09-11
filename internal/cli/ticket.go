@@ -55,7 +55,7 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), id)
-				return run.Next(s, cfg.Runs, launch)
+				return run.Next(s, *cfg, launch)
 			})
 		},
 	}

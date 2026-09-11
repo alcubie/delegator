@@ -4,6 +4,7 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -14,9 +15,10 @@ import (
 // Next decides is how many supervisors to start, and a supervisor that finds
 // no slot by the time it reads the queue stops.
 //
-// runs is the limit of the person, which the config gives. A free slot is one
-// that no ticket in running and no ticket in ready holds, so a limit of one
-// starts a supervisor only for a queue that has nothing open at all.
+// cfg is the config of the person, and cfg.Runs is the limit it reads. A free
+// slot is one that no ticket in running and no ticket in ready holds, so a
+// limit of one starts a supervisor only for a queue that has nothing open at
+// all.
 //
 // It returns once the programs have started, and does not wait for them: the
 // caller is a command a person typed, or a supervisor that is about to exit,
@@ -25,8 +27,8 @@ import (
 //
 // launch returns the command that starts a supervisor. dg passes its own
 // executable with "run", and a test passes something it can observe.
-func Next(s *store.Store, runs int, launch func() *exec.Cmd) error {
-	free, err := s.FreeSlots(runs)
+func Next(s *store.Store, cfg config.Config, launch func() *exec.Cmd) error {
+	free, err := s.FreeSlots(cfg)
 	if err != nil {
 		return err
 	}

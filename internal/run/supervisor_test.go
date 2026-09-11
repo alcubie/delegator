@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/adapters"
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -133,8 +134,10 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	second := testfix.SecondTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	fake := fakeAgent(t, "write made-by-the-agent done", "exit 0")
 
-	if err := StartNext(testfix.OpenStore(t, dataDir), 1, fakeAgent(t, "write made-by-the-agent done", "exit 0")); err != nil {
+	if err := StartNext(s, config.Config{Runs: 1}, fake); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +169,7 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := StartNext(s, 1, fakeAgent(t, "exit 0")); err != nil {
+	if err := StartNext(s, config.Config{Runs: 1}, fakeAgent(t, "exit 0")); err != nil {
 		t.Fatalf("err = %v, want nil from a supervisor with nothing to claim", err)
 	}
 

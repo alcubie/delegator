@@ -6,6 +6,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -18,18 +19,18 @@ import (
 // A reconcile that marked a run then starts a supervisor for each slot it
 // freed. The ticket it marked was holding a slot with no supervisor working on
 // it, and after a restart of the computer this is what makes the queue go
-// again. A
-// reconcile that found nothing to correct starts nothing: the queue it looked
-// at is one that its supervisors hold and will continue themselves.
+// again. A reconcile that found nothing to correct starts nothing: the queue
+// it looked at is one that its supervisors hold and will continue themselves.
 //
-// runs is how many tickets may run at one time and timeout is how long a run
-// may take, which the config of the person gives.
-func Reconcile(s *store.Store, launch func() *exec.Cmd, runs int, timeout time.Duration) error {
+// cfg is the config of the person. It gives how long a run may take, and the
+// count of slots for the starts above.
+func Reconcile(s *store.Store, launch func() *exec.Cmd, cfg config.Config) error {
 	boot, err := bootTime()
 	if err != nil {
 		return err
 	}
 	now := time.Now()
+	timeout := cfg.Timeout()
 	marked, err := s.Reconcile(func(r store.Run) bool { return running(r, boot, now, timeout) })
 	if err != nil {
 		return err
@@ -37,7 +38,7 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, runs int, timeout time.D
 	if marked == 0 {
 		return nil
 	}
-	return Next(s, runs, launch)
+	return Next(s, cfg, launch)
 }
 
 // running reports whether the supervisor of a run is still working. Section 4

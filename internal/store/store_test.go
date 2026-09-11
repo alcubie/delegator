@@ -22,6 +22,8 @@ import (
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+
+	"github.com/alcubie/delegator/internal/config"
 )
 
 // emptyStore returns a store that holds one project and no ticket, with the id of
@@ -1544,7 +1546,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, runID, err := s.ClaimNext(1, claimBranch)
+	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1585,7 +1587,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	claimed, runID, err := s.ClaimNext(1, claimBranch)
+	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1610,7 +1612,7 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 			}
 		}
 
-		claimed, _, err := s.ClaimNext(1, claimBranch)
+		claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 
 		if !errors.Is(err, ErrNoRoom) {
 			t.Errorf("with a ticket in %s: err = %v, want ErrNoRoom", status, err)
@@ -1630,7 +1632,7 @@ func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(2, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
 
 	if err != nil {
 		t.Fatal(err)
@@ -1654,7 +1656,7 @@ func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(2, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1675,7 +1677,7 @@ func TestClaimNextWithMoreTicketsOpenThanTheLimitClaimsNothing(t *testing.T) {
 		}
 	}
 
-	claimed, _, err := s.ClaimNext(1, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1693,7 +1695,7 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(1, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1716,7 +1718,7 @@ func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			claimed, _, err := s.ClaimNext(1, claimBranch)
+			claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
 			claims <- claimed
 			errs <- err
 		}()
@@ -1759,7 +1761,7 @@ func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			claimed, _, err := s.ClaimNext(2, claimBranch)
+			claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
 			if err != nil {
 				t.Errorf("err = %v, want nil", err)
 			}
