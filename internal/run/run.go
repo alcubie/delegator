@@ -59,10 +59,11 @@ func Worktree(dataDir string, ticket store.Ticket) (string, error) {
 
 // RemoveWorktree removes the worktree of one run. A worktree that is not there
 // is not an error: a command that failed after the removal can then run again.
-func RemoveWorktree(dataDir string, ticket store.Ticket) error {
+// force removes a worktree holding changes that are not committed.
+func RemoveWorktree(dataDir string, ticket store.Ticket, force bool) error {
 	path := WorktreePath(dataDir, ticket.ID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	}
-	return project.RemoveWorktree(ticket.Project.Path, path)
+	return project.RemoveWorktree(ticket.Project.Path, path, force)
 }

@@ -153,6 +153,38 @@ func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
 	}
 }
 
+// --force is the answer to that refusal. A person who has read the work and
+// wants the ticket closed takes the worktree with the changes still in it, and
+// the ticket goes to done like any other.
+func TestAcceptWithForceRemovesAWorktreeGitRefuses(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+
+	worktree := run.WorktreePath(dataDir, ticketID)
+	stray := filepath.Join(worktree, "not-committed.txt")
+	if err := os.WriteFile(stray, []byte("work the agent left"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "accept", "--force", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Done {
+		t.Errorf("status = %q, want %q", ticket.Status, store.Done)
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Errorf("the worktree is still at %s", worktree)
+	}
+	if out := testfix.GitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
+		t.Errorf("git still lists the worktree:\n%s", out)
+	}
+}
+
 // The worktree goes but the branch stays, so a person can read the work again
 // long after the ticket closed. dg show resolves the commit through it, and
 // dg open diff needs it to exist.

@@ -658,7 +658,7 @@ installer.
 | `dg move <id> <where>` | Move one ticket in the queue. `<where>` is `up`, `down`, `top` or `bottom`. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
-| `dg accept <id>` | Close a ticket, and remove its worktree. |
+| `dg accept <id>` | Close a ticket, and remove its worktree. Git refuses a worktree holding changes that are not committed, and the ticket stays ready; `--force` removes it anyway and the changes go with it. |
 | `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |
