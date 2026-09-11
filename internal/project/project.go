@@ -8,6 +8,7 @@ package project
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"slices"
@@ -85,9 +86,21 @@ func Root(path string) (string, error) {
 // gitOutput runs one git command in root and returns its output with no final
 // newline. An error means that git said no, and each caller decides what that
 // answer means.
+//
+// The text of an exec.ExitError is the exit status alone, so a failure would
+// reach the person as a number and the sentence git wrote would be lost. The
+// error carries the stderr of git, and gitOutput puts it in front of the
+// status. The exec.ExitError stays underneath, because callers match on the
+// type.
 func gitOutput(root string, args ...string) (string, error) {
 	out, err := Command(root, args...).Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if stderr := strings.TrimRight(string(exitErr.Stderr), "\n"); stderr != "" {
+				return "", fmt.Errorf("%s: %w", stderr, err)
+			}
+		}
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil

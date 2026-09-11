@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -277,5 +278,54 @@ func TestRootIgnoresTheGitEnvironmentOfTheCaller(t *testing.T) {
 	}
 	if got != dir {
 		t.Errorf("root = %s, want %s", got, dir)
+	}
+}
+
+// A git command that fails writes its reason to stderr, and the error of
+// gitOutput is the only place the person can read it.
+func TestGitOutputGivesTheStderrOfGit(t *testing.T) {
+	dir := trunkRepo(t)
+
+	_, err := gitOutput(dir, "rev-parse", "--verify", "nosuchref")
+	if err == nil {
+		t.Fatal("err = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "Needed a single revision") {
+		t.Errorf("err = %v, want the text git wrote", err)
+	}
+	if strings.Contains(err.Error(), "\n") {
+		t.Errorf("err = %q, want no newline from the end of the stderr", err)
+	}
+}
+
+// Git says no with nothing on stderr when it is asked to be quiet. The error
+// then has the exit status and no more, and it must still say something.
+func TestGitOutputWithNoStderrStillGivesAnError(t *testing.T) {
+	dir := trunkRepo(t)
+
+	_, err := gitOutput(dir, "rev-parse", "--verify", "--quiet", "refs/heads/nope")
+	if err == nil {
+		t.Fatal("err = nil, want an error")
+	}
+	if err.Error() == "" {
+		t.Error("err.Error() = empty, want the text of the exit status")
+	}
+	if strings.HasPrefix(err.Error(), ":") {
+		t.Errorf("err = %q, want no empty stderr in front of the status", err)
+	}
+}
+
+// Callers of gitOutput read the failure of git from the type of the error, so
+// the exec.ExitError has to survive the wrapping with its exit code.
+func TestGitOutputKeepsTheExitError(t *testing.T) {
+	dir := trunkRepo(t)
+
+	_, err := gitOutput(dir, "rev-parse", "--verify", "nosuchref")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("err = %v, want an *exec.ExitError under it", err)
+	}
+	if exitErr.ExitCode() != 128 {
+		t.Errorf("exit code = %d, want 128", exitErr.ExitCode())
 	}
 }
