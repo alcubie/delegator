@@ -17,7 +17,9 @@ import (
 
 // Config holds the values of the config file.
 type Config struct {
-	// Runs is the number of tickets that can run at one time.
+	// Runs is the number of tickets that can be open at one time: a ticket
+	// that runs, and a ticket in ready that waits for the person, each hold
+	// one of the places it gives.
 	Runs int `toml:"runs"`
 	// TimeoutMinutes is the time a run can take before delegator stops it.
 	TimeoutMinutes int `toml:"timeout_minutes"`
@@ -72,7 +74,9 @@ var Default = Config{Runs: 1, TimeoutMinutes: 60, DoneHours: 24}
 // one comment that says what it does, because the file is where the person
 // changes a value. The values are the fields of Default, so the file that a
 // person opens and the config of a person who has no file cannot come apart.
-const defaultFile = `# runs is the number of tickets that can run at one time.
+const defaultFile = `# runs is the number of tickets that can be open at one time. A ticket that
+# runs holds one place, and so does a ticket that is ready and waits for you to
+# accept it.
 runs = %d
 
 # timeout_minutes is the time in minutes that a run can take before delegator

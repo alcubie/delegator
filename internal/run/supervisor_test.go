@@ -134,7 +134,7 @@ func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	second := testfix.SecondTicket(t, dataDir)
 
-	if err := StartNext(testfix.OpenStore(t, dataDir), fakeAgent(t, "write made-by-the-agent done", "exit 0")); err != nil {
+	if err := StartNext(testfix.OpenStore(t, dataDir), 1, fakeAgent(t, "write made-by-the-agent done", "exit 0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +166,7 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := StartNext(s, fakeAgent(t, "exit 0")); err != nil {
+	if err := StartNext(s, 1, fakeAgent(t, "exit 0")); err != nil {
 		t.Fatalf("err = %v, want nil from a supervisor with nothing to claim", err)
 	}
 

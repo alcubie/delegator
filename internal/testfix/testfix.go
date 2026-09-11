@@ -274,12 +274,45 @@ func Script(t *testing.T, lines ...string) string {
 // file. It stands in for the launch of dg run, so a test sees that a
 // supervisor was started without starting a real run. The supervisor takes the
 // ticket for itself, so there is no ticket for the launch to record.
+//
+// Each launch appends a line, because a trigger starts one supervisor for each
+// free slot and a test of a limit above one counts them.
 func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	t.Helper()
 	marker := filepath.Join(t.TempDir(), "started")
 	return func() *exec.Cmd {
-		return exec.Command("sh", "-c", `echo started > "$1"`, "--", marker)
+		return exec.Command("sh", "-c", `echo started >> "$1"`, "--", marker)
 	}, marker
+}
+
+// WaitForStarts fails the test unless exactly want supervisors were started
+// and recorded at marker, the file of RecordingLaunch. It waits for that many
+// and then waits again, because the fault it has to catch is one supervisor
+// too many as much as one too few, and a launch that nothing waits on arrives
+// when it arrives.
+func WaitForStarts(t *testing.T, marker string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for starts(t, marker) < want && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := starts(t, marker); got != want {
+		t.Errorf("%d supervisors were started, want %d", got, want)
+	}
+}
+
+// starts returns how many supervisors the recording launch has written.
+func starts(t *testing.T, marker string) int {
+	t.Helper()
+	data, err := os.ReadFile(marker)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(strings.Fields(string(data)))
 }
 
 // WaitFor returns the content of path once it exists, or fails the test after

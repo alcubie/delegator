@@ -46,7 +46,28 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testfix.WaitFor(t, marker)
+	testfix.WaitForStarts(t, marker, 1)
+}
+
+// The limit is the one the config file holds. dg start reads it and starts a
+// supervisor for each free slot, so a person who writes runs = 2 gets two runs
+// from one command.
+func TestStartStartsARunForEachSlotTheConfigGives(t *testing.T) {
+	dataDir := testfix.XDGDataDir(t)
+	s, _, repo := queuedTicket(t, dataDir)
+	testfix.SecondTicket(t, dataDir)
+	writeConfig(t, "runs = 2\n")
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	l, marker := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	if _, err := runIn(t, dataDir, repo, "start"); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 2)
 }
 
 func TestStartNoChangeWhenAlreadyRunning(t *testing.T) {

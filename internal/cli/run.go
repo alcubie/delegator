@@ -51,7 +51,7 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			// With no id the supervisor reads the queue and claims in one
 			// transaction, which is what a trigger starts; with one, a person
 			// named the ticket.
-			start := func(s *store.Store) error { return run.StartNext(s, agent) }
+			start := func(s *store.Store) error { return run.StartNext(s, cfg.Runs, agent) }
 			if len(args) == 1 {
 				id, err := strconv.ParseInt(args[0], 10, 64)
 				if err != nil {
@@ -66,7 +66,7 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				if err := start(s); err != nil {
 					return err
 				}
-				return run.Next(s, launch)
+				return run.Next(s, cfg.Runs, launch)
 			})
 		},
 	}

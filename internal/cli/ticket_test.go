@@ -371,5 +371,5 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testfix.WaitFor(t, marker)
+	testfix.WaitForStarts(t, marker, 1)
 }

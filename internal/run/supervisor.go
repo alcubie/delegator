@@ -46,11 +46,13 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 // same time take two different tickets, or one takes a ticket and the other
 // finds none.
 //
-// A supervisor with nothing to claim stops and gives no error. The queue that
-// had room when the trigger counted it can be full by the time this one reads
-// it, and that is the ordinary end of the second supervisor.
-func StartNext(s *store.Store, agent adapters.Adapter) error {
-	ticket, runID, err := s.ClaimNext(func(t store.Ticket) string { return branch(t.ID, t.Title) })
+// A supervisor with nothing to claim stops and gives no error. The slot that
+// was free when the trigger counted it can be taken by the time this one reads
+// the queue, and that is the ordinary end of the second supervisor.
+//
+// runs is the limit of the person, which the claim counts the slots against.
+func StartNext(s *store.Store, runs int, agent adapters.Adapter) error {
+	ticket, runID, err := s.ClaimNext(runs, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
 		return nil
 	}

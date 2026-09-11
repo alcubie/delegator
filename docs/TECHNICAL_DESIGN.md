@@ -195,11 +195,13 @@ free, or if the run is older than the timeout. [`RUN_CONTROL.md`](RUN_CONTROL.md
 the options and the reasons. No flag for an owner is necessary, and a run from a chat is
 not a special condition.
 
-### 6.2 One run at a time, and two orders
+### 6.2 The limit on runs, and two orders
 
-Version 1 operates one run at a time. This removes the control of slots, and it removes
-each race between two supervisors. The config holds the value, and a later version can
-raise it.
+The config gives the limit on runs. The key `runs` in §9.2 says how many tickets can be
+open at one time, and its value is 1 if the person writes no other value. A ticket in
+`running` holds one slot, because a supervisor operates on it. A ticket in `ready` holds
+one slot, because the person did not examine that work. A trigger starts one supervisor
+for each free slot, and each supervisor claims one ticket of the queue or stops.
 
 Two lists have two different orders. This section replaces §6.3 of the earlier draft,
 which was not correct.

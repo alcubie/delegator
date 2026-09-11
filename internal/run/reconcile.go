@@ -15,14 +15,16 @@ import (
 // computer, and a supervisor that is not there can write nothing, so only a
 // later command can correct the ticket it left behind.
 //
-// A reconcile that marked a run then starts the next ticket. One ticket runs
-// at a time, so the ticket it just freed was holding every ticket below it,
-// and after a restart of the computer this is what makes the queue go again.
-// A reconcile that found nothing to correct starts nothing: the queue it
-// looked at is one that a supervisor holds and will continue itself.
+// A reconcile that marked a run then starts a supervisor for each slot it
+// freed. The ticket it marked was holding a slot with no supervisor working on
+// it, and after a restart of the computer this is what makes the queue go
+// again. A
+// reconcile that found nothing to correct starts nothing: the queue it looked
+// at is one that its supervisors hold and will continue themselves.
 //
-// timeout is how long a run may take, which the config of the person gives.
-func Reconcile(s *store.Store, launch func() *exec.Cmd, timeout time.Duration) error {
+// runs is how many tickets may run at one time and timeout is how long a run
+// may take, which the config of the person gives.
+func Reconcile(s *store.Store, launch func() *exec.Cmd, runs int, timeout time.Duration) error {
 	boot, err := bootTime()
 	if err != nil {
 		return err
@@ -35,7 +37,7 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, timeout time.Duration) e
 	if marked == 0 {
 		return nil
 	}
-	return Next(s, launch)
+	return Next(s, runs, launch)
 }
 
 // running reports whether the supervisor of a run is still working. Section 4

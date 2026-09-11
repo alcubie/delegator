@@ -1544,7 +1544,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, runID, err := s.ClaimNext(claimBranch)
+	claimed, runID, err := s.ClaimNext(1, claimBranch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1585,7 +1585,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	claimed, runID, err := s.ClaimNext(claimBranch)
+	claimed, runID, err := s.ClaimNext(1, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1595,9 +1595,9 @@ func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	}
 }
 
-// One run at a time. A ticket in running holds the queue however long the
-// queue behind it, and the ticket in ready is work the person has not examined
-// yet, which holds it in the same way.
+// With a limit of one, one ticket fills the queue however long the queue
+// behind it, and the ticket in ready is work the person has not examined yet,
+// which fills it in the same way.
 func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 	for _, status := range []TicketStatus{Running, Ready} {
 		s, ids := threeTickets(t)
@@ -1610,7 +1610,7 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 			}
 		}
 
-		claimed, _, err := s.ClaimNext(claimBranch)
+		claimed, _, err := s.ClaimNext(1, claimBranch)
 
 		if !errors.Is(err, ErrNoRoom) {
 			t.Errorf("with a ticket in %s: err = %v, want ErrNoRoom", status, err)
@@ -1618,6 +1618,70 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 		if claimed.ID != 0 {
 			t.Errorf("with a ticket in %s: claimed ticket %d, want nothing", status, claimed.ID)
 		}
+	}
+}
+
+// A limit above one leaves a slot for a second supervisor, which claims the
+// ticket below the one that is running: two runs, in two worktrees, at one
+// time.
+func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(2, claimBranch)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != ids[1] {
+		t.Errorf("claimed ticket %d, want the first ticket still queued %d", claimed.ID, ids[1])
+	}
+}
+
+// A ticket in ready holds its slot, at any limit: the person has not examined
+// that work yet, and the count is of the tickets a run has opened and nobody
+// has closed.
+func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
+	s, ids := threeTickets(t)
+	for _, id := range ids[:2] {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ChangeStatus(ids[0], Ready); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(2, claimBranch)
+
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 {
+		t.Errorf("claimed ticket %d with both slots full, want nothing", claimed.ID)
+	}
+}
+
+// A person who lowers the limit while runs are going has more tickets open
+// than the limit allows. The claim takes nothing until they close enough of
+// them, and the count of slots below zero is a count of none.
+func TestClaimNextWithMoreTicketsOpenThanTheLimitClaimsNothing(t *testing.T) {
+	s, ids := threeTickets(t)
+	for _, id := range ids[:2] {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	claimed, _, err := s.ClaimNext(1, claimBranch)
+
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 {
+		t.Errorf("claimed ticket %d with the limit below the tickets open, want nothing", claimed.ID)
 	}
 }
 
@@ -1629,7 +1693,7 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(claimBranch)
+	claimed, _, err := s.ClaimNext(1, claimBranch)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1652,7 +1716,7 @@ func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			claimed, _, err := s.ClaimNext(claimBranch)
+			claimed, _, err := s.ClaimNext(1, claimBranch)
 			claims <- claimed
 			errs <- err
 		}()
@@ -1679,6 +1743,44 @@ func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 	}
 	if runs := runRows(t, first, ids[0]); len(runs) != 1 {
 		t.Errorf("runs = %+v, want the one of the supervisor that claimed", runs)
+	}
+}
+
+// Two supervisors that a limit of two started fill the two slots between them:
+// each one takes a ticket of its own, and no ticket is claimed twice. The read
+// of the queue and the claim are one transaction, so the second supervisor
+// reads a queue that no longer holds the first ticket.
+func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
+	first, second, ids := twoPrograms(t)
+
+	var wg sync.WaitGroup
+	claims := make(chan Ticket, 2)
+	for _, s := range []*Store{first, second} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			claimed, _, err := s.ClaimNext(2, claimBranch)
+			if err != nil {
+				t.Errorf("err = %v, want nil", err)
+			}
+			claims <- claimed
+		}()
+	}
+	wg.Wait()
+	close(claims)
+
+	claimed := make(map[int64]bool)
+	for c := range claims {
+		claimed[c.ID] = true
+	}
+	if !claimed[ids[0]] || !claimed[ids[1]] {
+		t.Errorf("the supervisors claimed %v, want the first two tickets %d and %d",
+			claimed, ids[0], ids[1])
+	}
+	for _, id := range ids[:2] {
+		if runs := runRows(t, first, id); len(runs) != 1 {
+			t.Errorf("ticket %d has runs %+v, want the one of the supervisor that claimed it", id, runs)
+		}
 	}
 }
 

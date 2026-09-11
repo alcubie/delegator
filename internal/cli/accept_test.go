@@ -190,7 +190,7 @@ func TestAcceptStartsTheNextTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testfix.WaitFor(t, marker)
+	testfix.WaitForStarts(t, marker, 1)
 }
 
 // The ticket a person accepts is nearly always the head of READY, so dg accept

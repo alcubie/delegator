@@ -22,7 +22,7 @@ them. It adds these:
 | process id | The number that the operating system gives to one program while it runs. |
 | process group | The set of programs that one signal can reach together. A supervisor makes its own group. |
 | signal | A message from the operating system to a program, such as `SIGTERM` or `SIGKILL`. |
-| slot | One of the `runs` places from the config. A run takes one slot. |
+| slot | One of the `runs` places from the config. A ticket in `running` takes one slot, and a ticket in `ready` also takes one. |
 | start window | The short time between the claim of a ticket and the moment that its supervisor can answer for itself. |
 | trigger | A command or a supervisor that can start a run. Today `dg ticket`, `dg start`, and a supervisor that ends. |
 

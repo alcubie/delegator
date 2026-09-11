@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/run"
@@ -150,10 +149,7 @@ func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("a run was started while a ticket is in ready")
-	}
+	testfix.WaitForStarts(t, marker, 0)
 }
 
 // A run that could not start leaves the queue where it is. What stopped it is
@@ -173,8 +169,5 @@ func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 		t.Fatal("err = nil, want the failure to make the worktree")
 	}
 
-	time.Sleep(100 * time.Millisecond)
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("a run was started after a failed start")
-	}
+	testfix.WaitForStarts(t, marker, 0)
 }
