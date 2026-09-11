@@ -124,40 +124,40 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 	}
 }
 
-// READY is in the order of the time of completion, and a ticket that becomes
-// ready goes at the end. The source gives them in another order, so the
-// inbox and not the query does this work.
-func TestGetPutsReadyInTheOrderOfCompletion(t *testing.T) {
+// READY is in the order of position, which is the order the person set with
+// dg move. The source gives the tickets in another order, so the inbox and not
+// the query does this work.
+func TestGetPutsReadyInTheOrderOfPosition(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
-		{ID: 1, Status: store.Ready, Completed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
-		{ID: 2, Status: store.Ready, Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
-		{ID: 3, Status: store.Ready, Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+		{ID: 1, Status: store.Ready, Position: 2},
+		{ID: 2, Status: store.Ready, Position: 3},
+		{ID: 3, Status: store.Ready, Position: 1},
 	}}
 
 	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []int64{2, 1, 3}; !slices.Equal(ids(got.Ready), want) {
+	if want := []int64{3, 1, 2}; !slices.Equal(ids(got.Ready), want) {
 		t.Errorf("READY holds %v, want %v", ids(got.Ready), want)
 	}
 }
 
-// Two tickets can hold the same time, because the time has one second and no
-// part of a second. The id then keeps the order stable.
-func TestGetKeepsReadyStableWhenTheTimeIsTheSame(t *testing.T) {
-	same := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
+// The time of completion no longer orders READY, so a ticket that completed
+// last stays where the position puts it.
+func TestGetLeavesReadyInPositionOrderWhenCompletionDisagrees(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
-		{ID: 7, Status: store.Ready, Completed: same},
-		{ID: 3, Status: store.Ready, Completed: same},
-		{ID: 5, Status: store.Ready, Completed: same},
+		{ID: 1, Status: store.Ready, Position: 1,
+			Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+		{ID: 2, Status: store.Ready, Position: 2,
+			Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
 	}}
 
 	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []int64{3, 5, 7}; !slices.Equal(ids(got.Ready), want) {
+	if want := []int64{1, 2}; !slices.Equal(ids(got.Ready), want) {
 		t.Errorf("READY holds %v, want %v", ids(got.Ready), want)
 	}
 }
@@ -304,16 +304,14 @@ func TestGetGivesTheErrorOfTheDoneTickets(t *testing.T) {
 }
 
 // The ticket a person reviews is the head of READY of one project, which is
-// the ready ticket with the oldest completion. A ticket of another project is
+// the ready ticket with the smallest position. A ticket of another project is
 // not it, and neither is a ticket that is queued or running.
-func TestFirstReadyTakesTheOldestCompletionOfTheProject(t *testing.T) {
-	older := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
-	newer := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+func TestFirstReadyTakesTheHeadOfReadyOfTheProject(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
-		{ID: 1, Project: "/projects/web-api", Status: store.Ready, Completed: newer},
-		{ID: 2, Project: "/projects/billing", Status: store.Ready, Completed: older},
-		{ID: 3, Project: "/projects/web-api", Status: store.Queued},
-		{ID: 4, Project: "/projects/web-api", Status: store.Ready, Completed: older},
+		{ID: 1, Project: "/projects/web-api", Status: store.Ready, Position: 3},
+		{ID: 2, Project: "/projects/billing", Status: store.Ready, Position: 1},
+		{ID: 3, Project: "/projects/web-api", Status: store.Queued, Position: 1},
+		{ID: 4, Project: "/projects/web-api", Status: store.Ready, Position: 2},
 		{ID: 5, Project: "/projects/web-api", Status: store.Running},
 	}}
 

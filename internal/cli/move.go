@@ -1,6 +1,6 @@
-// The command that changes the order of the queue. internal/store holds the
-// move itself, and this file takes the word that the person wrote and gives it
-// a direction.
+// The command that changes the order of the queue and the order of READY.
+// internal/store holds the move itself, and this file takes the word that the
+// person wrote and gives it a direction.
 
 package cli
 
@@ -35,8 +35,8 @@ func directionNames() []string {
 func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use: "move <id> <where>",
-		Short: "Move one ticket in the queue. <where> is " +
-			strings.Join(directionNames(), ", ") + ", or the id of another ticket.",
+		Short: "Move one ticket inside the queue, or inside READY. <where> is " +
+			strings.Join(directionNames(), ", ") + ", or the id of another ticket of the same list.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)

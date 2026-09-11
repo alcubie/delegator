@@ -181,9 +181,15 @@ func canChange(from, to TicketStatus) bool {
 // ErrInvalidTicketStateChange shows that an invalid state change was attempted and blocked.
 var ErrInvalidTicketStateChange = errors.New("invalid ticket state change")
 
-// ErrNotInTheQueue shows that a ticket is not one that the queue holds. The id
-// can belong to no ticket, or to a ticket that has a status other than queued.
-var ErrNotInTheQueue = errors.New("the ticket is not in the queue")
+// ErrNotMovable shows that a move cannot take a ticket, because the ticket is
+// in no list that has a sequence. The id can belong to no ticket, or to a ticket
+// that is running, done, failed or cancelled.
+var ErrNotMovable = errors.New("only a queued ticket and a ready ticket can move")
+
+// ErrNotInTheSameList shows that the target of a move is not in the list that
+// the ticket is in. A move orders one list, so a ready ticket cannot go among the
+// tickets of the queue and a queued ticket cannot go among the ready ones.
+var ErrNotInTheSameList = errors.New("a ticket moves inside its own list")
 
 // Open returns the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
@@ -382,67 +388,105 @@ func listQueue(q querier) ([]QueuedTicket, error) {
 	return queue, rows.Err()
 }
 
-// MoveTicket moves one ticket in the queue, in the direction of move. The read
-// of the order and the write of each new position are in one transaction, so
-// the order that moves is the order that the queue has.
+// list is a group of the inbox that holds its tickets in an order the person
+// sets, with the column that keeps the place of a ticket in it. The queue is
+// one list and READY is the other, and a move orders the tickets of one of them.
+//
+// The status and the column go together, so a caller that knows the list cannot
+// read one of them and write the place of the other.
+type list struct {
+	status TicketStatus
+	column string
+}
+
+// lists holds each list that a move can order.
+var lists = []list{
+	{Queued, "position"},
+	{Ready, "ready_position"},
+}
+
+// MoveTicket moves one ticket inside its list, in the direction of move. The
+// read of the order and the write of each new position are in one transaction,
+// so the order that moves is the order that the list has.
 func (s *Store) MoveTicket(id int64, move Move) error {
-	return s.move(id, func(ids []int64, from int) ([]int64, error) {
+	return s.move(id, func(_ list, ids []int64, from int) ([]int64, error) {
 		return reorder(ids, from, move), nil
 	})
 }
 
 // MoveTicketBefore puts one ticket where target is, and target and each ticket
-// below it go down one place. A person who moves a ticket into the middle of
-// the queue therefore writes one command, and not one dg move up for each place.
+// below it go down one place. A person who moves a ticket into the middle of a
+// list therefore writes one command, and not one dg move up for each place.
 //
 // A target that is the ticket itself changes nothing, because a ticket is
 // already where it is.
 func (s *Store) MoveTicketBefore(id, target int64) error {
-	return s.move(id, func(ids []int64, from int) ([]int64, error) {
+	return s.move(id, func(where list, ids []int64, from int) ([]int64, error) {
 		if !slices.Contains(ids, target) {
-			return nil, fmt.Errorf("%w: ticket %d", ErrNotInTheQueue, target)
+			return nil, fmt.Errorf("%w: ticket %d is not %s", ErrNotInTheSameList, target, where.status)
 		}
 		return reorderBefore(ids, from, target), nil
 	})
 }
 
-// move reads the order of the queue, gives it to order, and writes what comes
-// back. The read and the write are below one transaction, so the order that
-// moves is the order that the queue has.
-func (s *Store) move(id int64, order func(ids []int64, from int) ([]int64, error)) error {
+// move reads the order of the list that holds the ticket, gives it to order, and
+// writes what comes back. The read and the write are below one transaction, so
+// the order that moves is the order that the list has.
+func (s *Store) move(id int64, order func(where list, ids []int64, from int) ([]int64, error)) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	ids, err := queuedIDs(tx)
+	where, err := listOf(tx, id)
+	if err != nil {
+		return err
+	}
+	ids, err := listIDs(tx, where)
 	if err != nil {
 		return err
 	}
 	from := slices.Index(ids, id)
 	if from < 0 {
-		return fmt.Errorf("%w: ticket %d", ErrNotInTheQueue, id)
+		return fmt.Errorf("%w: ticket %d", ErrNotMovable, id)
 	}
 
-	moved, err := order(ids, from)
+	moved, err := order(where, ids, from)
 	if err != nil {
 		return err
 	}
-	if err := setPositions(tx, moved); err != nil {
+	if err := setPositions(tx, where, moved); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// queuedIDs returns the id of each ticket of the queue, in the order of
-// position. It asks the same question as ListQueue, so a move operates on the
-// queue that the person can see.
-func queuedIDs(tx *sql.Tx) ([]int64, error) {
-	rows, err := tx.Query(`
+// listOf returns the list that holds the ticket, and ErrNotMovable when no
+// list does. A ticket that no row holds gives that error as well: the answer to
+// dg move is the same either way, that the ticket is not one a move can take.
+func listOf(tx *sql.Tx, id int64) (list, error) {
+	var status TicketStatus
+	err := tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&status)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return list{}, err
+	}
+	for _, l := range lists {
+		if l.status == status {
+			return l, nil
+		}
+	}
+	return list{}, fmt.Errorf("%w: ticket %d", ErrNotMovable, id)
+}
+
+// listIDs returns the id of each ticket of a list, in the order of its column of
+// positions. For the queue it asks the same question as ListQueue, so a move
+// operates on the order that the person can see.
+func listIDs(tx *sql.Tx, l list) ([]int64, error) {
+	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT id FROM tickets
-		WHERE status = ? AND position IS NOT NULL
-		ORDER BY position`, Queued)
+		WHERE status = ? AND %[1]s IS NOT NULL
+		ORDER BY %[1]s`, l.column), l.status)
 	if err != nil {
 		return nil, err
 	}
@@ -459,19 +503,21 @@ func queuedIDs(tx *sql.Tx) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// setPositions writes the order of the queue. The first id of ids takes
+// setPositions writes the order of one list. The first id of ids takes
 // position 1, the next takes 2, and so on.
-func setPositions(tx *sql.Tx, ids []int64) error {
+func setPositions(tx *sql.Tx, l list, ids []int64) error {
 	// The column has a unique index, and a ticket can take a position that
 	// another ticket holds now, so each position goes below zero first. A
 	// position that is not there at all would be simpler, but the CHECK of the
 	// table refuses a queued ticket with no position, and SQLite has no CHECK
 	// that waits for the commit.
-	if _, err := tx.Exec("UPDATE tickets SET position = -position WHERE position IS NOT NULL"); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf(
+		"UPDATE tickets SET %[1]s = -%[1]s WHERE %[1]s IS NOT NULL", l.column)); err != nil {
 		return err
 	}
 	for i, id := range ids {
-		if _, err := tx.Exec("UPDATE tickets SET position = ? WHERE id = ?", i+1, id); err != nil {
+		if _, err := tx.Exec(fmt.Sprintf(
+			"UPDATE tickets SET %s = ? WHERE id = ?", l.column), i+1, id); err != nil {
 			return err
 		}
 	}
@@ -488,10 +534,14 @@ func setPositions(tx *sql.Tx, ids []int64) error {
 // need a sql.Null, to keep the two apart. The status says which group the ticket is in, so no field here
 // must answer that as well.
 type OpenTicket struct {
-	ID       int64
-	Project  string
-	Title    string
-	Status   TicketStatus
+	ID      int64
+	Project string
+	Title   string
+	Status  TicketStatus
+
+	// Position is the place of the ticket in its list: the queue for a queued
+	// ticket and READY for a ready one. A ticket of neither list holds 0, which
+	// is no place, and Status says which list the ticket is in.
 	Position int
 
 	// Completed is the time that the ticket became ready. A ticket that never
@@ -561,7 +611,7 @@ func ceilSecond(t time.Time) time.Time {
 // for each of them.
 const inboxTicketQuery = `
 	SELECT tickets.id, projects.path, tickets.title, tickets.status,
-	       COALESCE(tickets.position, 0), tickets.completed,
+	       COALESCE(tickets.position, tickets.ready_position, 0), tickets.completed,
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
 	FROM tickets
@@ -644,8 +694,9 @@ func ticket(q querier, id int64) (Ticket, error) {
 // ErrInvalidTicketStateChange if it is not, and ErrNoTicket if no ticket has
 // the id.
 //
-// Position follows status: entering queued appends to the end, leaving it
-// clears the position, so the CHECK constraint holds either way.
+// A position follows status: entering queued or ready appends the ticket to the
+// end of that list, and leaving a list clears the position it held, so the CHECK
+// constraint holds either way and no ticket keeps a place in a list it left.
 //
 // The read and the write share one transaction, which is BEGIN IMMEDIATE, so
 // nothing can change the status in between.
@@ -677,10 +728,18 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 		return fmt.Errorf("%w: %s to %s", ErrInvalidTicketStateChange, from, status)
 	}
 
-	update := "UPDATE tickets SET status = ?, position = NULL WHERE id = ?"
-	if status == Queued {
+	update := "UPDATE tickets SET status = ?, position = NULL, ready_position = NULL WHERE id = ?"
+	switch status {
+	case Queued:
 		update = `UPDATE tickets
-			SET status = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets)
+			SET status = ?, position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets),
+			    ready_position = NULL
+			WHERE id = ?
+		`
+	case Ready:
+		update = `UPDATE tickets
+			SET status = ?, position = NULL,
+			    ready_position = (SELECT COALESCE(MAX(ready_position), 0) + 1 FROM tickets)
 			WHERE id = ?
 		`
 	}
@@ -1073,7 +1132,7 @@ func (s *Store) Cancel(id, runID int64) error {
 }
 
 // FinishTicket completes a Running ticket. It records the commit of the run and
-// the time the run stopped, which orders the ready tickets in the inbox.
+// the time the run stopped, which DONE is ordered by and dg show writes.
 //
 // If the ticket is not Running, it returns ErrInvalidTicketStateChange.
 func (s *Store) FinishTicket(id int64, commit string) error {

@@ -1,0 +1,10 @@
+# runs is the number of tickets that can be Running or Ready at a time.
+runs = 1
+
+# timeout_minutes is the time in minutes that a run can take before delegator
+# stops it.
+timeout_minutes = 60
+
+# done_hours is the time in hours that a ticket stays in DONE at the top of the
+# inbox after dg accept closes it. A value of 0 leaves DONE empty.
+done_hours = 24

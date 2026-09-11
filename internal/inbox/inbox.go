@@ -1,10 +1,10 @@
 // Package inbox is the one list that the person examines. It answers which
 // ticket is in which group, and in what order, and it writes no text.
 //
-// The rule that READY comes in the order of completion and QUEUED in the order
-// of position lives here, and in one place only. A terminal is not the one
-// interface that shows this list: internal/cli writes the text for a terminal,
-// a TUI reads the same structure, and dg --json writes the structure itself. An
+// The rule that READY and QUEUED come in the order of position, and DONE in
+// the order of completion, lives here, and in one place only. A terminal is not
+// the one interface that shows this list: internal/cli writes the text for a
+// terminal, a TUI reads the same structure, and dg --json writes it itself. An
 // order that lived in one of those would have to be written again in each other
 // one, and the three would come apart.
 //
@@ -76,17 +76,16 @@ func Get(source Source, since time.Time) (Inbox, error) {
 	box.QueueRunning = running
 
 	slices.SortFunc(box.Done, byCompletion)
-	slices.SortFunc(box.Ready, byCompletion)
+	slices.SortFunc(box.Ready, byPosition)
 	slices.SortFunc(box.Running, byID)
 	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
 }
 
-// byCompletion orders the tickets by completion in ascending order. A ticket that
-// becomes ready therefore goes at the end which keeps the ordering stable as
-// new tickets are completed and added to the end of the list. DONE takes the
-// same order for the same reason, and the newest finished ticket is at the
-// end of it.
+// byCompletion orders the tickets by completion in ascending order. A ticket
+// that the person accepts therefore goes at the end, which keeps the order
+// stable as tickets are accepted, and the newest finished ticket is at the end
+// of DONE.
 // The time holds one second and no part of a second, so two tickets can
 // hold the same one, and the id then keeps the order stable.
 func byCompletion(a, b store.OpenTicket) int {
@@ -96,9 +95,11 @@ func byCompletion(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// byPosition orders the tickets by position in ascending order.
+// byPosition orders the tickets by position in ascending order. A ticket that
+// enters a group goes at the end of it, and dg move takes it from there, so
+// the order is the one the person last set.
 // This assumes the position of each ticket is unique which is enforced by the
-// database for queued tickets.
+// database for the tickets of one group.
 func byPosition(a, b store.OpenTicket) int {
 	return cmp.Compare(a.Position, b.Position)
 }
@@ -117,11 +118,10 @@ func byID(a, b store.OpenTicket) int {
 // which is the ticket a person reviews next. found is false when that project
 // has no ready ticket. A command that takes a ticket with no id calls it.
 //
-// Get has already put READY in the order of completion, so the first ticket of
-// the project is the head of it. Nothing here reads a column or orders a
-// ticket: the head of READY is the ticket at the top of READY that the person
-// is looking at, and a second walk of the tickets could disagree with the list
-// the person can see.
+// Get has already put READY in its order, so the first ticket of the project is
+// the head of it. Nothing here reads a column or orders a ticket: the head of
+// READY is the ticket at the top of READY that the person is looking at, and a
+// second walk of the tickets could disagree with the list the person can see.
 func (b Inbox) FirstReady(path string) (store.OpenTicket, bool) {
 	for _, t := range b.Ready {
 		if t.Project == path {
