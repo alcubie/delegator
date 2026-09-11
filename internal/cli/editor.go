@@ -43,25 +43,38 @@ func splitTitle(text string) (title, body string) {
 	return strings.TrimSpace(title), strings.TrimLeft(body, "\n")
 }
 
-// TicketFromEditor makes a ticket from what the person writes in an editor. The
-// first line is the title, and each line below it is the prose.
-func TicketFromEditor(s *store.Store, workDir string) (int64, error) {
+// fromEditor puts text in a file of its own, opens the editor of the person on
+// it, and returns what the editor left there. The file goes away after the
+// editor closes, because the ticket and not the file is what delegator keeps.
+func fromEditor(text string) (string, error) {
 	f, err := os.CreateTemp("", "dg-*.md")
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	path := f.Name()
 	f.Close()
 	defer os.Remove(path)
 
+	if err := os.WriteFile(path, []byte(text), filePerm); err != nil {
+		return "", err
+	}
 	if err := editor(path); err != nil {
-		return 0, err
+		return "", err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// TicketFromEditor makes a ticket from what the person writes in an editor. The
+// first line is the title, and each line below it is the prose.
+func TicketFromEditor(s *store.Store, workDir string) (int64, error) {
+	text, err := fromEditor("")
+	if err != nil {
 		return 0, err
 	}
-
-	title, body := splitTitle(string(data))
+	title, body := splitTitle(text)
 	return Ticket(s, workDir, title, body)
 }
