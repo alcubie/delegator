@@ -56,11 +56,11 @@ func cancelTicket(s *store.Store, id int64) error {
 		return err
 	}
 	if ticket.Status == store.Running {
-		held, err := s.Run(id)
+		r, err := s.Run(id)
 		if err != nil {
 			return err
 		}
-		if err := run.Stop(held.PID, run.StopGrace); err != nil {
+		if err := run.Stop(r.PID, run.StopGrace); err != nil {
 			return err
 		}
 	}
