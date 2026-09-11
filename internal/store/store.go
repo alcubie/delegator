@@ -1139,6 +1139,24 @@ func (s *Store) SetSession(id int64, session string) error {
 	return nil
 }
 
+// SetTitle records a new title for a ticket. The title is a column and not the
+// first line of the prose, so a person who corrects it needs a command that
+// writes the column, and dg edit is that command.
+func (s *Store) SetTitle(id int64, title string) error {
+	result, err := s.db.Exec("UPDATE tickets SET title = ? WHERE id = ?", title, id)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	return nil
+}
+
 // IsQueueRunning returns if the queue is actively running. A paused queue
 // prevents tickets from automatically starting.
 func (s *Store) IsQueueRunning() (bool, error) {
