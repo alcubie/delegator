@@ -1,9 +1,17 @@
 # Delegator: a GUI in the browser
 
-**Condition:** draft, for your examination
+**Condition:** deprecated on 2026-09-11. Do not do the plan of section 9.
 **Date:** 2026-09-09
 **Companion to:** [`TECHNICAL_DESIGN.md`](TECHNICAL_DESIGN.md)
 **Language:** ASD-STE100 Simplified Technical English, Issue 9.
+
+**Why this document is deprecated.** The GUI is a desktop program, made with
+Electron, that a person buys. The CLI stays free, and it is the contract: the
+desktop program starts `dg` for each read and each write, and reads the JSON that
+`--json` gives. A server in `dg` puts a GUI in the free binary, and it adds a port
+and a token. The roadmap is outside the repository, at
+`~/notes/20-29 Projects/Alcubi/delegator/Roadmap/Desktop GUI.md`. Sections 3, 5
+and 7 of this document stay as a record of what was examined.
 
 You asked one question: what is the effect if delegator gets a GUI? The command
 `dg --gui` starts a server on a port, and opens the browser at it. This document

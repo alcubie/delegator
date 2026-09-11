@@ -85,9 +85,5 @@ the wrong place, that is the signal to correct this.
   nobody comes back to delete it. What a later ticket will do belongs in that
   ticket and in the commit message, which is a record of a moment and does not
   go stale.
-- Inline comments should be infrequent.  Only write inline comments to explain
-  code that is not intuitive on first glance or to provide additional context
-  that isn't available from the code (such as an edge case encountered).  A
-  comment is usually needed if the user needs to ask about what the code is doing.
-  If you need to write a comment for unintuitive code, think first if it should
-  be re-written in a way that makes it easier to understand.
+- Don't write inline comments unless I ask about code to be explained. Only then add an inline comment.
+- Keep functional comments brief.
