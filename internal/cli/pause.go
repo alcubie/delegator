@@ -11,7 +11,7 @@ import (
 // pausedMessage is what dg pause writes. It names dg cancel because a pause
 // leaves the run that is going, and a person who wanted that run to stop has
 // to be told what stops it.
-const pausedMessage = "The queue is paused. Current runs will finish. Use dg cancel <id> to stop one."
+const pausedMessage = "The queue is paused. Current runs will finish. Use dg cancel <id> to stop a ticket."
 
 // pauseCommand returns the command for dg pause.
 func pauseCommand(dataDir string, cfg *config.Config) *cobra.Command {
