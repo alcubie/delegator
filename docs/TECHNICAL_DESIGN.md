@@ -209,12 +209,16 @@ which was not correct.
 | List | Order | Why |
 |---|---|---|
 | QUEUED | The order of the queue. The person can change it. | The person controls what operates next. |
-| READY | The time of completion. A new ticket goes at the end. | The list is stable. |
+| READY | The sequence that the person set. A new ticket goes at the end. | The list is stable. The person controls what to examine next. |
 
 The earlier draft put READY in the order of the queue. That order is not stable. A slow
 ticket that entered the queue first comes into the list **above** tickets that the person
-can see now. The list therefore moves below the eyes of the person. An order by time of
-completion only adds to the end, so no row moves.
+can see now. The list therefore moves below the eyes of the person. A new ticket that
+goes at the end moves no row above it.
+
+The command `dg move` changes the sequence of READY. A ticket at the end can go to the
+top, and the person then examines it first. A move keeps a ticket in its own list: a
+ready ticket cannot go into the queue, and a queued ticket cannot go into READY.
 
 There is no limit on the count of tickets in READY. Tickets collect there, as mail
 collects in a mail inbox. The count can be 1 or 100.
@@ -655,7 +659,7 @@ installer.
 | `dg edit <id>` | Open `$EDITOR` on the title and the prose of one ticket of the queue. The form is the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. `dg revise` changes a ticket after a run. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg start` and `dg pause` | Start or stop work on the queue. |
-| `dg move <id> <where>` | Move one ticket in the queue. `<where>` is `up`, `down`, `top` or `bottom`. |
+| `dg move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. |

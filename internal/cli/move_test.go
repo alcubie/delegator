@@ -6,7 +6,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -30,6 +32,37 @@ func threeInTheQueue(t *testing.T) (string, string, []int64) {
 		ids = append(ids, id)
 	}
 	return dataDir, repo, ids
+}
+
+// threeInReady makes three ready tickets and returns the data directory, the
+// repository and their ids, in the order that READY holds them.
+func threeInReady(t *testing.T) (string, string, []int64) {
+	t.Helper()
+	dataDir, repo, ids := threeInTheQueue(t)
+	s := testfix.OpenStore(t, dataDir)
+	for _, id := range ids {
+		for _, status := range []store.TicketStatus{store.Running, store.Ready} {
+			if err := s.ChangeStatus(id, status); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return dataDir, repo, ids
+}
+
+// readyTitlesOf reads the order of READY through the inbox, which is the list
+// the person sees.
+func readyTitlesOf(t *testing.T, dataDir string) []string {
+	t.Helper()
+	box, err := inbox.Get(testfix.OpenStore(t, dataDir), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := make([]string, 0, len(box.Ready))
+	for _, ticket := range box.Ready {
+		titles = append(titles, ticket.Title)
+	}
+	return titles
 }
 
 // queueTitlesOf reads the order of the queue through the store.
@@ -93,7 +126,7 @@ func TestRunMoveWithAWordThatIsNotADirection(t *testing.T) {
 	}
 }
 
-func TestRunMoveWithATicketThatIsNotInTheQueue(t *testing.T) {
+func TestRunMoveWithATicketThatIsInNoList(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
 	if err := testfix.OpenStore(t, dataDir).ChangeStatus(ids[1], store.Running); err != nil {
 		t.Fatal(err)
@@ -104,8 +137,8 @@ func TestRunMoveWithATicketThatIsNotInTheQueue(t *testing.T) {
 		_, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[1]), "top")
 		return err
 	}()
-	if !errors.Is(err, store.ErrNotInTheQueue) {
-		t.Fatalf("err = %v, want ErrNotInTheQueue", err)
+	if !errors.Is(err, store.ErrNotMovable) {
+		t.Fatalf("err = %v, want ErrNotMovable", err)
 	}
 	if got := queueTitlesOf(t, dataDir); !slices.Equal(got, before) {
 		t.Errorf("the queue is %v, want %v", got, before)
@@ -159,11 +192,26 @@ func TestRunMoveBeforeATicketThatIsNotInTheQueue(t *testing.T) {
 	before := queueTitlesOf(t, dataDir)
 
 	_, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[0]), fmt.Sprint(ids[2]))
-	if !errors.Is(err, store.ErrNotInTheQueue) {
-		t.Fatalf("err = %v, want ErrNotInTheQueue", err)
+	if !errors.Is(err, store.ErrNotInTheSameList) {
+		t.Fatalf("err = %v, want ErrNotInTheSameList", err)
 	}
 	if got := queueTitlesOf(t, dataDir); !slices.Equal(got, before) {
 		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+// A ticket that waits for review moves the same way as one that waits for a
+// run, so a person can put a later ticket at the top of READY.
+func TestRunMoveInReady(t *testing.T) {
+	dataDir, repo, ids := threeInReady(t)
+
+	if _, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[2]), "top"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"third", "first", "second"}
+	if got := readyTitlesOf(t, dataDir); !slices.Equal(got, want) {
+		t.Errorf("READY is %v, want %v", got, want)
 	}
 }
 

@@ -30,6 +30,7 @@ var migrations = []string{
 	addTicketsCommitColumn,
 	addQueueTable,
 	addRunsTable,
+	addReadyPositionColumn,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -64,10 +65,9 @@ CREATE TABLE tickets (
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
 `
 
-// READY is in the order of the time of completion, and a ticket that becomes
-// ready goes at the end. The order of the queue is not stable for READY: a
-// slow ticket that entered the queue first arrives above the tickets that the
-// person can see now, so the list moves below the eyes of the person.
+// completedColumn holds the time that a ticket became ready. DONE comes in the
+// order of it, dg show says how long ago the run stopped, and the window of
+// DONE reads it to decide which tickets it still shows.
 //
 // A ticket that never became ready holds NULL, and a ticket that goes back to
 // the queue and becomes ready again holds the later time.
@@ -106,6 +106,32 @@ CREATE TABLE runs (
   ended_at   TEXT,
   exit_code  INTEGER
 );
+`
+
+// addReadyPositionColumn gives READY an order that the person sets, so a later
+// ticket can go to the top of the tickets that wait for review. A ticket that
+// becomes ready takes the end of READY, which is where the order of completion
+// put it before this column, and dg move takes it from there.
+//
+// The column is not position: the CHECK of the table holds that one to a ticket
+// of the queue, and the place of a ticket in READY is a different place.
+//
+// The UPDATE gives each ready ticket of a database that migrates the place it
+// has now, which is the order of completion with the id between two tickets of
+// one second, so READY stays as the person last saw it. A ready ticket with no
+// completed time comes first, as it did in that order.
+const addReadyPositionColumn = `
+ALTER TABLE tickets ADD COLUMN ready_position INTEGER;
+
+UPDATE tickets SET ready_position = (
+  SELECT COUNT(*) FROM tickets AS earlier
+  WHERE earlier.status = 'ready'
+    AND (COALESCE(earlier.completed, '') < COALESCE(tickets.completed, '')
+      OR (COALESCE(earlier.completed, '') = COALESCE(tickets.completed, '')
+          AND earlier.id <= tickets.id))
+) WHERE status = 'ready';
+
+CREATE UNIQUE INDEX tickets_ready_position ON tickets(ready_position);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

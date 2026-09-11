@@ -147,13 +147,59 @@ func queueTitles(t *testing.T, s *Store) []string {
 	return titles
 }
 
-// ticketPosition returns the position of one ticket. A ticket that is not in
-// the queue holds no position, and the value is then not valid.
-func ticketPosition(t *testing.T, s *Store, id int64) sql.Null[int] {
+// threeReady returns a store that holds one project and three ready tickets,
+// in the order first, second, third, with their ids. Each one goes through
+// running, which is the way a ticket reaches READY.
+func threeReady(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, ids := threeTickets(t)
+	for _, id := range ids {
+		if err := s.ChangeStatus(id, Running); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ChangeStatus(id, Ready); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return s, ids
+}
+
+// readyTitles returns the title of each ready ticket, in the order of READY.
+// The store has no method for READY: internal/inbox puts that group in order,
+// and this reads the column that it orders by.
+func readyTitles(t *testing.T, s *Store) []string {
+	t.Helper()
+	rows, err := s.db.Query(`
+		SELECT title FROM tickets
+		WHERE status = ? AND ready_position IS NOT NULL
+		ORDER BY ready_position`, Ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var titles []string
+	for rows.Next() {
+		var title string
+		if err := rows.Scan(&title); err != nil {
+			t.Fatal(err)
+		}
+		titles = append(titles, title)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return titles
+}
+
+// ticketPosition returns the place of one ticket in the list that column keeps,
+// which is position for the queue and ready_position for READY. A ticket that
+// is not in that list holds no place, and the value is then not valid.
+func ticketPosition(t *testing.T, s *Store, column string, id int64) sql.Null[int] {
 	t.Helper()
 	var position sql.Null[int]
-	if err := s.db.QueryRow(
-		"SELECT position FROM tickets WHERE id = ?", id).Scan(&position); err != nil {
+	if err := s.db.QueryRow(fmt.Sprintf(
+		"SELECT %s FROM tickets WHERE id = ?", column), id).Scan(&position); err != nil {
 		t.Fatal(err)
 	}
 	return position
@@ -707,6 +753,55 @@ func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
 	}
 }
 
+// READY had no order of its own before the column ready_position, and the
+// inbox put it in the order of the time of completion. The step that adds the
+// column gives each ready ticket the place that order had, so the READY of a
+// person who upgrades is the one they last looked at.
+func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
+	dataDir := t.TempDir()
+
+	all := migrations
+	migrations = all[:len(all)-1]
+	before, err := Open(dataDir)
+	migrations = all
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID, err := before.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The tickets go in by hand: this version of the store writes the column
+	// that the old database does not have yet.
+	for _, ticket := range []struct {
+		title     string
+		completed string
+	}{
+		{"last", "2026-08-28T15:00:00Z"},
+		{"first", "2026-08-28T09:00:00Z"},
+		{"middle", "2026-08-28T12:00:00Z"},
+	} {
+		if _, err := before.db.Exec(`
+			INSERT INTO tickets (project_id, title, status, created, completed)
+			VALUES (?, ?, 'ready', '2026-08-28T08:00:00Z', ?)`,
+			projectID, ticket.title, ticket.completed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before.Close()
+
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	want := []string{"first", "middle", "last"}
+	if got := readyTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("READY is %v, want %v", got, want)
+	}
+}
+
 // The database of a person who has an earlier version of delegator holds only
 // the steps of that version. The next start must apply each step that is
 // missing, and no step that is present. This is the path that such a database
@@ -754,7 +849,7 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 
 	// The order starts at 1. The queue works with any first number, but a
 	// person who reads the table sees these numbers.
-	if position := ticketPosition(t, s, ids[0]); position.V != 1 {
+	if position := ticketPosition(t, s, "position", ids[0]); position.V != 1 {
 		t.Errorf("the first ticket is at position %d, want 1", position.V)
 	}
 }
@@ -802,7 +897,7 @@ func TestMoveTicketWritesTheNewOrder(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
-	if position := ticketPosition(t, s, ids[2]); position.V != 1 {
+	if position := ticketPosition(t, s, "position", ids[2]); position.V != 1 {
 		t.Errorf("the first ticket of the queue is at position %d, want 1", position.V)
 	}
 }
@@ -830,7 +925,7 @@ func TestMoveTicketMovesInEachDirection(t *testing.T) {
 	}
 }
 
-func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
+func TestMoveTicketThatIsInNoListChangesNothing(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.ChangeStatus(ids[1], Running); err != nil {
 		t.Fatal(err)
@@ -838,8 +933,8 @@ func TestMoveTicketThatIsNotInTheQueueChangesNothing(t *testing.T) {
 	before := queueTitles(t, s)
 
 	err := s.MoveTicket(ids[1], Top)
-	if !errors.Is(err, ErrNotInTheQueue) {
-		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	if !errors.Is(err, ErrNotMovable) {
+		t.Errorf("err = %v, want ErrNotMovable", err)
 	}
 	if got := queueTitles(t, s); !slices.Equal(got, before) {
 		t.Errorf("the queue is %v, want %v", got, before)
@@ -1333,27 +1428,120 @@ func TestMoveTicketBeforeWithATargetThatIsNotInTheQueue(t *testing.T) {
 	before := queueTitles(t, s)
 
 	err := s.MoveTicketBefore(ids[0], ids[2])
-	if !errors.Is(err, ErrNotInTheQueue) {
-		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	if !errors.Is(err, ErrNotInTheSameList) {
+		t.Errorf("err = %v, want ErrNotInTheSameList", err)
 	}
 	if got := queueTitles(t, s); !slices.Equal(got, before) {
 		t.Errorf("the queue is %v, want %v", got, before)
 	}
 }
 
-func TestMoveTicketBeforeWithATicketThatIsNotInTheQueue(t *testing.T) {
+func TestMoveTicketBeforeWithATicketThatIsInNoList(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.ChangeStatus(ids[0], Running); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := s.MoveTicketBefore(ids[0], ids[2]); !errors.Is(err, ErrNotInTheQueue) {
-		t.Errorf("err = %v, want ErrNotInTheQueue", err)
+	if err := s.MoveTicketBefore(ids[0], ids[2]); !errors.Is(err, ErrNotMovable) {
+		t.Errorf("err = %v, want ErrNotMovable", err)
 	}
 }
 
-// A ticket that runs can become ready, which is what dg finish does. Both hold
-// no position, so this change does not need the work of condition 2.
+// A person who wants to review a later ticket first moves it inside READY, and
+// the tickets of the queue below it do not move.
+func TestMoveTicketMovesInEachDirectionInReady(t *testing.T) {
+	tests := []struct {
+		move Move
+		want []string
+	}{
+		{Up, []string{"second", "first", "third"}},
+		{Down, []string{"first", "third", "second"}},
+		{Top, []string{"second", "first", "third"}},
+		{Bottom, []string{"first", "third", "second"}},
+	}
+	for _, test := range tests {
+		t.Run(string(test.move), func(t *testing.T) {
+			s, ids := threeReady(t)
+			if err := s.MoveTicket(ids[1], test.move); err != nil {
+				t.Fatal(err)
+			}
+			if got := readyTitles(t, s); !slices.Equal(got, test.want) {
+				t.Errorf("READY is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMoveTicketBeforeInReady(t *testing.T) {
+	s, ids := threeReady(t)
+
+	if err := s.MoveTicketBefore(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"third", "first", "second"}
+	if got := readyTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("READY is %v, want %v", got, want)
+	}
+}
+
+// A move orders one list. A ready ticket therefore cannot take the place of a
+// ticket of the queue, which would put it among the tickets that wait for a
+// run.
+func TestMoveTicketBeforeATargetInTheOtherList(t *testing.T) {
+	s, projectID := emptyStore(t)
+	queued, err := s.AddTicket(projectID, "queued")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready, err := s.AddTicket(projectID, "ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Running, Ready} {
+		if err := s.ChangeStatus(ready, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.MoveTicketBefore(ready, queued); !errors.Is(err, ErrNotInTheSameList) {
+		t.Errorf("err = %v, want ErrNotInTheSameList", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, []string{"queued"}) {
+		t.Errorf("the queue is %v, want [queued]", got)
+	}
+	if got := readyTitles(t, s); !slices.Equal(got, []string{"ready"}) {
+		t.Errorf("READY is %v, want [ready]", got)
+	}
+}
+
+// The two lists keep their own column, so a move in one leaves the other as it
+// was.
+func TestMoveTicketInReadyLeavesTheQueue(t *testing.T) {
+	s, ids := threeTickets(t)
+	for _, status := range []TicketStatus{Running, Ready} {
+		if err := s.ChangeStatus(ids[0], status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, status := range []TicketStatus{Running, Ready} {
+		if err := s.ChangeStatus(ids[1], status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := queueTitles(t, s)
+
+	if err := s.MoveTicket(ids[1], Top); err != nil {
+		t.Fatal(err)
+	}
+	if got := readyTitles(t, s); !slices.Equal(got, []string{"second", "first"}) {
+		t.Errorf("READY is %v, want [second first]", got)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+// A ticket that runs can become ready, which is what dg finish does.
 func TestChangeStatusWritesTheNewStatus(t *testing.T) {
 	s, id := oneTicket(t)
 	if err := s.ChangeStatus(id, Running); err != nil {
@@ -1422,8 +1610,55 @@ func TestChangeStatusOutOfTheQueueClearsThePosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if position := ticketPosition(t, s, id); position.Valid {
+	if position := ticketPosition(t, s, "position", id); position.Valid {
 		t.Errorf("position = %d, want none", position.V)
+	}
+}
+
+// A ticket that becomes ready goes to the end of READY, which is where the
+// order of completion put it before READY had an order of its own.
+func TestChangeStatusIntoReadyPutsTheTicketAtTheEnd(t *testing.T) {
+	s, ids := threeReady(t)
+	if err := s.MoveTicket(ids[2], Top); err != nil {
+		t.Fatal(err)
+	}
+
+	fourth, err := s.AddTicket(mustProject(t, s), "fourth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []TicketStatus{Running, Ready} {
+		if err := s.ChangeStatus(fourth, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := []string{"third", "first", "second", "fourth"}
+	if got := readyTitles(t, s); !slices.Equal(got, want) {
+		t.Errorf("READY is %v, want %v", got, want)
+	}
+}
+
+// dg accept and dg revise take a ticket out of READY, and a ticket that is not
+// in a list keeps no place in it. No CHECK holds this the way one holds the
+// position of the queue, and a place left behind comes back as a number that
+// another ready ticket wants.
+func TestChangeStatusOutOfReadyClearsTheReadyPosition(t *testing.T) {
+	for _, status := range []TicketStatus{Done, Queued} {
+		t.Run(string(status), func(t *testing.T) {
+			s, ids := threeReady(t)
+
+			if err := s.ChangeStatus(ids[1], status); err != nil {
+				t.Fatal(err)
+			}
+
+			if position := ticketPosition(t, s, "ready_position", ids[1]); position.Valid {
+				t.Errorf("ready_position = %d, want none", position.V)
+			}
+			if got := readyTitles(t, s); !slices.Equal(got, []string{"first", "third"}) {
+				t.Errorf("READY is %v, want [first third]", got)
+			}
+		})
 	}
 }
 
