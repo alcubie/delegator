@@ -55,6 +55,9 @@ func cancelTicket(s *store.Store, id int64) error {
 	if err != nil {
 		return err
 	}
+	// The run this stops is the run the write below closes, so its id is read
+	// here and named there rather than looked for a second time.
+	var runID int64
 	if ticket.Status == store.Running {
 		r, err := s.Run(id)
 		if err != nil {
@@ -63,8 +66,9 @@ func cancelTicket(s *store.Store, id int64) error {
 		if err := run.Stop(r.PID, run.StopGrace); err != nil {
 			return err
 		}
+		runID = r.ID
 	}
-	if err := s.Cancel(id); err != nil {
+	if err := s.Cancel(id, runID); err != nil {
 		return err
 	}
 	// The supervisor this stopped is the program that would have started the

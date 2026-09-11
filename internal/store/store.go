@@ -998,7 +998,7 @@ func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
 	return err
 }
 
-// Cancel closes a ticket the person has stopped, and gives its last run the
+// Cancel closes a ticket the person has stopped, and gives one run of it the
 // end time when that run has none. It works from each state that is not the
 // end, and gives ErrInvalidTicketStateChange from done and cancelled, so a
 // ticket that is already closed does not reopen.
@@ -1009,9 +1009,17 @@ func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
 // seconds. A supervisor that a signal ended writes nothing, so the end time of
 // its run comes from here.
 //
-// Only the last run is closed. A ticket that failed and was claimed again has
-// a row for each claim, and each earlier one ended when that claim ended.
-func (s *Store) Cancel(id int64) error {
+// runID names that run, the way it does for the supervisor in FailUnfinished:
+// it is the run the caller read and stopped, and not whichever run of the
+// ticket is the last one now. The two are the same in an ordinary cancel and
+// come apart in a race, where a ticket that failed between the stop and this
+// call went back to the queue and a new supervisor claimed it; a query for the
+// last run would then close the run of that supervisor, which is still going.
+//
+// runID is 0 for a ticket with no run to close, which is every state but
+// running: a ticket that never ran has no row, and a run that ended wrote its
+// own end time. No run has the id 0, because the column is INTEGER PRIMARY KEY.
+func (s *Store) Cancel(id, runID int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -1021,11 +1029,9 @@ func (s *Store) Cancel(id int64) error {
 	if err := changeStatus(tx, id, Cancelled); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`
-		UPDATE runs SET ended_at = ?
-		WHERE ended_at IS NULL
-		AND id = (SELECT MAX(id) FROM runs WHERE ticket_id = ?)`,
-		rfc3339(time.Now()), id); err != nil {
+	if _, err := tx.Exec(
+		"UPDATE runs SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
+		rfc3339(time.Now()), runID); err != nil {
 		return err
 	}
 	return tx.Commit()
