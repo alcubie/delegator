@@ -624,10 +624,6 @@ done_hours = 24
 run = "git difftool -d {base}...HEAD"
 window = true
 
-[commands.chat]
-run = "claude --resume {session}"
-window = true
-
 [commands.edit]
 run = "$EDITOR {ticket}"
 window = false
@@ -646,6 +642,12 @@ This removes the detection of tools and of terminals from delegator. It also let
 person keep the tools that they have now. When the TUI comes, each command also gets a
 key.
 
+The continuation of a session is not one of these commands. `dg chat <id>` in §9.3 is a
+command of delegator, because delegator knows which program made the session, which
+worktree it ran in, and whether a run is on it now, and the person knows none of the
+three at the moment they type. The variable `{session}` stays for a command of the
+person that reads a session, and no example here gives one that writes.
+
 ### 9.3 The CLI
 
 The command is `delegator`, and `dg` is a short name for it. Both names come from the
@@ -662,6 +664,7 @@ installer.
 | `dg move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
+| `dg chat <id>` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |
 | `dg accept <id>` | Close a ticket, and remove its worktree. Git refuses a worktree holding changes that are not committed, and the ticket stays ready; `--force` removes it anyway and the changes go with it. |
 | `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |

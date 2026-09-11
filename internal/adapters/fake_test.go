@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/testfix"
@@ -72,5 +73,18 @@ func TestFakeSessionIDWithNothingReported(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("session = %q, want nothing", got)
+	}
+}
+
+// A command that resumes a session gives the session to the adapter, and a
+// test of that command reads it back off the argv.
+func TestFakeResumeCarriesTheSession(t *testing.T) {
+	fake := Fake{Binary: "/bin/fake", Script: "/tmp/script"}
+
+	got := fake.Resume("s-1")
+
+	want := []string{"/bin/fake", "/tmp/script", "s-1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("argv = %v, want %v", got, want)
 	}
 }

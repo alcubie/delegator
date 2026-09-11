@@ -29,10 +29,12 @@ func (f Fake) Launch(spec RunSpec) *exec.Cmd {
 	return cmd
 }
 
-// Resume returns the argv that replays the script. The fake agent keeps no
-// conversation, so there is nothing else to go back to.
+// Resume returns the argv that replays the script, with the session on the
+// end. The fake agent keeps no conversation, so there is nothing else to go
+// back to, and the session is there so that a test of a command that resumes
+// can see which session the command asked for.
 func (f Fake) Resume(session string) []string {
-	return []string{f.binary(), f.Script}
+	return []string{f.binary(), f.Script, session}
 }
 
 // sessionPrefix is what a script writes to report a session, standing in for
