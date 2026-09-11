@@ -93,3 +93,28 @@ func TestFinishWritesTheTimeTheRunStopped(t *testing.T) {
 		t.Errorf("completed = %v, want the UTC form", ticket.Completed)
 	}
 }
+
+// The rebase onto the default branch is an instruction to the agent, and a run
+// that ends behind the default branch all the same is a fact for the inbox to
+// show, not an error here. dg finish must take the commit and make the ticket
+// ready.
+func TestFinishTakesACommitBehindTheDefaultBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	testfix.CommitIn(t, repo, "second")
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Ready {
+		t.Errorf("status = %s, want = ready", ticket.Status)
+	}
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
+	}
+}

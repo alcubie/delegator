@@ -93,7 +93,7 @@ func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.
 	}
 	defer log.Close()
 
-	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
+	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id, ticket.Project.DefaultBranch)})
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -197,22 +197,37 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 // two commands the agent uses: dg show gives it the ticket, so the prompt does
 // not repeat the prose, and dg finish ends the run.
 //
+// defaultBranch is the branch of the project the run rebases onto before it
+// finishes. The branch of a run is cut when the worktree is made and stays
+// there while the run works, so the default branch moves on under every run
+// that is open. The rebase moves the conflict of that move into the run, where
+// the agent that made the change is still there to resolve it, and off the
+// person merging the ready tickets one at a time. The name is given rather
+// than guessed, because a project whose default branch is not main would send
+// every run to the wrong one.
+//
 // It also says how to read the repository. An agent that starts a run knows
 // nothing of the code and finds it by cat, and every file it reads that way
 // stays in the context and is sent again with each later call of the run. The
 // rules name the reading to avoid rather than the principle behind it, because
 // an agent that is told to read with care still cats the file.
-func prompt(id int64) string {
+func prompt(id int64, defaultBranch string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
 
 1. Run "dg show %[1]d" to read the ticket.
 2. Do what the ticket asks.
-3. Commit your work with git. The commit message is your report: say
-   what you did and why, and name anything that did not go as the
+3. Rebase this branch onto %[2]q, the default branch of the project:
+   run "git rebase %[2]s", with --autostash if you have work that is
+   not committed yet. Resolve every conflict the rebase raises, then
+   run the tests again. The commit you give to dg finish must sit on
+   top of %[2]q as it stands now.
+4. Commit your work with git. The commit message is your report: say
+   what you did and why, name any conflict you resolved in the rebase
+   and how you resolved it, and name anything that did not go as the
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
-4. Run "dg finish %[1]d <hash>" with the hash of the commit you made.
+5. Run "dg finish %[1]d <hash>" with the hash of the commit you made.
 
 How to read the repository:
 
@@ -222,5 +237,5 @@ How to read the repository:
   over 100 lines whole. Read the part you came for.
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
-`, id)
+`, id, defaultBranch)
 }
