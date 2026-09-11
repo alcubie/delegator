@@ -5,6 +5,7 @@
 package config
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -66,25 +67,28 @@ func file() (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
-// Default is the config of a person who has written no file. A fresh
-// install has no config, and delegator must work before a person writes one.
-var Default = Config{Runs: 1, TimeoutMinutes: 60, DoneHours: 24}
-
 // defaultFile is the text of the config file that Init writes. Each key has
 // one comment that says what it does, because the file is where the person
-// changes a value. The values are the fields of Default, so the file that a
-// person opens and the config of a person who has no file cannot come apart.
-const defaultFile = `# runs is the number of tickets that can be Running or Ready at a time.
-runs = %d
+// changes a value.
+//
+//go:embed default.toml
+var defaultFile []byte
 
-# timeout_minutes is the time in minutes that a run can take before delegator
-# stops it.
-timeout_minutes = %d
+// Default is the config of a person who has written no file. A fresh
+// install has no config, and delegator must work before a person writes one.
+// It is the embedded file decoded, so the file that a person opens and the
+// config of a person who has no file cannot come apart.
+var Default = decodeDefault()
 
-# done_hours is the time in hours that a ticket stays in DONE at the top of the
-# inbox after dg accept closes it. A value of 0 leaves DONE empty.
-done_hours = %d
-`
+// decodeDefault decodes the embedded file. Text that does not decode is a
+// fault in the build and not in anything a person did, so it panics.
+func decodeDefault() Config {
+	var cfg Config
+	if _, err := toml.Decode(string(defaultFile), &cfg); err != nil {
+		panic("config: default.toml does not decode: " + err.Error())
+	}
+	return cfg
+}
 
 // Init writes config.toml with each key at its default when the file is not
 // there, and makes Dir when that is not there. A file that is there is left
@@ -106,9 +110,7 @@ func Init() error {
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf(defaultFile,
-		Default.Runs, Default.TimeoutMinutes, Default.DoneHours)
-	if _, err := f.WriteString(text); err != nil {
+	if _, err := f.Write(defaultFile); err != nil {
 		f.Close()
 		return err
 	}

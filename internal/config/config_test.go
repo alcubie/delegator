@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 // writeConfig writes text to config.toml below dir/delegator, so the test
@@ -180,5 +182,19 @@ func TestTimeoutIsTheMinutesOfTheKey(t *testing.T) {
 	}
 	if got := (Config{TimeoutMinutes: 0}).Timeout(); got != 0 {
 		t.Errorf("Timeout = %v, want 0", got)
+	}
+}
+
+// Init writes the embedded file, and Load refuses a key it does not know, so
+// a key in default.toml that the struct has no field for would make the file
+// a person gets on first run the one file delegator cannot read.
+func TestTheEmbeddedFileHoldsNoKeyTheStructDoesNotKnow(t *testing.T) {
+	var cfg Config
+	md, err := toml.Decode(string(defaultFile), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unknown := md.Undecoded(); len(unknown) > 0 {
+		t.Errorf("default.toml holds the key %q, which Config does not know", unknown[0].String())
 	}
 }
