@@ -4,30 +4,35 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Next starts a supervisor, if the queue has a ticket and no ticket is in
-// running or ready. It names no ticket: the supervisor reads the queue and
-// claims a ticket for itself, in one transaction, so two triggers at the same
-// time cannot send two supervisors to one ticket. What Next decides is how
-// many supervisors to start, and a supervisor that finds no room by the time
-// it reads the queue stops.
+// Next starts a supervisor for each free slot of the queue, and one at most
+// for each ticket the queue holds. It names no ticket: each supervisor reads
+// the queue and claims a ticket for itself, in one transaction, so two
+// triggers at the same time cannot send two supervisors to one ticket. What
+// Next decides is how many supervisors to start, and a supervisor that finds
+// no slot by the time it reads the queue stops.
 //
-// It returns once the program has started, and does not wait for it: the
+// cfg is the config of the person, and cfg.Runs is the limit it reads. A free
+// slot is one that no ticket in running and no ticket in ready holds, so a
+// limit of one starts a supervisor only for a queue that has nothing open at
+// all.
+//
+// It returns once the programs have started, and does not wait for them: the
 // caller is a command a person typed, or a supervisor that is about to exit,
-// and neither should stay alive for the length of a run. What room means is in
-// the store, with the claim that asks the same question: one ticket at a time,
-// and a paused queue starts nothing.
+// and neither should stay alive for the length of a run. What a slot means is
+// in the store, with the claim that asks the same question.
 //
 // launch returns the command that starts a supervisor. dg passes its own
 // executable with "run", and a test passes something it can observe.
-func Next(s *store.Store, launch func() *exec.Cmd) error {
-	room, err := s.HasRoom()
+func Next(s *store.Store, cfg config.Config, launch func() *exec.Cmd) error {
+	free, err := s.FreeSlots(cfg)
 	if err != nil {
 		return err
 	}
-	if !room {
+	if free == 0 {
 		return nil
 	}
 
@@ -35,10 +40,12 @@ func Next(s *store.Store, launch func() *exec.Cmd) error {
 	if err != nil {
 		return err
 	}
-	if len(queue) == 0 {
-		return nil
+	for range min(free, len(queue)) {
+		if err := detach(launch()); err != nil {
+			return err
+		}
 	}
-	return detach(launch())
+	return nil
 }
 
 // detach starts cmd so that it outlives the program that started it. The

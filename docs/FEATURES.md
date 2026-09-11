@@ -26,8 +26,7 @@ trigger occurs, the item stays here, and this is a good result.
 
 | Item | What it is | Why it waits | Trigger |
 |---|---|---|---|
-| More than one run | Two or more agents operate at the same time, in different worktrees. | One run at a time removes the control of slots, and each race between two supervisors. The config holds the value `runs = 1`, so a change is small. | You wait for the queue, and the cost of the agent is acceptable. |
-| A limit for each project | A maximum count of runs for one project. | This is necessary only after more than one run at a time. | Two runs in one project write the same files. |
+| A limit for each project | A maximum count of runs for one project. | The limit `runs` counts the runs of all the projects together. Each run has its own worktree, so two runs of one project do not write the same files. | Two runs in one project use the same resource outside the worktree, such as a database or a port. |
 
 ## 3. Other agents
 

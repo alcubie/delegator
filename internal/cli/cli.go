@@ -28,7 +28,7 @@ import (
 // the timeout from it.
 func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) error {
 	return store.With(dataDir, func(s *store.Store) error {
-		if err := run.Reconcile(s, launch, cfg.Timeout()); err != nil {
+		if err := run.Reconcile(s, launch, *cfg); err != nil {
 			return err
 		}
 		return fn(s)

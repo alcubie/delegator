@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -120,16 +121,19 @@ func TestBootTime(t *testing.T) {
 
 // The ticket of a run that is over becomes failed, and the run gets the end
 // time that its supervisor never wrote. The timeout is the rule this test
-// gives, because the process id of the claim is this test, which is alive.
+// gives, because the process id of the claim is this test, which is alive. The
+// config counts the timeout in minutes, so the run is aged past the one minute
+// it allows rather than given a timeout no person could write.
 func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	dataDir, id := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)
 	if _, err := s.Claim(id, "delegator/1-the-first"); err != nil {
 		t.Fatal(err)
 	}
+	testfix.AgeRun(t, dataDir, id, 2*time.Minute)
 
 	launch, _ := testfix.RecordingLaunch(t)
-	if err := Reconcile(s, launch, time.Nanosecond); err != nil {
+	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,7 +159,7 @@ func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 	}
 
 	launch, _ := testfix.RecordingLaunch(t)
-	if err := Reconcile(s, launch, time.Hour); err != nil {
+	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -175,13 +179,14 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
 		t.Fatal(err)
 	}
+	testfix.AgeRun(t, dataDir, first, 2*time.Minute)
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Reconcile(s, launch, time.Nanosecond); err != nil {
+	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitFor(t, marker)
+	testfix.WaitForStarts(t, marker, 1)
 }
 
 // A reconcile that found nothing to correct starts nothing. The queue that a
@@ -194,12 +199,9 @@ func TestReconcileThatMarksNothingStartsNothing(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	launch, marker := testfix.RecordingLaunch(t)
 
-	if err := Reconcile(s, launch, time.Hour); err != nil {
+	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
 		t.Fatal(err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("a run was started after a reconcile that marked nothing")
-	}
+	testfix.WaitForStarts(t, marker, 0)
 }

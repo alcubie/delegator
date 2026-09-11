@@ -171,7 +171,7 @@ func TestCancelStartsTheNextRun(t *testing.T) {
 
 	cancelIn(t, dataDir, repo, ticketID)
 
-	testfix.WaitFor(t, marker)
+	testfix.WaitForStarts(t, marker, 1)
 }
 
 // The stop is not something a person types by hand, so dg cancel takes the id

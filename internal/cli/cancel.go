@@ -30,7 +30,7 @@ func cancelCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				return fmt.Errorf("%q is not the id of a ticket", args[0])
 			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
-				return cancelTicket(s, id)
+				return cancelTicket(s, cfg, id)
 			})
 		},
 	}
@@ -50,7 +50,7 @@ func cancelCommand(dataDir string, cfg *config.Config) *cobra.Command {
 // that a signal ended writes nothing, so the end of the run comes from here,
 // and the wait between the two signals is seconds, which is far too long to
 // hold SQLite's writer lock.
-func cancelTicket(s *store.Store, id int64) error {
+func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -73,5 +73,5 @@ func cancelTicket(s *store.Store, id int64) error {
 	}
 	// The supervisor this stopped is the program that would have started the
 	// next run as its own ended, so the command starts it in its place.
-	return run.Next(s, launch)
+	return run.Next(s, *cfg, launch)
 }

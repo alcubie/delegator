@@ -42,7 +42,7 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if len(args) == 0 {
 					fmt.Fprintln(cmd.OutOrStdout(), id)
 				}
-				return run.Next(s, launch)
+				return run.Next(s, *cfg, launch)
 			})
 		},
 	}
