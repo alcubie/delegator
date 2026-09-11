@@ -981,21 +981,37 @@ func (s *Store) FailUnfinished(runID int64) error {
 	return tx.Commit()
 }
 
-// failRun marks a ticket failed and gives one run of it an end time. Both ids
-// are given because each caller holds both, and a run named by its id is the
-// run the caller means: the last run of a ticket is not always the one that a
-// supervisor holds.
+// endRunAt gives one run an end time, so that no run of a ticket that is not
+// running is left open. It is the write behind failRun and Cancel, which reach
+// a run that its own supervisor could not close: one that crashed, and one
+// that a signal ended.
 //
-// An end time that is there stays: the supervisor wrote it with the exit code
-// before it stopped, and that is the moment the run ended.
-func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
-	if err := changeStatus(tx, ticketID, Failed); err != nil {
-		return err
-	}
+// An end time that is there stays. That time is the moment the run ended, from
+// the supervisor that wrote it with the exit code or from an earlier
+// reconcile, and a second one would move the end of the run to a moment after
+// it.
+//
+// A run id of 0 reaches no row, which is how a caller says that it has no run
+// to close.
+//
+// EndRun is not this: the supervisor writes its own end with the exit code,
+// takes no time from its caller, and wants ErrNoRun for an id that no run has.
+func endRunAt(tx *sql.Tx, runID int64, at time.Time) error {
 	_, err := tx.Exec(
 		"UPDATE runs SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
 		rfc3339(at), runID)
 	return err
+}
+
+// failRun marks a ticket failed and gives one run of it an end time. Both ids
+// are given because each caller holds both, and a run named by its id is the
+// run the caller means: the last run of a ticket is not always the one that a
+// supervisor holds.
+func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
+	if err := changeStatus(tx, ticketID, Failed); err != nil {
+		return err
+	}
+	return endRunAt(tx, runID, at)
 }
 
 // Cancel closes a ticket the person has stopped, and gives one run of it the
@@ -1029,9 +1045,7 @@ func (s *Store) Cancel(id, runID int64) error {
 	if err := changeStatus(tx, id, Cancelled); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(
-		"UPDATE runs SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
-		rfc3339(time.Now()), runID); err != nil {
+	if err := endRunAt(tx, runID, time.Now()); err != nil {
 		return err
 	}
 	return tx.Commit()
