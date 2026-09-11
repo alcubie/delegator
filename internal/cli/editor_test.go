@@ -9,15 +9,21 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
+// setEditor puts fn in place of the editor of the person for one test.
+func setEditor(t *testing.T, fn func(path string) error) {
+	t.Helper()
+	old := editor
+	editor = fn
+	t.Cleanup(func() { editor = old })
+}
+
 // withEditor puts an editor in place of the one of the person. It writes text
 // into the file that the command gives it, which is what a person does.
 func withEditor(t *testing.T, text string) {
 	t.Helper()
-	old := editor
-	editor = func(path string) error {
+	setEditor(t, func(path string) error {
 		return os.WriteFile(path, []byte(text), 0o600)
-	}
-	t.Cleanup(func() { editor = old })
+	})
 }
 
 // fakeEditor writes a program that puts text into the last path that it gets,
