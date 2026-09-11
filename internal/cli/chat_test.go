@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
+	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // started is what dg chat asked to start: the argv and the directory. A test
@@ -51,6 +55,37 @@ func chattableTicket(t *testing.T, dataDir string) (int64, string, string) {
 		t.Fatal(err)
 	}
 	return ticketID, repo, session
+}
+
+// chattableIn makes a ticket of the project at repo that dg chat can continue,
+// and gives it session as the session of its run. It returns the id.
+func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session string) int64 {
+	t.Helper()
+	id := queuedIn(t, s, repo, title)
+	finishIn(t, s, id)
+	if err := s.SetSession(id, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(run.WorktreePath(dataDir, id), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// twoChattableProjects makes two repositories, each with one ready ticket that
+// dg chat can continue. It returns the data directory, the two repositories,
+// and the session of each ticket.
+func twoChattableProjects(t *testing.T) (dataDir, mine, other, mineSession, otherSession string) {
+	t.Helper()
+	dataDir = t.TempDir()
+	mine = testfix.Repo(t, repoBranch)
+	other = testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+
+	mineSession, otherSession = "session-of-this-project", "session-of-the-other-project"
+	chattableIn(t, s, dataDir, other, "the ticket of the other project", otherSession)
+	chattableIn(t, s, dataDir, mine, "the ticket of this project", mineSession)
+	return dataDir, mine, other, mineSession, otherSession
 }
 
 // The argv is the adapter's, because the adapter knows which program continues
@@ -192,5 +227,117 @@ func TestChatCmdTakesTheDirectoryAndTheTerminal(t *testing.T) {
 	}
 	if cmd.Stdin != os.Stdin || cmd.Stdout != os.Stdout || cmd.Stderr != os.Stderr {
 		t.Error("the streams of the command are not the streams of the terminal")
+	}
+}
+
+// The ticket a person has something to say to is nearly always the one they
+// have just read, so dg chat with no id continues the head of READY. The head
+// is the ready ticket with the oldest completion, and it is not the smallest
+// id: the ticket that finished first here is the second one made.
+func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	fake := fakeAgent(t)
+	useAgent(t, fake)
+	record := useChat(t, "true")
+
+	later := queuedIn(t, s, repo, "the ticket that finished last")
+	head := chattableIn(t, s, dataDir, repo, "the ticket that finished first", "session-of-the-head")
+	nextSecond(t)
+	finishIn(t, s, later)
+
+	if _, err := runIn(t, dataDir, repo, "chat"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := fake.Resume("session-of-the-head")
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want the head %d resumed with %v", record.argv, head, want)
+	}
+}
+
+// The head of READY is the head for one project. A person who says something
+// to the work of this repository must not land in the conversation of another
+// one, whatever the order of the inbox as a whole.
+func TestChatWithNoIDSkipsAnotherProject(t *testing.T) {
+	dataDir, mine, _, mineSession, _ := twoChattableProjects(t)
+	fake := fakeAgent(t)
+	useAgent(t, fake)
+	record := useChat(t, "true")
+
+	if _, err := runIn(t, dataDir, mine, "chat"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := fake.Resume(mineSession)
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
+// --project names the project, as it does on dg show and dg accept, so a
+// person continues the work of a repository from somewhere else. The path here
+// is relative, which is the form that has a directory to be joined to.
+func TestChatWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
+	dataDir, mine, other, _, otherSession := twoChattableProjects(t)
+	fake := fakeAgent(t)
+	useAgent(t, fake)
+	record := useChat(t, "true")
+
+	relative, err := filepath.Rel(mine, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, mine, "chat", "--project", relative); err != nil {
+		t.Fatal(err)
+	}
+
+	want := fake.Resume(otherSession)
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
+// A project with nothing ready has no conversation to continue, and the error
+// names it, because a person who gave --project may be looking at a project
+// that is not the one they meant. Another project's session is not an answer
+// to the question that was asked.
+func TestChatWithNoIDAndNoReadyTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	mine := testfix.Repo(t, repoBranch)
+	other := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	useAgent(t, fakeAgent(t))
+	record := useChat(t, "true")
+
+	chattableIn(t, s, dataDir, other, "the ticket of the other project", "session-of-the-other-project")
+	queuedIn(t, s, mine, "the ticket that waits for a run")
+
+	_, err := runIn(t, dataDir, mine, "chat")
+	if err == nil {
+		t.Fatal("dg chat with no ready ticket continued a session")
+	}
+	if !strings.Contains(err.Error(), mine) {
+		t.Errorf("err = %v, and it does not name the project %s", err, mine)
+	}
+	if record.argv != nil {
+		t.Errorf("dg chat started %v, want nothing", record.argv)
+	}
+}
+
+// A directory outside any repository names no project, so there is no head of
+// READY whose session to continue.
+func TestChatWithNoIDOutsideAProject(t *testing.T) {
+	useAgent(t, fakeAgent(t))
+	record := useChat(t, "true")
+
+	_, err := runIn(t, t.TempDir(), t.TempDir(), "chat")
+
+	if !errors.Is(err, project.ErrNotARepository) {
+		t.Fatalf("err = %v, want ErrNotARepository", err)
+	}
+	if record.argv != nil {
+		t.Errorf("dg chat started %v, want nothing", record.argv)
 	}
 }

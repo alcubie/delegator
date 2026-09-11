@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -48,19 +47,24 @@ func chatCmd(argv []string, dir string) *exec.Cmd {
 // conversation ran in and whether a run is on it now. A line typed by hand
 // from the wrong directory starts a new conversation under the id of the old
 // one, and the person cannot see that it did.
-func chatCommand(dataDir string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
-		Use:   "chat <id>",
-		Short: "Continue the session of a ticket in this terminal.",
-		Args:  cobra.ExactArgs(1),
+//
+// With no id it continues the head of READY, as dg show and dg accept act on
+// it: the ticket a person reads next is the ticket they have something to say
+// to.
+func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+	var projectDir string
+	cmd := &cobra.Command{
+		Use:   "chat [id]",
+		Short: "Continue the session of a ticket in this terminal. Defaults to the first Ready ticket for the project.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
-			}
 			var argv []string
 			var worktree string
-			err = withStore(dataDir, cfg, func(s *store.Store) error {
+			err := withStore(dataDir, cfg, func(s *store.Store) error {
+				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
+				if err != nil {
+					return err
+				}
 				argv, worktree, err = resumeOf(s, dataDir, id)
 				return err
 			})
@@ -73,6 +77,9 @@ func chatCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			return waitForChat(chat(argv, worktree))
 		},
 	}
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"the directory of the project whose first ready ticket to continue.  Defaults to current working directory.")
+	return cmd
 }
 
 // resumeOf returns the argv that continues the session of one ticket and the
