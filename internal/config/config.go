@@ -74,9 +74,7 @@ var Default = Config{Runs: 1, TimeoutMinutes: 60, DoneHours: 24}
 // one comment that says what it does, because the file is where the person
 // changes a value. The values are the fields of Default, so the file that a
 // person opens and the config of a person who has no file cannot come apart.
-const defaultFile = `# runs is the number of tickets that can be open at one time. A ticket that
-# runs holds one place, and so does a ticket that is ready and waits for you to
-# accept it.
+const defaultFile = `# runs is the number of tickets that can be Running or Ready at a time.
 runs = %d
 
 # timeout_minutes is the time in minutes that a run can take before delegator
