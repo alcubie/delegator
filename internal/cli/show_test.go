@@ -145,7 +145,7 @@ func TestTilde(t *testing.T) {
 func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, "/data", fmt.Sprintf("/data/worktrees/%d", ticket.ID), ticket, prose, started, testNow)
+	writeTicket(&out, "/data", fmt.Sprintf("/data/worktrees/%d", ticket.ID), ticket, nil, prose, started, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -185,6 +185,70 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the ticket does not hold %q:\n%s", want, out)
 		}
+	}
+}
+
+// dg show names each ticket that the shown ticket is linked to. The person is
+// reading the one ticket and asking what they linked it to, which the row of
+// the inbox does not answer: that one names the links that still hold the
+// ticket back.
+func TestWriteTicketNamesTheTicketsItWaitsFor(t *testing.T) {
+	var out bytes.Buffer
+	writeTicket(&out, "/data", "", store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api"},
+		Title:   "Remove the staging app",
+		Status:  store.Queued,
+	}, []int64{2, 3}, "", time.Time{}, testNow)
+
+	if !strings.Contains(out.String(), "waits     #2 #3") {
+		t.Errorf("dg show does not hold the row of its links:\n%s", out.String())
+	}
+}
+
+// A ticket with no link writes no row for one, as a ticket with no branch
+// writes no row for a branch. An empty row reads as a value that failed to
+// arrive.
+func TestWriteTicketWithNoLinkWritesNoRow(t *testing.T) {
+	var out bytes.Buffer
+	writeTicket(&out, "/data", "", store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api"},
+		Title:   "Remove the staging app",
+		Status:  store.Queued,
+	}, nil, "", time.Time{}, testNow)
+
+	if strings.Contains(out.String(), "waits") {
+		t.Errorf("dg show holds a row of links for a ticket that has none:\n%s", out.String())
+	}
+}
+
+// Every link, and not only the ones that are still waiting. A link to a ticket
+// that is done is one the person made and can take away, so dg show keeps
+// naming it after the queue stops acting on it.
+func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	first := queuedIn(t, s, repo, "the work it builds on")
+	second := queuedIn(t, s, repo, "the other work")
+	finishIn(t, s, first)
+	if err := s.ChangeStatus(first, store.Done); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo, "ticket",
+		"--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err = runIn(t, dataDir, repo, "show", fmt.Sprint(idOf(t, out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := fmt.Sprintf("waits     #%d #%d", first, second); !strings.Contains(out, want) {
+		t.Errorf("dg show does not hold %q:\n%s", want, out)
 	}
 }
 
@@ -461,7 +525,7 @@ func showCommit(t *testing.T, repo, hash string) string {
 		Title:   "a title",
 		Status:  store.Ready,
 		Commit:  hash,
-	}, "", time.Time{}, time.Now())
+	}, nil, "", time.Time{}, time.Now())
 
 	for line := range strings.SplitSeq(out.String(), "\n") {
 		if strings.Contains(line, "commit") {

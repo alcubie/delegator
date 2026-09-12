@@ -20,26 +20,12 @@ func mustAddTicket(t *testing.T, s *Store, projectID int64, title string, waitsF
 	return id
 }
 
-// linksOf returns the id of each ticket that the ticket id waits for, read from
-// the table itself, because no command reads the links back yet.
+// linksOf returns the id of each ticket that the ticket id waits for, and
+// stops the test when the read fails.
 func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
-	rows, err := s.db.Query(
-		"SELECT depends_on FROM ticket_deps WHERE ticket_id = ? ORDER BY depends_on", id)
+	ids, err := s.Dependencies(id)
 	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	var ids []int64
-	for rows.Next() {
-		var on int64
-		if err := rows.Scan(&on); err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, on)
-	}
-	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 	return ids
@@ -178,6 +164,57 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Errorf("err = %v, want ErrNoRoom: the link to a cancelled ticket holds the ticket back", err)
+	}
+}
+
+// waitsForOf returns the WaitsFor of one ticket of the inbox, and stops the
+// test when the inbox does not hold it.
+func waitsForOf(t *testing.T, s *Store, id int64) []int64 {
+	t.Helper()
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ticket := range open {
+		if ticket.ID == id {
+			return ticket.WaitsFor
+		}
+	}
+	t.Fatalf("the inbox holds no ticket %d", id)
+	return nil
+}
+
+// A ticket of the inbox names each ticket it waits for, so the row can say
+// what holds it back.
+func TestOpenTicketsNameTheLinksOfATicket(t *testing.T) {
+	s, waitedFor, waiting, free := waitingQueue(t)
+
+	if got, want := waitsForOf(t, s, waiting), []int64{waitedFor}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d waits for %v, want %v", waiting, got, want)
+	}
+	if got := waitsForOf(t, s, free); len(got) != 0 {
+		t.Errorf("ticket %d waits for %v, want nothing", free, got)
+	}
+}
+
+// A link to a ticket that is done holds nothing back, so the inbox leaves it
+// out and the row of a ticket whose links are all done ends at its title. The
+// link is still there, and dg show gives it.
+func TestOpenTicketsLeaveOutALinkThatIsDone(t *testing.T) {
+	s, waitedFor, waiting, _ := waitingQueue(t)
+	for _, status := range []TicketStatus{Ready, Done} {
+		if err := s.ChangeStatus(waitedFor, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := waitsForOf(t, s, waiting); len(got) != 0 {
+		t.Errorf("ticket %d waits for %v, want nothing once ticket %d is done",
+			waiting, got, waitedFor)
+	}
+	if got, want := linksOf(t, s, waiting), []int64{waitedFor}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d is linked to %v, want %v: done satisfies a link and does not remove it",
+			waiting, got, want)
 	}
 }
 

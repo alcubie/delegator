@@ -204,6 +204,91 @@ func TestWriteInboxPutsTheDurationsInOneColumn(t *testing.T) {
 	})
 }
 
+// A queued ticket that waits for a ticket that is not done says so at the
+// right of its row. A person who sees a ticket at the top of the queue and no
+// run needs to know that the queue is passing it over on purpose. A queued
+// ticket whose links are all done waits for nothing, holds no id here, and its
+// row ends at its title.
+func TestWriteInboxNamesTheTicketsAQueuedTicketWaitsFor(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Queued: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Queued, WaitsFor: []int64{4, 7},
+		}, {
+			ID: 14, Project: "/projects/web-api", Title: "Add a limit on the rate",
+			Status: store.Queued,
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  9 web-api  Move to a new version of Go            waits for #4 #7",
+		" 14 web-api  Add a limit on the rate",
+	})
+}
+
+// The note of a queued ticket and the duration of a run end at the same
+// column, because they answer the same question about two rows: what the
+// ticket is doing now. A person reads down one edge of the inbox for it.
+func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
+		}},
+		Queued: []store.OpenTicket{{
+			ID: 14, Project: "/projects/web-api", Title: "Add a limit on the rate",
+			Status: store.Queued, WaitsFor: []int64{9},
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  9 web-api  Move to a new version of Go                   00:14:07",
+		"QUEUED",
+		" 14 web-api  Add a limit on the rate                   waits for #9",
+	})
+}
+
+// A ticket of READY can hold a link to a ticket that is not accepted, and its
+// row says nothing about it: READY waits for the person and not for the queue,
+// so the note would name a rule that does not hold there.
+func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Ready: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Ready, WaitsFor: []int64{4},
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  9 web-api  Move to a new version of Go",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  none",
+	})
+}
+
 // A title that would reach the column of the durations is cut, and an ellipsis
 // says that it was. The title of a ticket is the one field of a row that has
 // no width of its own, so it is the field that gives way.

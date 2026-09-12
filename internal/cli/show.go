@@ -145,8 +145,9 @@ func shortHash(hash string) string {
 // writeTicket writes one ticket in full. started is the time that the last run
 // of the ticket began, and the zero time is a ticket that no supervisor has
 // claimed. worktree is the directory the run works in, and the empty string is
-// a ticket whose worktree is not on disk.
-func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, prose string, started, now time.Time) {
+// a ticket whose worktree is not on disk. waitsFor holds the ticket that each
+// link of this one names.
+func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, waitsFor []int64, prose string, started, now time.Time) {
 	// A ready ticket names the time it became ready, and a running ticket names
 	// how long its run has been going, which is the clock the inbox gives on
 	// the same run. dg finish writes completed, and no command takes it away,
@@ -193,6 +194,14 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, prose 
 	}
 	if t.Session != "" {
 		writeField(out, "session", t.Session)
+	}
+
+	// Each link, and not only the ones that still hold the ticket back. The
+	// row of the inbox names the tickets that are not done, because that is
+	// what the queue acts on; here the person is reading the one ticket and
+	// asking what they linked it to.
+	if len(waitsFor) > 0 {
+		writeField(out, "waits", ticketNames(waitsFor))
 	}
 
 	// The prose goes out as the person wrote it. It is markdown, and the person
@@ -281,7 +290,12 @@ func showTicket(out io.Writer, s *store.Store, id int64, only onlyField) error {
 		return nil
 	}
 
-	writeTicket(out, dataDir, worktree, ticket, string(prose), lastRun.StartedAt, time.Now().UTC())
+	waitsFor, err := s.Dependencies(id)
+	if err != nil {
+		return err
+	}
+
+	writeTicket(out, dataDir, worktree, ticket, waitsFor, string(prose), lastRun.StartedAt, time.Now().UTC())
 	return nil
 }
 

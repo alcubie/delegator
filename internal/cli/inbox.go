@@ -83,18 +83,18 @@ func groups(box inbox.Inbox, done time.Duration) []group {
 	}
 }
 
-// rowWidth is the width of a row that carries the duration of a run. It is the
-// width of the rule of dg show, so the inbox and one ticket in full make the
-// same shape on the screen.
+// rowWidth is the width of a row that carries a note. It is the width of the
+// rule of dg show, so the inbox and one ticket in full make the same shape on
+// the screen.
 const rowWidth = ruleWidth
 
-// timeGap is the space between the title of a row and the duration of the run.
+// timeGap is the space between the title of a row and the note at the right.
 const timeGap = 2
 
 // minTitleWidth is the least of a title that a row shows. A project with a
 // name long enough to push the title below it makes the row wider than
 // rowWidth instead, because a title cut to three characters names no ticket
-// and the person can still read the duration.
+// and the person can still read the note.
 const minTitleWidth = 8
 
 // ellipsis ends a title that a row cut.
@@ -154,12 +154,27 @@ func empty(gs []group) bool {
 // row that ends at its title.
 //
 // Only a ticket that runs now counts up. A ticket in READY holds the start of
-// the run that made it ready, and that run stopped.
+// the run that made it ready, and that run stopped. A queued ticket that waits
+// for another names the tickets it waits for, because a person who sees a
+// ticket at the top of the queue and no run needs to know that the queue is
+// passing it over on purpose.
 func rowNote(t store.OpenTicket, now time.Time) string {
-	if t.Status == store.Running {
+	switch t.Status {
+	case store.Running:
 		return elapsed(t.Started, now)
+	case store.Queued:
+		return waitsForText(t.WaitsFor)
 	}
 	return ""
+}
+
+// waitsForText names the tickets that one ticket waits for. A ticket that waits
+// for none gives the empty string, and its row ends at the title.
+func waitsForText(ids []int64) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return "waits for " + ticketNames(ids)
 }
 
 // writeInbox writes the inbox as of now. The time comes in rather than from

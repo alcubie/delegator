@@ -6,6 +6,10 @@
 // One rule comes out of it, and it is in nextWithRoom: the queue passes over a
 // ticket that waits for a ticket that is not done. Nothing else about a link
 // constrains the queue, so the place a person gives a ticket is still theirs.
+//
+// Two reads are here as well. waitingOn answers, for the whole inbox at once,
+// which links still hold a ticket back, and Dependencies gives every link of
+// one ticket for dg show.
 
 package store
 
@@ -33,4 +37,56 @@ func addDependencies(tx *sql.Tx, id int64, waitsFor []int64) error {
 		}
 	}
 	return nil
+}
+
+// Dependencies returns the id of each ticket that id waits for, in the order of
+// the ids. It gives every link and not only the ones that still hold the ticket
+// back, because dg show writes what the person made.
+func (s *Store) Dependencies(id int64) ([]int64, error) {
+	rows, err := s.db.Query(
+		"SELECT depends_on FROM ticket_deps WHERE ticket_id = ? ORDER BY depends_on", id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var on int64
+		if err := rows.Scan(&on); err != nil {
+			return nil, err
+		}
+		ids = append(ids, on)
+	}
+	return ids, rows.Err()
+}
+
+// waitingOn returns, for each ticket that waits for a ticket that is not done,
+// the ids of the tickets it is still waiting for. A ticket whose links are all
+// satisfied is not in the map, and neither is a ticket with no link.
+//
+// It is one query for the whole inbox rather than one for each row, because the
+// inbox reads every open ticket at one time and a query for each row would grow
+// with the queue.
+func waitingOn(q querier) (map[int64][]int64, error) {
+	rows, err := q.Query(`
+		SELECT ticket_deps.ticket_id, ticket_deps.depends_on
+		FROM ticket_deps
+		JOIN tickets ON tickets.id = ticket_deps.depends_on
+		WHERE tickets.status <> ?
+		ORDER BY ticket_deps.ticket_id, ticket_deps.depends_on`, Done)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	waiting := make(map[int64][]int64)
+	for rows.Next() {
+		var id, on int64
+		if err := rows.Scan(&id, &on); err != nil {
+			return nil, err
+		}
+		waiting[id] = append(waiting[id], on)
+	}
+	return waiting, rows.Err()
 }

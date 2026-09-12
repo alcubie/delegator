@@ -565,6 +565,7 @@ RUNNING
   9 web-api      Move to a new version of Go               00:14:07
 QUEUED
  11 data-loader  Change the tool that measures the coverage
+ 12 web-api      Roll out the new base image           waits for #9
 ```
 
 DONE is the first group. It shows each ticket that the person accepted with
@@ -581,6 +582,14 @@ each second, and a person who reads the inbox with `watch -n 1 dg` sees that the
 continues. The time is at the right of the row, at the width of the rule that `dg show`
 puts below a title, so the times of two runs are in one column. A title that reaches
 that column is cut, and an ellipsis shows where it was cut.
+
+The row of a queued ticket that waits for another ends in the same column with
+`waits for #9`, so a person who sees a ticket at the top of the queue and no run reads
+one edge of the inbox for the reason. Only the tickets that are not done are named,
+because those are the ones that hold the ticket back; a link that is satisfied shows
+nothing. The inbox reads the links of every open ticket in one query, so the cost does
+not grow with the length of the queue. A ready ticket carries no such note: READY waits
+for the person and not for the queue.
 
 The first line says whether the queue will start work: `Status: Running`, or
 `Status: Paused` after `dg pause`. It is always there, so a person never has to know what
@@ -609,6 +618,7 @@ $ dg show 4
   worktree  …/delegator/worktrees/4
   branch    delegator/4-remove-the-staging-app
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
+  waits     #2 #3
 
   Remove the staging app, the volume, the records of the DNS, the
   monitor and the secrets.
@@ -620,6 +630,11 @@ The subject of the commit is on the row. `dg open diff 4` gives the change itsel
 `running`, and the time from the completion for a ticket in `ready`. The time ends where
 the status above it ends, so a long title does not push it off the line. A ticket with no
 time gives no line, and the rule comes below the title.
+
+The row `waits` names every ticket that this one is linked to, done or not, which is
+where it differs from the row of the inbox. Here the person is reading the one ticket and
+asking what they linked it to, and a link that is already satisfied is still a link they
+can take away. A ticket with no link gives no row.
 
 ### 9.2 Commands of the person
 

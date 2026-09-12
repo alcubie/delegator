@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -33,6 +34,16 @@ func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) 
 		}
 		return fn(s)
 	})
+}
+
+// ticketNames writes a list of ticket ids the way a person writes one, so the
+// ids of an inbox row and the ids of dg show read the same.
+func ticketNames(ids []int64) string {
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		names = append(names, "#"+strconv.FormatInt(id, 10))
+	}
+	return strings.Join(names, " ")
 }
 
 // resolveTicketID returns the id of the ticket that a command acts on. args is

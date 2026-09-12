@@ -570,6 +570,12 @@ type OpenTicket struct {
 	// duration of the run from it. A ticket that no supervisor has claimed
 	// holds the zero time.
 	Started time.Time
+
+	// WaitsFor holds the id of each ticket that this one waits for and that is
+	// not done yet, in the order of the ids. A ticket that waits for nothing
+	// holds none, so the inbox writes a note about a link only while the link
+	// still holds the ticket back.
+	WaitsFor []int64
 }
 
 // OpenTickets returns each ticket that is still open: the ones that wait, the
@@ -639,6 +645,14 @@ const inboxTicketQuery = `
 // it into an OpenTicket. Store.Ticket does not use it: that one reads the
 // branch, the session and the commit as well, which no row of the inbox shows.
 func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
+	// The links come first, in one query for every ticket. A query for each
+	// row would read the links inside the loop over the rows, which is one
+	// round trip for each ticket of the queue.
+	waiting, err := waitingOn(s.db)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -653,6 +667,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 			timeColumn{&t.Completed}, timeColumn{&t.Started}); err != nil {
 			return nil, err
 		}
+		t.WaitsFor = waiting[t.ID]
 		open = append(open, t)
 	}
 	return open, rows.Err()
