@@ -353,7 +353,7 @@ func TestStartWritesTheLogOfTheRun(t *testing.T) {
 // The agent learns the ticket through dg show and ends through dg finish,
 // so the prompt must name both with the right id.
 func TestPromptNamesBothCommands(t *testing.T) {
-	got := prompt(42, "trunk")
+	got := prompt(42)
 	for _, want := range []string{"dg show 42", "dg finish 42"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
@@ -365,53 +365,11 @@ func TestPromptNamesBothCommands(t *testing.T) {
 // context for the rest of the run, so the prompt must hold the rules that say
 // what to read instead.
 func TestPromptSaysHowToRead(t *testing.T) {
-	got := prompt(42, "trunk")
+	got := prompt(42)
 	for _, want := range []string{"grep", "200 lines", "100 lines"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}
-	}
-}
-
-// A project whose default branch is not main sends every run to the wrong
-// branch if the prompt guesses the name, so the prompt must carry the name it
-// was given and no other.
-func TestPromptNamesTheDefaultBranchOfTheProject(t *testing.T) {
-	got := prompt(42, "trunk")
-	if !strings.Contains(got, "trunk") {
-		t.Errorf("the prompt does not name the default branch:\n%s", got)
-	}
-	if strings.Contains(got, "main") {
-		t.Errorf("the prompt names main, which is not this project's default branch:\n%s", got)
-	}
-}
-
-// The rebase is there to put the commit that dg finish records on top of the
-// default branch, so a prompt that asked for it after the commit would record
-// the commit made before it.
-func TestPromptRebasesBeforeTheCommitAndTheFinish(t *testing.T) {
-	got := prompt(42, "trunk")
-	rebase := strings.Index(got, "git rebase")
-	commit := strings.Index(got, "Commit your work")
-	finish := strings.Index(got, "dg finish 42 <hash>")
-	if rebase < 0 || commit < 0 || finish < 0 {
-		t.Fatalf("the prompt is missing one of the three steps:\n%s", got)
-	}
-	if rebase > commit {
-		t.Errorf("the rebase comes after the commit:\n%s", got)
-	}
-	if commit > finish {
-		t.Errorf("the commit comes after dg finish:\n%s", got)
-	}
-}
-
-// A conflict the agent resolved is a change the person reviewing the ticket
-// did not ask for, so the commit message must say what it was.
-func TestPromptAsksForTheConflictsInTheCommitMessage(t *testing.T) {
-	got := prompt(42, "trunk")
-	report := got[strings.Index(got, "Commit your work"):]
-	if !strings.Contains(report, "conflict") {
-		t.Errorf("the commit message step says nothing of a conflict:\n%s", report)
 	}
 }
 
