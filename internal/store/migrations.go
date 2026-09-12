@@ -32,6 +32,7 @@ var migrations = []string{
 	addRunsTable,
 	addReadyPositionColumn,
 	addDependenciesTable,
+	addTransitionsTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -153,6 +154,44 @@ CREATE TABLE ticket_deps (
 ) WITHOUT ROWID;
 
 CREATE INDEX ticket_deps_depends_on ON ticket_deps(depends_on);
+`
+
+// addTransitionsTable makes the table of the history of each ticket. One row is
+// one change of state: the ticket, the status it left, the status it entered
+// and the time. The first row of a ticket is its arrival, which has no status
+// before it, and the last row is the status the ticket has now.
+//
+// A column that holds one event goes out of date, which the column completed
+// showed: dg revise takes a ticket back to the queue and that column still
+// holds the time of the run that is complete, so the queue showed the time
+// that an earlier run stopped. A row is written once and never again, so no
+// time here can say a thing that was true on another day.
+//
+// The two INSERTs give a database that migrates the history it holds. The
+// arrival of each ticket is the column created. The time that a ticket became
+// ready is the column completed, and the row goes in for a ticket that is in
+// ready or in done, because that ticket is still where the time put it. A
+// ticket that left ready has a later change whose time the database does not
+// hold, and a row for the earlier one would then read as the last change of
+// that ticket. FEATURES.md says that you cannot get this data later: the
+// history of each ticket begins with the times that are there.
+const addTransitionsTable = `
+CREATE TABLE transitions (
+  id          INTEGER PRIMARY KEY,
+  ticket_id   INTEGER NOT NULL REFERENCES tickets(id),
+  from_status TEXT,
+  to_status   TEXT NOT NULL,
+  at          TEXT NOT NULL
+);
+
+CREATE INDEX transitions_ticket ON transitions(ticket_id, id);
+
+INSERT INTO transitions (ticket_id, from_status, to_status, at)
+  SELECT id, NULL, 'queued', created FROM tickets;
+
+INSERT INTO transitions (ticket_id, from_status, to_status, at)
+  SELECT id, 'running', 'ready', completed FROM tickets
+  WHERE completed IS NOT NULL AND status IN ('ready', 'done');
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

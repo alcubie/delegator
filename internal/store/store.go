@@ -331,9 +331,9 @@ func (s *Store) Projects() ([]Project, error) {
 // of them is done. An id that names no ticket gives ErrNoTicket and leaves the
 // database as it was.
 //
-// The ticket and its links go in under one transaction, so no supervisor can
-// claim the ticket in the moment between the two writes and start work that a
-// link says must wait.
+// The ticket, its links and the first row of its history go in under one
+// transaction, so no supervisor can claim the ticket in the moment between the
+// writes and start work that a link says must wait.
 func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -345,10 +345,11 @@ func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (in
 	// the last position and the write of the new one cannot come apart. A
 	// ticket that delegator makes is in the queue, which is what the state
 	// "queued" says.
+	arrived := time.Now()
 	result, err := tx.Exec(`INSERT INTO tickets (
 		project_id, title, status, position, created
 	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets), ?)
-	`, projectID, title, Queued, rfc3339(time.Now()))
+	`, projectID, title, Queued, rfc3339(arrived))
 	if err != nil {
 		return 0, err
 	}
@@ -357,6 +358,9 @@ func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (in
 		return 0, err
 	}
 
+	if err := addTransition(tx, id, "", Queued, arrived); err != nil {
+		return 0, err
+	}
 	if err := addDependencies(tx, id, dependsOn); err != nil {
 		return 0, err
 	}
@@ -752,15 +756,17 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 	}
 	defer tx.Rollback()
 
-	if err := changeStatus(tx, id, status); err != nil {
+	if err := changeStatus(tx, id, status, time.Now()); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 // changeStatus is ChangeStatus without the transaction, so a caller that writes
-// more than the status can do all of it in one.
-func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
+// more than the status can do all of it in one. It writes the row of the change
+// as well, so no way to change a status can leave the history without it, and at
+// is the time that both hold.
+func changeStatus(tx *sql.Tx, id int64, status TicketStatus, at time.Time) error {
 	var from TicketStatus
 	err := tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -788,8 +794,10 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus) error {
 			WHERE id = ?
 		`
 	}
-	_, err = tx.Exec(update, status, id)
-	return err
+	if _, err := tx.Exec(update, status, id); err != nil {
+		return err
+	}
+	return addTransition(tx, id, from, status, at)
 }
 
 // Claim marks a queued ticket as running, records its branch, and writes the
@@ -955,7 +963,8 @@ func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 // claim is the writing of Claim without the transaction, so a caller that
 // reads the queue in the same one can do all of it together.
 func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
-	if err := changeStatus(tx, id, Running); err != nil {
+	started := time.Now()
+	if err := changeStatus(tx, id, Running, started); err != nil {
 		return 0, err
 	}
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
@@ -963,7 +972,7 @@ func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
 	}
 	result, err := tx.Exec(
 		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
-		id, os.Getpid(), rfc3339(time.Now()),
+		id, os.Getpid(), rfc3339(started),
 	)
 	if err != nil {
 		return 0, err
@@ -1167,7 +1176,7 @@ func endRunAt(tx *sql.Tx, runID int64, at time.Time) error {
 // run the caller means: the last run of a ticket is not always the one that a
 // supervisor holds.
 func failRun(tx *sql.Tx, runID, ticketID int64, at time.Time) error {
-	if err := changeStatus(tx, ticketID, Failed); err != nil {
+	if err := changeStatus(tx, ticketID, Failed, at); err != nil {
 		return err
 	}
 	return endRunAt(tx, runID, at)
@@ -1201,10 +1210,11 @@ func (s *Store) Cancel(id, runID int64) error {
 	}
 	defer tx.Rollback()
 
-	if err := changeStatus(tx, id, Cancelled); err != nil {
+	at := time.Now()
+	if err := changeStatus(tx, id, Cancelled, at); err != nil {
 		return err
 	}
-	if err := endRunAt(tx, runID, time.Now()); err != nil {
+	if err := endRunAt(tx, runID, at); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1221,12 +1231,13 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 	}
 	defer tx.Rollback()
 
-	if err := changeStatus(tx, id, Ready); err != nil {
+	finished := time.Now()
+	if err := changeStatus(tx, id, Ready, finished); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(
 		"UPDATE tickets SET commit_id = ?, completed = ? WHERE id = ?",
-		commit, rfc3339(time.Now()), id,
+		commit, rfc3339(finished), id,
 	); err != nil {
 		return err
 	}
@@ -1250,7 +1261,7 @@ func (s *Store) ChangeStatusWith(id int64, status TicketStatus, work func() erro
 	}
 	defer tx.Rollback()
 
-	if err := changeStatus(tx, id, status); err != nil {
+	if err := changeStatus(tx, id, status, time.Now()); err != nil {
 		return err
 	}
 	if err := work(); err != nil {
