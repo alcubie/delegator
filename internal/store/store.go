@@ -565,8 +565,10 @@ type OpenTicket struct {
 	// is no place, and Status says which list the ticket is in.
 	Position int
 
-	// Completed is the time that the ticket last became ready. A ticket that
-	// never became ready holds the zero time.
+	// Completed is the time that the person accepted the ticket, which is its
+	// change into done. It orders DONE and sets the window that DONE holds. A
+	// ticket that nobody has accepted holds the zero time, which every ticket of
+	// the open list does.
 	Completed time.Time
 
 	// Started is the time that the last run of the ticket began. For a ticket
@@ -595,23 +597,24 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 		ORDER BY tickets.id`, Queued, Running, Ready)
 }
 
-// DoneTickets returns each ticket that dg accept closed and that finished at
-// or after since. The inbox holds them for a while after they close, so a
-// person who accepted a ticket can still read what it was.
+// DoneTickets returns each ticket that dg accept closed at or after since. The
+// inbox holds them for a while after they close, so a person who accepted a
+// ticket can still read what it was.
 //
-// A ticket that is cancelled is not one of these. It was never finished, and a
-// cancel can reach a ticket that became ready, so the history of such a ticket
-// holds a time of completion for a run that the person threw away.
+// The window runs from the time the person accepted the ticket and not from the
+// time the run finished. A ticket that waits in ready over a weekend is work the
+// person has just dealt with on the Monday, and DONE holds it for the window
+// from that moment.
 //
-// A done ticket that never became ready is not one either. Only a ticket that
-// dg finish made ready can become done, so the history of a ticket without that
-// change is one that a version before the history left behind.
+// A cancelled ticket is not one of these, because a cancel is not an
+// acceptance. Neither is a done ticket whose history holds no change into done,
+// which is every ticket that a version before the history had already closed.
 func (s *Store) DoneTickets(since time.Time) ([]OpenTicket, error) {
 	// The time holds the form of rfc3339 in UTC, which is one width and one
 	// zone for every row, so a comparison of the text is a comparison of the
 	// times.
 	return s.inboxTickets(inboxTicketQuery+`
-		WHERE tickets.status = ? AND `+readyTime+` >= ?
+		WHERE tickets.status = ? AND `+acceptedTime+` >= ?
 		ORDER BY tickets.id`, Done, rfc3339(ceilSecond(since)))
 }
 
@@ -639,7 +642,7 @@ func ceilSecond(t time.Time) time.Time {
 // for each of them.
 const inboxTicketQuery = `
 	SELECT tickets.id, projects.path, tickets.title, tickets.status,
-	       COALESCE(tickets.position, tickets.ready_position, 0), ` + readyTime + `,
+	       COALESCE(tickets.position, tickets.ready_position, 0), ` + acceptedTime + `,
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
 	FROM tickets

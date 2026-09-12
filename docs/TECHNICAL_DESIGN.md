@@ -599,8 +599,9 @@ QUEUED
 
 DONE is the first group. It shows each ticket that the person accepted with
 `dg accept` in the period that `done_hours` gives. The sequence is the time that
-the ticket completed, and the ticket that completed last is at the end. Only a
-ticket that completed is in DONE, and a ticket that `dg cancel` stopped is not.
+the person accepted the ticket, and the ticket that the person accepted last is
+at the end. A ticket that `dg cancel` stopped is not in DONE, because a cancel
+is not an acceptance.
 
 DONE keeps the work of a day in view after the person accepts each ticket of it.
 The person can read a commit again, and the group also shows what delegator

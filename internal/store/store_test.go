@@ -1242,22 +1242,37 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 }
 
-// setCompleted writes the time that a ticket became ready, which is a row of
-// its history. dg finish does this work, and a test that is not about dg finish
-// writes the row rather than the whole path of a run.
+// setCompleted writes the time that the person accepted a ticket, which is a
+// row of its history. dg accept does this work, and a test that is not about
+// dg accept writes the row rather than the whole path of a run and a review.
 func setCompleted(t *testing.T, s *Store, id int64, completed string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
 		INSERT INTO transitions (ticket_id, from_status, to_status, at)
-		VALUES (?, 'running', 'ready', ?)`, id, completed); err != nil {
+		VALUES (?, 'ready', 'done', ?)`, id, completed); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
+// setReady writes the time that a run of a ticket finished, which is a row of
+// its history. No time of the inbox comes from it, and a test writes it to say
+// which row the inbox reads.
+func setReady(t *testing.T, s *Store, id int64, ready string) {
+	t.Helper()
+	if _, err := s.db.Exec(`
+		INSERT INTO transitions (ticket_id, from_status, to_status, at)
+		VALUES (?, 'running', 'ready', ?)`, id, ready); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A ticket of the open list holds no time of completion, whatever its history
+// holds. A ready ticket has finished a run, and the time of that run is not a
+// time of completion: the person has not accepted the work yet.
+func TestOpenTicketsHoldNoTimeOfCompletion(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[0], Ready)
-	setCompleted(t, s, ids[0], "2026-08-28T09:30:00Z")
+	setReady(t, s, ids[0], "2026-08-28T09:30:00Z")
 
 	open, err := s.OpenTickets()
 	if err != nil {
@@ -1267,11 +1282,9 @@ func TestOpenTicketsGivesTheTimeOfCompletion(t *testing.T) {
 	for _, ticket := range open {
 		byID[ticket.ID] = ticket
 	}
-	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
-	if got := byID[ids[0]].Completed; !got.Equal(want) {
-		t.Errorf("completed = %v, want %v", got, want)
+	if got := byID[ids[0]].Completed; !got.IsZero() {
+		t.Errorf("a ready ticket has completed = %v, want the zero time", got)
 	}
-	// a ticket that waits has no time of completion
 	if got := byID[ids[2]].Completed; !got.IsZero() {
 		t.Errorf("a queued ticket has completed = %v, want the zero time", got)
 	}
@@ -2393,8 +2406,9 @@ func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
 	}
 }
 
-// A done ticket with no time of completion is in no window, and it does not
-// come out for one that reaches back to the zero time.
+// A done ticket whose history holds no change into done is in no window, and it
+// does not come out for one that reaches back to the zero time. A version before
+// the history left every ticket it had already closed that way.
 func TestDoneTicketsLeavesOutATicketWithNoCompletion(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2434,6 +2448,24 @@ func TestDoneTicketsGivesTheProjectAndTheCompletion(t *testing.T) {
 	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
 	if got := done[0].Completed; !got.Equal(want) {
 		t.Errorf("completed = %v, want %v", got, want)
+	}
+}
+
+// The window reaches back from the acceptance and not from the end of the run.
+// A ticket whose run finished before the window and that the person accepted
+// inside it is work they have just dealt with, so DONE holds it.
+func TestDoneTicketsMeasuresTheWindowFromTheAcceptance(t *testing.T) {
+	s, id := oneTicket(t)
+	setStatus(t, s, id, Done)
+	setReady(t, s, id, "2026-08-27T08:00:00Z")
+	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+
+	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{id}; !slices.Equal(ticketIDs(done), want) {
+		t.Errorf("DoneTickets gives %v, want %v", ticketIDs(done), want)
 	}
 }
 

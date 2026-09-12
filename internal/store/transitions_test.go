@@ -411,10 +411,11 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	}
 }
 
-// The time of completion is the last run that finished. A ticket that went back
-// to the queue and became ready again holds the later time, which is the work
-// the person has in front of them.
-func TestTheTimeOfCompletionIsTheLastRunThatFinished(t *testing.T) {
+// The time of completion is the time the person accepted the ticket, and not
+// the time the run that finished stopped. A ticket can sit in ready for days
+// before the person reads it, and the inbox holds it for the window from the
+// moment they did.
+func TestTheTimeOfCompletionIsTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
@@ -422,28 +423,23 @@ func TestTheTimeOfCompletionIsTheLastRunThatFinished(t *testing.T) {
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
 		t.Fatal(err)
 	}
+	// the run stopped long before the person read it
 	backdate(t, s, id, "2026-08-28T09:00:00Z")
-	if err := s.ChangeStatus(id, Queued); err != nil {
+
+	accepted := time.Now().UTC().Truncate(time.Second)
+	if err := s.ChangeStatus(id, Done); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
-		t.Fatal(err)
-	}
-	finished := time.Now().UTC().Truncate(time.Second)
-	if err := s.FinishTicket(id, "def5678"); err != nil {
-		t.Fatal(err)
-	}
-
-	open, err := s.OpenTickets()
+	done, err := s.DoneTickets(time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(open) != 1 {
-		t.Fatalf("OpenTickets gives %d tickets, want 1", len(open))
+	if len(done) != 1 {
+		t.Fatalf("DoneTickets gives %d tickets, want 1", len(done))
 	}
-	if got := open[0].Completed; got.Before(finished) || got.After(time.Now()) {
-		t.Errorf("the ticket was completed at %s, want between %s and now", got, finished)
+	if got := done[0].Completed; got.Before(accepted) || got.After(time.Now()) {
+		t.Errorf("the ticket was completed at %s, want between %s and now", got, accepted)
 	}
 }
 

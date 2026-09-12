@@ -34,12 +34,13 @@ const lastChange = `(SELECT at FROM transitions
 	 WHERE transitions.ticket_id = tickets.id
 	 ORDER BY transitions.id DESC LIMIT 1)`
 
-// readyTime is the time of the last change into ready, which is the time that
-// the work of a ticket was complete. DONE comes in the order of it, and the
-// window of DONE reads it to decide which tickets the inbox still shows.
+// acceptedTime is the time that a ticket became done, which is the time that
+// the person accepted the work. DONE comes in the order of it, and the window
+// of DONE reads it to decide which tickets the inbox still shows.
 //
-// A ticket that was never ready gives NULL, and a ticket that went back to the
-// queue and became ready again gives the later time.
-const readyTime = `(SELECT at FROM transitions
-	 WHERE transitions.ticket_id = tickets.id AND transitions.to_status = 'ready'
-	 ORDER BY transitions.id DESC LIMIT 1)`
+// Done is the end of the states, so a ticket has at most one change into it. A
+// ticket that nobody has accepted gives NULL, and so does a done ticket whose
+// history reaches back before the history held this change.
+const acceptedTime = `(SELECT at FROM transitions
+	 WHERE transitions.ticket_id = tickets.id AND transitions.to_status = 'done'
+	 LIMIT 1)`
