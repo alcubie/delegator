@@ -19,12 +19,13 @@ import "database/sql"
 // the caller asked for a state rather than for a count of rows.
 func addDependencies(tx *sql.Tx, id int64, waitsFor []int64) error {
 	for _, on := range waitsFor {
-		// The foreign key of the table would refuse an id that names no ticket
-		// as well, but its error is the driver's, and it names neither the id
-		// nor anything a caller can match. This gives ErrNoTicket and the id.
+		// Checked here so a missing id returns ErrNoTicket naming that id.
+		// The INSERT below would instead fail with SQLite error 787,
+		// "FOREIGN KEY constraint failed", which names no id.
 		if err := ticketExists(tx, on); err != nil {
 			return err
 		}
+		// ON CONFLICT DO NOTHING: one command can name the same id twice.
 		if _, err := tx.Exec(`
 			INSERT INTO ticket_deps (ticket_id, depends_on) VALUES (?, ?)
 			ON CONFLICT DO NOTHING`, id, on); err != nil {
