@@ -40,7 +40,7 @@ func dependCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"the ticket ID this ticket depends on.  Can be repeated.")
 	cmd.Flags().BoolVar(&remove, "remove", false,
-		"take the link away rather than make it")
+		"remove the dependency link.")
 	// The error of MarkFlagRequired is a flag that the command does not have,
 	// and the line above gave it that one.
 	_ = cmd.MarkFlagRequired("after")
