@@ -326,24 +326,41 @@ func (s *Store) Projects() ([]Project, error) {
 	return projects, rows.Err()
 }
 
-// AddTicket adds a new ticket record to the database.
-func (s *Store) AddTicket(projectID int64, title string) (int64, error) {
+// AddTicket adds a new ticket record to the database. The ids of waitsFor name
+// the tickets that the new one waits for: the queue passes it over until each
+// of them is done. An id that names no ticket gives ErrNoTicket and leaves the
+// database as it was.
+//
+// The ticket and its links go in under one transaction, so no supervisor can
+// claim the ticket in the moment between the two writes and start work that a
+// link says must wait.
+func (s *Store) AddTicket(projectID int64, title string, waitsFor ...int64) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	// The position comes from a sub-query in the same statement, so the read of
 	// the last position and the write of the new one cannot come apart. A
 	// ticket that delegator makes is in the queue, which is what the state
 	// "queued" says.
-	query := `INSERT INTO tickets (
+	result, err := tx.Exec(`INSERT INTO tickets (
 		project_id, title, status, position, created
 	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets), ?)
-	`
-	args := []any{
-		projectID,
-		title,
-		Queued,
-		rfc3339(time.Now()),
+	`, projectID, title, Queued, rfc3339(time.Now()))
+	if err != nil {
+		return 0, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
 	}
 
-	return s.create(query, args...)
+	if err := addDependencies(tx, id, waitsFor); err != nil {
+		return 0, err
+	}
+	return id, tx.Commit()
 }
 
 // QueuedTicket is one ticket of the queue. It holds the fields that the queue
@@ -884,6 +901,11 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 // in ready, which is what a slot of the whole queue counts as well. The limit
 // is cfg.ProjectRuns and it is the same for every project, so the statement
 // names no project and the config file names none either.
+//
+// A ticket that waits for a ticket that is not done is passed over the same
+// way. Done satisfies a link and nothing else does, so a ticket does not start
+// on work that a person has not accepted yet, and a link to a ticket that was
+// cancelled holds the ticket back until the link goes.
 func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 	var id int64
 	err := q.QueryRow(`
@@ -891,8 +913,11 @@ func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 		WHERE t.status = ? AND t.position IS NOT NULL
 		  AND (SELECT COUNT(*) FROM tickets AS held
 		       WHERE held.project_id = t.project_id AND held.status IN (?, ?)) < ?
+		  AND NOT EXISTS (SELECT 1 FROM ticket_deps
+		       JOIN tickets AS waited ON waited.id = ticket_deps.depends_on
+		       WHERE ticket_deps.ticket_id = t.id AND waited.status <> ?)
 		ORDER BY t.position
-		LIMIT 1`, Queued, Running, Ready, cfg.ProjectRuns()).Scan(&id)
+		LIMIT 1`, Queued, Running, Ready, cfg.ProjectRuns(), Done).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNoRoom
 	}

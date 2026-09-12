@@ -31,6 +31,7 @@ var migrations = []string{
 	addQueueTable,
 	addRunsTable,
 	addReadyPositionColumn,
+	addDependenciesTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -132,6 +133,26 @@ UPDATE tickets SET ready_position = (
 ) WHERE status = 'ready';
 
 CREATE UNIQUE INDEX tickets_ready_position ON tickets(ready_position);
+`
+
+// addDependenciesTable makes the table of links between tickets. One row says
+// that the ticket ticket_id waits for the ticket depends_on, so the row for
+// "ticket 3 must be done before ticket 5" is (5, 3).
+//
+// The link is a row and not a column, because a ticket can wait for more than
+// one other ticket. The primary key is the pair, so a link that is written
+// twice is one row, and the CHECK refuses a ticket that waits for itself. The
+// index on depends_on is for the other direction of the question: which
+// tickets wait for this one.
+const addDependenciesTable = `
+CREATE TABLE ticket_deps (
+  ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
+  depends_on INTEGER NOT NULL REFERENCES tickets(id),
+  PRIMARY KEY (ticket_id, depends_on),
+  CHECK (ticket_id <> depends_on)
+) WITHOUT ROWID;
+
+CREATE INDEX ticket_deps_depends_on ON ticket_deps(depends_on);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then
