@@ -217,16 +217,9 @@ func AgeRun(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
 // to make its own id free.
 func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, value any) {
 	t.Helper()
-	// The name of the file is the store's, and the store gives no way to
-	// reach the database it holds. The name of the column is this file's and
-	// never a test's, so it is safe in the text of the statement, where SQLite
-	// takes no parameter.
-	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+	db := openDB(t, dataDir)
+	// The name of the column is this file's and never a test's, so it is safe
+	// in the text of the statement, where SQLite takes no parameter.
 	result, err := db.Exec(fmt.Sprintf(`
 		UPDATE runs SET %s = ?
 		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`, column),
@@ -237,6 +230,20 @@ func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, v
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
 		t.Fatalf("the %s of %d rows of ticket %d was written, want 1 row: %v", column, n, ticketID, err)
 	}
+}
+
+// openDB opens the database of a data directory and closes it when the test
+// ends. The name of the file is the store's, and the store gives no way to
+// reach the database it holds, so a fixture that reaches a column no command
+// reaches opens it again.
+func openDB(t *testing.T, dataDir string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
 }
 
 // XDGDataDir points XDG_DATA_HOME at a fresh directory for one test and
