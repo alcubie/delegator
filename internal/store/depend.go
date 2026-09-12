@@ -19,7 +19,10 @@ import "database/sql"
 // the caller asked for a state rather than for a count of rows.
 func addDependencies(tx *sql.Tx, id int64, waitsFor []int64) error {
 	for _, on := range waitsFor {
-		if _, err := ticket(tx, on); err != nil {
+		// The foreign key of the table would refuse an id that names no ticket
+		// as well, but its error is the driver's, and it names neither the id
+		// nor anything a caller can match. This gives ErrNoTicket and the id.
+		if err := ticketExists(tx, on); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`

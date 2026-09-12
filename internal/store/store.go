@@ -682,6 +682,19 @@ func (s *Store) Ticket(id int64) (Ticket, error) {
 	return ticket(s.db, id)
 }
 
+// ticketExists gives ErrNoTicket when the id holds no ticket, and nothing when
+// it holds one. It reads no column, because a caller that asks only whether the
+// id is there has no use for the join to projects and the fields that ticket
+// reads.
+func ticketExists(q querier, id int64) error {
+	var found int
+	err := q.QueryRow("SELECT 1 FROM tickets WHERE id = ?", id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	return err
+}
+
 // ticket is Ticket for any querier.
 func ticket(q querier, id int64) (Ticket, error) {
 	var t Ticket
