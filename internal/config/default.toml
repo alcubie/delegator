@@ -10,7 +10,5 @@ timeout_minutes = 60
 done_hours = 24
 
 # max_runs_per_project is the number of tickets of one project that can be
-# Running or Ready at a time. Two runs of one project can share a database or a
-# port, which runs cannot describe because it counts every project together. A
-# value of 0 gives each project the limit runs.
+# Running or Ready at a time.  A value of 0 is ignored and runs is used as the limit.
 max_runs_per_project = 0
