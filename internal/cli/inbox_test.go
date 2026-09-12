@@ -230,7 +230,7 @@ func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 		"RUNNING",
 		"  none",
 		"QUEUED",
-		"  9 web-api  Move to a new version of Go            waits for #4 #7",
+		"  9 web-api  Move to a new version of Go           depends on #4 #7",
 		" 14 web-api  Add a limit on the rate",
 	})
 }
@@ -260,7 +260,7 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 		"RUNNING",
 		"  9 web-api  Move to a new version of Go                   00:14:07",
 		"QUEUED",
-		" 14 web-api  Add a limit on the rate                   waits for #9",
+		" 14 web-api  Add a limit on the rate                  depends on #9",
 	})
 }
 

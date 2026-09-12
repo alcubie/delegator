@@ -174,7 +174,7 @@ func dependsOnText(ids []int64) string {
 	if len(ids) == 0 {
 		return ""
 	}
-	return "waits for " + ticketNames(ids)
+	return "depends on " + ticketNames(ids)
 }
 
 // writeInbox writes the inbox as of now. The time comes in rather than from

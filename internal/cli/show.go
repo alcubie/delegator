@@ -201,7 +201,7 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, depend
 	// what the queue acts on; here the person is reading the one ticket and
 	// asking what they linked it to.
 	if len(dependsOn) > 0 {
-		writeField(out, "waits", ticketNames(dependsOn))
+		writeField(out, "depends", ticketNames(dependsOn))
 	}
 
 	// The prose goes out as the person wrote it. It is markdown, and the person

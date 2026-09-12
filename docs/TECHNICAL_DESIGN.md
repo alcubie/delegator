@@ -565,7 +565,7 @@ RUNNING
   9 web-api      Move to a new version of Go               00:14:07
 QUEUED
  11 data-loader  Change the tool that measures the coverage
- 12 web-api      Roll out the new base image           waits for #9
+ 12 web-api      Roll out the new base image          depends on #9
 ```
 
 DONE is the first group. It shows each ticket that the person accepted with
@@ -583,8 +583,8 @@ continues. The time is at the right of the row, at the width of the rule that `d
 puts below a title, so the times of two runs are in one column. A title that reaches
 that column is cut, and an ellipsis shows where it was cut.
 
-The row of a queued ticket that waits for another ends in the same column with
-`waits for #9`, so a person who sees a ticket at the top of the queue and no run reads
+The row of a queued ticket that depends on another ends in the same column with
+`depends on #9`, so a person who sees a ticket at the top of the queue and no run reads
 one edge of the inbox for the reason. Only the tickets that are not done are named,
 because those are the ones that hold the ticket back; a link that is satisfied shows
 nothing. The inbox reads the links of every open ticket in one query, so the cost does
@@ -618,7 +618,7 @@ $ dg show 4
   worktree  …/delegator/worktrees/4
   branch    delegator/4-remove-the-staging-app
   session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
-  waits     #2 #3
+  depends   #2 #3
 
   Remove the staging app, the volume, the records of the DNS, the
   monitor and the secrets.
@@ -631,7 +631,7 @@ The subject of the commit is on the row. `dg open diff 4` gives the change itsel
 the status above it ends, so a long title does not push it off the line. A ticket with no
 time gives no line, and the rule comes below the title.
 
-The row `waits` names every ticket that this one is linked to, done or not, which is
+The row `depends` names every ticket that this one is linked to, done or not, which is
 where it differs from the row of the inbox. Here the person is reading the one ticket and
 asking what they linked it to, and a link that is already satisfied is still a link they
 can take away. A ticket with no link gives no row.
@@ -686,7 +686,7 @@ installer.
 
 | Command | Function |
 |---|---|
-| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket wait for that ticket, and the flag repeats: `dg ticket --after 12 --after 13 "title"` makes a ticket that waits for both. An id that names no ticket is an error and no ticket is made. |
+| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket depend on that ticket, and the flag repeats: `dg ticket --after 12 --after 13 "title"` makes a ticket that depends on both. An id that names no ticket is an error and no ticket is made. |
 | `dg` | Show the inbox. |
 | `dg show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
 | `dg edit <id>` | Open `$EDITOR` on the title and the prose of one ticket of the queue. The form is the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. `dg revise` changes a ticket after a run. |

@@ -402,7 +402,7 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The flag --after names a ticket the new one waits for, so a person or an
+// The flag --after names a ticket the new one depends on, so a person or an
 // agent that files a plan of several tickets says the order the work goes in
 // as it files them.
 func TestRunTicketAfterOneTicket(t *testing.T) {

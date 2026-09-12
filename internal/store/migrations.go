@@ -136,14 +136,14 @@ CREATE UNIQUE INDEX tickets_ready_position ON tickets(ready_position);
 `
 
 // addDependenciesTable makes the table of links between tickets. One row says
-// that the ticket ticket_id waits for the ticket depends_on, so the row for
+// that the ticket ticket_id depends on the ticket depends_on, so the row for
 // "ticket 3 must be done before ticket 5" is (5, 3).
 //
-// The link is a row and not a column, because a ticket can wait for more than
+// The link is a row and not a column, because a ticket can depend on more than
 // one other ticket. The primary key is the pair, so a link that is written
-// twice is one row, and the CHECK refuses a ticket that waits for itself. The
+// twice is one row, and the CHECK refuses a ticket that depends on itself. The
 // index on depends_on is for the other direction of the question: which
-// tickets wait for this one.
+// tickets depend on this one.
 const addDependenciesTable = `
 CREATE TABLE ticket_deps (
   ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
