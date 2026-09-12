@@ -61,9 +61,9 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project the ticket is for.  Defaults to current working directory.")
+		"the directory of the project.  Defaults to current working directory.")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
-		"the `id` of a ticket the new one waits for.  Repeat the flag to name more than one.")
+		"the ticket ID this ticket depends on.  Can be repeated.")
 	return cmd
 }
 
