@@ -781,11 +781,10 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 }
 
 // ErrNoRoom shows that the queue had no ticket for a supervisor: the queue is
-// empty or paused, the tickets in running and in ready fill every slot the
-// limit of the person allows, or each ticket left in the queue belongs to a
-// project that is at the limit of one project. It is the ordinary end of a
-// supervisor that a trigger started for a queue that has since filled its
-// slots, and not a fault.
+// empty or paused, or the tickets in running and in ready fill every slot the
+// limit of the person allows. It is the ordinary end of a supervisor that a
+// trigger started for a queue that has since filled its slots, and not a
+// fault.
 var ErrNoRoom = errors.New("no ticket in the queue has room to run")
 
 // freeSlots reports how many runs can start: cfg.Runs, the limit of the
@@ -816,11 +815,8 @@ func freeSlots(q querier, cfg config.Config) (int, error) {
 // again inside its own transaction, which is the answer that counts.
 //
 // It takes the whole config, and not the one key it reads, because the rule
-// for a slot belongs to the person and grows with their file.
-//
-// The count is of the whole queue. Whether one project has room for another of
-// its tickets is a second question, and nextWithRoom asks it of each ticket of
-// the queue.
+// for a slot belongs to the person and grows with their file: a limit for each
+// project is the next key that this count has to read.
 func (s *Store) FreeSlots(cfg config.Config) (int, error) {
 	return freeSlots(s.db, cfg)
 }
