@@ -240,3 +240,197 @@ func TestOpenGivesAnOldDatabaseTheLinksTable(t *testing.T) {
 		}
 	}
 }
+
+// The link the ticket asks for: a ticket that is already in the queue is made
+// to depend on another one.
+func TestAddDependenciesLinksTwoTicketsThatAreThere(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := linksOf(t, s, ids[2]), []int64{ids[0]}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
+	}
+}
+
+// The flag of the command repeats, so the call takes more than one id, and each
+// one gets a link.
+func TestAddDependenciesLinksEachIdItIsGiven(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	if err := s.AddDependencies(ids[2], ids[0], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := linksOf(t, s, ids[2]), []int64{ids[0], ids[1]}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
+	}
+}
+
+// A link that is there already is the state the person asked for, so the second
+// command says the same thing as the first and leaves one row.
+func TestAddDependenciesTwiceMakesOneLink(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
+		t.Fatalf("the second call gave %v, want no error: a link that is there is not a fault", err)
+	}
+
+	if got, want := linksOf(t, s, ids[2]), []int64{ids[0]}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
+	}
+}
+
+// A ticket that depends on itself could never start, and the person meant
+// another id.
+func TestAddDependenciesRefusesATicketThatDependsOnItself(t *testing.T) {
+	s, id := oneTicket(t)
+
+	err := s.AddDependencies(id, id)
+
+	if !errors.Is(err, ErrSelfDependency) {
+		t.Fatalf("err = %v, want ErrSelfDependency", err)
+	}
+	if got := linksOf(t, s, id); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing", id, got)
+	}
+}
+
+// No ticket of a ring can ever start, because each one waits for the next, so
+// the link that would close the ring is refused rather than written.
+func TestAddDependenciesRefusesARingOfTwo(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.AddDependencies(ids[1], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.AddDependencies(ids[0], ids[1])
+
+	if !errors.Is(err, ErrDependencyRing) {
+		t.Fatalf("err = %v, want ErrDependencyRing", err)
+	}
+	if got := linksOf(t, s, ids[0]); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing", ids[0], got)
+	}
+}
+
+// The walk goes over every link and not only the first, so a ring that three
+// tickets make is refused as a ring of two is.
+func TestAddDependenciesRefusesARingOfThree(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.AddDependencies(ids[1], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(ids[2], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.AddDependencies(ids[0], ids[2])
+
+	if !errors.Is(err, ErrDependencyRing) {
+		t.Fatalf("err = %v, want ErrDependencyRing", err)
+	}
+	if got := linksOf(t, s, ids[0]); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing", ids[0], got)
+	}
+}
+
+// One call writes its links under one transaction, so a call that has to refuse
+// its second id leaves the first one unwritten too.
+func TestAddDependenciesWritesNoLinkWhenItRefusesOne(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	err := s.AddDependencies(ids[2], ids[0], ids[2])
+
+	if !errors.Is(err, ErrSelfDependency) {
+		t.Fatalf("err = %v, want ErrSelfDependency", err)
+	}
+	if got := linksOf(t, s, ids[2]); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing: the refused call wrote a link", ids[2], got)
+	}
+}
+
+// A link only holds a ticket back in the queue, so a link on a ticket that has
+// left it changes nothing and the command says so rather than writing a row
+// that means nothing.
+func TestAddDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.ChangeStatus(ids[2], Running); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.AddDependencies(ids[2], ids[0])
+
+	if !errors.Is(err, ErrNotQueued) {
+		t.Fatalf("err = %v, want ErrNotQueued", err)
+	}
+	if got := linksOf(t, s, ids[2]); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing", ids[2], got)
+	}
+}
+
+// The way out for a ticket that depends on one that was cancelled.
+func TestRemoveDependenciesTakesTheLinkAway(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.AddDependencies(ids[2], ids[0], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RemoveDependencies(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := linksOf(t, s, ids[2]), []int64{ids[1]}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
+	}
+}
+
+// A remove that takes nothing away is a person who named the wrong ticket, and
+// a command that said nothing would leave them believing the link is gone.
+func TestRemoveDependenciesRefusesALinkThatIsNotThere(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	err := s.RemoveDependencies(ids[2], ids[0])
+
+	if !errors.Is(err, ErrNoDependency) {
+		t.Fatalf("err = %v, want ErrNoDependency", err)
+	}
+}
+
+// A ticket that has left the queue is refused whichever way the link goes, for
+// the reason the add is refused: the link changes nothing now.
+func TestRemoveDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(ids[2], Running); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.RemoveDependencies(ids[2], ids[0])
+
+	if !errors.Is(err, ErrNotQueued) {
+		t.Fatalf("err = %v, want ErrNotQueued", err)
+	}
+	if got, want := linksOf(t, s, ids[2]), []int64{ids[0]}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
+	}
+}
+
+// An id that names no ticket is a mistyped id, and the error names it.
+func TestAddDependenciesRefusesAnIdThatNamesNoTicket(t *testing.T) {
+	s, id := oneTicket(t)
+
+	if err := s.AddDependencies(id, id+1000); !errors.Is(err, ErrNoTicket) {
+		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+	if err := s.AddDependencies(id+1000, id); !errors.Is(err, ErrNoTicket) {
+		t.Errorf("err = %v, want ErrNoTicket", err)
+	}
+}
