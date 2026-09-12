@@ -204,17 +204,17 @@ func TestWriteInboxPutsTheDurationsInOneColumn(t *testing.T) {
 	})
 }
 
-// A queued ticket that waits for a ticket that is not done says so at the
+// A queued ticket that depends on a ticket that is not done says so at the
 // right of its row. A person who sees a ticket at the top of the queue and no
 // run needs to know that the queue is passing it over on purpose. A queued
-// ticket whose links are all done waits for nothing, holds no id here, and its
+// ticket whose links are all done depends on nothing, holds no id here, and its
 // row ends at its title.
-func TestWriteInboxNamesTheTicketsAQueuedTicketWaitsFor(t *testing.T) {
+func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
 		Queued: []store.OpenTicket{{
 			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
-			Status: store.Queued, WaitsFor: []int64{4, 7},
+			Status: store.Queued, DependsOn: []int64{4, 7},
 		}, {
 			ID: 14, Project: "/projects/web-api", Title: "Add a limit on the rate",
 			Status: store.Queued,
@@ -247,7 +247,7 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 		}},
 		Queued: []store.OpenTicket{{
 			ID: 14, Project: "/projects/web-api", Title: "Add a limit on the rate",
-			Status: store.Queued, WaitsFor: []int64{9},
+			Status: store.Queued, DependsOn: []int64{9},
 		}},
 	}
 
@@ -272,7 +272,7 @@ func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
 		QueueRunning: true,
 		Ready: []store.OpenTicket{{
 			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
-			Status: store.Ready, WaitsFor: []int64{4},
+			Status: store.Ready, DependsOn: []int64{4},
 		}},
 	}
 

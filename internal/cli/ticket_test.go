@@ -415,8 +415,8 @@ func TestRunTicketAfterOneTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := idOf(t, out)
-	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	if got, want := testfix.Dependencies(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
 	}
 }
 
@@ -432,8 +432,8 @@ func TestRunTicketAfterTwoTickets(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := idOf(t, out)
-	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	if got, want := testfix.Dependencies(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
 	}
 }
 
@@ -450,8 +450,8 @@ func TestRunTicketAfterACommaList(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := idOf(t, out)
-	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	if got, want := testfix.Dependencies(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
 	}
 }
 
@@ -467,8 +467,8 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := idOf(t, out)
-	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	if got, want := testfix.Dependencies(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
 	}
 }
 

@@ -326,15 +326,15 @@ func (s *Store) Projects() ([]Project, error) {
 	return projects, rows.Err()
 }
 
-// AddTicket adds a new ticket record to the database. The ids of waitsFor name
-// the tickets that the new one waits for: the queue passes it over until each
+// AddTicket adds a new ticket record to the database. The ids of dependsOn name
+// the tickets that the new one depends on: the queue passes it over until each
 // of them is done. An id that names no ticket gives ErrNoTicket and leaves the
 // database as it was.
 //
 // The ticket and its links go in under one transaction, so no supervisor can
 // claim the ticket in the moment between the two writes and start work that a
 // link says must wait.
-func (s *Store) AddTicket(projectID int64, title string, waitsFor ...int64) (int64, error) {
+func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -357,7 +357,7 @@ func (s *Store) AddTicket(projectID int64, title string, waitsFor ...int64) (int
 		return 0, err
 	}
 
-	if err := addDependencies(tx, id, waitsFor); err != nil {
+	if err := addDependencies(tx, id, dependsOn); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit()
@@ -571,11 +571,11 @@ type OpenTicket struct {
 	// holds the zero time.
 	Started time.Time
 
-	// WaitsFor holds the id of each ticket that this one waits for and that is
-	// not done yet, in the order of the ids. A ticket that waits for nothing
+	// DependsOn holds the id of each ticket that this one depends on and that is
+	// not done yet, in the order of the ids. A ticket that depends on nothing
 	// holds none, so the inbox writes a note about a link only while the link
 	// still holds the ticket back.
-	WaitsFor []int64
+	DependsOn []int64
 }
 
 // OpenTickets returns each ticket that is still open: the ones that wait, the
@@ -648,7 +648,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 	// The links come first, in one query for every ticket. A query for each
 	// row would read the links inside the loop over the rows, which is one
 	// round trip for each ticket of the queue.
-	waiting, err := waitingOn(s.db)
+	unmet, err := unmetDependencies(s.db)
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +667,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 			timeColumn{&t.Completed}, timeColumn{&t.Started}); err != nil {
 			return nil, err
 		}
-		t.WaitsFor = waiting[t.ID]
+		t.DependsOn = unmet[t.ID]
 		open = append(open, t)
 	}
 	return open, rows.Err()
@@ -930,7 +930,7 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 // is cfg.ProjectRuns and it is the same for every project, so the statement
 // names no project and the config file names none either.
 //
-// A ticket that waits for a ticket that is not done is passed over the same
+// A ticket that depends on a ticket that is not done is passed over the same
 // way. Done satisfies a link and nothing else does, so a ticket does not start
 // on work that a person has not accepted yet, and a link to a ticket that was
 // cancelled holds the ticket back until the link goes.
@@ -942,8 +942,8 @@ func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 		  AND (SELECT COUNT(*) FROM tickets AS held
 		       WHERE held.project_id = t.project_id AND held.status IN (?, ?)) < ?
 		  AND NOT EXISTS (SELECT 1 FROM ticket_deps
-		       JOIN tickets AS waited ON waited.id = ticket_deps.depends_on
-		       WHERE ticket_deps.ticket_id = t.id AND waited.status <> ?)
+		       JOIN tickets AS dependency ON dependency.id = ticket_deps.depends_on
+		       WHERE ticket_deps.ticket_id = t.id AND dependency.status <> ?)
 		ORDER BY t.position
 		LIMIT 1`, Queued, Running, Ready, cfg.ProjectRuns(), Done).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {

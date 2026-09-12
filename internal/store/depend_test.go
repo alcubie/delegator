@@ -8,19 +8,19 @@ import (
 	"github.com/alcubie/delegator/internal/config"
 )
 
-// mustAddTicket adds a ticket that waits for the ids of waitsFor, and stops the
-// test when the store refuses it. A test that examines a refusal calls
+// mustAddTicket adds a ticket that depends on the ids of dependsOn, and stops
+// the test when the store refuses it. A test that examines a refusal calls
 // AddTicket itself.
-func mustAddTicket(t *testing.T, s *Store, projectID int64, title string, waitsFor ...int64) int64 {
+func mustAddTicket(t *testing.T, s *Store, projectID int64, title string, dependsOn ...int64) int64 {
 	t.Helper()
-	id, err := s.AddTicket(projectID, title, waitsFor...)
+	id, err := s.AddTicket(projectID, title, dependsOn...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return id
 }
 
-// linksOf returns the id of each ticket that the ticket id waits for, and
+// linksOf returns the id of each ticket that the ticket id depends on, and
 // stops the test when the read fails.
 func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
@@ -31,36 +31,36 @@ func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	return ids
 }
 
-// waitingQueue returns a store whose queue holds one ticket that waits for an
-// earlier ticket and then one that waits for nothing, with the id of the
-// ticket waited for, the id of the waiting ticket and the id of the free one.
+// dependentQueue returns a store whose queue holds one ticket that depends on an
+// earlier ticket and then one that depends on nothing, with the id of the ticket
+// depended on, the id of the dependent ticket and the id of the free one.
 //
-// The ticket that is waited for is running, so it is out of the queue and the
-// waiting ticket is at the top of it. A queue that gave the free ticket the
+// The ticket that is depended on is running, so it is out of the queue and the
+// dependent ticket is at the top of it. A queue that gave the free ticket the
 // first place would claim it whether the links were read or not.
-func waitingQueue(t *testing.T) (s *Store, waitedFor, waiting, free int64) {
+func dependentQueue(t *testing.T) (s *Store, dependedOn, dependent, free int64) {
 	t.Helper()
 	s, projectID := emptyStore(t)
-	waitedFor = mustAddTicket(t, s, projectID, "the work it builds on")
-	waiting = mustAddTicket(t, s, projectID, "waits", waitedFor)
-	free = mustAddTicket(t, s, projectID, "waits for nothing")
-	if err := s.ChangeStatus(waitedFor, Running); err != nil {
+	dependedOn = mustAddTicket(t, s, projectID, "the work it builds on")
+	dependent = mustAddTicket(t, s, projectID, "depends", dependedOn)
+	free = mustAddTicket(t, s, projectID, "depends on nothing")
+	if err := s.ChangeStatus(dependedOn, Running); err != nil {
 		t.Fatal(err)
 	}
-	return s, waitedFor, waiting, free
+	return s, dependedOn, dependent, free
 }
 
-func TestAddTicketRecordsTheTicketsItWaitsFor(t *testing.T) {
+func TestAddTicketRecordsTheTicketsItDependsOn(t *testing.T) {
 	s, ids := threeTickets(t)
 	projectID := mustProject(t, s)
 
-	id := mustAddTicket(t, s, projectID, "waits for two", ids[0], ids[1])
+	id := mustAddTicket(t, s, projectID, "depends on two", ids[0], ids[1])
 
 	if got, want := linksOf(t, s, id), []int64{ids[0], ids[1]}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
 	}
 	if got := linksOf(t, s, ids[0]); len(got) != 0 {
-		t.Errorf("ticket %d waits for %v, want nothing", ids[0], got)
+		t.Errorf("ticket %d depends on %v, want nothing", ids[0], got)
 	}
 }
 
@@ -70,10 +70,10 @@ func TestAddTicketWithOneIdTwiceMakesOneLink(t *testing.T) {
 	s, id := oneTicket(t)
 	projectID := mustProject(t, s)
 
-	waiting := mustAddTicket(t, s, projectID, "waits", id, id)
+	dependent := mustAddTicket(t, s, projectID, "depends", id, id)
 
-	if got, want := linksOf(t, s, waiting), []int64{id}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", waiting, got, want)
+	if got, want := linksOf(t, s, dependent), []int64{id}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", dependent, got, want)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestAddTicketRefusesAnIdThatNamesNoTicket(t *testing.T) {
 	s, id := oneTicket(t)
 	projectID := mustProject(t, s)
 
-	made, err := s.AddTicket(projectID, "waits for nobody", id+1000)
+	made, err := s.AddTicket(projectID, "depends on nobody", id+1000)
 
 	if !errors.Is(err, ErrNoTicket) {
 		t.Fatalf("err = %v, want ErrNoTicket", err)
@@ -97,9 +97,9 @@ func TestAddTicketRefusesAnIdThatNamesNoTicket(t *testing.T) {
 }
 
 // The rule the ticket asks for: no run starts on a ticket whose link is not
-// satisfied, and a later ticket of the queue that waits for nothing goes first.
+// satisfied, and a later ticket of the queue that depends on nothing goes first.
 func TestClaimNextPassesOverATicketWhoseLinkIsNotDone(t *testing.T) {
-	s, _, waiting, free := waitingQueue(t)
+	s, _, dependent, free := dependentQueue(t)
 
 	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch)
 
@@ -107,15 +107,15 @@ func TestClaimNextPassesOverATicketWhoseLinkIsNotDone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if claimed.ID != free {
-		t.Errorf("claimed ticket %d, want %d: ticket %d still waits", claimed.ID, free, waiting)
+		t.Errorf("claimed ticket %d, want %d: ticket %d still waits", claimed.ID, free, dependent)
 	}
 }
 
 // Done satisfies a link and no earlier status does. Only dg accept gives done,
 // so a run starts on work that a person has looked at.
 func TestClaimNextStillWaitsWhileTheOtherTicketIsOnlyReady(t *testing.T) {
-	s, waitedFor, waiting, free := waitingQueue(t)
-	if err := s.ChangeStatus(waitedFor, Ready); err != nil {
+	s, dependedOn, dependent, free := dependentQueue(t)
+	if err := s.ChangeStatus(dependedOn, Ready); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,14 +126,14 @@ func TestClaimNextStillWaitsWhileTheOtherTicketIsOnlyReady(t *testing.T) {
 	}
 	if claimed.ID != free {
 		t.Errorf("claimed ticket %d, want %d: ticket %d waits until the other is done",
-			claimed.ID, free, waiting)
+			claimed.ID, free, dependent)
 	}
 }
 
 func TestClaimNextTakesATicketOnceItsLinksAreDone(t *testing.T) {
-	s, waitedFor, waiting, _ := waitingQueue(t)
+	s, dependedOn, dependent, _ := dependentQueue(t)
 	for _, status := range []TicketStatus{Ready, Done} {
-		if err := s.ChangeStatus(waitedFor, status); err != nil {
+		if err := s.ChangeStatus(dependedOn, status); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -143,17 +143,17 @@ func TestClaimNextTakesATicketOnceItsLinksAreDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed.ID != waiting {
-		t.Errorf("claimed ticket %d, want %d now that its link is done", claimed.ID, waiting)
+	if claimed.ID != dependent {
+		t.Errorf("claimed ticket %d, want %d now that its link is done", claimed.ID, dependent)
 	}
 }
 
 // A cancelled ticket is work that was thrown away, so a link to it is never
-// satisfied and the ticket that waits for it keeps its place in the queue
+// satisfied and the ticket that depends on it keeps its place in the queue
 // until the person takes the link away.
 func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
-	s, waitedFor, _, free := waitingQueue(t)
-	if err := s.ChangeStatus(waitedFor, Cancelled); err != nil {
+	s, dependedOn, _, free := dependentQueue(t)
+	if err := s.ChangeStatus(dependedOn, Cancelled); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Claim(free, claimBranch(Ticket{ID: free})); err != nil {
@@ -167,9 +167,9 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 	}
 }
 
-// waitsForOf returns the WaitsFor of one ticket of the inbox, and stops the
+// inboxDependsOn returns the DependsOn of one ticket of the inbox, and stops the
 // test when the inbox does not hold it.
-func waitsForOf(t *testing.T, s *Store, id int64) []int64 {
+func inboxDependsOn(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
 	open, err := s.OpenTickets()
 	if err != nil {
@@ -177,23 +177,23 @@ func waitsForOf(t *testing.T, s *Store, id int64) []int64 {
 	}
 	for _, ticket := range open {
 		if ticket.ID == id {
-			return ticket.WaitsFor
+			return ticket.DependsOn
 		}
 	}
 	t.Fatalf("the inbox holds no ticket %d", id)
 	return nil
 }
 
-// A ticket of the inbox names each ticket it waits for, so the row can say
+// A ticket of the inbox names each ticket it depends on, so the row can say
 // what holds it back.
 func TestOpenTicketsNameTheLinksOfATicket(t *testing.T) {
-	s, waitedFor, waiting, free := waitingQueue(t)
+	s, dependedOn, dependent, free := dependentQueue(t)
 
-	if got, want := waitsForOf(t, s, waiting), []int64{waitedFor}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d waits for %v, want %v", waiting, got, want)
+	if got, want := inboxDependsOn(t, s, dependent), []int64{dependedOn}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d depends on %v, want %v", dependent, got, want)
 	}
-	if got := waitsForOf(t, s, free); len(got) != 0 {
-		t.Errorf("ticket %d waits for %v, want nothing", free, got)
+	if got := inboxDependsOn(t, s, free); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing", free, got)
 	}
 }
 
@@ -201,20 +201,20 @@ func TestOpenTicketsNameTheLinksOfATicket(t *testing.T) {
 // out and the row of a ticket whose links are all done ends at its title. The
 // link is still there, and dg show gives it.
 func TestOpenTicketsLeaveOutALinkThatIsDone(t *testing.T) {
-	s, waitedFor, waiting, _ := waitingQueue(t)
+	s, dependedOn, dependent, _ := dependentQueue(t)
 	for _, status := range []TicketStatus{Ready, Done} {
-		if err := s.ChangeStatus(waitedFor, status); err != nil {
+		if err := s.ChangeStatus(dependedOn, status); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if got := waitsForOf(t, s, waiting); len(got) != 0 {
-		t.Errorf("ticket %d waits for %v, want nothing once ticket %d is done",
-			waiting, got, waitedFor)
+	if got := inboxDependsOn(t, s, dependent); len(got) != 0 {
+		t.Errorf("ticket %d depends on %v, want nothing once ticket %d is done",
+			dependent, got, dependedOn)
 	}
-	if got, want := linksOf(t, s, waiting), []int64{waitedFor}; !slices.Equal(got, want) {
+	if got, want := linksOf(t, s, dependent), []int64{dependedOn}; !slices.Equal(got, want) {
 		t.Errorf("ticket %d is linked to %v, want %v: done satisfies a link and does not remove it",
-			waiting, got, want)
+			dependent, got, want)
 	}
 }
 

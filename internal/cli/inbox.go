@@ -154,23 +154,23 @@ func empty(gs []group) bool {
 // row that ends at its title.
 //
 // Only a ticket that runs now counts up. A ticket in READY holds the start of
-// the run that made it ready, and that run stopped. A queued ticket that waits
-// for another names the tickets it waits for, because a person who sees a
-// ticket at the top of the queue and no run needs to know that the queue is
+// the run that made it ready, and that run stopped. A queued ticket that
+// depends on another names the tickets it depends on, because a person who sees
+// a ticket at the top of the queue and no run needs to know that the queue is
 // passing it over on purpose.
 func rowNote(t store.OpenTicket, now time.Time) string {
 	switch t.Status {
 	case store.Running:
 		return elapsed(t.Started, now)
 	case store.Queued:
-		return waitsForText(t.WaitsFor)
+		return dependsOnText(t.DependsOn)
 	}
 	return ""
 }
 
-// waitsForText names the tickets that one ticket waits for. A ticket that waits
-// for none gives the empty string, and its row ends at the title.
-func waitsForText(ids []int64) string {
+// dependsOnText names the tickets that one ticket depends on. A ticket that
+// depends on none gives the empty string, and its row ends at the title.
+func dependsOnText(ids []int64) string {
 	if len(ids) == 0 {
 		return ""
 	}

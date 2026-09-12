@@ -95,12 +95,12 @@ func ticketProject(workDir, flag string) (string, error) {
 
 // Ticket makes a ticket for the project that holds workDir, and puts it at the
 // end of the queue. It returns the id. The body is the prose of the ticket, and
-// it can be empty. The ids of waitsFor name the tickets the new one waits for.
+// it can be empty. The ids of dependsOn name the tickets the new one depends on.
 //
 // The caller gives the store, so that one command has one open: dg ticket
 // writes the ticket and then starts the next run, and both are the work of the
 // one command.
-func Ticket(s *store.Store, workDir, title, body string, waitsFor ...int64) (int64, error) {
+func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (int64, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return 0, ErrNoTitle
@@ -119,7 +119,7 @@ func Ticket(s *store.Store, workDir, title, body string, waitsFor ...int64) (int
 	if err != nil {
 		return 0, err
 	}
-	id, err := s.AddTicket(projectID, title, waitsFor...)
+	id, err := s.AddTicket(projectID, title, dependsOn...)
 	if err != nil {
 		return 0, err
 	}

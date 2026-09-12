@@ -95,9 +95,9 @@ func ReadTicket(t *testing.T, dataDir string, id int64) store.Ticket {
 	return ticket
 }
 
-// WaitsFor returns the id of each ticket that the ticket id waits for, in the
-// order of the id.
-func WaitsFor(t *testing.T, dataDir string, id int64) []int64 {
+// Dependencies returns the id of each ticket that the ticket id depends on, in
+// the order of the id.
+func Dependencies(t *testing.T, dataDir string, id int64) []int64 {
 	t.Helper()
 	ids, err := OpenStore(t, dataDir).Dependencies(id)
 	if err != nil {

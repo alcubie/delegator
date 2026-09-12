@@ -192,7 +192,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 // reading the one ticket and asking what they linked it to, which the row of
 // the inbox does not answer: that one names the links that still hold the
 // ticket back.
-func TestWriteTicketNamesTheTicketsItWaitsFor(t *testing.T) {
+func TestWriteTicketNamesTheTicketsItDependsOn(t *testing.T) {
 	var out bytes.Buffer
 	writeTicket(&out, "/data", "", store.Ticket{
 		ID:      4,
