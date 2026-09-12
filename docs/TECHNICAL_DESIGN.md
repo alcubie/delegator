@@ -671,7 +671,7 @@ installer.
 
 | Command | Function |
 |---|---|
-| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. |
+| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket wait for that ticket, and the flag repeats: `dg ticket --after 12 --after 13 "title"` makes a ticket that waits for both. An id that names no ticket is an error and no ticket is made. |
 | `dg` | Show the inbox. |
 | `dg show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
 | `dg edit <id>` | Open `$EDITOR` on the title and the prose of one ticket of the queue. The form is the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. `dg revise` changes a ticket after a run. |

@@ -2,9 +2,12 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -33,6 +36,31 @@ func projectRows(t *testing.T, dataDir string) []store.Project {
 		t.Fatal(err)
 	}
 	return rows
+}
+
+// idOf returns the id that dg ticket wrote.
+func idOf(t *testing.T, out string) int64 {
+	t.Helper()
+	id, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+	if err != nil {
+		t.Fatalf("dg ticket wrote %q, want an id", out)
+	}
+	return id
+}
+
+// twoTickets makes two tickets for a later one to wait for, and returns their
+// ids.
+func twoTickets(t *testing.T, dataDir, repo string) (int64, int64) {
+	t.Helper()
+	first, err := ticketIn(t, dataDir, repo, "Remove staging infrastructure", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ticketIn(t, dataDir, repo, "Add rate limiting", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return first, second
 }
 
 func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
@@ -372,4 +400,118 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	}
 
 	testfix.WaitForStarts(t, marker, 1)
+}
+
+// The flag --after names a ticket the new one waits for, so a person or an
+// agent that files a plan of several tickets says the order the work goes in
+// as it files them.
+func TestRunTicketAfterOneTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, _ := twoTickets(t, dataDir, repo)
+
+	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first), "Remove the last of it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	}
+}
+
+// The flag repeats, which is the form the help text gives.
+func TestRunTicketAfterTwoTickets(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+
+	out, err := runIn(t, dataDir, repo,
+		"ticket", "--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	}
+}
+
+// cobra's slice flag also takes the ids in one comma list, and a person who
+// writes that means the same thing as a person who repeats the flag.
+func TestRunTicketAfterACommaList(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+
+	out, err := runIn(t, dataDir, repo,
+		"ticket", "--after", fmt.Sprintf("%d,%d", first, second), "Remove the last of it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first, second}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	}
+}
+
+// The flag works with the editor form as well as with the title and the body.
+func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, _ := twoTickets(t, dataDir, repo)
+	withEditor(t, "Remove the last of it\n\nAnd the app with it.\n")
+
+	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got, want := testfix.WaitsFor(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
+		t.Errorf("ticket %d waits for %v, want %v", id, got, want)
+	}
+}
+
+// An --after that is not a number is cobra's error, and it names what the
+// person typed.
+func TestRunTicketAfterSomethingThatIsNotANumber(t *testing.T) {
+	dataDir := t.TempDir()
+
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--after", "twelve", "Remove the last of it")
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	if !strings.Contains(err.Error(), "twelve") {
+		t.Errorf("the error is %q, and does not name %q", err, "twelve")
+	}
+}
+
+// An --after that names no ticket costs no ticket: the store writes the row
+// and the links under one transaction, so the refusal leaves neither.
+func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
+	dataDir := t.TempDir()
+	const missing = 12
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
+		"ticket", "--after", fmt.Sprint(missing), "Remove the last of it")
+	if !errors.Is(err, store.ErrNoTicket) {
+		t.Fatalf("err = %v, want ErrNoTicket", err)
+	}
+	if !strings.Contains(err.Error(), fmt.Sprint(missing)) {
+		t.Errorf("the error is %q, and does not name %d", err, missing)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want none", len(queue))
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
 }

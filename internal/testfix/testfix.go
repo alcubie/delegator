@@ -95,6 +95,33 @@ func ReadTicket(t *testing.T, dataDir string, id int64) store.Ticket {
 	return ticket
 }
 
+// WaitsFor returns the id of each ticket that the ticket id waits for, in the
+// order of the id. It reads the table itself, because no command reads the
+// links back.
+func WaitsFor(t *testing.T, dataDir string, id int64) []int64 {
+	t.Helper()
+	db := openDB(t, dataDir)
+	rows, err := db.Query(
+		"SELECT depends_on FROM ticket_deps WHERE ticket_id = ? ORDER BY depends_on", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var on int64
+		if err := rows.Scan(&on); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, on)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
 // SecondTicket adds one more ticket to the queue of a data directory that
 // already holds a project, and returns its id.
 func SecondTicket(t *testing.T, dataDir string) int64 {

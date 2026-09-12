@@ -69,12 +69,13 @@ func fromEditor(text string) (string, error) {
 }
 
 // TicketFromEditor makes a ticket from what the person writes in an editor. The
-// first line is the title, and each line below it is the prose.
-func TicketFromEditor(s *store.Store, workDir string) (int64, error) {
+// first line is the title, and each line below it is the prose. The ids of
+// waitsFor name the tickets the new one waits for.
+func TicketFromEditor(s *store.Store, workDir string, waitsFor ...int64) (int64, error) {
 	text, err := fromEditor("")
 	if err != nil {
 		return 0, err
 	}
 	title, body := splitTitle(text)
-	return Ticket(s, workDir, title, body)
+	return Ticket(s, workDir, title, body, waitsFor...)
 }

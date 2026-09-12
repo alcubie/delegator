@@ -29,6 +29,7 @@ var ErrNoTitle = errors.New("the ticket must have a title")
 // title and the prose.
 func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
+	var after []int64
 	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
 		Short: "Add a ticket. With no arguments, it opens $EDITOR.",
@@ -43,11 +44,11 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				var err error
 				switch len(args) {
 				case 0:
-					id, err = TicketFromEditor(s, dir)
+					id, err = TicketFromEditor(s, dir, after...)
 				case 1:
-					id, err = Ticket(s, dir, args[0], "")
+					id, err = Ticket(s, dir, args[0], "", after...)
 				case 2:
-					id, err = Ticket(s, dir, args[0], args[1])
+					id, err = Ticket(s, dir, args[0], args[1], after...)
 				default:
 					return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
 				}
@@ -61,6 +62,8 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project the ticket is for.  Defaults to current working directory.")
+	cmd.Flags().Int64SliceVar(&after, "after", nil,
+		"the `id` of a ticket the new one waits for.  Repeat the flag to name more than one.")
 	return cmd
 }
 
@@ -92,12 +95,12 @@ func ticketProject(workDir, flag string) (string, error) {
 
 // Ticket makes a ticket for the project that holds workDir, and puts it at the
 // end of the queue. It returns the id. The body is the prose of the ticket, and
-// it can be empty.
+// it can be empty. The ids of waitsFor name the tickets the new one waits for.
 //
 // The caller gives the store, so that one command has one open: dg ticket
 // writes the ticket and then starts the next run, and both are the work of the
 // one command.
-func Ticket(s *store.Store, workDir, title, body string) (int64, error) {
+func Ticket(s *store.Store, workDir, title, body string, waitsFor ...int64) (int64, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return 0, ErrNoTitle
@@ -116,7 +119,7 @@ func Ticket(s *store.Store, workDir, title, body string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	id, err := s.AddTicket(projectID, title)
+	id, err := s.AddTicket(projectID, title, waitsFor...)
 	if err != nil {
 		return 0, err
 	}
