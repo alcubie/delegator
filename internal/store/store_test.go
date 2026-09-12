@@ -65,20 +65,28 @@ func ticketIDs(tickets []OpenTicket) []int64 {
 	return out
 }
 
-// threeTickets returns a store that holds one project and three tickets, in the
-// order first, second, third, with their ids.
-func threeTickets(t *testing.T) (*Store, []int64) {
+// queuedTickets adds one ticket of a project for each title, and returns their
+// ids. AddTicket puts each one at the end of the queue, so the order of the
+// titles is their order in the queue.
+func queuedTickets(t *testing.T, s *Store, projectID int64, titles ...string) []int64 {
 	t.Helper()
-	s, projectID := emptyStore(t)
-	ids := make([]int64, 0, 3)
-	for _, title := range []string{"first", "second", "third"} {
+	ids := make([]int64, 0, len(titles))
+	for _, title := range titles {
 		id, err := s.AddTicket(projectID, title)
 		if err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, id)
 	}
-	return s, ids
+	return ids
+}
+
+// threeTickets returns a store that holds one project and three tickets, in the
+// order first, second, third, with their ids.
+func threeTickets(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, projectID := emptyStore(t)
+	return s, queuedTickets(t, s, projectID, "first", "second", "third")
 }
 
 // twoPrograms returns two stores on one data directory, each with its own pool of
@@ -102,15 +110,11 @@ func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := make([]int64, 0, 6)
+	titles := make([]string, 0, 6)
 	for i := range 6 {
-		id, err := first.AddTicket(projectID, fmt.Sprintf("ticket %d", i))
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, id)
+		titles = append(titles, fmt.Sprintf("ticket %d", i))
 	}
-	return first, second, ids
+	return first, second, queuedTickets(t, first, projectID, titles...)
 }
 
 // claimBranch is the branch of a claim in these tests. ClaimNext takes a
