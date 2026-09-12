@@ -565,11 +565,11 @@ type OpenTicket struct {
 	// is no place, and Status says which list the ticket is in.
 	Position int
 
-	// Completed is the time that the person accepted the ticket, which is its
+	// Accepted is the time that the person accepted the ticket, which is its
 	// change into done. It orders DONE and sets the window that DONE holds. A
 	// ticket that nobody has accepted holds the zero time, which every ticket of
 	// the open list does.
-	Completed time.Time
+	Accepted time.Time
 
 	// Started is the time that the last run of the ticket began. For a ticket
 	// in running that is the run that holds it, and the inbox takes the
@@ -672,7 +672,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 		var t OpenTicket
 		if err := rows.Scan(
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
-			timeColumn{&t.Completed}, timeColumn{&t.Started}); err != nil {
+			timeColumn{&t.Accepted}, timeColumn{&t.Started}); err != nil {
 			return nil, err
 		}
 		t.DependsOn = unmet[t.ID]

@@ -2,7 +2,7 @@
 // ticket is in which group, and in what order, and it writes no text.
 //
 // The rule that READY and QUEUED come in the order of position, and DONE in
-// the order of completion, lives here, and in one place only. A terminal is not
+// the order of acceptance, lives here, and in one place only. A terminal is not
 // the one interface that shows this list: internal/cli writes the text for a
 // terminal, a TUI reads the same structure, and dg --json writes it itself. An
 // order that lived in one of those would have to be written again in each other
@@ -43,7 +43,7 @@ type Inbox struct {
 	QueueRunning bool
 }
 
-// Get returns the inbox. since is the earliest completion that DONE shows: a
+// Get returns the inbox. since is the earliest acceptance that DONE shows: a
 // ticket the person accepted before it has left the inbox. The caller gives
 // the time rather than a window, because this package reads no clock.
 func Get(source Source, since time.Time) (Inbox, error) {
@@ -75,21 +75,21 @@ func Get(source Source, since time.Time) (Inbox, error) {
 	}
 	box.QueueRunning = running
 
-	slices.SortFunc(box.Done, byCompletion)
+	slices.SortFunc(box.Done, byAcceptance)
 	slices.SortFunc(box.Ready, byPosition)
 	slices.SortFunc(box.Running, byID)
 	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
 }
 
-// byCompletion orders the tickets by completion in ascending order. A ticket
+// byAcceptance orders the tickets by acceptance in ascending order. A ticket
 // that the person accepts therefore goes at the end, which keeps the order
-// stable as tickets are accepted, and the newest finished ticket is at the end
-// of DONE.
+// stable as tickets are accepted, and the one accepted last is at the end of
+// DONE.
 // The time holds one second and no part of a second, so two tickets can
 // hold the same one, and the id then keeps the order stable.
-func byCompletion(a, b store.OpenTicket) int {
-	if by := a.Completed.Compare(b.Completed); by != 0 {
+func byAcceptance(a, b store.OpenTicket) int {
+	if by := a.Accepted.Compare(b.Accepted); by != 0 {
 		return by
 	}
 	return cmp.Compare(a.ID, b.ID)

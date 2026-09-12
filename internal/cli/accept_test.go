@@ -226,9 +226,9 @@ func TestAcceptStartsTheNextTicket(t *testing.T) {
 }
 
 // The ticket a person accepts is nearly always the head of READY, so dg accept
-// with no id takes it. The head is the ready ticket with the oldest
-// completion, and it is not the smallest id: the ticket that finished first
-// here is the second one made. The id goes out, because a command that closed
+// with no id takes it. The head is the ready ticket that finished first, and it
+// is not the smallest id: the ticket that finished first here is the second one
+// made. The id goes out, because a command that closed
 // a ticket the person did not name must say which one went.
 func TestAcceptWithNoIDClosesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()

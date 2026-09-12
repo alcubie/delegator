@@ -232,8 +232,8 @@ func TestChatCmdTakesTheDirectoryAndTheTerminal(t *testing.T) {
 
 // The ticket a person has something to say to is nearly always the one they
 // have just read, so dg chat with no id continues the head of READY. The head
-// is the ready ticket with the oldest completion, and it is not the smallest
-// id: the ticket that finished first here is the second one made.
+// is the ready ticket that finished first, and it is not the smallest id: the
+// ticket that finished first here is the second one made.
 func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

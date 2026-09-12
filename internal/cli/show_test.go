@@ -35,7 +35,7 @@ func queuedIn(t *testing.T, s *store.Store, repo, title string) int64 {
 }
 
 // finishIn takes a queued ticket through a run, so that it arrives at READY
-// with the completion of this moment. It returns the branch of the run.
+// at this moment. It returns the branch of the run.
 func finishIn(t *testing.T, s *store.Store, id int64) string {
 	t.Helper()
 	branch := fmt.Sprintf("delegator/%d-a-title", id)
@@ -48,10 +48,10 @@ func finishIn(t *testing.T, s *store.Store, id int64) string {
 	return branch
 }
 
-// nextSecond waits for the clock to reach the next second. A completion holds
-// one second and no part of a second, so two tickets that finish inside one
-// second hold the same time and the id decides the order between them. A test
-// of the order waits, so that the completions differ.
+// nextSecond waits for the clock to reach the next second. The time of a change
+// holds one second and no part of a second, so two tickets that change inside
+// one second hold the same time and the id decides the order between them. A
+// test of the order waits, so that the times differ.
 func nextSecond(t *testing.T) {
 	t.Helper()
 	start := time.Now().Truncate(time.Second)
@@ -737,10 +737,9 @@ func TestRunShowWithTwoOnlyFlagsTakesTheFirst(t *testing.T) {
 }
 
 // The ticket a person reviews is nearly always the head of READY, so dg show
-// with no id takes it. The head is the ready ticket with the oldest
-// completion, which is the one the inbox shows at the top of READY, and it is
-// not the smallest id: the ticket that finished first here is the second one
-// made.
+// with no id takes it. The head is the ready ticket that finished first, which
+// is the one the inbox shows at the top of READY, and it is not the smallest
+// id: the ticket that finished first here is the second one made.
 func TestRunShowWithNoIDTakesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

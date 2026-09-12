@@ -411,11 +411,11 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	}
 }
 
-// The time of completion is the time the person accepted the ticket, and not
-// the time the run that finished stopped. A ticket can sit in ready for days
-// before the person reads it, and the inbox holds it for the window from the
-// moment they did.
-func TestTheTimeOfCompletionIsTheAcceptance(t *testing.T) {
+// The time of a done ticket is the time the person accepted it, and not the
+// time the run that finished stopped. A ticket can sit in ready for days before
+// the person reads it, and the inbox holds it for the window from the moment
+// they did.
+func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
@@ -438,8 +438,8 @@ func TestTheTimeOfCompletionIsTheAcceptance(t *testing.T) {
 	if len(done) != 1 {
 		t.Fatalf("DoneTickets gives %d tickets, want 1", len(done))
 	}
-	if got := done[0].Completed; got.Before(accepted) || got.After(time.Now()) {
-		t.Errorf("the ticket was completed at %s, want between %s and now", got, accepted)
+	if got := done[0].Accepted; got.Before(accepted) || got.After(time.Now()) {
+		t.Errorf("the ticket was accepted at %s, want between %s and now", got, accepted)
 	}
 }
 

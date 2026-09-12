@@ -143,14 +143,14 @@ func TestGetPutsReadyInTheOrderOfPosition(t *testing.T) {
 	}
 }
 
-// The time of completion no longer orders READY, so a ticket that completed
-// last stays where the position puts it.
-func TestGetLeavesReadyInPositionOrderWhenCompletionDisagrees(t *testing.T) {
+// The time of acceptance no longer orders READY, so a ticket that holds a later
+// one stays where the position puts it.
+func TestGetLeavesReadyInPositionOrderWhenAcceptanceDisagrees(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Ready, Position: 1,
-			Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+			Accepted: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
 		{ID: 2, Status: store.Ready, Position: 2,
-			Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+			Accepted: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
 	}}
 
 	got, err := get(source)
@@ -258,14 +258,14 @@ func TestGetPutsTheAcceptedTicketsInDone(t *testing.T) {
 	}
 }
 
-// DONE is in the order of the time of completion, as READY is, and the newest
-// finished ticket is at the end. The source gives them in another order, so
-// the inbox and not the query does this work.
-func TestGetPutsDoneInTheOrderOfCompletion(t *testing.T) {
+// DONE is in the order of the time of acceptance, and the ticket the person
+// accepted last is at the end. The source gives them in another order, so the
+// inbox and not the query does this work.
+func TestGetPutsDoneInTheOrderOfAcceptance(t *testing.T) {
 	source := &fakeSource{done: []store.OpenTicket{
-		{ID: 1, Status: store.Done, Completed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
-		{ID: 2, Status: store.Done, Completed: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
-		{ID: 3, Status: store.Done, Completed: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+		{ID: 1, Status: store.Done, Accepted: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
+		{ID: 2, Status: store.Done, Accepted: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+		{ID: 3, Status: store.Done, Accepted: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
 	}}
 
 	got, err := get(source)

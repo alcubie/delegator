@@ -1242,14 +1242,14 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 }
 
-// setCompleted writes the time that the person accepted a ticket, which is a
+// setAccepted writes the time that the person accepted a ticket, which is a
 // row of its history. dg accept does this work, and a test that is not about
 // dg accept writes the row rather than the whole path of a run and a review.
-func setCompleted(t *testing.T, s *Store, id int64, completed string) {
+func setAccepted(t *testing.T, s *Store, id int64, accepted string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
 		INSERT INTO transitions (ticket_id, from_status, to_status, at)
-		VALUES (?, 'ready', 'done', ?)`, id, completed); err != nil {
+		VALUES (?, 'ready', 'done', ?)`, id, accepted); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1266,10 +1266,10 @@ func setReady(t *testing.T, s *Store, id int64, ready string) {
 	}
 }
 
-// A ticket of the open list holds no time of completion, whatever its history
-// holds. A ready ticket has finished a run, and the time of that run is not a
-// time of completion: the person has not accepted the work yet.
-func TestOpenTicketsHoldNoTimeOfCompletion(t *testing.T) {
+// A ticket of the open list holds no time of acceptance, whatever its history
+// holds. A ready ticket has finished a run, and the time of that run is not an
+// acceptance: the person has not read the work yet.
+func TestOpenTicketsHoldNoTimeOfAcceptance(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[0], Ready)
 	setReady(t, s, ids[0], "2026-08-28T09:30:00Z")
@@ -1282,11 +1282,11 @@ func TestOpenTicketsHoldNoTimeOfCompletion(t *testing.T) {
 	for _, ticket := range open {
 		byID[ticket.ID] = ticket
 	}
-	if got := byID[ids[0]].Completed; !got.IsZero() {
-		t.Errorf("a ready ticket has completed = %v, want the zero time", got)
+	if got := byID[ids[0]].Accepted; !got.IsZero() {
+		t.Errorf("a ready ticket has accepted = %v, want the zero time", got)
 	}
-	if got := byID[ids[2]].Completed; !got.IsZero() {
-		t.Errorf("a queued ticket has completed = %v, want the zero time", got)
+	if got := byID[ids[2]].Accepted; !got.IsZero() {
+		t.Errorf("a queued ticket has accepted = %v, want the zero time", got)
 	}
 }
 
@@ -1367,7 +1367,7 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[1], Ready)
-	setCompleted(t, s, ids[1], "2026-08-28T09:30:00Z")
+	setReady(t, s, ids[1], "2026-08-28T09:30:00Z")
 	if _, err := s.db.Exec(
 		`UPDATE tickets SET branch = ?, session = ? WHERE id = ?`,
 		"delegator/2-second", "a-session-id", ids[1]); err != nil {
@@ -2336,9 +2336,9 @@ func TestDoneTicketsGivesTheTicketsClosedSinceATime(t *testing.T) {
 	for _, id := range ids {
 		setStatus(t, s, id, Done)
 	}
-	setCompleted(t, s, ids[0], "2026-08-27T08:00:00Z")
-	setCompleted(t, s, ids[1], "2026-08-28T09:30:00Z")
-	setCompleted(t, s, ids[2], "2026-08-28T15:00:00Z")
+	setAccepted(t, s, ids[0], "2026-08-27T08:00:00Z")
+	setAccepted(t, s, ids[1], "2026-08-28T09:30:00Z")
+	setAccepted(t, s, ids[2], "2026-08-28T15:00:00Z")
 
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -2355,7 +2355,7 @@ func TestDoneTicketsGivesTheTicketsClosedSinceATime(t *testing.T) {
 func TestDoneTicketsHoldsATicketAtTheEdgeOfTheWindow(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
-	setCompleted(t, s, id, "2026-08-28T09:00:00Z")
+	setAccepted(t, s, id, "2026-08-28T09:00:00Z")
 
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -2371,7 +2371,7 @@ func TestDoneTicketsHoldsATicketAtTheEdgeOfTheWindow(t *testing.T) {
 func TestDoneTicketsTakesATimeInAnyZone(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
-	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+	setAccepted(t, s, id, "2026-08-28T09:30:00Z")
 
 	// 06:00 in a zone four hours behind UTC is 10:00 UTC, which is after the
 	// ticket. A comparison that took the wall clock of the zone would hold it.
@@ -2394,7 +2394,7 @@ func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
 	setStatus(t, s, ids[1], Ready)
 	setStatus(t, s, ids[2], Done)
 	for _, id := range ids {
-		setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+		setAccepted(t, s, id, "2026-08-28T09:30:00Z")
 	}
 
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
@@ -2409,7 +2409,7 @@ func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
 // A done ticket whose history holds no change into done is in no window, and it
 // does not come out for one that reaches back to the zero time. A version before
 // the history left every ticket it had already closed that way.
-func TestDoneTicketsLeavesOutATicketWithNoCompletion(t *testing.T) {
+func TestDoneTicketsLeavesOutATicketWithNoAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 
@@ -2424,10 +2424,10 @@ func TestDoneTicketsLeavesOutATicketWithNoCompletion(t *testing.T) {
 
 // A row of DoneTickets holds the same fields as a row of OpenTickets, because
 // the inbox writes the two the same way.
-func TestDoneTicketsGivesTheProjectAndTheCompletion(t *testing.T) {
+func TestDoneTicketsGivesTheProjectAndTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
-	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+	setAccepted(t, s, id, "2026-08-28T09:30:00Z")
 
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -2446,8 +2446,8 @@ func TestDoneTicketsGivesTheProjectAndTheCompletion(t *testing.T) {
 		t.Errorf("status = %q, want %q", got, Done)
 	}
 	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
-	if got := done[0].Completed; !got.Equal(want) {
-		t.Errorf("completed = %v, want %v", got, want)
+	if got := done[0].Accepted; !got.Equal(want) {
+		t.Errorf("accepted = %v, want %v", got, want)
 	}
 }
 
@@ -2458,7 +2458,7 @@ func TestDoneTicketsMeasuresTheWindowFromTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 	setReady(t, s, id, "2026-08-27T08:00:00Z")
-	setCompleted(t, s, id, "2026-08-28T09:30:00Z")
+	setAccepted(t, s, id, "2026-08-28T09:30:00Z")
 
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC))
 	if err != nil {
@@ -2475,7 +2475,7 @@ func TestDoneTicketsMeasuresTheWindowFromTheAcceptance(t *testing.T) {
 func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
-	setCompleted(t, s, id, "2026-08-28T09:00:00Z")
+	setAccepted(t, s, id, "2026-08-28T09:00:00Z")
 
 	// The second is the one the ticket finished in, and the window begins
 	// part of the way through it, as a clock in the middle of a second does.
