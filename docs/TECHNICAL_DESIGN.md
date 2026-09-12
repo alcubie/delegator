@@ -612,13 +612,13 @@ $ dg show 4
   #4  Remove the staging app                                  ready
                                                              2h ago
   ─────────────────────────────────────────────────────────────────
-  commit    9f3a1c2 Remove the staging app and its DNS records
+  commit      9f3a1c2 Remove the staging app and its DNS records
 
-  ticket    …/delegator/tickets/4.md
-  worktree  …/delegator/worktrees/4
-  branch    delegator/4-remove-the-staging-app
-  session   e55e382e-2c88-4de7-a31d-ab8763a0fb5a
-  depends   #2 #3
+  ticket      …/delegator/tickets/4.md
+  worktree    …/delegator/worktrees/4
+  branch      delegator/4-remove-the-staging-app
+  session     e55e382e-2c88-4de7-a31d-ab8763a0fb5a
+  depends on  #2 #3
 
   Remove the staging app, the volume, the records of the DNS, the
   monitor and the secrets.
@@ -631,7 +631,7 @@ The subject of the commit is on the row. `dg open diff 4` gives the change itsel
 the status above it ends, so a long title does not push it off the line. A ticket with no
 time gives no line, and the rule comes below the title.
 
-The row `depends` names every ticket that this one is linked to, done or not, which is
+The row `depends on` names every ticket that this one is linked to, done or not, which is
 where it differs from the row of the inbox. Here the person is reading the one ticket and
 asking what they linked it to, and a link that is already satisfied is still a link they
 can take away. A ticket with no link gives no row.

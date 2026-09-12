@@ -96,9 +96,11 @@ func tilde(path, home string) string {
 	return "~" + string(filepath.Separator) + rest
 }
 
-// labelWidth holds the widest label of the two reports and the four variables,
-// so each value starts at one column.
-const labelWidth = 8
+// labelWidth holds the widest label, which is `depends on`, so each value
+// starts at one column. Every other label is one word and leaves two columns
+// spare; the row of the links keeps its preposition because it names a relation
+// and the note of the inbox row names it the same way.
+const labelWidth = 10
 
 // ruleWidth is the width of the line below the title.
 const ruleWidth = 67
@@ -201,7 +203,7 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, depend
 	// what the queue acts on; here the person is reading the one ticket and
 	// asking what they linked it to.
 	if len(dependsOn) > 0 {
-		writeField(out, "depends", ticketNames(dependsOn))
+		writeField(out, "depends on", ticketNames(dependsOn))
 	}
 
 	// The prose goes out as the person wrote it. It is markdown, and the person

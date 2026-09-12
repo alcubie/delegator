@@ -201,7 +201,7 @@ func TestWriteTicketNamesTheTicketsItDependsOn(t *testing.T) {
 		Status:  store.Queued,
 	}, []int64{2, 3}, "", time.Time{}, testNow)
 
-	if !strings.Contains(out.String(), "depends   #2 #3") {
+	if !strings.Contains(out.String(), "depends on  #2 #3") {
 		t.Errorf("dg show does not hold the row of its links:\n%s", out.String())
 	}
 }
@@ -247,7 +247,7 @@ func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := fmt.Sprintf("depends   #%d #%d", first, second); !strings.Contains(out, want) {
+	if want := fmt.Sprintf("depends on  #%d #%d", first, second); !strings.Contains(out, want) {
 		t.Errorf("dg show does not hold %q:\n%s", want, out)
 	}
 }
