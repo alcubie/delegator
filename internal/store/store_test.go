@@ -344,6 +344,30 @@ func setMigrations(t *testing.T, list []string) {
 	t.Cleanup(func() { migrations = old })
 }
 
+// openBefore opens the database below dataDir as the version of delegator that
+// came before the step: the list of migrations is cut at the step for the call
+// and put back before it returns, so the next Open is the one under test.
+//
+// It names the step rather than counting from the end of the list, because a
+// step added to the end would otherwise change which database each test that
+// counts gets.
+func openBefore(t *testing.T, dataDir, step string) *Store {
+	t.Helper()
+	i := slices.Index(migrations, step)
+	if i < 0 {
+		t.Fatal("the step is not one of the migrations")
+	}
+	all := migrations
+	migrations = all[:i]
+	defer func() { migrations = all }()
+
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -779,13 +803,7 @@ func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
 func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
 	dataDir := t.TempDir()
 
-	all := migrations
-	migrations = all[:len(all)-1]
-	before, err := Open(dataDir)
-	migrations = all
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := openBefore(t, dataDir, addReadyPositionColumn)
 	projectID, err := before.AddProject("/projects/path", "main")
 	if err != nil {
 		t.Fatal(err)
@@ -828,13 +846,7 @@ func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
 func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	dataDir := t.TempDir()
 
-	old := migrations
-	migrations = old[:1]
-	first, err := Open(dataDir)
-	migrations = old
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := openBefore(t, dataDir, completedColumn)
 	first.Close()
 
 	if got := userVersion(t, openRaw(t, dataDir)); got != 1 {
