@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -25,9 +22,9 @@ func cancelCommand(dataDir string, cfg *config.Config) *cobra.Command {
 		Short: "Stop the work on a ticket and close it.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
+			id, err := ticketArg(args[0])
 			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
+				return err
 			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
 				return cancelTicket(s, cfg, id)

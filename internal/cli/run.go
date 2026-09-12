@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -53,9 +51,9 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			// named the ticket.
 			start := func(s *store.Store) error { return run.StartNext(s, *cfg, agent) }
 			if len(args) == 1 {
-				id, err := strconv.ParseInt(args[0], 10, 64)
+				id, err := ticketArg(args[0])
 				if err != nil {
-					return fmt.Errorf("%q is not the id of a ticket", args[0])
+					return err
 				}
 				start = func(s *store.Store) error { return run.Start(s, id, agent) }
 			}

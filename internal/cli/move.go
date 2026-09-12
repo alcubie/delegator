@@ -6,7 +6,6 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -39,9 +38,9 @@ func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			strings.Join(directionNames(), ", ") + ", or the id of another ticket of the same list.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
+			id, err := ticketArg(args[0])
 			if err != nil {
-				return fmt.Errorf("%q is not the id of a ticket", args[0])
+				return err
 			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
 
@@ -50,7 +49,7 @@ func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				}
 				// A direction is a word and an id is a number, so the two never
 				// take one another.
-				target, err := strconv.ParseInt(args[1], 10, 64)
+				target, err := ticketArg(args[1])
 				if err != nil {
 					return fmt.Errorf("%q is not a direction and not an id: dg move takes %s, or the id of another ticket",
 						args[1], strings.Join(directionNames(), ", "))

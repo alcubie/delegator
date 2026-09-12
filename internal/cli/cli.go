@@ -36,6 +36,17 @@ func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) 
 	})
 }
 
+// ticketArg reads the id of a ticket from what the person typed. Every command
+// that takes an id says the same thing about a word that is not one, so the
+// person reads one sentence whichever command they typed it in.
+func ticketArg(arg string) (int64, error) {
+	id, err := strconv.ParseInt(arg, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%q is not the id of a ticket", arg)
+	}
+	return id, nil
+}
+
 // ticketNames writes a list of ticket ids the way a person writes one, so the
 // ids of an inbox row and the ids of dg show read the same.
 func ticketNames(ids []int64) string {
@@ -61,11 +72,7 @@ func ticketNames(ids []int64) string {
 // place rather than worked out a second way here.
 func resolveTicketID(s *store.Store, cfg *config.Config, args []string, workDir, projectFlag string) (int64, error) {
 	if len(args) > 0 {
-		id, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%q is not the id of a ticket", args[0])
-		}
-		return id, nil
+		return ticketArg(args[0])
 	}
 
 	dir, err := ticketProject(workDir, projectFlag)
