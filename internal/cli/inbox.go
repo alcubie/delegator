@@ -150,6 +150,18 @@ func empty(gs []group) bool {
 	return true
 }
 
+// rowNote returns the text at the right of one row, and the empty string for a
+// row that ends at its title.
+//
+// Only a ticket that runs now counts up. A ticket in READY holds the start of
+// the run that made it ready, and that run stopped.
+func rowNote(t store.OpenTicket, now time.Time) string {
+	if t.Status == store.Running {
+		return elapsed(t.Started, now)
+	}
+	return ""
+}
+
 // writeInbox writes the inbox as of now. The time comes in rather than from
 // the clock, because the row of a run holds the duration at the moment the
 // text is written and a test has to name that moment. done is the window of
@@ -173,24 +185,19 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 			left := fmt.Sprintf(" %*d %-*s  ",
 				idWidth, t.ID, projectWidth, filepath.Base(t.Project))
 
-			// Only a ticket that runs now counts up. A ticket in READY holds
-			// the start of the run that made it ready, and that run stopped.
-			var since string
-			if t.Status == store.Running {
-				since = elapsed(t.Started, now)
-			}
-			if since == "" {
+			note := rowNote(t, now)
+			if note == "" {
 				fmt.Fprintln(out, left+t.Title)
 				continue
 			}
 
-			// The duration ends the row at rowWidth, so the durations of two
-			// runs are in one column. The title takes what is left, and it is
-			// the field that gives way because it is the only one with no
-			// width of its own.
+			// The note ends the row at rowWidth, so the notes of two rows are
+			// in one column. The title takes what is left, and it is the field
+			// that gives way because it is the only one with no width of its
+			// own.
 			width := max(minTitleWidth,
-				rowWidth-utf8.RuneCountInString(left)-timeGap-len(since))
-			fmt.Fprintf(out, "%s%s%*s%s\n", left, fit(t.Title, width), timeGap, "", since)
+				rowWidth-utf8.RuneCountInString(left)-timeGap-utf8.RuneCountInString(note))
+			fmt.Fprintf(out, "%s%s%*s%s\n", left, fit(t.Title, width), timeGap, "", note)
 		}
 	}
 }
