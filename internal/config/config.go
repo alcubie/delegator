@@ -27,6 +27,26 @@ type Config struct {
 	// DoneHours is how long a ticket the person accepted stays in DONE at the
 	// top of the inbox. DoneWindow gives it as a duration.
 	DoneHours int `toml:"done_hours"`
+	// MaxRunsPerProject is the number of tickets of one project that can be
+	// open at one time. It holds for every project, so a person sets it once
+	// and names no project. A value of 0 is no limit of its own, and each
+	// project then takes Runs. ProjectRuns gives the limit that holds.
+	MaxRunsPerProject int `toml:"max_runs_per_project"`
+}
+
+// ProjectRuns is how many tickets of one project can be open at one time. Two
+// runs of one project can use the same resource outside the worktree, such as
+// a database or a port, and the limit of the whole queue says nothing about
+// that.
+//
+// A value of 0 for the key is no limit for each project, and this method is
+// the one place that turns it into Runs, the limit of the whole queue, so no
+// caller writes a fallback of its own.
+func (c Config) ProjectRuns() int {
+	if c.MaxRunsPerProject > 0 {
+		return c.MaxRunsPerProject
+	}
+	return c.Runs
 }
 
 // DoneWindow is how far back DONE reaches. The name of the key holds the unit,

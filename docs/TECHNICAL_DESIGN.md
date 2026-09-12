@@ -203,6 +203,18 @@ open at one time, and its value is 1 if the person writes no other value. A tick
 one slot, because the person did not examine that work. A trigger starts one supervisor
 for each free slot, and each supervisor claims one ticket of the queue or stops.
 
+The key `max_runs_per_project` in §9.2 is a second limit, and it holds for each project
+on its own. It counts the tickets of one project in `running` and in `ready`, the way
+`runs` counts the tickets of every project together. It names no project, so the person
+writes one value and each repository they add gets it. Its value is 0 if the person
+writes no other value, and 0 is no limit for each project: every project then takes
+`runs`.
+
+A supervisor therefore claims the first ticket of the queue whose project has room, which
+is not always the first ticket of the queue. A ticket waits while a later ticket of a
+project with room starts. The inbox shows the queue in its order and says nothing about
+why a ticket waits.
+
 Two lists have two different orders. This section replaces §6.3 of the earlier draft,
 which was not correct.
 
@@ -618,6 +630,7 @@ config, with the variables from §7:
 terminal = "ptyxis --new-window -d {worktree} --"
 timeout_minutes = 60
 runs = 1
+max_runs_per_project = 0
 done_hours = 24
 
 [commands.diff]
@@ -628,6 +641,9 @@ window = true
 run = "$EDITOR {ticket}"
 window = false
 ```
+
+The key `max_runs_per_project` gives the limit of one project, which §6.2 describes. The
+value is 0 if the config file does not give the key, and each project then takes `runs`.
 
 The key `done_hours` gives the period of DONE in hours. The value is 24 if the
 config file does not give the key, so DONE shows the work of one day. A value of

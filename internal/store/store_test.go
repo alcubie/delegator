@@ -65,20 +65,43 @@ func ticketIDs(tickets []OpenTicket) []int64 {
 	return out
 }
 
-// threeTickets returns a store that holds one project and three tickets, in the
-// order first, second, third, with their ids.
-func threeTickets(t *testing.T) (*Store, []int64) {
+// queuedTickets adds one ticket of a project for each title, and returns their
+// ids. AddTicket puts each one at the end of the queue, so the order of the
+// titles is their order in the queue.
+func queuedTickets(t *testing.T, s *Store, projectID int64, titles ...string) []int64 {
 	t.Helper()
-	s, projectID := emptyStore(t)
-	ids := make([]int64, 0, 3)
-	for _, title := range []string{"first", "second", "third"} {
+	ids := make([]int64, 0, len(titles))
+	for _, title := range titles {
 		id, err := s.AddTicket(projectID, title)
 		if err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, id)
 	}
-	return s, ids
+	return ids
+}
+
+// threeTickets returns a store that holds one project and three tickets, in the
+// order first, second, third, with their ids.
+func threeTickets(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, projectID := emptyStore(t)
+	return s, queuedTickets(t, s, projectID, "first", "second", "third")
+}
+
+// twoProjects returns a store that holds two projects with two tickets each,
+// and the ids of the tickets of each project. The queue holds the two tickets
+// of the first project and then the two of the second.
+func twoProjects(t *testing.T) (*Store, []int64, []int64) {
+	t.Helper()
+	s, firstProject := emptyStore(t)
+	secondProject, err := s.AddProject("/projects/other", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s,
+		queuedTickets(t, s, firstProject, "first one", "first two"),
+		queuedTickets(t, s, secondProject, "second one", "second two")
 }
 
 // twoPrograms returns two stores on one data directory, each with its own pool of
@@ -102,15 +125,11 @@ func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := make([]int64, 0, 6)
+	titles := make([]string, 0, 6)
 	for i := range 6 {
-		id, err := first.AddTicket(projectID, fmt.Sprintf("ticket %d", i))
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, id)
+		titles = append(titles, fmt.Sprintf("ticket %d", i))
 	}
-	return first, second, ids
+	return first, second, queuedTickets(t, first, projectID, titles...)
 }
 
 // claimBranch is the branch of a claim in these tests. ClaimNext takes a
@@ -1937,6 +1956,90 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 	}
 	if claimed.ID != 0 {
 		t.Errorf("claimed ticket %d on a paused queue, want nothing", claimed.ID)
+	}
+}
+
+// A project at its limit does not stop the queue. The claim passes over the
+// ticket that waits behind it and takes the first ticket below that one whose
+// project has room, so the first ticket of the queue is not always the next to
+// run.
+func TestClaimNextPassesOverAProjectAtItsLimit(t *testing.T) {
+	s, first, second := twoProjects(t)
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != second[0] {
+		t.Errorf("claimed ticket %d, want the first ticket of the other project %d",
+			claimed.ID, second[0])
+	}
+}
+
+// A limit above one leaves a project room for a second ticket of its own, and
+// the claim then takes the first ticket of the queue as it does with no limit
+// for each project at all.
+func TestClaimNextTakesASecondTicketOfAProjectWithRoom(t *testing.T) {
+	s, first, _ := twoProjects(t)
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 2}, claimBranch)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != first[1] {
+		t.Errorf("claimed ticket %d, want the second ticket of the same project %d",
+			claimed.ID, first[1])
+	}
+}
+
+// The queue has slots free and every ticket left in it belongs to a project
+// that is at its limit. The supervisor that a trigger started for one of those
+// slots finds nothing and stops.
+func TestClaimNextWithEveryProjectAtItsLimitClaimsNothing(t *testing.T) {
+	s, first, second := twoProjects(t)
+	for _, id := range []int64{first[0], second[0]} {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 4, MaxRunsPerProject: 1}, claimBranch)
+
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 {
+		t.Errorf("claimed ticket %d with every project at its limit, want nothing", claimed.ID)
+	}
+}
+
+// A ticket in ready holds a place of its project for the reason it holds a
+// slot of the whole queue: the person has not examined that work yet.
+func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
+	s, first, second := twoProjects(t)
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(first[0], Ready); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != second[0] {
+		t.Errorf("claimed ticket %d, want the first ticket of the other project %d",
+			claimed.ID, second[0])
 	}
 }
 

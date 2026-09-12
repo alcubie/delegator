@@ -198,3 +198,55 @@ func TestTheEmbeddedFileHoldsNoKeyTheStructDoesNotKnow(t *testing.T) {
 		t.Errorf("default.toml holds the key %q, which Config does not know", unknown[0].String())
 	}
 }
+
+func TestLoadReadsMaxRunsPerProject(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "max_runs_per_project = 2\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxRunsPerProject != 2 {
+		t.Errorf("MaxRunsPerProject = %d, want 2", cfg.MaxRunsPerProject)
+	}
+}
+
+// A person who has the file they had before this key gets the queue they had.
+// The default is no limit for each project, so every project takes runs.
+func TestLoadGivesMaxRunsPerProjectNoLimitWhenTheFileDoesNotSetIt(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runs = 3\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxRunsPerProject != 0 {
+		t.Errorf("MaxRunsPerProject = %d, want the default 0", cfg.MaxRunsPerProject)
+	}
+	if got := cfg.ProjectRuns(); got != 3 {
+		t.Errorf("ProjectRuns = %d, want runs %d", got, 3)
+	}
+}
+
+// ProjectRuns is the one place that says what a value of 0 means, so no caller
+// writes the fallback to runs of its own. A value above 0 is the limit itself,
+// whether it is below runs or above it.
+func TestProjectRunsIsTheKeyAndFallsBackToRuns(t *testing.T) {
+	for _, tc := range []struct {
+		cfg  Config
+		want int
+	}{
+		{cfg: Config{Runs: 3, MaxRunsPerProject: 1}, want: 1},
+		{cfg: Config{Runs: 3, MaxRunsPerProject: 5}, want: 5},
+		{cfg: Config{Runs: 3, MaxRunsPerProject: 0}, want: 3},
+		{cfg: Config{Runs: 3, MaxRunsPerProject: -1}, want: 3},
+	} {
+		if got := tc.cfg.ProjectRuns(); got != tc.want {
+			t.Errorf("ProjectRuns of %+v = %d, want %d", tc.cfg, got, tc.want)
+		}
+	}
+}

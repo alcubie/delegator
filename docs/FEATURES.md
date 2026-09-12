@@ -26,7 +26,7 @@ trigger occurs, the item stays here, and this is a good result.
 
 | Item | What it is | Why it waits | Trigger |
 |---|---|---|---|
-| A limit for each project | A maximum count of runs for one project. | The limit `runs` counts the runs of all the projects together. Each run has its own worktree, so two runs of one project do not write the same files. | Two runs in one project use the same resource outside the worktree, such as a database or a port. |
+| A limit for one named project | A count of runs for the project at one path, above or below the count that the other projects get. | The key `max_runs_per_project` gives every project the same limit, and a person sets it once. Naming a project in the config file makes the person write a table for each project whose limit is not the common one, and the file then holds a path that a move of the repository breaks. | Two projects need two different limits, and the lower of the two is a limit the person does not want on the rest. |
 
 ## 3. Other agents
 
