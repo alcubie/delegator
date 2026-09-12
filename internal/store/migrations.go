@@ -33,6 +33,7 @@ var migrations = []string{
 	addReadyPositionColumn,
 	addDependenciesTable,
 	addTransitionsTable,
+	dropCompletedColumn,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -192,6 +193,16 @@ INSERT INTO transitions (ticket_id, from_status, to_status, at)
 INSERT INTO transitions (ticket_id, from_status, to_status, at)
   SELECT id, 'running', 'ready', completed FROM tickets
   WHERE completed IS NOT NULL AND status IN ('ready', 'done');
+`
+
+// dropCompletedColumn takes away the column that held the time of one change of
+// state: the last change into ready, which the table transitions holds now.
+//
+// The column went out of date, because a ticket that leaves ready keeps the
+// time it had. A ticket that went back to the queue held the time that its
+// earlier run stopped, and dg show wrote that time below the status queued.
+const dropCompletedColumn = `
+ALTER TABLE tickets DROP COLUMN completed;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

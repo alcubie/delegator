@@ -150,20 +150,15 @@ func shortHash(hash string) string {
 // a ticket whose worktree is not on disk. dependsOn holds the ticket that each
 // link of this one names.
 func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, dependsOn []int64, prose string, started, now time.Time) {
-	// A ready ticket names the time it became ready, and a running ticket names
-	// how long its run has been going, which is the clock the inbox gives on
-	// the same run. dg finish writes completed, and no command takes it away,
-	// so a ticket that dg revise put back in the queue still holds the time
-	// that its earlier run stopped; a time beside queued or failed would read
-	// as the time that the ticket entered that state, and it is not. Ticket 7
-	// keeps the history of each change of state, and each status takes a time
-	// from it.
+	// Each status names how long ago the ticket entered it, which is the time of
+	// the last change of its state. A running ticket names how long its run has
+	// been going instead, which is the clock the inbox gives on the same run.
 	var when string
 	switch t.Status {
-	case store.Ready:
-		when = ago(t.Completed, now)
 	case store.Running:
 		when = elapsed(started, now)
+	default:
+		when = ago(t.Changed, now)
 	}
 	heading := fmt.Sprintf("  #%d  %s", t.ID, t.Title)
 	status := string(t.Status)

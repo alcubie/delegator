@@ -330,6 +330,35 @@ A run that stops before it reports an id therefore has no session, and a person 
 continue that conversation. This is the same for each agent, so the supervisor answers for
 one case and not for two.
 
+### 6.7 The history of each change of state
+
+The table `transitions` keeps the history of each ticket. One row is one change of state.
+The row holds the ticket, the status before the change, the status after the change, and
+the time. The first row of each ticket is the time that the person made it, and that row
+holds no status before the change. The last row gives the status that the ticket has now.
+
+A column that holds one time goes out of date. The column `completed` held the time that a
+ticket became ready. `dg revise` put the ticket back in the queue, and the column kept the
+time of the run that was complete. `dg show` then wrote that time below the status
+`queued`, and a person read it as the time that the ticket came into the queue. The history
+does not have this error, because delegator writes each row one time and does not write it
+again. The store writes the row in the transaction of the change, so a change that gives an
+error writes no row.
+
+A run keeps its own start time and its own end time, and the rows of `transitions` do not
+replace them. Those times are facts of one run, and a ticket has one run for each claim.
+The end of a run is also not always a change of state. `dg finish` makes a ticket ready,
+and the supervisor ends the run after that with the exit code. The two records agree,
+because the writes of one time are in one transaction and take one value. The claim of a
+ticket gives `runs.started_at` and the change into `running` the same value.
+
+You cannot get this data from an earlier day, and §5 of `FEATURES.md` gives that rule. The
+step that makes the table writes the two times that the database holds. Those two are the
+time that the person made each ticket, and the time that a ticket became ready. The second
+row goes in
+for a ticket in `ready` or in `done`, because that ticket stays where the time put it. A
+ticket that left `ready` has a subsequent change, and the database holds no time for it.
+
 ## 7. Data on disk
 
 Delegator keeps the fields of each ticket in one SQLite database. It keeps the prose of

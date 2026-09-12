@@ -26,3 +26,20 @@ func addTransition(tx *sql.Tx, ticketID int64, before, after TicketStatus, at ti
 		VALUES (?, ?, ?, ?)`, ticketID, from, after, rfc3339(at))
 	return err
 }
+
+// lastChange is the time of the last change of state of one ticket, which is the
+// time that the ticket entered the status it has. It is a sub-query of a query
+// over tickets, and tickets.id names the row of that query.
+const lastChange = `(SELECT at FROM transitions
+	 WHERE transitions.ticket_id = tickets.id
+	 ORDER BY transitions.id DESC LIMIT 1)`
+
+// readyTime is the time of the last change into ready, which is the time that
+// the work of a ticket was complete. DONE comes in the order of it, and the
+// window of DONE reads it to decide which tickets the inbox still shows.
+//
+// A ticket that was never ready gives NULL, and a ticket that went back to the
+// queue and became ready again gives the later time.
+const readyTime = `(SELECT at FROM transitions
+	 WHERE transitions.ticket_id = tickets.id AND transitions.to_status = 'ready'
+	 ORDER BY transitions.id DESC LIMIT 1)`

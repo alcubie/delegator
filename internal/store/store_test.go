@@ -1242,12 +1242,14 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 }
 
-// setCompleted writes the time that a ticket became ready. dg finish does this
-// work in milestone 2.
+// setCompleted writes the time that a ticket became ready, which is a row of
+// its history. dg finish does this work, and a test that is not about dg finish
+// writes the row rather than the whole path of a run.
 func setCompleted(t *testing.T, s *Store, id int64, completed string) {
 	t.Helper()
-	if _, err := s.db.Exec(
-		"UPDATE tickets SET completed = ? WHERE id = ?", completed, id); err != nil {
+	if _, err := s.db.Exec(`
+		INSERT INTO transitions (ticket_id, from_status, to_status, at)
+		VALUES (?, 'running', 'ready', ?)`, id, completed); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1374,8 +1376,8 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 			t.Errorf("%s = %q, want %q", test.name, test.got, test.want)
 		}
 	}
-	if want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC); !got.Completed.Equal(want) {
-		t.Errorf("completed = %v, want %v", got.Completed, want)
+	if want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC); !got.Changed.Equal(want) {
+		t.Errorf("the ticket changed at %v, want %v", got.Changed, want)
 	}
 	if got.ID != ids[1] {
 		t.Errorf("id = %d, want %d", got.ID, ids[1])

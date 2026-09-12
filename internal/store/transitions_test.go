@@ -367,3 +367,99 @@ func TestOpenGivesAnOldTicketTheHistoryTheDatabaseHolds(t *testing.T) {
 		t.Errorf("the ticket became ready at %s, want %s", got[1].At, want)
 	}
 }
+
+// backdate moves each change a ticket has so far to one earlier time, so a
+// change that a test makes after it is a different second. Every time the store
+// writes holds a whole second, and two changes in one test are otherwise the
+// same second.
+func backdate(t *testing.T, s *Store, id int64, at string) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		"UPDATE transitions SET at = ? WHERE ticket_id = ?", at, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A ticket holds the time that it entered the status it has. A ticket that
+// dg revise put back in the queue entered the queue at that moment, and the run
+// that is complete stopped before it.
+func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTicket(id, "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+	stopped := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
+	backdate(t, s, id, rfc3339(stopped))
+
+	revised := time.Now().UTC().Truncate(time.Second)
+	if err := s.ChangeStatus(id, Queued); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Changed.Before(revised) || got.Changed.After(time.Now()) {
+		t.Errorf("the ticket changed at %s, want between %s and now", got.Changed, revised)
+	}
+	if got.Changed.Equal(stopped) {
+		t.Error("the ticket holds the time that its earlier run stopped")
+	}
+}
+
+// The time of completion is the last run that finished. A ticket that went back
+// to the queue and became ready again holds the later time, which is the work
+// the person has in front of them.
+func TestTheTimeOfCompletionIsTheLastRunThatFinished(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTicket(id, "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+	backdate(t, s, id, "2026-08-28T09:00:00Z")
+	if err := s.ChangeStatus(id, Queued); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	finished := time.Now().UTC().Truncate(time.Second)
+	if err := s.FinishTicket(id, "def5678"); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 1 {
+		t.Fatalf("OpenTickets gives %d tickets, want 1", len(open))
+	}
+	if got := open[0].Completed; got.Before(finished) || got.After(time.Now()) {
+		t.Errorf("the ticket was completed at %s, want between %s and now", got, finished)
+	}
+}
+
+// No column of a ticket holds the time of one change of state. Such a column
+// goes out of date the moment the ticket changes again, and the history holds
+// each change instead.
+func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
+	s, _ := oneTicket(t)
+
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM pragma_table_info('tickets') WHERE name = 'completed'",
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Error("the table tickets still holds the column completed")
+	}
+}

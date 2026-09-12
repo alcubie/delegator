@@ -565,8 +565,8 @@ type OpenTicket struct {
 	// is no place, and Status says which list the ticket is in.
 	Position int
 
-	// Completed is the time that the ticket became ready. A ticket that never
-	// became ready holds the zero time.
+	// Completed is the time that the ticket last became ready. A ticket that
+	// never became ready holds the zero time.
 	Completed time.Time
 
 	// Started is the time that the last run of the ticket began. For a ticket
@@ -599,27 +599,28 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 // or after since. The inbox holds them for a while after they close, so a
 // person who accepted a ticket can still read what it was.
 //
-// A ticket that is cancelled is not one of these. It was never finished, and
-// its completed column is the time of a run that the person threw away.
+// A ticket that is cancelled is not one of these. It was never finished, and a
+// cancel can reach a ticket that became ready, so the history of such a ticket
+// holds a time of completion for a run that the person threw away.
 //
-// A done ticket with no completed column is not one either. dg finish writes
-// that column and only a ticket that dg finish made ready can become done, so
-// the column is empty for a row that a version before it left behind.
+// A done ticket that never became ready is not one either. Only a ticket that
+// dg finish made ready can become done, so the history of a ticket without that
+// change is one that a version before the history left behind.
 func (s *Store) DoneTickets(since time.Time) ([]OpenTicket, error) {
-	// completed holds the form of rfc3339 in UTC, which is one width and one
+	// The time holds the form of rfc3339 in UTC, which is one width and one
 	// zone for every row, so a comparison of the text is a comparison of the
 	// times.
 	return s.inboxTickets(inboxTicketQuery+`
-		WHERE tickets.status = ? AND tickets.completed >= ?
+		WHERE tickets.status = ? AND `+readyTime+` >= ?
 		ORDER BY tickets.id`, Done, rfc3339(ceilSecond(since)))
 }
 
 // ceilSecond rounds a time up to the next whole second, and leaves a time that
 // is already whole as it is.
 //
-// The column completed names a second and no part of one, so the window rounds
-// the same way: a ticket is in it only when the whole second its column names
-// is. Without this a window of no length would still hold each ticket that
+// The time of a change names a second and no part of one, so the window rounds
+// the same way: a ticket is in it only when the whole second that its time
+// names is. Without this a window of no length would still hold each ticket that
 // finished in the second it began in, and a person who asked for no DONE at
 // all would see one.
 func ceilSecond(t time.Time) time.Time {
@@ -638,7 +639,7 @@ func ceilSecond(t time.Time) time.Time {
 // for each of them.
 const inboxTicketQuery = `
 	SELECT tickets.id, projects.path, tickets.title, tickets.status,
-	       COALESCE(tickets.position, tickets.ready_position, 0), tickets.completed,
+	       COALESCE(tickets.position, tickets.ready_position, 0), ` + readyTime + `,
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
 	FROM tickets
@@ -684,16 +685,19 @@ var ErrNoTicket = errors.New("no such ticket")
 // NULL column arrives as the zero value of its type, as it does for an
 // OpenTicket.
 type Ticket struct {
-	ID        int64
-	Project   Project
-	Title     string
-	Status    TicketStatus
-	Position  int
-	Branch    string
-	Session   string
-	Commit    string
-	Created   time.Time
-	Completed time.Time
+	ID       int64
+	Project  Project
+	Title    string
+	Status   TicketStatus
+	Position int
+	Branch   string
+	Session  string
+	Commit   string
+	Created  time.Time
+
+	// Changed is the time of the last change of state, which is the time that
+	// the ticket entered the status it has.
+	Changed time.Time
 }
 
 // Ticket returns one ticket. It gives ErrNoTicket if the id holds none.
@@ -722,13 +726,13 @@ func ticket(q querier, id int64) (Ticket, error) {
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
-		       tickets.created, tickets.completed
+		       tickets.created, `+lastChange+`
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Commit, timeColumn{&t.Created}, timeColumn{&t.Completed})
+		&t.Session, &t.Commit, timeColumn{&t.Created}, timeColumn{&t.Changed})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
@@ -1220,8 +1224,9 @@ func (s *Store) Cancel(id, runID int64) error {
 	return tx.Commit()
 }
 
-// FinishTicket completes a Running ticket. It records the commit of the run and
-// the time the run stopped, which DONE is ordered by and dg show writes.
+// FinishTicket completes a Running ticket. It records the commit of the run, and
+// the change into ready holds the time that the run stopped, which DONE is
+// ordered by and dg show writes.
 //
 // If the ticket is not Running, it returns ErrInvalidTicketStateChange.
 func (s *Store) FinishTicket(id int64, commit string) error {
@@ -1231,13 +1236,11 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 	}
 	defer tx.Rollback()
 
-	finished := time.Now()
-	if err := changeStatus(tx, id, Ready, finished); err != nil {
+	if err := changeStatus(tx, id, Ready, time.Now()); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(
-		"UPDATE tickets SET commit_id = ?, completed = ? WHERE id = ?",
-		commit, rfc3339(finished), id,
+		"UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id,
 	); err != nil {
 		return err
 	}

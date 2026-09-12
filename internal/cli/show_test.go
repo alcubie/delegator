@@ -163,13 +163,13 @@ func timeOf(t *testing.T, lines []string) string {
 
 func TestWriteTicketHoldsEachPart(t *testing.T) {
 	ticket := store.Ticket{
-		ID:        4,
-		Project:   store.Project{Path: "/projects/web-api"},
-		Title:     "Remove the staging app",
-		Status:    store.Ready,
-		Branch:    "delegator/4-remove-the-staging-app",
-		Session:   "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
-		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api"},
+		Title:   "Remove the staging app",
+		Status:  store.Ready,
+		Branch:  "delegator/4-remove-the-staging-app",
+		Session: "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+		Changed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	out := strings.Join(showTicketLines(t, ticket, "Remove the staging app and the volume.", time.Time{}), "\n")
 
@@ -381,25 +381,27 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 	}
 }
 
-// The time of a ready ticket is the time that it became ready. A ticket that
-// waits keeps a completed from an earlier run, because dg revise does not take
-// it away, so a time on a queued or a failed ticket would say when a run
-// stopped and read as when the ticket arrived. A running ticket has the
-// duration of its run, and that ticket has no run here.
-func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
+// The time of a ticket is the time that it entered the status it has: a ready
+// ticket became ready then, and a queued ticket entered the queue then. The
+// history of the ticket holds that one time, so each status reads the same
+// field. A running ticket has the duration of its run instead, and that ticket
+// has no run here.
+func TestWriteTicketShowsTheTimeOfTheLastChange(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Created:   time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
-		Completed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
+		Created: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
+		Changed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	for _, test := range []struct {
 		status store.TicketStatus
 		want   string
 	}{
 		{store.Ready, "2h ago"},
-		{store.Queued, ""},
+		{store.Queued, "2h ago"},
+		{store.Failed, "2h ago"},
+		{store.Done, "2h ago"},
+		{store.Cancelled, "2h ago"},
 		{store.Running, ""},
-		{store.Failed, ""},
 	} {
 		ticket := base
 		ticket.Status = test.status
@@ -420,9 +422,9 @@ func TestWriteTicketShowsTheTimeForAReadyTicketOnly(t *testing.T) {
 func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
 	ticket := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"},
-		Title:     "a title that is long enough to have crowded the time",
-		Status:    store.Ready,
-		Completed: testNow.Add(-2 * time.Hour),
+		Title:   "a title that is long enough to have crowded the time",
+		Status:  store.Ready,
+		Changed: testNow.Add(-2 * time.Hour),
 	}
 
 	lines := showTicketLines(t, ticket, "", time.Time{})
@@ -466,7 +468,7 @@ func TestWriteTicketShowsTheDurationOfTheRun(t *testing.T) {
 func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
 	base := store.Ticket{
 		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Completed: testNow.Add(-2 * time.Hour),
+		Changed: testNow.Add(-2 * time.Hour),
 	}
 	started := testNow.Add(-(14*time.Minute + 7*time.Second))
 
