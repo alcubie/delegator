@@ -781,10 +781,11 @@ func (s *Store) Claim(id int64, branch string) (int64, error) {
 }
 
 // ErrNoRoom shows that the queue had no ticket for a supervisor: the queue is
-// empty or paused, or the tickets in running and in ready fill every slot the
-// limit of the person allows. It is the ordinary end of a supervisor that a
-// trigger started for a queue that has since filled its slots, and not a
-// fault.
+// empty or paused, the tickets in running and in ready fill every slot the
+// limit of the person allows, or each ticket left in the queue belongs to a
+// project that is at the limit of one project. It is the ordinary end of a
+// supervisor that a trigger started for a queue that has since filled its
+// slots, and not a fault.
 var ErrNoRoom = errors.New("no ticket in the queue has room to run")
 
 // freeSlots reports how many runs can start: cfg.Runs, the limit of the
@@ -815,22 +816,29 @@ func freeSlots(q querier, cfg config.Config) (int, error) {
 // again inside its own transaction, which is the answer that counts.
 //
 // It takes the whole config, and not the one key it reads, because the rule
-// for a slot belongs to the person and grows with their file: a limit for each
-// project is the next key that this count has to read.
+// for a slot belongs to the person and grows with their file.
+//
+// The count is of the whole queue. Whether one project has room for another of
+// its tickets is a second question, and nextWithRoom asks it of each ticket of
+// the queue.
 func (s *Store) FreeSlots(cfg config.Config) (int, error) {
 	return freeSlots(s.db, cfg)
 }
 
-// ClaimNext claims the first ticket of the queue for this process, and returns
-// the ticket it claimed and the id of the run it wrote. The room, the read of
-// the queue and the claim are one transaction, so two supervisors that start
-// at the same time cannot take the same ticket: the second one reads the queue
-// after the first one has committed, and finds the ticket in running. It gives
-// ErrNoRoom when the queue holds nothing for it.
+// ClaimNext claims the first ticket of the queue whose project has room for
+// it, and returns the ticket it claimed and the id of the run it wrote. The
+// room, the read of the queue and the claim are one transaction, so two
+// supervisors that start at the same time cannot take the same ticket: the
+// second one reads the queue after the first one has committed, and finds the
+// ticket in running. It gives ErrNoRoom when the queue holds nothing for it.
 //
 // cfg gives the limit of the person, and the claim counts the slots inside its
 // own transaction: a supervisor that a trigger started for a slot that has
 // since been taken finds none and stops.
+//
+// The ticket it takes is not always the first of the queue. Each project has
+// the limit cfg.ProjectRuns of its own, and a ticket whose project is at that
+// limit waits while a later ticket of a project with room starts.
 //
 // branch gives the name of the branch for the ticket, because only the
 // transaction knows which ticket that is. It runs while the transaction holds
@@ -849,15 +857,12 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 	if free == 0 {
 		return Ticket{}, 0, ErrNoRoom
 	}
-	queue, err := listQueue(tx)
+	id, err := nextWithRoom(tx, cfg)
 	if err != nil {
 		return Ticket{}, 0, err
 	}
-	if len(queue) == 0 {
-		return Ticket{}, 0, ErrNoRoom
-	}
 
-	t, err := ticket(tx, queue[0].ID)
+	t, err := ticket(tx, id)
 	if err != nil {
 		return Ticket{}, 0, err
 	}
@@ -871,6 +876,31 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 	}
 	t.Status = Running
 	return t, runID, nil
+}
+
+// nextWithRoom returns the id of the first ticket of the queue whose project
+// has room for one more, and ErrNoRoom when no ticket of the queue has. The
+// order is the order of the queue, so what it gives is the first ticket the
+// person sees whose project is not full: a later ticket can start before an
+// earlier one of a project that is at its limit.
+//
+// A project holds one of its own places for each of its tickets in running and
+// in ready, which is what a slot of the whole queue counts as well. The limit
+// is cfg.ProjectRuns and it is the same for every project, so the statement
+// names no project and the config file names none either.
+func nextWithRoom(q querier, cfg config.Config) (int64, error) {
+	var id int64
+	err := q.QueryRow(`
+		SELECT t.id FROM tickets AS t
+		WHERE t.status = ? AND t.position IS NOT NULL
+		  AND (SELECT COUNT(*) FROM tickets AS held
+		       WHERE held.project_id = t.project_id AND held.status IN (?, ?)) < ?
+		ORDER BY t.position
+		LIMIT 1`, Queued, Running, Ready, cfg.ProjectRuns()).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNoRoom
+	}
+	return id, err
 }
 
 // claim is the writing of Claim without the transaction, so a caller that

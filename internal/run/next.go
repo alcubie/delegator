@@ -20,6 +20,11 @@ import (
 // limit of one starts a supervisor only for a queue that has nothing open at
 // all.
 //
+// A supervisor can also find no ticket while slots are free: the limit for one
+// project is below the limit of the queue, and every ticket left in the queue
+// can belong to a project that is at it. Next does not count that, because the
+// supervisor asks the same question of each ticket of the queue when it claims.
+//
 // It returns once the programs have started, and does not wait for them: the
 // caller is a command a person typed, or a supervisor that is about to exit,
 // and neither should stay alive for the length of a run. What a slot means is

@@ -8,3 +8,9 @@ timeout_minutes = 60
 # done_hours is the time in hours that a ticket stays in DONE at the top of the
 # inbox after dg accept closes it. A value of 0 leaves DONE empty.
 done_hours = 24
+
+# max_runs_per_project is the number of tickets of one project that can be
+# Running or Ready at a time. Two runs of one project can share a database or a
+# port, which runs cannot describe because it counts every project together. A
+# value of 0 gives each project the limit runs.
+max_runs_per_project = 0
