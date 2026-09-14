@@ -333,9 +333,17 @@ func starts(t *testing.T, marker string) int {
 	return len(strings.Fields(string(data)))
 }
 
+// failing is what a wait needs of the test it fails. The test of a wait that
+// fails passes a stand-in, because a real *testing.T would fail with it and
+// Fatalf on a real one does not return.
+type failing interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
 // WaitFor returns the content of path once it exists, or fails the test after
 // a short wait. A launched program is not waited on, so the test has to.
-func WaitFor(t *testing.T, path string) string {
+func WaitFor(t failing, path string) string {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
