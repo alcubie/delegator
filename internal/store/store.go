@@ -707,6 +707,14 @@ type Ticket struct {
 	Session  string
 	Commit   string
 
+	// Created is the time that the ticket arrived, which is the first row of
+	// its history.
+	Created time.Time
+
+	// Accepted is the time that the person accepted the ticket, and the zero
+	// time is a ticket that nobody has accepted.
+	Accepted time.Time
+
 	// Changed is the time of the last change of state, which is the time that
 	// the ticket entered the status it has.
 	Changed time.Time
@@ -750,13 +758,14 @@ func ticket(q querier, id int64) (Ticket, error) {
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
-		       `+lastChange+`
+		       `+createdTime+`, `+acceptedTime+`, `+lastChange+`
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Commit, timeColumn{&t.Changed})
+		&t.Session, &t.Commit,
+		timeColumn{&t.Created}, timeColumn{&t.Accepted}, timeColumn{&t.Changed})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}

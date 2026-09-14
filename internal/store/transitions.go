@@ -44,3 +44,10 @@ const lastChange = `(SELECT at FROM transitions
 const acceptedTime = `(SELECT at FROM transitions
 	 WHERE transitions.ticket_id = tickets.id AND transitions.to_status = 'done'
 	 LIMIT 1)`
+
+// createdTime is the time that a ticket arrived, which is the first row of its
+// history: the row with no status before it. It is a sub-query of a query over
+// tickets, and tickets.id names the row of that query.
+const createdTime = `(SELECT at FROM transitions
+	 WHERE transitions.ticket_id = tickets.id
+	 ORDER BY transitions.id LIMIT 1)`

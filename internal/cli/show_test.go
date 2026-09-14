@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -58,6 +62,33 @@ func nextSecond(t *testing.T) {
 	for time.Now().Truncate(time.Second).Equal(start) {
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// showJSON runs dg show --json and gives the one object that it wrote. It
+// reads the rest of the stream as well, because the flag promises one object
+// and nothing else.
+func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]any {
+	t.Helper()
+	out, err := runIn(t, dataDir, workDir, append([]string{"show"}, args...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(strings.NewReader(out))
+	var got map[string]any
+	if err := dec.Decode(&got); err != nil {
+		t.Fatalf("dg show --json wrote %q, which is not one JSON object: %v", out, err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		t.Errorf("dg show --json wrote more than one object:\n%s", out)
+	}
+	return got
+}
+
+// jsonFields is every key that dg show --json writes, in the order that the
+// text form gives the fields.
+var jsonFields = []string{
+	"id", "title", "status", "project", "ticket", "worktree",
+	"branch", "session", "commit", "created", "accepted", "prose",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -813,5 +844,136 @@ func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
 	}
 	if !strings.Contains(out, "the ticket of the other project") {
 		t.Errorf("dg show %d gave:\n%s\nwant the ticket of the other project", otherID, out)
+	}
+}
+
+// §9.3 says that each command which shows data also accepts --json, so that a
+// script of the person reads the data and not the text.
+func TestRunShowJSONHoldsEachField(t *testing.T) {
+	dataDir := t.TempDir()
+	s, id, repo := readyTicket(t, dataDir)
+	if err := s.SetSession(id, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"); err != nil {
+		t.Fatal(err)
+	}
+	const prose = "Remove the app, the volume and the records of the DNS."
+	if err := os.WriteFile(proseFile(dataDir, id), []byte(prose+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+
+	keys := slices.Sorted(maps.Keys(got))
+	if want := slices.Sorted(slices.Values(jsonFields)); !slices.Equal(keys, want) {
+		t.Errorf("dg show --json holds the keys %v, want %v", keys, want)
+	}
+	if got["id"] != float64(id) {
+		t.Errorf("id = %v, want %d", got["id"], id)
+	}
+	want := map[string]any{
+		"title":    ticket.Title,
+		"status":   string(ticket.Status),
+		"project":  repo,
+		"ticket":   proseFile(dataDir, id),
+		"worktree": run.WorktreePath(dataDir, id),
+		"branch":   ticket.Branch,
+		"session":  "e55e382e-2c88-4de7-a31d-ab8763a0fb5a",
+		"commit":   ticket.Commit,
+		"prose":    prose,
+	}
+	for key, want := range want {
+		if got[key] != want {
+			t.Errorf("%s = %v, want %v", key, got[key], want)
+		}
+	}
+	if _, err := time.Parse(time.RFC3339, fmt.Sprint(got["created"])); err != nil {
+		t.Errorf("created = %v, want a time of RFC 3339", got["created"])
+	}
+}
+
+// The paths are full paths. A script gives one to another command, and no
+// command expands a tilde that came from a variable.
+func TestRunShowJSONGivesTheFullPaths(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+	// Each path of the ticket is below the home of the person, which is what
+	// the text form writes a tilde for.
+	t.Setenv("HOME", filepath.Dir(dataDir))
+
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+
+	for _, key := range []string{"project", "ticket", "worktree"} {
+		path, ok := got[key].(string)
+		if !ok {
+			t.Fatalf("%s = %v, want a path", key, got[key])
+		}
+		if !filepath.IsAbs(path) || strings.Contains(path, "~") {
+			t.Errorf("%s = %q, want a full path with no tilde", key, path)
+		}
+	}
+}
+
+// A field with no value is null, so a script tests one thing and not two.
+func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+
+	for _, key := range []string{"worktree", "branch", "session", "commit", "accepted"} {
+		if value, held := got[key]; !held || value != nil {
+			t.Errorf("%s = %v for a ticket in the queue, want null", key, value)
+		}
+	}
+}
+
+// The acceptance is a time once the person has accepted the work.
+func TestRunShowJSONGivesTheTimeOfTheAcceptance(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(id)); err != nil {
+		t.Fatal(err)
+	}
+
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+
+	if _, err := time.Parse(time.RFC3339, fmt.Sprint(got["accepted"])); err != nil {
+		t.Errorf("accepted = %v, want a time of RFC 3339", got["accepted"])
+	}
+}
+
+// An id that names no ticket gives the error that the text form gives, and no
+// JSON at all: a script that reads the object of a ticket that is not there
+// would read a ticket with every field empty.
+func TestRunShowJSONWithATicketThatIsNotThere(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show", "9999", "--json")
+	if !errors.Is(err, store.ErrNoTicket) {
+		t.Fatalf("err = %v, want ErrNoTicket", err)
+	}
+	if out != "" {
+		t.Errorf("dg show --json wrote %q, want nothing", out)
+	}
+}
+
+// The prose is markdown that a person wrote, and the encoder of Go escapes
+// `<`, `>` and `&` for a browser that reads JSON inside a page. Nothing here
+// is a page, and a person who reads the object reads what they wrote.
+func TestRunShowJSONKeepsTheCharactersOfTheProse(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+	const prose = "Take <staging> out of the DNS & the load balancer."
+	if err := os.WriteFile(proseFile(dataDir, id), []byte(prose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id), "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, prose) {
+		t.Errorf("dg show --json does not hold the prose as it is:\n%s", out)
 	}
 }

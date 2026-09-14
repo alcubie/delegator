@@ -468,3 +468,61 @@ func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 		}
 	}
 }
+
+// A ticket holds the time that it arrived, which is the first row of its
+// history and does not move when the ticket changes state.
+func TestTicketGivesTheTimeItArrived(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	// The arrival alone goes back, so the later rows of the history hold a
+	// different time and no other row can answer for it.
+	arrived := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
+	if _, err := s.db.Exec(`UPDATE transitions SET at = ?
+		WHERE id = (SELECT MIN(id) FROM transitions WHERE ticket_id = ?)`,
+		rfc3339(arrived), id); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Created.Equal(arrived) {
+		t.Errorf("the ticket arrived at %s, want %s", got.Created, arrived)
+	}
+}
+
+// The acceptance is the change into done, and a ticket that nobody has
+// accepted holds no time for it.
+func TestTicketGivesTheTimeOfTheAcceptance(t *testing.T) {
+	s, id := oneTicket(t)
+	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTicket(id, "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+
+	ready, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ready.Accepted.IsZero() {
+		t.Errorf("a ready ticket was accepted at %s, want no time at all", ready.Accepted)
+	}
+
+	accepted := time.Now().UTC().Truncate(time.Second)
+	if err := s.ChangeStatus(id, Done); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accepted.Before(accepted) || got.Accepted.After(time.Now()) {
+		t.Errorf("the ticket was accepted at %s, want between %s and now", got.Accepted, accepted)
+	}
+}
