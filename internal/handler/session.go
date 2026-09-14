@@ -20,19 +20,51 @@ type Kind struct {
 }
 
 // A Policy decides how a permission request is answered. Allow is given the
-// kind of tool the agent wants to run and the line it shows for it.
+// kind of tool the agent wants to run and the line it shows for it. A Policy
+// with no Allow allows nothing, so a caller that forgets one gets the answer
+// that costs least.
 type Policy struct {
 	Allow func(kind acp.ToolKind, title string) bool
+}
+
+// AllowAll allows every tool. It is delegator's policy: a run of a ticket has
+// a worktree of its own, and a person who reads the run after it is over is
+// not there to answer a question while it goes.
+func AllowAll() Policy {
+	return Policy{Allow: func(acp.ToolKind, string) bool { return true }}
+}
+
+// AllowKinds allows a tool of one of the kinds and rejects the rest.
+func AllowKinds(kinds ...acp.ToolKind) Policy {
+	allowed := make(map[acp.ToolKind]bool, len(kinds))
+	for _, k := range kinds {
+		allowed[k] = true
+	}
+	return Policy{Allow: func(kind acp.ToolKind, _ string) bool { return allowed[kind] }}
+}
+
+// Deny rejects every tool.
+func Deny() Policy {
+	return Policy{Allow: func(acp.ToolKind, string) bool { return false }}
 }
 
 // A Session is one agent process and one ACP session in a directory. It holds
 // the process so that Close can end it: an agent that outlives the run that
 // started it goes on editing a worktree that nothing is watching.
+//
+// The client puts what it decides on its own onto events, which a prompt
+// drains into the stream it gives the caller.
 type Session struct {
-	cmd  *exec.Cmd
-	conn *acp.ClientSideConnection
-	id   acp.SessionId
+	cmd    *exec.Cmd
+	conn   *acp.ClientSideConnection
+	id     acp.SessionId
+	events chan Event
 }
+
+// eventRoom is how many events the client can keep before the drain has to
+// take one. It is a turn's worth of permissions, so an agent asking one after
+// another does not wait on the reader between them.
+const eventRoom = 64
 
 // Start runs the agent's command in cwd, which must be an absolute path, and
 // opens a session there. The agent's stderr goes to stderr, which is the only
@@ -60,8 +92,8 @@ func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start agent %q: %w", kind.Name, err)
 	}
-	s := &Session{cmd: cmd}
-	s.conn = acp.NewClientSideConnection(&client{policy: policy}, stdin, stdout)
+	s := &Session{cmd: cmd, events: make(chan Event, eventRoom)}
+	s.conn = acp.NewClientSideConnection(&client{policy: policy, events: s.events}, stdin, stdout)
 	if _, err := s.conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
