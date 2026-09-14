@@ -74,14 +74,22 @@ func doneHeading(window time.Duration) string {
 //
 // DONE is first because it is the group that the person reads and leaves. What
 // is left to do is below it, where the eyes stop.
+//
+// FAILED is the one group that goes when it is empty. The other four hold the
+// work of a day that went as it should, and a person reads them each time;
+// FAILED holds only what went wrong, so an empty one is the normal case and a
+// heading for it is a line that says nothing on nearly every run. Gone, the
+// heading means something whenever it is there.
 func groups(box inbox.Inbox, done time.Duration) []group {
-	return []group{
+	gs := []group{
 		{doneHeading(done), box.Done},
 		{"READY", box.Ready},
 		{"RUNNING", box.Running},
-		{"FAILED", box.Failed},
-		{"QUEUED", box.Queued},
 	}
+	if len(box.Failed) > 0 {
+		gs = append(gs, group{"FAILED", box.Failed})
+	}
+	return append(gs, group{"QUEUED", box.Queued})
 }
 
 // rowWidth is the width of a row that carries a note. It is the width of the

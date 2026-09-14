@@ -90,8 +90,6 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 		"  4 one  the first title",
 		"RUNNING",
 		"  9 one  the second title                                  00:14:07",
-		"FAILED",
-		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -99,8 +97,9 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 
 // FAILED holds the ticket whose run stopped without a report, and its row
 // carries no note: the time of the failure is on dg show, and the heading
-// alone is what the inbox must give. The group is always there, as each other
-// group is, so a person never has to know what the absence of a heading means.
+// alone is what the inbox must give. The group is between RUNNING and QUEUED,
+// where it has always been, so a person who has seen it before finds it in the
+// place they remember.
 func TestWriteInboxShowsAFailedTicket(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -122,6 +121,31 @@ func TestWriteInboxShowsAFailedTicket(t *testing.T) {
 		" 10 data-loader  Fix the query that broke the build",
 		"QUEUED",
 		"  none",
+	})
+}
+
+// A run that went as it should leaves FAILED empty, and then the inbox has no
+// FAILED in it at all: a heading with none below it on nearly every run is a
+// line that says nothing, and a person reads past it until the day it matters.
+// The heading is there only when something is under it, so it reads as news.
+func TestWriteInboxLeavesFailedOutWhenItIsEmpty(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Queued: []store.OpenTicket{{
+			ID: 9, Project: "/projects/one", Title: "a title", Status: store.Queued,
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  9 one  a title",
 	})
 }
 
@@ -149,8 +173,6 @@ func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 		"READY",
 		"  none",
 		"RUNNING",
-		"  none",
-		"FAILED",
 		"  none",
 		"QUEUED",
 		"  9 web-api  Move to a new version of Go           depends on #4 #7",
@@ -182,8 +204,6 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 web-api  Move to a new version of Go                   00:14:07",
-		"FAILED",
-		"  none",
 		"QUEUED",
 		" 14 web-api  Add a limit on the rate                  depends on #9",
 	})
@@ -208,8 +228,6 @@ func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
 		"READY",
 		"  9 web-api  Move to a new version of Go",
 		"RUNNING",
-		"  none",
-		"FAILED",
 		"  none",
 		"QUEUED",
 		"  none",
@@ -237,8 +255,6 @@ func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 web-api  Show the duration of a run on the RUNNING r…  00:14:07",
-		"FAILED",
-		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -313,8 +329,6 @@ func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 one  the title",
-		"FAILED",
-		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -420,8 +434,6 @@ func TestWriteInboxPutsDoneAtTheTop(t *testing.T) {
 		"  4 one  the ready title",
 		"RUNNING",
 		"  none",
-		"FAILED",
-		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -465,8 +477,6 @@ func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
 		"READY",
 		"  none",
 		"RUNNING",
-		"  none",
-		"FAILED",
 		"  none",
 		"QUEUED",
 		"   4 one            the queued title",
