@@ -73,6 +73,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 	root.AddCommand(finishCommand(dataDir, &cfg))
 	root.AddCommand(acceptCommand(dataDir, workDir, &cfg))
 	root.AddCommand(cancelCommand(dataDir, &cfg))
+	root.AddCommand(restartCommand(dataDir, &cfg))
 	root.AddCommand(chatCommand(dataDir, workDir, &cfg))
 	root.AddCommand(runCommand(dataDir, &cfg))
 	root.AddCommand(pauseCommand(dataDir, &cfg))

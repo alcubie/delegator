@@ -327,6 +327,12 @@ does not use that. One path for every agent is worth more than a property that o
 has. An earlier draft gave delegator the id and said that no code reads the output of an
 agent; that was true of claude alone, and it made the seam fit one agent of four.
 
+`RunSpec` carries a session, and it is empty for the first run of a ticket. `dg restart`
+gives the next run the session of the run that failed. The adapter says how to continue
+it: for claude, the argv is `claude -p --resume <id>`. Delegator still makes no id of its
+own. The id that it gives back is the id that the agent made and reported through
+`SessionID`. The seam therefore keeps one path for every agent.
+
 A run that stops before it reports an id therefore has no session, and a person cannot
 continue that conversation. This is the same for each agent, so the supervisor answers for
 one case and not for two.

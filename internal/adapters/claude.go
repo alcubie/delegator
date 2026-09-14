@@ -22,12 +22,20 @@ type Claude struct{}
 // The permission mode turns off the questions claude would otherwise ask,
 // because no person is at the terminal to answer one. The worktree is the
 // area that a run can reach, and it is isolation rather than a sandbox.
+//
+// A spec that carries a session adds --resume, which continues that
+// conversation rather than starting one. The run is still headless, so the
+// prompt goes with it and the agent reads the ticket again.
 func (c Claude) Launch(spec RunSpec) *exec.Cmd {
-	cmd := exec.Command(claudeBinary,
+	args := []string{
 		"-p", spec.Prompt,
 		"--output-format", "stream-json", "--verbose",
 		"--permission-mode", "bypassPermissions",
-	)
+	}
+	if spec.Session != "" {
+		args = append(args, "--resume", spec.Session)
+	}
+	cmd := exec.Command(claudeBinary, args...)
 	cmd.Dir = spec.Worktree
 	return cmd
 }

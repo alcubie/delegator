@@ -730,6 +730,18 @@ func ticketExists(q querier, id int64) error {
 	return err
 }
 
+// statusOf returns the status of one ticket, and ErrNoTicket when the id holds
+// none. A caller that decides on the status writes in the same transaction, so
+// the status it read is the status it writes against.
+func statusOf(q querier, id int64) (TicketStatus, error) {
+	var status TicketStatus
+	err := q.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	return status, err
+}
+
 // ticket is Ticket for any querier.
 func ticket(q querier, id int64) (Ticket, error) {
 	var t Ticket
@@ -783,11 +795,7 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 // as well, so no way to change a status can leave the history without it, and at
 // is the time that both hold.
 func changeStatus(tx *sql.Tx, id int64, status TicketStatus, at time.Time) error {
-	var from TicketStatus
-	err := tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %d", ErrNoTicket, id)
-	}
+	from, err := statusOf(tx, id)
 	if err != nil {
 		return err
 	}
