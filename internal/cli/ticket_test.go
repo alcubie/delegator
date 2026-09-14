@@ -452,3 +452,140 @@ func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
 		t.Errorf("the files of prose are %v, want none", files)
 	}
 }
+
+// The prose of a GUI form is in memory and not in an argument, and a long
+// prose meets the limit of the command line, so --body-file names a file that
+// holds it. The ticket it makes is the ticket that the body argument makes.
+func TestRunTicketWithABodyFileReadsTheProseFromTheFile(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	const title = "Remove staging infrastructure"
+	const body = "Remove the staging app, the volume and the records of the DNS.\n"
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte(body), filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	fromArgument, err := runIn(t, dataDir, repo, "ticket", title, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromFile, err := runIn(t, dataDir, repo, "ticket", title, "--body-file", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	argumentID, fileID := idOf(t, fromArgument), idOf(t, fromFile)
+	if got := proseOfTicket(t, dataDir, fileID); got != body {
+		t.Errorf("the prose is %q, want %q", got, body)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	one, err := s.Ticket(argumentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := s.Ticket(fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Title != two.Title {
+		t.Errorf("the titles are %q and %q, want the same", one.Title, two.Title)
+	}
+	if one.Project != two.Project {
+		t.Errorf("the projects are %v and %v, want the same", one.Project, two.Project)
+	}
+	if got := proseOfTicket(t, dataDir, argumentID); got != proseOfTicket(t, dataDir, fileID) {
+		t.Errorf("the prose of the body argument is %q and the prose of the file is %q", got, proseOfTicket(t, dataDir, fileID))
+	}
+}
+
+// A path of - is the standard input, as it is for git commit -F, so a program
+// that holds the prose can pipe it in and needs no file.
+func TestRunTicketWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
+	dataDir := t.TempDir()
+	const body = "Remove the staging app, the volume and the records of the DNS.\n"
+
+	out, err := runInWithStdin(t, dataDir, testfix.Repo(t, repoBranch), body,
+		"ticket", "Remove staging infrastructure", "--body-file", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := proseOfTicket(t, dataDir, idOf(t, out)); got != body {
+		t.Errorf("the prose is %q, want %q", got, body)
+	}
+}
+
+// The prose has one source. A body argument beside --body-file leaves dg to
+// choose which one the person meant, so it refuses and writes no ticket.
+func TestRunTicketWithABodyFileAndABodyArgument(t *testing.T) {
+	dataDir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte("From the file.\n"), filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
+		"ticket", "Remove staging infrastructure", "From the argument.", "--body-file", path)
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	if want := "dg ticket takes the prose from a body or from --body-file, and got both"; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+}
+
+// A --body-file that names nothing is a prose the person wrote and dg cannot
+// find, so the error holds the path and there is no ticket to fill in later.
+func TestRunTicketWithABodyFileThatIsNotThere(t *testing.T) {
+	dataDir := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "body.md")
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
+		"ticket", "Remove staging infrastructure", "--body-file", missing)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v, want a path that is not there", err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("the error is %q, and does not name %q", err, missing)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want none", len(queue))
+	}
+}
+
+// The editor is what dg opens when no argument is there, and it would throw
+// away the prose the flag names, so a --body-file with no title is the error of
+// a ticket with no title.
+func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
+	dataDir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte("Remove the staging app.\n"), filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--body-file", path)
+	if !errors.Is(err, ErrNoTitle) {
+		t.Fatalf("err = %v, want ErrNoTitle", err)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+}

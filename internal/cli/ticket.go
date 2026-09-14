@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,30 +25,54 @@ const filePerm = 0o600
 // ticket that a person cannot find again.
 var ErrNoTitle = errors.New("the ticket must have a title")
 
+// errTwoBodies shows that a ticket was given its prose twice. The prose has one
+// source, and dg cannot tell which of the two the person meant.
+var errTwoBodies = errors.New("dg ticket takes the prose from a body or from --body-file, and got both")
+
 // ticketCommand makes a ticket and shows its id. With no argument it opens the
 // editor of the person, with one it takes the title, and with two it takes the
-// title and the prose.
+// title and the prose. The flag --body-file takes the prose from a file
+// instead.
 func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
+	var bodyFile string
 	var after []int64
 	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
 		Short: "Add a ticket. With no arguments, it opens $EDITOR.",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if bodyFile != "" && len(args) > 1 {
+				return errTwoBodies
+			}
+			// The prose is read before the store is open, so a path that
+			// names nothing costs no ticket.
+			var fileBody string
+			if bodyFile != "" {
+				var err error
+				if fileBody, err = ticketProse(cmd, bodyFile); err != nil {
+					return err
+				}
+			}
 			dir, err := ticketProject(workDir, projectDir)
 			if err != nil {
 				return err
 			}
+			title := ""
+			if len(args) > 0 {
+				title = args[0]
+			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
 				var id int64
 				var err error
-				switch len(args) {
-				case 0:
+				switch {
+				case bodyFile != "":
+					id, err = Ticket(s, dir, title, fileBody, after...)
+				case len(args) == 0:
 					id, err = TicketFromEditor(s, dir, after...)
-				case 1:
+				case len(args) == 1:
 					id, err = Ticket(s, dir, args[0], "", after...)
-				case 2:
+				case len(args) == 2:
 					id, err = Ticket(s, dir, args[0], args[1], after...)
 				default:
 					return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
@@ -62,9 +87,28 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project.  Defaults to current working directory.")
+	cmd.Flags().StringVar(&bodyFile, "body-file", "",
+		"the file that holds the prose of the ticket.  - is the standard input.")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"the ticket ID this ticket depends on.  Can be repeated.")
 	return cmd
+}
+
+// ticketProse reads the prose that --body-file names. A path of - is the
+// standard input, as it is for git commit -F.
+func ticketProse(cmd *cobra.Command, path string) (string, error) {
+	if path == "-" {
+		data, err := io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // ticketProject returns the directory whose project the new ticket belongs to.
