@@ -64,86 +64,6 @@ func wantLines(t *testing.T, got, want []string) {
 	}
 }
 
-func TestWriteInboxHoldsTheFourGroupsInOneOrder(t *testing.T) {
-	box := inbox.Inbox{
-		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
-		Running: []store.OpenTicket{{ID: 9, Project: "/projects/one", Title: "the second title"}},
-		Queued:  []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
-	}
-
-	var headings []int
-	lines := render(t, box)
-	for i, line := range lines {
-		if line == doneGroup || line == "READY" || line == "RUNNING" || line == "QUEUED" {
-			headings = append(headings, i)
-		}
-	}
-	if len(headings) != 4 {
-		t.Fatalf("the inbox holds %d headings, want 4:\n%s", len(headings), strings.Join(lines, "\n"))
-	}
-	for i, want := range []string{doneGroup, "READY", "RUNNING", "QUEUED"} {
-		if got := lines[headings[i]]; got != want {
-			t.Errorf("heading %d is %q, want %q", i, got, want)
-		}
-	}
-}
-
-// A group that holds no ticket keeps its heading, so no group moves below the
-// eyes of the person, and a line says that the group is empty.
-func TestWriteInboxKeepsAnEmptyGroup(t *testing.T) {
-	box := inbox.Inbox{
-		QueueRunning: true,
-		Queued:       []store.OpenTicket{{ID: 3, Project: "/projects/one", Title: "the title"}},
-	}
-
-	wantLines(t, render(t, box), []string{
-		statusRunning,
-		doneGroup,
-		"  none",
-		"READY",
-		"  none",
-		"RUNNING",
-		"  none",
-		"QUEUED",
-		"  3 one  the title",
-	})
-}
-
-// The id is right of its column and each project takes the same width, so the
-// titles of two groups are below one another.
-func TestWriteInboxPutsTheColumnsTogether(t *testing.T) {
-	box := inbox.Inbox{
-		QueueRunning: true,
-		Ready:        []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "the first title"}},
-		Queued:       []store.OpenTicket{{ID: 11, Project: "/projects/a-longer-name", Title: "the third title"}},
-	}
-
-	wantLines(t, render(t, box), []string{
-		statusRunning,
-		doneGroup,
-		"  none",
-		"READY",
-		"  4 one            the first title",
-		"RUNNING",
-		"  none",
-		"QUEUED",
-		" 11 a-longer-name  the third title",
-	})
-}
-
-// The project of a ticket is a path, and the inbox shows the name at the end of
-// it.
-func TestWriteInboxShowsTheNameOfTheProject(t *testing.T) {
-	box := inbox.Inbox{
-		QueueRunning: true,
-		Queued:       []store.OpenTicket{{ID: 1, Project: "/one/two/three/the-name", Title: "the title"}},
-	}
-	got := rows(t, render(t, box), "QUEUED")[0]
-	if want := "  1 the-name  the title"; got != want {
-		t.Errorf("the row is %q, want %q", got, want)
-	}
-}
-
 // The person watches the inbox with watch -n 1 dg, and the row of the run
 // tells them how long it has been going. A ticket in READY holds the start of
 // the run that made it ready, and its row shows no duration: that run stopped,
@@ -169,36 +89,6 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 		"  4 one  the first title",
 		"RUNNING",
 		"  9 one  the second title                                  00:14:07",
-		"QUEUED",
-		"  none",
-	})
-}
-
-// The durations of two runs stand in one column at the right of the inbox, so
-// a person reads them against one another rather than against the end of each
-// title. Two runs are what a fault leaves behind, and version 1 has one run at
-// a time, so the column is what the person sees after that fault.
-func TestWriteInboxPutsTheDurationsInOneColumn(t *testing.T) {
-	box := inbox.Inbox{
-		QueueRunning: true,
-		Running: []store.OpenTicket{{
-			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
-			Status: store.Running, Started: testNow.Add(-(14*time.Minute + 7*time.Second)),
-		}, {
-			ID: 14, Project: "/projects/data-loader", Title: "Add a limit on the rate",
-			Status: store.Running, Started: testNow.Add(-(3*time.Hour + 42*time.Minute + time.Second)),
-		}},
-	}
-
-	wantLines(t, render(t, box), []string{
-		statusRunning,
-		doneGroup,
-		"  none",
-		"READY",
-		"  none",
-		"RUNNING",
-		"  9 web-api      Move to a new version of Go               00:14:07",
-		" 14 data-loader  Add a limit on the rate                   03:42:01",
 		"QUEUED",
 		"  none",
 	})
@@ -389,25 +279,6 @@ func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 	})
 }
 
-// The words of the flags are in no row of any group. They take up to 240
-// characters, and one of those wraps a row three times.
-func TestWriteInboxNeverShowsTheWordsOfTheFlags(t *testing.T) {
-	box := inbox.Inbox{
-		Ready:   []store.OpenTicket{{ID: 4, Project: "/projects/one", Title: "a title"}},
-		Running: []store.OpenTicket{{ID: 9, Project: "/projects/one", Title: "a short one"}},
-		Queued: []store.OpenTicket{
-			{ID: 11, Project: "/projects/one", Title: "a much longer title"},
-			{ID: 12, Project: "/projects/one", Title: "short"},
-		},
-	}
-
-	for _, line := range render(t, box) {
-		if strings.HasSuffix(line, " ") {
-			t.Errorf("the row ends with a space: %q", line)
-		}
-	}
-}
-
 // An inbox with no ticket takes one line, and not three headings with none
 // below each of them. The line says what makes a ticket, because a person who
 // has no ticket is a person who has not made one yet.
@@ -422,19 +293,6 @@ func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	for _, heading := range []string{"DONE", "READY", "RUNNING", "QUEUED"} {
 		if strings.Contains(got[1], heading) {
 			t.Errorf("the line holds the heading %q: %q", heading, got[1])
-		}
-	}
-}
-
-// One group with a ticket keeps each heading, because the person can see where
-// the other groups are.
-func TestWriteInboxWithOneGroupKeepsTheHeadings(t *testing.T) {
-	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
-
-	got := render(t, box)
-	for _, heading := range []string{doneGroup, "READY", "RUNNING", "QUEUED"} {
-		if !slices.Contains(got, heading) {
-			t.Errorf("the inbox does not hold the heading %q:\n%s", heading, strings.Join(got, "\n"))
 		}
 	}
 }

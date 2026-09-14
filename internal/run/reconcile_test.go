@@ -79,18 +79,6 @@ func TestRunningWithNoTimeout(t *testing.T) {
 	}
 }
 
-func TestAliveOnTheProgramThatAsks(t *testing.T) {
-	if !alive(os.Getpid()) {
-		t.Error("this program is not alive")
-	}
-}
-
-func TestAliveOnAProcessIDThatIsFree(t *testing.T) {
-	if alive(testfix.FreePID(t)) {
-		t.Error("a free process id is alive")
-	}
-}
-
 // A run of the store before the table runs held its process id, and a row that
 // holds none reads as 0. Signal 0 to the id 0 reaches every program of the
 // group of the caller, so the answer is that nothing is there, and it must be

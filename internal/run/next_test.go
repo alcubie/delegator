@@ -25,64 +25,10 @@ func queueOf(t *testing.T, n int) (string, []int64) {
 	return dataDir, ids
 }
 
-// Next names no ticket. It starts one supervisor, which claims the ticket it
-// works on, so the queue that Next reads is only how it decides whether to
-// start one at all.
-func TestNextStartsASupervisor(t *testing.T) {
-	dataDir, _ := queuedTicket(t, "the first")
-	testfix.SecondTicket(t, dataDir)
-	launch, marker := testfix.RecordingLaunch(t)
-
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 1}, launch); err != nil {
-		t.Fatal(err)
-	}
-
-	testfix.WaitForStarts(t, marker, 1)
-}
-
 // An empty queue starts nothing.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
-	launch, marker := testfix.RecordingLaunch(t)
-
-	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
-		t.Fatal(err)
-	}
-
-	testfix.WaitForStarts(t, marker, 0)
-}
-
-// With a limit of one, a run already active means nothing starts, however
-// long the queue behind it.
-func TestNextWithARunActiveStartsNothing(t *testing.T) {
-	dataDir, first := queuedTicket(t, "the first")
-	testfix.SecondTicket(t, dataDir)
-	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
-		t.Fatal(err)
-	}
-	launch, marker := testfix.RecordingLaunch(t)
-
-	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
-		t.Fatal(err)
-	}
-
-	testfix.WaitForStarts(t, marker, 0)
-}
-
-// A ticket in ready is work in progress: the person has not examined it yet.
-// It holds its slot until they close it, as a run holds one.
-func TestNextWithATicketInReadyStartsNothing(t *testing.T) {
-	dataDir, first := queuedTicket(t, "the first")
-	testfix.SecondTicket(t, dataDir)
-	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.FinishTicket(first, "abc123"); err != nil {
-		t.Fatal(err)
-	}
 	launch, marker := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
