@@ -15,10 +15,18 @@ import (
 // test reads the two apart.
 func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error) {
 	t.Helper()
+	return runInWithStdin(t, dataDir, workDir, "", args...)
+}
+
+// runInWithStdin runs one command with text on its standard input, for a
+// command that reads it.
+func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string) (string, error) {
+	t.Helper()
 	var out, errOut bytes.Buffer
 	root := Root(dataDir, workDir)
 	root.SetOut(&out)
 	root.SetErr(&errOut)
+	root.SetIn(strings.NewReader(stdin))
 	// A nil slice makes cobra read os.Args, which holds the arguments of the
 	// test, so the arguments are always a slice that is there.
 	if args == nil {
