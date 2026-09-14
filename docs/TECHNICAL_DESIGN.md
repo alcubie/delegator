@@ -634,8 +634,10 @@ FAILED sits between RUNNING and QUEUED, so a person who reads the inbox down its
 sees what is working, what stopped and what waits. It holds each ticket whose run
 stopped without a report, and the sequence is the time of the failure: the ticket that
 failed first is at the top, so the failure that has waited longest is the one the person
-deals with first. The group is always there, as each other group is, and a run that
-failed while the person was away is the one thing the inbox must not hide.
+deals with first. The group is there only when it holds a ticket. An empty FAILED is the
+usual condition, and a heading with no rows below it says nothing. A run that failed
+while the person was away is the one thing the inbox must not hide. The heading is there
+to say so, and it means something each time a person sees it.
 
 A failed ticket is not in READY. READY is where the person examines work, and each
 ticket of it holds the commit of a finished run. A failed run made no commit, so there
