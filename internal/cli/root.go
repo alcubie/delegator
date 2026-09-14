@@ -84,5 +84,6 @@ func Root(dataDir, workDir string) *cobra.Command {
 	root.AddCommand(runCommand(dataDir, &cfg))
 	root.AddCommand(pauseCommand(dataDir, &cfg))
 	root.AddCommand(startCommand(dataDir, &cfg))
+	root.AddCommand(versionCommand())
 	return root
 }

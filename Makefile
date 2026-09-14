@@ -1,6 +1,13 @@
 BIN := dg
 PKG := github.com/alcubie/delegator
 
+# VERSION is what dg version writes, and a program that starts dg reads it to
+# know which binary it found. git describe names the tag when the tree is one,
+# the commit when it is not, and adds -dirty when the tree holds changes that
+# are not committed, so a binary always says where it came from.
+VERSION := $(shell git describe --tags --always --dirty)
+LDFLAGS := -X $(PKG)/internal/cli.Version=$(VERSION)
+
 # COVER_MIN is the smallest coverage that a commit can have. COVER_PKGS says
 # which packages the number applies to. cmd/dg is not in the list: a package
 # with no test file counts as 0 percent, and it goes into the total, so the
@@ -11,13 +18,13 @@ COVER_PKGS := ./internal/...
 .PHONY: build install test integration release vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
 
 build:
-	go build -o $(BIN) ./cmd/dg
+	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
 
 # install puts dg on the PATH of the person, so the work can use delegator while
 # it builds delegator. goenv keeps a shim for each program, and it makes the one
 # for a new program at a rehash.
 install:
-	go install ./cmd/dg
+	go install -ldflags "$(LDFLAGS)" ./cmd/dg
 	@command -v goenv >/dev/null && goenv rehash || true
 	@echo "dg is at $$(command -v dg || echo '(not on the PATH)')"
 

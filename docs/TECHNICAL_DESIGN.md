@@ -761,6 +761,7 @@ installer.
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
 | `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |
 | `dg completion <shell>` | Write the script that completes each command for bash, zsh, fish or powershell. |
+| `dg version` | Show the version of the binary. The flag `--json` writes one object with `version` and `schema`. A build sets the version, and a build that sets none writes `dev`. |
 
 The package `github.com/spf13/cobra` holds the tree of commands. One tree gives the
 dispatch, the text of `dg help`, the completion of each shell, and the man page that
@@ -769,6 +770,12 @@ test walks the tree to say so.
 
 Each command that shows data also accepts `--json`. A different interface, or a script of
 the person, can therefore read the data and not the text. Section 12 shows why.
+
+`dg version --json` writes a second value beside the version. `schema` is a number, and it
+is the version of the JSON that `dg --json` and `dg show --json` write. It goes up by one
+when a key of that JSON changes its name, or changes its type, or goes away. A new key
+does not change it, because a reader ignores a key that it does not know. A program that
+starts `dg` reads the two values first, and then decides if it can read the data.
 
 The agent uses two commands only, and one of them is a command of the person:
 
