@@ -1197,6 +1197,29 @@ func TestOpenTicketsHoldNoTimeOfAcceptance(t *testing.T) {
 	}
 }
 
+// The inbox shows how long a ticket has been waiting, so each row of it holds
+// the time the ticket arrived. That is the first row of its history, which
+// every ticket has.
+func TestOpenTicketsHoldTheTimeOfCreation(t *testing.T) {
+	s, ids := threeTickets(t)
+	before := time.Now().Add(-time.Second)
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	for _, id := range ids {
+		got := byID[id].Created
+		if got.Before(before) || got.After(time.Now()) {
+			t.Errorf("the ticket %d was created at %v, want between %v and now", id, got, before)
+		}
+	}
+}
+
 // setStarted writes the start time of one run. Claim writes the time of the
 // call, to the second, so two claims in one test hold the same text and only a
 // write like this one tells them apart.

@@ -36,6 +36,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 	// command two configs. Each command takes the address, because the hook
 	// runs after this function has built the tree.
 	var cfg config.Config
+	var asJSON bool
 	root := &cobra.Command{
 		Use:           "dg",
 		Short:         "Delegate tasks to an agent",
@@ -60,11 +61,16 @@ func Root(dataDir, workDir string) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showInbox(cmd.OutOrStdout(), dataDir, &cfg, mode)
+			return showInbox(cmd.OutOrStdout(), dataDir, &cfg, mode, asJSON)
 		},
 	}
 	root.PersistentFlags().Var(&mode, "color",
 		"colour the status: always, never or auto (a terminal only)")
+	// --json is a flag of the root alone, and not a persistent one: dg show
+	// has its own, and a subcommand that gains the flag from here would take
+	// it and write text.
+	root.Flags().BoolVar(&asJSON, "json", false,
+		"write the inbox as one JSON object")
 	root.AddCommand(ticketCommand(dataDir, workDir, &cfg))
 	root.AddCommand(showCommand(dataDir, workDir, &cfg))
 	root.AddCommand(editCommand(dataDir, &cfg))
