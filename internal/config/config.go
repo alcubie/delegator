@@ -32,6 +32,21 @@ type Config struct {
 	// and names no project. A value of 0 is no limit of its own, and each
 	// project then takes Runs. ProjectRuns gives the limit that holds.
 	MaxRunsPerProject int `toml:"max_runs_per_project"`
+	// Agents holds one section for each agent the person says something
+	// about, as [agents.claude]. A name delegator already knows takes the
+	// keys the section gives and keeps the rest of what delegator holds for
+	// it; a name delegator does not know is an agent of its own.
+	Agents map[string]Agent `toml:"agents"`
+}
+
+// An Agent is the section [agents.<name>] of the config file: the command
+// that starts the agent's ACP server on stdio, and the command that opens one
+// of its sessions in a terminal, in which {session} stands for the id of the
+// session. It is for a person whose agent is not on the path under the name
+// delegator expects, or whose agent delegator does not know at all.
+type Agent struct {
+	Argv   []string `toml:"argv"`
+	Resume []string `toml:"resume"`
 }
 
 // ProjectRuns is how many tickets of one project can be open at one time. Two

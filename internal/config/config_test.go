@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +249,54 @@ func TestProjectRunsIsTheKeyAndFallsBackToRuns(t *testing.T) {
 		if got := tc.cfg.ProjectRuns(); got != tc.want {
 			t.Errorf("ProjectRuns of %+v = %d, want %d", tc.cfg, got, tc.want)
 		}
+	}
+}
+
+func TestLoadReadsASectionOfTheAgentsTable(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "[agents.claude]\nargv = [\"my-acp\", \"--stdio\"]\nresume = [\"my-agent\", \"{session}\"]\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, ok := cfg.Agents["claude"]
+	if !ok {
+		t.Fatalf("Agents = %v, want a section for claude", cfg.Agents)
+	}
+	if want := []string{"my-acp", "--stdio"}; !slices.Equal(agent.Argv, want) {
+		t.Errorf("Argv = %v, want %v", agent.Argv, want)
+	}
+	if want := []string{"my-agent", "{session}"}; !slices.Equal(agent.Resume, want) {
+		t.Errorf("Resume = %v, want %v", agent.Resume, want)
+	}
+}
+
+// A person who names no agent gets no section, and the defaults say nothing
+// about an agent: the table of the handler holds every agent delegator knows.
+func TestLoadGivesNoAgentsWhenTheFileNamesNone(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Agents) != 0 {
+		t.Errorf("Agents = %v, want none", cfg.Agents)
+	}
+}
+
+func TestLoadRefusesAKeyOfAnAgentItDoesNotKnow(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "[agents.claude]\nargvv = [\"my-acp\"]\n")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load of a key it does not know gave no error")
+	}
+	if !strings.Contains(err.Error(), "argvv") {
+		t.Errorf("error %q does not name the key", err)
 	}
 }
