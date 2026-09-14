@@ -1,11 +1,13 @@
 // The text of one ticket for a terminal. dg show gives a person the fields that
 // a run wrote, the four variables that connect the ticket to its work, and the
 // prose that the person wrote. A --*-only flag gives one of those values on a
-// line of its own, for the person who is writing another command line with it.
+// line of its own, for the person who is writing another command line with it,
+// and --json gives every field to a script or to another interface.
 
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -212,6 +214,67 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, depend
 	}
 }
 
+// ticketJSON is one ticket for a reader that is not a person. Each key is the
+// name that the text form gives the field, and §7 gives the same names to the
+// columns, so a reader of the document knows each key without a second table.
+// A field with no value is null, so a script tests one thing and not two.
+type ticketJSON struct {
+	ID       int64      `json:"id"`
+	Title    string     `json:"title"`
+	Status   string     `json:"status"`
+	Project  string     `json:"project"`
+	Ticket   string     `json:"ticket"`
+	Worktree *string    `json:"worktree"`
+	Branch   *string    `json:"branch"`
+	Session  *string    `json:"session"`
+	Commit   *string    `json:"commit"`
+	Created  *time.Time `json:"created"`
+	Accepted *time.Time `json:"accepted"`
+	Prose    *string    `json:"prose"`
+}
+
+// nullable gives the value, and nothing for the empty string.
+func nullable(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// nullableTime gives the time, and nothing for the zero time, which is the
+// time of a change that the ticket has not had.
+func nullableTime(at time.Time) *time.Time {
+	if at.IsZero() {
+		return nil
+	}
+	return &at
+}
+
+// writeJSON writes one ticket as one JSON object and nothing else. The three
+// paths are full: a script gives a path to another command, and no command
+// expands a tilde that came from a variable.
+func writeJSON(out io.Writer, dataDir, worktree string, t store.Ticket, prose string) error {
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	// The prose is markdown, and the escape of `<`, `>` and `&` is for JSON
+	// that goes inside a page. Nothing here is a page.
+	enc.SetEscapeHTML(false)
+	return enc.Encode(ticketJSON{
+		ID:       t.ID,
+		Title:    t.Title,
+		Status:   string(t.Status),
+		Project:  t.Project.Path,
+		Ticket:   proseFile(dataDir, t.ID),
+		Worktree: nullable(worktree),
+		Branch:   nullable(t.Branch),
+		Session:  nullable(t.Session),
+		Commit:   nullable(t.Commit),
+		Created:  nullableTime(t.Created),
+		Accepted: nullableTime(t.Accepted),
+		Prose:    nullable(strings.TrimRight(prose, "\n")),
+	})
+}
+
 // onlyField names the one field that a --*-only flag asks for. The empty
 // value is no such flag, and dg show writes the whole ticket.
 type onlyField string
@@ -253,13 +316,14 @@ func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onl
 // showTicket reads one ticket and writes it. The fields come from the database,
 // and the prose comes from the file, because the person owns the prose and an
 // editor opens a file and not a row. only names the one field to write in
-// place of the whole ticket.
+// place of the whole ticket, and asJSON writes every field as one JSON object
+// in place of the text.
 //
 // The caller gives the store, because a command opens one and reconciles once,
 // whatever else it reads from the database. The data directory comes off the
 // store, which is the directory it was opened on, so there is no second value
 // that could name another one.
-func showTicket(out io.Writer, s *store.Store, id int64, only onlyField) error {
+func showTicket(out io.Writer, s *store.Store, id int64, only onlyField, asJSON bool) error {
 	dataDir := s.DataDir()
 
 	ticket, err := s.Ticket(id)
@@ -280,6 +344,10 @@ func showTicket(out io.Writer, s *store.Store, id int64, only onlyField) error {
 	worktree := run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(worktree); err != nil {
 		worktree = ""
+	}
+
+	if asJSON {
+		return writeJSON(out, dataDir, worktree, ticket, string(prose))
 	}
 
 	if only != onlyNone {
@@ -339,6 +407,7 @@ var onlyFlags = []struct {
 func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
 	var projectDir string
+	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "show [id]",
 		Short: "Show the details of a ticket. Defaults to the first Ready ticket for the project.",
@@ -349,10 +418,12 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return showTicket(cmd.OutOrStdout(), s, id, only)
+				return showTicket(cmd.OutOrStdout(), s, id, only, asJSON)
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false,
+		"write the fields of the ticket as one JSON object")
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project whose first ready ticket to show.  Defaults to current working directory.")
 	for _, flag := range onlyFlags {
