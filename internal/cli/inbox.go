@@ -227,8 +227,9 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 }
 
 // showInbox reads the tickets and writes the inbox. How far back DONE reaches
-// comes from the config file.
-func showInbox(out io.Writer, dataDir string, cfg *config.Config, mode colourMode) error {
+// comes from the config file. asJSON writes the object of inbox_json.go
+// instead of the text.
+func showInbox(out io.Writer, dataDir string, cfg *config.Config, mode colourMode, asJSON bool) error {
 	done := cfg.DoneWindow()
 	return withStore(dataDir, cfg, func(s *store.Store) error {
 
@@ -236,6 +237,9 @@ func showInbox(out io.Writer, dataDir string, cfg *config.Config, mode colourMod
 		box, err := inbox.Get(s, now.Add(-done))
 		if err != nil {
 			return err
+		}
+		if asJSON {
+			return writeInboxJSON(out, box)
 		}
 		writeInbox(out, box, mode, now, done)
 		return nil
