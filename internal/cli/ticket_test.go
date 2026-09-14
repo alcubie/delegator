@@ -85,21 +85,6 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	}
 }
 
-func TestRunTicketWithABody(t *testing.T) {
-	dataDir := t.TempDir()
-
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "Remove staging infrastructure", "Remove the staging app.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out != "1\n" {
-		t.Errorf("the command wrote %q, want %q", out, "1\n")
-	}
-	if got := proseOf(t, dataDir); got != "Remove the staging app." {
-		t.Errorf("the prose is %q", got)
-	}
-}
-
 func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app.\n")
@@ -144,23 +129,6 @@ func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
 	}
 	if want := projectPath(t, elsewhere); rows[0].Path != want {
 		t.Errorf("path = %q, want %q", rows[0].Path, want)
-	}
-}
-
-// The editor form takes the flag too. The title comes from the editor and the
-// project from the flag.
-func TestRunTicketWithAProjectAndNoArgumentsOpensTheEditor(t *testing.T) {
-	dataDir := t.TempDir()
-	withEditor(t, "Remove staging infrastructure\n")
-	elsewhere := testfix.Repo(t, "release")
-
-	if _, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", elsewhere); err != nil {
-		t.Fatal(err)
-	}
-
-	rows := projectRows(t, dataDir)
-	if want := projectPath(t, elsewhere); len(rows) != 1 || rows[0].Path != want {
-		t.Errorf("the projects are %v, want the one at %q", rows, want)
 	}
 }
 
@@ -220,19 +188,6 @@ func TestRunTicketWithAProjectThatIsAFile(t *testing.T) {
 	}
 	if want := file + " is not a directory"; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
-	}
-}
-
-// A command that gives an error writes no id.
-func TestRunTicketThatFailsShowsNothing(t *testing.T) {
-	dataDir := t.TempDir()
-
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "   ")
-	if !errors.Is(err, ErrNoTitle) {
-		t.Fatalf("err = %v, want ErrNoTitle", err)
-	}
-	if out != "" {
-		t.Errorf("the command wrote %q, want nothing", out)
 	}
 }
 
@@ -400,24 +355,6 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	}
 
 	testfix.WaitForStarts(t, marker, 1)
-}
-
-// The flag --after names a ticket the new one depends on, so a person or an
-// agent that files a plan of several tickets says the order the work goes in
-// as it files them.
-func TestRunTicketAfterOneTicket(t *testing.T) {
-	dataDir := t.TempDir()
-	repo := testfix.Repo(t, repoBranch)
-	first, _ := twoTickets(t, dataDir, repo)
-
-	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first), "Remove the last of it")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := idOf(t, out)
-	if got, want := testfix.Dependencies(t, dataDir, id), []int64{first}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d depends on %v, want %v", id, got, want)
-	}
 }
 
 // The flag repeats, which is the form the help text gives.

@@ -580,6 +580,12 @@ type OpenTicket struct {
 	// holds the zero time.
 	Started time.Time
 
+	// Changed is the time of the last change of state, which is the time that
+	// the ticket entered the status it has. A ticket in failed entered failed
+	// then, which is the time of the failure, and FAILED comes in the order of
+	// it. A ticket whose history holds no change holds the zero time.
+	Changed time.Time
+
 	// DependsOn holds the id of each ticket that this one depends on and that is
 	// not done yet, in the order of the ids. A ticket that depends on nothing
 	// holds none, so the inbox writes a note about a link only while the link
@@ -588,16 +594,16 @@ type OpenTicket struct {
 }
 
 // OpenTickets returns each ticket that is still open: the ones that wait, the
-// one that runs, and the ones that are complete and wait for the person. A
-// ticket that is done or cancelled is closed, and DoneTickets returns the ones
-// of those that the inbox still shows.
+// one that runs, the ones that are complete and wait for the person, and the
+// ones that failed. A ticket that is done or cancelled is closed, and
+// DoneTickets returns the ones of those that the inbox still shows.
 //
 // One query returns the tickets of each project, because the inbox is one list
 // for all projects.
 func (s *Store) OpenTickets() ([]OpenTicket, error) {
 	return s.inboxTickets(inboxTicketQuery+`
-		WHERE tickets.status IN (?, ?, ?)
-		ORDER BY tickets.id`, Queued, Running, Ready)
+		WHERE tickets.status IN (?, ?, ?, ?)
+		ORDER BY tickets.id`, Queued, Running, Ready, Failed)
 }
 
 // DoneTickets returns each ticket that dg accept closed at or after since. The
@@ -647,7 +653,8 @@ const inboxTicketQuery = `
 	SELECT tickets.id, projects.path, tickets.title, tickets.status,
 	       COALESCE(tickets.position, tickets.ready_position, 0), ` + acceptedTime + `,
 	       (SELECT started_at FROM runs
-	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1)
+	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1),
+	       ` + lastChange + `
 	FROM tickets
 	JOIN projects ON projects.id = tickets.project_id
 	`
@@ -675,7 +682,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 		var t OpenTicket
 		if err := rows.Scan(
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
-			timeColumn{&t.Accepted}, timeColumn{&t.Started}); err != nil {
+			timeColumn{&t.Accepted}, timeColumn{&t.Started}, timeColumn{&t.Changed}); err != nil {
 			return nil, err
 		}
 		t.DependsOn = unmet[t.ID]
@@ -721,6 +728,18 @@ func ticketExists(q querier, id int64) error {
 		return fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
 	return err
+}
+
+// statusOf returns the status of one ticket, and ErrNoTicket when the id holds
+// none. A caller that decides on the status writes in the same transaction, so
+// the status it read is the status it writes against.
+func statusOf(q querier, id int64) (TicketStatus, error) {
+	var status TicketStatus
+	err := q.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("%w: %d", ErrNoTicket, id)
+	}
+	return status, err
 }
 
 // ticket is Ticket for any querier.
@@ -776,11 +795,7 @@ func (s *Store) ChangeStatus(id int64, status TicketStatus) error {
 // as well, so no way to change a status can leave the history without it, and at
 // is the time that both hold.
 func changeStatus(tx *sql.Tx, id int64, status TicketStatus, at time.Time) error {
-	var from TicketStatus
-	err := tx.QueryRow("SELECT status FROM tickets WHERE id = ?", id).Scan(&from)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %d", ErrNoTicket, id)
-	}
+	from, err := statusOf(tx, id)
 	if err != nil {
 		return err
 	}

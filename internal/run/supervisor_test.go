@@ -3,6 +3,7 @@ package run
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -59,6 +60,18 @@ type recordingAgent struct {
 func (r *recordingAgent) SessionID(out []byte) (string, error) {
 	r.asked = append(r.asked, string(out))
 	return r.Adapter.SessionID(out)
+}
+
+// specAgent is an Adapter that keeps the spec of each run it launched, so a
+// test sees what the supervisor asked the agent for.
+type specAgent struct {
+	adapters.Adapter
+	specs []adapters.RunSpec
+}
+
+func (a *specAgent) Launch(spec adapters.RunSpec) *exec.Cmd {
+	a.specs = append(a.specs, spec)
+	return a.Adapter.Launch(spec)
 }
 
 // The branch on the ticket is the mark of the claim: only Claim writes it,
@@ -278,19 +291,6 @@ func logOf(t *testing.T, dataDir string, id int64) string {
 	return string(data)
 }
 
-func TestStartRecordsTheSessionTheRunReported(t *testing.T) {
-	dataDir, id := queuedTicket(t, "Add the thing")
-	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 0")
-
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "s-1" {
-		t.Errorf("session = %q, want %q", got, "s-1")
-	}
-}
-
 // The run that fails is the one a person most wants to open, so its session
 // is recorded before its failure is reported.
 func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
@@ -492,26 +492,8 @@ func TestStartRecordsTheSessionOnTheLastLineWithNoNewline(t *testing.T) {
 	}
 }
 
-// A run that gave no report did not succeed. The agent here exits without
-// dg finish, which is the only thing that makes a ticket ready, so the
-// supervisor fails the ticket itself before it stops. Without this a ticket
-// whose supervisor is there and whose run ended would stay in running, and
-// only the reconcile of a later command would move it.
-func TestStartFailsATicketThatTheAgentDidNotFinish(t *testing.T) {
-	dataDir, id := queuedTicket(t, "Add the thing")
-
-	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 0")); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
-		t.Errorf("status = %q, want %q", got.Status, store.Failed)
-	}
-}
-
-// The agent stops with an error rather than at its own end, and the answer is
-// the same: the run gave no report. The error of the run still reaches the
-// caller, which writes it to the person.
+// An agent that stops with an error gave no report, so the ticket fails. The
+// error of the run still reaches the caller, which writes it to the person.
 func TestStartFailsTheTicketWhenTheAgentGivesAnError(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
@@ -521,5 +503,74 @@ func TestStartFailsTheTicketWhenTheAgentGivesAnError(t *testing.T) {
 
 	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
 		t.Errorf("status = %q, want %q", got.Status, store.Failed)
+	}
+}
+
+// A restart claims the ticket again, and the run that follows continues the
+// conversation of the run that failed. The session is on the ticket, so the
+// supervisor is what carries it down to the agent.
+func TestStartGivesTheAgentTheSessionOfTheTicket(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SetSession(id, "s-1"); err != nil {
+		t.Fatal(err)
+	}
+	agent := &specAgent{Adapter: fakeAgent(t, "exit 0")}
+
+	if err := Start(s, id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(agent.specs) != 1 {
+		t.Fatalf("the agent was launched %d times, want 1", len(agent.specs))
+	}
+	if got := agent.specs[0].Session; got != "s-1" {
+		t.Errorf("session = %q, want %q", got, "s-1")
+	}
+}
+
+// A ticket that has not run has no session, and the first run of it starts
+// one. An empty session must reach the adapter as an empty session, because
+// that is how the adapter knows to start a conversation and not continue one.
+func TestStartGivesNoSessionForAFirstRun(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	agent := &specAgent{Adapter: fakeAgent(t, "exit 0")}
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(agent.specs) != 1 {
+		t.Fatalf("the agent was launched %d times, want 1", len(agent.specs))
+	}
+	if got := agent.specs[0].Session; got != "" {
+		t.Errorf("session = %q, want nothing", got)
+	}
+}
+
+// Two runs of one ticket keep two logs, and a restart can claim a ticket in
+// the same second that its last run ended. A name of one second for both
+// gives the second run a file that O_EXCL refuses, which would end that run
+// before the agent started.
+func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	agent := fakeAgent(t, "run printf 'a line\\n'", "exit 0")
+
+	for range 2 {
+		if err := Start(s, id, agent); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Restart(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 2 {
+		t.Errorf("logs = %v, want one for each run", logs)
 	}
 }

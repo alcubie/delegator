@@ -6,9 +6,11 @@
 // down in RunSpec, and the one thing it learns from a run comes back through
 // SessionID, so a new agent needs no new field above the seam.
 //
-// Delegator never supplies a session id. Claude will take one, with
+// Delegator mints no session id. Claude will take a new one at its start, with
 // --session-id, and the others will not: one path for every agent is worth more
-// than a property one of them has.
+// than a property one of them has. The session in RunSpec is never a new id.
+// It is the id the agent reported through SessionID on an earlier run, and a
+// restart gives it back so that the agent continues that conversation.
 package adapters
 
 import "os/exec"
@@ -20,6 +22,11 @@ type RunSpec struct {
 
 	// Prompt is the first message to the agent.
 	Prompt string
+
+	// Session is the conversation the run continues. It is empty for a run
+	// that starts one, and dg restart gives the session of the run that
+	// failed, so the agent keeps the work that run did.
+	Session string
 }
 
 // Adapter starts one kind of agent.

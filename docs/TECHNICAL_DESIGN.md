@@ -23,6 +23,7 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | config | The file that holds the selections of the person. |
 | database | The one SQLite file that holds each field, the queue and the counter. |
 | DONE | The group in the inbox that shows each ticket that the person accepted in the period that `done_hours` gives. |
+| FAILED | The group in the inbox that holds each ticket whose run stopped without a report. |
 | Go | The programming language of delegator. |
 | goreleaser | The tool that makes the binary files and the installer. |
 | inbox | The one ordered list of tickets that the person examines. |
@@ -105,7 +106,7 @@ them. Section 4 gives that list.
 - Tickets as Markdown files, which the person can read and change with any editor.
 - One queue for all projects, with an order that the person can change.
 - Work in the background, in a worktree. One run at a time.
-- The inbox, with the groups DONE, READY, RUNNING and QUEUED.
+- The inbox, with the groups DONE, READY, RUNNING, FAILED and QUEUED.
 - One commit for each run, and its hash on the ticket.
 - The four variables for each ticket, for use by other programs.
 - The option `--json` on each command that shows data.
@@ -325,6 +326,12 @@ Claude will also take an id at its start, with `claude --session-id <uuid>`, and
 does not use that. One path for every agent is worth more than a property that one of them
 has. An earlier draft gave delegator the id and said that no code reads the output of an
 agent; that was true of claude alone, and it made the seam fit one agent of four.
+
+`RunSpec` carries a session, and it is empty for the first run of a ticket. `dg restart`
+gives the next run the session of the run that failed. The adapter says how to continue
+it: for claude, the argv is `claude -p --resume <id>`. Delegator still makes no id of its
+own. The id that it gives back is the id that the agent made and reported through
+`SessionID`. The seam therefore keeps one path for every agent.
 
 A run that stops before it reports an id therefore has no session, and a person cannot
 continue that conversation. This is the same for each agent, so the supervisor answers for
@@ -592,6 +599,8 @@ READY
   7 data-loader  Add a limit on the rate
 RUNNING
   9 web-api      Move to a new version of Go               00:14:07
+FAILED
+ 10 data-loader  Fix the query that broke the build
 QUEUED
  11 data-loader  Change the tool that measures the coverage
  12 web-api      Roll out the new base image          depends on #9
@@ -620,6 +629,21 @@ because those are the ones that hold the ticket back; a link that is satisfied s
 nothing. The inbox reads the links of every open ticket in one query, so the cost does
 not grow with the length of the queue. A ready ticket carries no such note: READY waits
 for the person and not for the queue.
+
+FAILED sits between RUNNING and QUEUED, so a person who reads the inbox down its order
+sees what is working, what stopped and what waits. It holds each ticket whose run
+stopped without a report, and the sequence is the time of the failure: the ticket that
+failed first is at the top, so the failure that has waited longest is the one the person
+deals with first. The group is always there, as each other group is, and a run that
+failed while the person was away is the one thing the inbox must not hide.
+
+A failed ticket is not in READY. READY is where the person examines work, and each
+ticket of it holds the commit of a finished run. A failed run made no commit, so there
+is nothing to examine, and the action it wants is not a review but a decision about the
+run: `dg restart` or `dg cancel`. The inbox gives no mark, and a failure does not need
+one: a mark would say that a ticket needs no examination, and a failure is not the claim
+of an agent about its work, it is a fact that delegator observed, that the run gave no
+report. A group of its own shows it without a mark.
 
 The first line says whether the queue will start work: `Status: Running`, or
 `Status: Paused` after `dg pause`. It is always there, so a person never has to know what
@@ -657,9 +681,10 @@ $ dg show 4
 The subject of the commit is on the row. `dg open diff 4` gives the change itself.
 
 `dg show` puts the time on the line below the status: HH:MM:SS for a ticket in
-`running`, and the time from the completion for a ticket in `ready`. The time ends where
-the status above it ends, so a long title does not push it off the line. A ticket with no
-time gives no line, and the rule comes below the title.
+`running`, the time from the completion for a ticket in `ready`, and the time of the
+failure for a ticket in `failed`. The time ends where the status above it ends, so a
+long title does not push it off the line. A ticket with no time gives no line, and the
+rule comes below the title.
 
 The row `depends on` names every ticket that this one is linked to, done or not, which is
 where it differs from the row of the inbox. Here the person is reading the one ticket and

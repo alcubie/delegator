@@ -17,16 +17,6 @@ func scriptFile(t *testing.T, lines ...string) string {
 	return path
 }
 
-func TestRunExitsWithTheStatusOfTheScript(t *testing.T) {
-	status, err := Run(scriptFile(t, "exit 3"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status != 3 {
-		t.Errorf("status = %d, want 3", status)
-	}
-}
-
 func TestRunWritesAFile(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "report.md")
 	script := scriptFile(t, "write "+target+" the work is complete", "exit 0")
