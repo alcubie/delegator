@@ -303,6 +303,12 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	}, marker
 }
 
+// waitTimeout is how long a wait gives a launched program to write its marker.
+// The programs are shells that write a file and take milliseconds, so the
+// timeout is the cost of a test that fails and not a time a test that passes
+// ever spends.
+const waitTimeout = 2 * time.Second
+
 // WaitForStarts fails the test unless exactly want supervisors were started
 // and recorded at marker, the file of RecordingLaunch. It waits for that many
 // and then waits again, because the fault it has to catch is one supervisor
@@ -310,7 +316,7 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 // when it arrives.
 func WaitForStarts(t *testing.T, marker string, want int) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for starts(t, marker) < want && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -345,7 +351,7 @@ type failing interface {
 // a short wait. A launched program is not waited on, so the test has to.
 func WaitFor(t failing, path string) string {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(path); err == nil {
 			return strings.TrimSpace(string(data))
