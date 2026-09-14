@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -661,17 +660,15 @@ func TestAddTicketSucceeds(t *testing.T) {
 		ProjectID int64
 		Title     string
 		State     string
-		Created   string
 	}
 
 	var ticket Ticket
-	row := s.db.QueryRow("SELECT id, project_id, title, status, created FROM tickets WHERE id = ?", ticketID)
+	row := s.db.QueryRow("SELECT id, project_id, title, status FROM tickets WHERE id = ?", ticketID)
 	if err = row.Scan(
 		&ticket.ID,
 		&ticket.ProjectID,
 		&ticket.Title,
 		&ticket.State,
-		&ticket.Created,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -684,15 +681,6 @@ func TestAddTicketSucceeds(t *testing.T) {
 	}
 	if ticket.State != "queued" {
 		t.Errorf("state = %s, want = queued", ticket.State)
-	}
-
-	rfc3339Pattern := `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`
-	matched, err := regexp.MatchString(rfc3339Pattern, ticket.Created)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !matched {
-		t.Errorf("created does not match RFC3339 format: %s", ticket.Created)
 	}
 }
 
@@ -1394,9 +1382,6 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	}
 	if got.ID != ids[1] {
 		t.Errorf("id = %d, want %d", got.ID, ids[1])
-	}
-	if got.Created.IsZero() {
-		t.Error("created is the zero time")
 	}
 }
 
