@@ -21,6 +21,25 @@ func TestClaudeLaunchGivesAHeadlessRun(t *testing.T) {
 	}
 }
 
+// A restart continues the conversation of the run that failed, so the
+// headless run carries the session the agent reported before. Everything else
+// is the same: the run is still headless and still answers no question.
+func TestClaudeLaunchContinuesTheSessionOfAnEarlierRun(t *testing.T) {
+	const session = "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"
+
+	cmd := Claude{}.Launch(RunSpec{Worktree: "/w", Prompt: "do the thing", Session: session})
+
+	want := []string{
+		"claude", "-p", "do the thing",
+		"--output-format", "stream-json", "--verbose",
+		"--permission-mode", "bypassPermissions",
+		"--resume", session,
+	}
+	if !slices.Equal(cmd.Args, want) {
+		t.Errorf("argv = %q, want %q", cmd.Args, want)
+	}
+}
+
 var _ Adapter = Claude{}
 
 // A person continues the conversation, so the run is interactive: no -p, and
