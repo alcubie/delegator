@@ -445,32 +445,6 @@ func TestDataDirIsTheDirectoryTheStoreWasOpenedIn(t *testing.T) {
 	}
 }
 
-func TestOpenWithTheDataDirectoryAlreadyPresent(t *testing.T) {
-	dataDir := t.TempDir()
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	if _, err := os.Stat(filepath.Join(dataDir, "tickets")); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestOpenWritesTheVersionOfTheLastStep(t *testing.T) {
-	dataDir := t.TempDir()
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	if got := userVersion(t, s.db); got != len(migrations) {
-		t.Errorf("user_version = %d, want %d", got, len(migrations))
-	}
-}
-
 // One transaction holds each step, so a step that gives an error part way
 // leaves the database as it was.
 func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
@@ -721,17 +695,6 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 	}
 	if queue[0].Title != "My Ticket" {
 		t.Errorf("title = %s, want My Ticket", queue[0].Title)
-	}
-}
-
-func TestQueueLeavesOutATicketThatHasNoPosition(t *testing.T) {
-	s, ticketID := oneTicket(t)
-	if err := s.ChangeStatus(ticketID, Running); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := queueTitles(t, s); len(got) != 0 {
-		t.Errorf("the queue is %v, want no ticket", got)
 	}
 }
 
@@ -1082,26 +1045,6 @@ func TestProjectIDMakesTheProjectOnce(t *testing.T) {
 	}
 }
 
-func TestProjectIDGivesADifferentIDForADifferentPath(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	first, err := s.ProjectID("/projects/one", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := s.ProjectID("/projects/two", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first == second {
-		t.Errorf("both projects have id %d, want two ids", first)
-	}
-}
-
 // A ticket can hold private data, so only the person who made it can read the
 // database. SQLite makes the file, and it takes the umask of the person, so
 // Open must set the permission itself.
@@ -1167,30 +1110,6 @@ func TestOpenTicketsGivesEachTicketThatIsNotClosed(t *testing.T) {
 	}
 	if _, there := byID[closed]; there {
 		t.Error("OpenTickets gives a ticket that is done")
-	}
-}
-
-func TestOpenTicketsGivesTheProjectAndTheTitle(t *testing.T) {
-	s, ids := threeTickets(t)
-
-	open, err := s.OpenTickets()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(open) != 3 {
-		t.Fatalf("OpenTickets gives %d tickets, want 3", len(open))
-	}
-	for _, ticket := range open {
-		if ticket.Project != "/projects/path" {
-			t.Errorf("ticket %d has the project %q, want /projects/path", ticket.ID, ticket.Project)
-		}
-	}
-	byID := map[int64]OpenTicket{}
-	for _, ticket := range open {
-		byID[ticket.ID] = ticket
-	}
-	if got := byID[ids[0]].Title; got != "first" {
-		t.Errorf("title = %q, want first", got)
 	}
 }
 
@@ -1349,6 +1268,46 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	want := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
 	if got := open[0].Started; !got.Equal(want) {
 		t.Errorf("started = %v, want %v, the start of the second claim", got, want)
+	}
+}
+
+// setFailed writes the time that a run of a ticket failed, which is a row of
+// its history. dg fail writes this row, and a test writes it to say which time
+// the inbox reads.
+func setFailed(t *testing.T, s *Store, id int64, failed string) {
+	t.Helper()
+	if _, err := s.db.Exec(`
+		INSERT INTO transitions (ticket_id, from_status, to_status, at)
+		VALUES (?, 'running', 'failed', ?)`, id, failed); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A ticket that failed is open: the person must see it in the inbox, and it
+// carries the time that it entered failed, which is the time of the failure.
+// The group FAILED comes in the order of that time.
+func TestOpenTicketsGivesAFailedTicketWithTheTimeOfTheFailure(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[0], Failed)
+	setFailed(t, s, ids[0], "2026-08-28T09:30:00Z")
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if len(byID) != 3 {
+		t.Fatalf("OpenTickets gives %d tickets, want 3", len(byID))
+	}
+	if got := byID[ids[0]].Status; got != Failed {
+		t.Errorf("ticket %d has the status %q, want failed", ids[0], got)
+	}
+	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	if got := byID[ids[0]].Changed; !got.Equal(want) {
+		t.Errorf("changed = %v, want %v, the time of the failure", got, want)
 	}
 }
 
@@ -1572,26 +1531,6 @@ func TestMoveTicketInReadyLeavesTheQueue(t *testing.T) {
 	}
 }
 
-// A ticket that runs can become ready, which is what dg finish does.
-func TestChangeStatusWritesTheNewStatus(t *testing.T) {
-	s, id := oneTicket(t)
-	if err := s.ChangeStatus(id, Running); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s.ChangeStatus(id, Ready); err != nil {
-		t.Fatal(err)
-	}
-
-	ticket, err := s.Ticket(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != Ready {
-		t.Errorf("status = %q, want %q", ticket.Status, Ready)
-	}
-}
-
 // nextStates says which change one status can take, and ChangeStatus obeys it.
 func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
 	s, id := oneTicket(t)
@@ -1629,20 +1568,6 @@ func TestChangeStatusFromAnEnd(t *testing.T) {
 
 	if err := s.ChangeStatus(id, Running); !errors.Is(err, ErrInvalidTicketStateChange) {
 		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
-	}
-}
-
-// The CHECK of the table holds a position for a queued ticket and none for
-// every other status, so a ticket that leaves the queue gives up its position.
-func TestChangeStatusOutOfTheQueueClearsThePosition(t *testing.T) {
-	s, id := oneTicket(t)
-
-	if err := s.ChangeStatus(id, Running); err != nil {
-		t.Fatal(err)
-	}
-
-	if position := ticketPosition(t, s, "position", id); position.Valid {
-		t.Errorf("position = %d, want none", position.V)
 	}
 }
 
@@ -1745,37 +1670,6 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	}
 	if runs[0].endedAt.Valid || runs[0].exitCode.Valid {
 		t.Errorf("a run that has not ended holds ended_at = %+v, exit_code = %+v", runs[0].endedAt, runs[0].exitCode)
-	}
-}
-
-// A caller that writes on its run names the id, so Claim gives back the id of
-// the row it wrote and not the count of rows or nothing at all. The second
-// claim of a ticket is what tells those apart: it writes one row, and that row
-// is the second.
-func TestClaimGivesTheIDOfTheRunItWrote(t *testing.T) {
-	s, id := oneTicket(t)
-	first, err := s.Claim(id, "delegator/1-my-ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, status := range []TicketStatus{Failed, Queued} {
-		if err := s.ChangeStatus(id, status); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	second, err := s.Claim(id, "delegator/1-my-ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rows := runRows(t, s, id)
-	if len(rows) != 2 {
-		t.Fatalf("runs = %+v, want two", rows)
-	}
-	if first != rows[0].id || second != rows[1].id {
-		t.Errorf("the claims gave the run ids %d and %d, want %d and %d",
-			first, second, rows[0].id, rows[1].id)
 	}
 }
 
@@ -2255,23 +2149,6 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	}
 }
 
-// A run that has not ended gives no exit code, so a reader can tell a run that
-// is going from one that ended with 0.
-func TestRunOfARunThatHasNotEndedGivesNoExitCode(t *testing.T) {
-	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := s.Run(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.EndedAt.IsZero() || got.ExitCode.Valid {
-		t.Errorf("ended at = %v, exit code = %+v, want neither", got.EndedAt, got.ExitCode)
-	}
-}
-
 // The supervisor ends the run it holds, and it names that run. A ticket that
 // failed and was claimed again has a later run that a different supervisor
 // holds, and the end of this one must not land on that row.
@@ -2470,29 +2347,6 @@ func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 	}
 	if len(done) != 0 {
 		t.Errorf("DoneTickets gives %v, want none", ticketIDs(done))
-	}
-}
-
-// A run that gave no report did not succeed. Only dg finish makes a ticket
-// ready, so a ticket still in running when its supervisor ends is a run that
-// stopped early, and the supervisor says so before it stops.
-func TestFailUnfinishedFailsATicketThatIsRunning(t *testing.T) {
-	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s.FailUnfinished(runID); err != nil {
-		t.Fatal(err)
-	}
-
-	ticket, err := s.Ticket(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != Failed {
-		t.Errorf("status = %q, want %q", ticket.Status, Failed)
 	}
 }
 

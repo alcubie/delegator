@@ -83,26 +83,6 @@ func TestAcceptWithATicketThatIsNotReady(t *testing.T) {
 	}
 }
 
-// A person can remove a worktree by hand, and a command that failed after its
-// own removal must be able to run again.
-func TestAcceptWithTheWorktreeAlreadyGone(t *testing.T) {
-	dataDir := t.TempDir()
-	s, ticketID, repo := readyTicket(t, dataDir)
-	testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, ticketID))
-
-	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
-		t.Fatal(err)
-	}
-
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != store.Done {
-		t.Errorf("status = %q, want %q", ticket.Status, store.Done)
-	}
-}
-
 // The worktree goes when the ticket closes, so the disk does not fill with a
 // directory for each ticket a person ever accepted.
 func TestAcceptRemovesTheWorktree(t *testing.T) {

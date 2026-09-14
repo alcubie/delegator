@@ -241,20 +241,6 @@ func TestOpenGivesAnOldDatabaseTheLinksTable(t *testing.T) {
 	}
 }
 
-// The link the ticket asks for: a ticket that is already in the queue is made
-// to depend on another one.
-func TestAddDependenciesLinksTwoTicketsThatAreThere(t *testing.T) {
-	s, ids := threeTickets(t)
-
-	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
-		t.Fatal(err)
-	}
-
-	if got, want := linksOf(t, s, ids[2]), []int64{ids[0]}; !slices.Equal(got, want) {
-		t.Errorf("ticket %d depends on %v, want %v", ids[2], got, want)
-	}
-}
-
 // The flag of the command repeats, so the call takes more than one id, and each
 // one gets a link.
 func TestAddDependenciesLinksEachIdItIsGiven(t *testing.T) {

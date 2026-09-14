@@ -303,6 +303,17 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	}, marker
 }
 
+// waitTimeout is how long a wait gives a launched program to write its marker.
+// The programs are shells that write a file and take milliseconds, so the
+// timeout is the cost of a test that fails and not a time a test that passes
+// ever spends.
+const waitTimeout = 2 * time.Second
+
+// settle is how long a wait for a launch waits after it has what it wants, to
+// catch a launch that should not have happened. A launched program writes its
+// marker in less than this on the computers that run the suite.
+const settle = 50 * time.Millisecond
+
 // WaitForStarts fails the test unless exactly want supervisors were started
 // and recorded at marker, the file of RecordingLaunch. It waits for that many
 // and then waits again, because the fault it has to catch is one supervisor
@@ -310,11 +321,11 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 // when it arrives.
 func WaitForStarts(t *testing.T, marker string, want int) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for starts(t, marker) < want && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(settle)
 	if got := starts(t, marker); got != want {
 		t.Errorf("%d supervisors were started, want %d", got, want)
 	}
@@ -333,11 +344,19 @@ func starts(t *testing.T, marker string) int {
 	return len(strings.Fields(string(data)))
 }
 
+// failing is what a wait needs of the test it fails. The test of a wait that
+// fails passes a stand-in, because a real *testing.T would fail with it and
+// Fatalf on a real one does not return.
+type failing interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
 // WaitFor returns the content of path once it exists, or fails the test after
 // a short wait. A launched program is not waited on, so the test has to.
-func WaitFor(t *testing.T, path string) string {
+func WaitFor(t failing, path string) string {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(path); err == nil {
 			return strings.TrimSpace(string(data))

@@ -75,6 +75,10 @@ const noExitCode = -1
 // A worktree that git will not make ends the run before it starts. The ticket
 // is claimed by then, so this marks it failed and ends the run: a ticket left
 // in running would hold the queue with no supervisor working on it.
+//
+// The session on the ticket goes down to the agent. It is empty for a ticket
+// that has not run, and after a restart it is the session of the run that
+// failed, which the agent continues in the worktree that run left.
 func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.Adapter) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
@@ -93,7 +97,11 @@ func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.
 	}
 	defer log.Close()
 
-	cmd := agent.Launch(adapters.RunSpec{Worktree: worktree, Prompt: prompt(id)})
+	cmd := agent.Launch(adapters.RunSpec{
+		Worktree: worktree,
+		Prompt:   prompt(id),
+		Session:  ticket.Session,
+	})
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -180,7 +188,12 @@ func eachLine(r io.Reader, each func(line []byte)) error {
 // logTime is the layout of a log's name. It is RFC 3339 with the colons
 // replaced, because a colon is not a safe character in a file name on every
 // system, and it still sorts by time.
-const logTime = "2006-01-02T15-04-05"
+//
+// It keeps the milliseconds. A restart can claim a ticket in the same second
+// that its last run ended, and two runs that took the same name would give
+// the second one a file that O_EXCL refuses, which ends the run before the
+// agent starts.
+const logTime = "2006-01-02T15-04-05.000"
 
 // openLog creates the log for one run below runs/<id>. Each run gets its own
 // file, named for when it started, so a restart leaves the earlier log alone.
