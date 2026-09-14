@@ -389,7 +389,6 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 func TestWriteTicketShowsTheTimeOfTheLastChange(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Created: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
 		Changed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	for _, test := range []struct {
@@ -449,8 +448,7 @@ func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
 func TestWriteTicketShowsTheDurationOfTheRun(t *testing.T) {
 	ticket := store.Ticket{
 		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Status:  store.Running,
-		Created: testNow.Add(-3 * 24 * time.Hour),
+		Status: store.Running,
 	}
 
 	lines := showTicketLines(t, ticket, "", testNow.Add(-(14*time.Minute + 7*time.Second)))

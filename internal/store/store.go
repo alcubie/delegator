@@ -334,6 +334,9 @@ func (s *Store) Projects() ([]Project, error) {
 // The ticket, its links and the first row of its history go in under one
 // transaction, so no supervisor can claim the ticket in the moment between the
 // writes and start work that a link says must wait.
+//
+// The arrival of the ticket is that first row of the history, and no column of
+// the ticket holds it as well.
 func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -347,9 +350,9 @@ func (s *Store) AddTicket(projectID int64, title string, dependsOn ...int64) (in
 	// "queued" says.
 	arrived := time.Now()
 	result, err := tx.Exec(`INSERT INTO tickets (
-		project_id, title, status, position, created
-	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets), ?)
-	`, projectID, title, Queued, rfc3339(arrived))
+		project_id, title, status, position
+	) VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tickets))
+	`, projectID, title, Queued)
 	if err != nil {
 		return 0, err
 	}
@@ -696,7 +699,6 @@ type Ticket struct {
 	Branch   string
 	Session  string
 	Commit   string
-	Created  time.Time
 
 	// Changed is the time of the last change of state, which is the time that
 	// the ticket entered the status it has.
@@ -729,13 +731,13 @@ func ticket(q querier, id int64) (Ticket, error) {
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
-		       tickets.created, `+lastChange+`
+		       `+lastChange+`
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
 		&t.Title, &t.Status, &t.Position, &t.Branch,
-		&t.Session, &t.Commit, timeColumn{&t.Created}, timeColumn{&t.Changed})
+		&t.Session, &t.Commit, timeColumn{&t.Changed})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Ticket{}, fmt.Errorf("%w: %d", ErrNoTicket, id)
 	}
