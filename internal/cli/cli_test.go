@@ -74,6 +74,17 @@ func proseOf(t *testing.T, dataDir string) string {
 	return string(data)
 }
 
+// proseOfTicket reads the prose of one ticket, for a test that made more than
+// one and cannot use proseOf.
+func proseOfTicket(t *testing.T, dataDir string, id int64) string {
+	t.Helper()
+	data, err := os.ReadFile(proseFile(dataDir, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 // The duration of a run counts up while the person watches, so each part of it
 // keeps a fixed width and the seconds are there. A run of more than 99 hours
 // takes a wider field of hours rather than wrapping to zero.

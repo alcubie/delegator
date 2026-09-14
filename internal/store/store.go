@@ -568,6 +568,10 @@ type OpenTicket struct {
 	// is no place, and Status says which list the ticket is in.
 	Position int
 
+	// Created is the time that the ticket arrived, which is the first row of
+	// its history. Every ticket has one.
+	Created time.Time
+
 	// Accepted is the time that the person accepted the ticket, which is its
 	// change into done. It orders DONE and sets the window that DONE holds. A
 	// ticket that nobody has accepted holds the zero time, which every ticket of
@@ -651,7 +655,8 @@ func ceilSecond(t time.Time) time.Time {
 // for each of them.
 const inboxTicketQuery = `
 	SELECT tickets.id, projects.path, tickets.title, tickets.status,
-	       COALESCE(tickets.position, tickets.ready_position, 0), ` + acceptedTime + `,
+	       COALESCE(tickets.position, tickets.ready_position, 0),
+	       ` + createdTime + `, ` + acceptedTime + `,
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1),
 	       ` + lastChange + `
@@ -682,7 +687,8 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 		var t OpenTicket
 		if err := rows.Scan(
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
-			timeColumn{&t.Accepted}, timeColumn{&t.Started}, timeColumn{&t.Changed}); err != nil {
+			timeColumn{&t.Created}, timeColumn{&t.Accepted},
+			timeColumn{&t.Started}, timeColumn{&t.Changed}); err != nil {
 			return nil, err
 		}
 		t.DependsOn = unmet[t.ID]
