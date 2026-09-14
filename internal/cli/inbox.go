@@ -79,6 +79,7 @@ func groups(box inbox.Inbox, done time.Duration) []group {
 		{doneHeading(done), box.Done},
 		{"READY", box.Ready},
 		{"RUNNING", box.Running},
+		{"FAILED", box.Failed},
 		{"QUEUED", box.Queued},
 	}
 }

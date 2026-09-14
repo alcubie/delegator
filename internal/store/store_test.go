@@ -1271,6 +1271,46 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	}
 }
 
+// setFailed writes the time that a run of a ticket failed, which is a row of
+// its history. dg fail writes this row, and a test writes it to say which time
+// the inbox reads.
+func setFailed(t *testing.T, s *Store, id int64, failed string) {
+	t.Helper()
+	if _, err := s.db.Exec(`
+		INSERT INTO transitions (ticket_id, from_status, to_status, at)
+		VALUES (?, 'running', 'failed', ?)`, id, failed); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A ticket that failed is open: the person must see it in the inbox, and it
+// carries the time that it entered failed, which is the time of the failure.
+// The group FAILED comes in the order of that time.
+func TestOpenTicketsGivesAFailedTicketWithTheTimeOfTheFailure(t *testing.T) {
+	s, ids := threeTickets(t)
+	setStatus(t, s, ids[0], Failed)
+	setFailed(t, s, ids[0], "2026-08-28T09:30:00Z")
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if len(byID) != 3 {
+		t.Fatalf("OpenTickets gives %d tickets, want 3", len(byID))
+	}
+	if got := byID[ids[0]].Status; got != Failed {
+		t.Errorf("ticket %d has the status %q, want failed", ids[0], got)
+	}
+	want := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
+	if got := byID[ids[0]].Changed; !got.Equal(want) {
+		t.Errorf("changed = %v, want %v, the time of the failure", got, want)
+	}
+}
+
 func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[1], Ready)

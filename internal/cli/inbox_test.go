@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +90,36 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 		"  4 one  the first title",
 		"RUNNING",
 		"  9 one  the second title                                  00:14:07",
+		"FAILED",
+		"  none",
+		"QUEUED",
+		"  none",
+	})
+}
+
+// FAILED holds the ticket whose run stopped without a report, and its row
+// carries no note: the time of the failure is on dg show, and the heading
+// alone is what the inbox must give. The group is always there, as each other
+// group is, so a person never has to know what the absence of a heading means.
+func TestWriteInboxShowsAFailedTicket(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Failed: []store.OpenTicket{{
+			ID: 10, Project: "/projects/data-loader", Title: "Fix the query that broke the build",
+			Status: store.Failed, Changed: testNow.Add(-2 * time.Hour),
+		}},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  none",
+		"FAILED",
+		" 10 data-loader  Fix the query that broke the build",
 		"QUEUED",
 		"  none",
 	})
@@ -118,6 +149,8 @@ func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 		"READY",
 		"  none",
 		"RUNNING",
+		"  none",
+		"FAILED",
 		"  none",
 		"QUEUED",
 		"  9 web-api  Move to a new version of Go           depends on #4 #7",
@@ -149,6 +182,8 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 web-api  Move to a new version of Go                   00:14:07",
+		"FAILED",
+		"  none",
 		"QUEUED",
 		" 14 web-api  Add a limit on the rate                  depends on #9",
 	})
@@ -173,6 +208,8 @@ func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
 		"READY",
 		"  9 web-api  Move to a new version of Go",
 		"RUNNING",
+		"  none",
+		"FAILED",
 		"  none",
 		"QUEUED",
 		"  none",
@@ -200,6 +237,8 @@ func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 web-api  Show the duration of a run on the RUNNING r…  00:14:07",
+		"FAILED",
+		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -274,6 +313,8 @@ func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 		"  none",
 		"RUNNING",
 		"  9 one  the title",
+		"FAILED",
+		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -290,7 +331,7 @@ func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	if !strings.Contains(got[1], "dg ticket") {
 		t.Errorf("the line does not say what makes a ticket: %q", got[1])
 	}
-	for _, heading := range []string{"DONE", "READY", "RUNNING", "QUEUED"} {
+	for _, heading := range []string{"DONE", "READY", "RUNNING", "FAILED", "QUEUED"} {
 		if strings.Contains(got[1], heading) {
 			t.Errorf("the line holds the heading %q: %q", heading, got[1])
 		}
@@ -379,6 +420,8 @@ func TestWriteInboxPutsDoneAtTheTop(t *testing.T) {
 		"  4 one  the ready title",
 		"RUNNING",
 		"  none",
+		"FAILED",
+		"  none",
 		"QUEUED",
 		"  none",
 	})
@@ -422,6 +465,8 @@ func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
 		"READY",
 		"  none",
 		"RUNNING",
+		"  none",
+		"FAILED",
 		"  none",
 		"QUEUED",
 		"   4 one            the queued title",
@@ -495,6 +540,33 @@ func TestRunShowsAnAcceptedTicketInDone(t *testing.T) {
 	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title$`)
 	if len(got) != 1 || !want.MatchString(got[0]) {
 		t.Errorf("DONE holds %v, want the row of ticket %d:\n%s", got, id, out)
+	}
+}
+
+// The whole path: a run that stops without a report puts its ticket in
+// FAILED, and dg shows it there. The store, the inbox and the text of the
+// group each have their own test, and none of them says that the three are
+// connected.
+func TestRunShowsAFailedTicketInFailed(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "ticket title")
+	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(id, store.Failed); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rows(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), "FAILED")
+	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title$`)
+	if len(got) != 1 || !want.MatchString(got[0]) {
+		t.Errorf("FAILED holds %v, want the row of ticket %d:\n%s", got, id, out)
 	}
 }
 

@@ -255,6 +255,34 @@ func TestRunShowGivesTheDurationOfTheRun(t *testing.T) {
 	}
 }
 
+// A ticket whose run stopped without a report says failed, and gives the time
+// of the failure, which is the time that it entered failed. A person who comes
+// back to a failed run sees both at a look.
+func TestRunShowOnAFailedTicketSaysFailedAndGivesTheTime(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "the ticket that failed")
+	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(id, store.Failed); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out, "\n")
+	if !strings.HasSuffix(lines[0], "failed") {
+		t.Errorf("the heading does not end with the status: %q", lines[0])
+	}
+	if !regexp.MustCompile(`^ +(just now|\d+[mhd] ago)$`).MatchString(lines[1]) {
+		t.Errorf("the line below the heading holds no time of the failure: %q", lines[1])
+	}
+}
+
 // dg show reads the fields from the database and the prose from the file.
 func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	dataDir := t.TempDir()

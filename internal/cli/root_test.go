@@ -42,7 +42,7 @@ func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"READY", "RUNNING", "QUEUED", "Remove staging infrastructure"} {
+	for _, want := range []string{"READY", "RUNNING", "FAILED", "QUEUED", "Remove staging infrastructure"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the inbox does not hold %q:\n%s", want, out)
 		}
