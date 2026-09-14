@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"testing"
 	"time"
@@ -84,14 +85,19 @@ func TestAddTicketWritesTheArrivalOfTheTicket(t *testing.T) {
 		t.Errorf("the arrival is at %s, want between %s and now", got[0].At, before)
 	}
 
-	// The row and the column of the ticket are one moment, and the arrival is
-	// that moment in both.
-	ticket, err := s.Ticket(id)
+	// The time goes in as the text of one format, which is the format that a
+	// read parses back.
+	var at string
+	if err := s.db.QueryRow(
+		"SELECT at FROM transitions WHERE ticket_id = ?", id).Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	matched, err := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`, at)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got[0].At.Equal(ticket.Created) {
-		t.Errorf("the arrival is at %s, and the ticket was created at %s", got[0].At, ticket.Created)
+	if !matched {
+		t.Errorf("the arrival is at %q, want the format of RFC 3339", at)
 	}
 }
 
@@ -443,19 +449,22 @@ func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	}
 }
 
-// No column of a ticket holds the time of one change of state. Such a column
-// goes out of date the moment the ticket changes again, and the history holds
-// each change instead.
+// No column of a ticket holds a time that the history holds. The column
+// completed went out of date the moment the ticket changed again, and the
+// column created was the arrival written twice: once there and once in the
+// first row of the history.
 func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 	s, _ := oneTicket(t)
 
-	var count int
-	if err := s.db.QueryRow(
-		"SELECT COUNT(*) FROM pragma_table_info('tickets') WHERE name = 'completed'",
-	).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Error("the table tickets still holds the column completed")
+	for _, column := range []string{"completed", "created"} {
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM pragma_table_info('tickets') WHERE name = ?", column,
+		).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Errorf("the table tickets still holds the column %s", column)
+		}
 	}
 }

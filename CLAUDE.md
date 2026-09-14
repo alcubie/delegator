@@ -87,3 +87,4 @@ the wrong place, that is the signal to correct this.
   go stale.
 - Don't write inline comments unless I ask about code to be explained. Only then add an inline comment.
 - Keep functional comments brief.
+- Never modify functional comments in a commit where the code of the function didn't change.

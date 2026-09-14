@@ -34,6 +34,7 @@ var migrations = []string{
 	addDependenciesTable,
 	addTransitionsTable,
 	dropCompletedColumn,
+	dropCreatedColumn,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -203,6 +204,15 @@ INSERT INTO transitions (ticket_id, from_status, to_status, at)
 // earlier run stopped, and dg show wrote that time below the status queued.
 const dropCompletedColumn = `
 ALTER TABLE tickets DROP COLUMN completed;
+`
+
+// dropCreatedColumn takes away the column that held the arrival of a ticket,
+// which is the first row of its history: the row with no status before it.
+//
+// The step comes after the one that makes transitions, because that one reads
+// created to seed the history of each ticket that the database already holds.
+const dropCreatedColumn = `
+ALTER TABLE tickets DROP COLUMN created;
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

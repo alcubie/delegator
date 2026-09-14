@@ -355,7 +355,6 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 func TestWriteTicketShowsTheTimeOfTheLastChange(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Created: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
 		Changed: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 	for _, test := range []struct {
