@@ -309,6 +309,11 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 // ever spends.
 const waitTimeout = 2 * time.Second
 
+// settle is how long a wait for a launch waits after it has what it wants, to
+// catch a launch that should not have happened. A launched program writes its
+// marker in less than this on the computers that run the suite.
+const settle = 50 * time.Millisecond
+
 // WaitForStarts fails the test unless exactly want supervisors were started
 // and recorded at marker, the file of RecordingLaunch. It waits for that many
 // and then waits again, because the fault it has to catch is one supervisor
@@ -320,7 +325,7 @@ func WaitForStarts(t *testing.T, marker string, want int) {
 	for starts(t, marker) < want && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(settle)
 	if got := starts(t, marker); got != want {
 		t.Errorf("%d supervisors were started, want %d", got, want)
 	}

@@ -29,3 +29,15 @@ func TestWaitForFailsAfterTwoSeconds(t *testing.T) {
 		t.Errorf("WaitFor failed after %v, want a failure after 2s", elapsed)
 	}
 }
+
+func TestWaitForStartsSettlesForFiftyMilliseconds(t *testing.T) {
+	_, marker := RecordingLaunch(t)
+
+	start := time.Now()
+	WaitForStarts(t, marker, 0)
+	elapsed := time.Since(start)
+
+	if elapsed < 50*time.Millisecond || elapsed >= 100*time.Millisecond {
+		t.Errorf("WaitForStarts waited %v for a start that nothing makes, want a wait of 50ms", elapsed)
+	}
+}
