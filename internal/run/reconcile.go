@@ -48,7 +48,8 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, cfg config.Config) error
 //     after a restart of the computer, and the program that asks is itself a
 //     dg, so an id that the system gave again would look like a live
 //     supervisor and hold the ticket in running for ever.
-//   - No program holds its process id. This is signal 0.
+//   - No program holds its process id. This is alive, which is signal 0 on
+//     Unix and the exit code of the process on Windows.
 //   - It is past the timeout. That is the backstop for the one case the two
 //     rules above leave: an id that the system gave again, inside one boot, to
 //     a program that is alive.
