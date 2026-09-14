@@ -86,9 +86,9 @@ func TestGetWithNoTicket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Ready) != 0 || len(got.Running) != 0 || len(got.Queued) != 0 {
-		t.Errorf("the inbox holds %v, %v and %v, want each group empty",
-			ids(got.Ready), ids(got.Running), ids(got.Queued))
+	if len(got.Ready) != 0 || len(got.Running) != 0 || len(got.Failed) != 0 || len(got.Queued) != 0 {
+		t.Errorf("the inbox holds %v, %v, %v and %v, want each group empty",
+			ids(got.Ready), ids(got.Running), ids(got.Failed), ids(got.Queued))
 	}
 }
 
@@ -98,7 +98,6 @@ func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Done},
 		{ID: 2, Status: store.Cancelled},
-		{ID: 3, Status: store.Failed},
 		{ID: 4, Status: store.Queued},
 	}}
 
@@ -109,9 +108,38 @@ func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
 	if want := []int64{4}; !slices.Equal(ids(got.Queued), want) {
 		t.Errorf("QUEUED holds %v, want %v", ids(got.Queued), want)
 	}
-	if len(got.Ready) != 0 || len(got.Running) != 0 {
-		t.Errorf("READY holds %v and RUNNING holds %v, want each empty",
-			ids(got.Ready), ids(got.Running))
+	if len(got.Ready) != 0 || len(got.Running) != 0 || len(got.Failed) != 0 {
+		t.Errorf("READY holds %v, RUNNING holds %v and FAILED holds %v, want each empty",
+			ids(got.Ready), ids(got.Running), ids(got.Failed))
+	}
+}
+
+// FAILED holds the tickets whose run stopped without a report, in the order of
+// the time of the failure, and the ticket that failed first is at the top, as
+// the ticket accepted first is at the top of DONE. The source gives them in
+// another order, so the inbox and not the query does this work.
+func TestGetPutsFailedInTheOrderOfTheTimeOfFailure(t *testing.T) {
+	first := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
+	last := time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)
+	source := &fakeSource{tickets: []store.OpenTicket{
+		{ID: 3, Status: store.Failed, Changed: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
+		{ID: 1, Status: store.Failed, Changed: first},
+		{ID: 2, Status: store.Failed, Changed: last},
+		{ID: 4, Status: store.Queued},
+	}}
+
+	got, err := get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{1, 3, 2}; !slices.Equal(ids(got.Failed), want) {
+		t.Errorf("FAILED holds %v, want %v", ids(got.Failed), want)
+	}
+	if got := got.Failed[0].Changed; !got.Equal(first) {
+		t.Errorf("the first failed ticket holds the time %v, want %v", got, first)
+	}
+	if want := []int64{4}; !slices.Equal(ids(got.Queued), want) {
+		t.Errorf("QUEUED holds %v, want %v", ids(got.Queued), want)
 	}
 }
 

@@ -30,11 +30,13 @@ type Source interface {
 
 // Inbox holds one group for each state that the person acts on. DONE holds the
 // tickets that the person accepted lately, READY waits for the person, RUNNING
-// has the one active run, and QUEUED waits for a run.
+// has the one active run, FAILED holds the runs that stopped without a report,
+// and QUEUED waits for a run.
 type Inbox struct {
 	Done    []store.OpenTicket
 	Ready   []store.OpenTicket
 	Running []store.OpenTicket
+	Failed  []store.OpenTicket
 	Queued  []store.OpenTicket
 
 	// QueueRunning says whether the queue will start work. It is false after
@@ -59,6 +61,8 @@ func Get(source Source, since time.Time) (Inbox, error) {
 			box.Ready = append(box.Ready, ticket)
 		case store.Running:
 			box.Running = append(box.Running, ticket)
+		case store.Failed:
+			box.Failed = append(box.Failed, ticket)
 		case store.Queued:
 			box.Queued = append(box.Queued, ticket)
 		}
@@ -78,6 +82,7 @@ func Get(source Source, since time.Time) (Inbox, error) {
 	slices.SortFunc(box.Done, byAcceptance)
 	slices.SortFunc(box.Ready, byPosition)
 	slices.SortFunc(box.Running, byID)
+	slices.SortFunc(box.Failed, byChange)
 	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
 }
@@ -102,6 +107,19 @@ func byAcceptance(a, b store.OpenTicket) int {
 // database for the tickets of one group.
 func byPosition(a, b store.OpenTicket) int {
 	return cmp.Compare(a.Position, b.Position)
+}
+
+// byChange orders the tickets by the time of their last change of state in
+// ascending order. The ticket that failed first therefore goes at the top of
+// FAILED, and the one that failed last is at the end, so the failure that has
+// waited longest is the one the person sees first.
+// The time holds one second and no part of a second, so two tickets can
+// hold the same one, and the id then keeps the order stable.
+func byChange(a, b store.OpenTicket) int {
+	if by := a.Changed.Compare(b.Changed); by != 0 {
+		return by
+	}
+	return cmp.Compare(a.ID, b.ID)
 }
 
 // byID orders the tickets by id, and the smallest id is first.
