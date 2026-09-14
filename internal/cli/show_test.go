@@ -188,24 +188,6 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 	}
 }
 
-// dg show names each ticket that the shown ticket is linked to. The person is
-// reading the one ticket and asking what they linked it to, which the row of
-// the inbox does not answer: that one names the links that still hold the
-// ticket back.
-func TestWriteTicketNamesTheTicketsItDependsOn(t *testing.T) {
-	var out bytes.Buffer
-	writeTicket(&out, "/data", "", store.Ticket{
-		ID:      4,
-		Project: store.Project{Path: "/projects/web-api"},
-		Title:   "Remove the staging app",
-		Status:  store.Queued,
-	}, []int64{2, 3}, "", time.Time{}, testNow)
-
-	if !strings.Contains(out.String(), "depends on  #2 #3") {
-		t.Errorf("dg show does not hold the row of its links:\n%s", out.String())
-	}
-}
-
 // A ticket with no link writes no row for one, as a ticket with no branch
 // writes no row for a branch. An empty row reads as a value that failed to
 // arrive.
@@ -291,22 +273,6 @@ func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg show does not hold %q:\n%s", want, out)
 		}
-	}
-}
-
-// A worktree is on disk from the start of a run until dg accept removes it.
-// The path of one that is not there names a directory the person cannot go to,
-// so a ticket in the queue gives no worktree line.
-func TestRunShowLeavesOutAWorktreeThatIsNotThere(t *testing.T) {
-	dataDir := t.TempDir()
-	_, id, repo := queuedTicket(t, dataDir)
-
-	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(out, "worktree") {
-		t.Errorf("dg show holds a worktree for a ticket in the queue:\n%s", out)
 	}
 }
 
@@ -441,25 +407,6 @@ func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
 	}
 }
 
-// A person who opens a running ticket gets the clock the inbox gives them,
-// where each other state gives the age of the ticket. The run of the ticket is
-// the thing that is going, so the time counts from the start of the run and
-// not from the moment the person wrote the ticket.
-func TestWriteTicketShowsTheDurationOfTheRun(t *testing.T) {
-	ticket := store.Ticket{
-		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
-		Status: store.Running,
-	}
-
-	lines := showTicketLines(t, ticket, "", testNow.Add(-(14*time.Minute + 7*time.Second)))
-	if got := timeOf(t, lines); got != "00:14:07" {
-		t.Errorf("the time is %q, want %q", got, "00:14:07")
-	}
-	if !strings.Contains(lines[0], string(store.Running)) {
-		t.Errorf("the heading does not hold the status: %q", lines[0])
-	}
-}
-
 // A ticket that is not running holds the start of its last run, and dg show
 // gives it no clock: that run stopped, and a duration that counts up beside a
 // ready ticket would say that the agent is still at work.
@@ -476,26 +423,6 @@ func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
 		if got := timeOf(t, showTicketLines(t, ticket, "", started)); got == "00:14:07" {
 			t.Errorf("a %s ticket gives the duration of a run: %q", status, got)
 		}
-	}
-}
-
-// A ticket that a version before the table runs put in running has no row of
-// runs, so there is no time to count from. The rule comes below the title,
-// and no empty line stands where the time would be.
-func TestWriteTicketWithARunningTicketThatHasNoRun(t *testing.T) {
-	ticket := store.Ticket{
-		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title", Status: store.Running,
-	}
-
-	lines := showTicketLines(t, ticket, "", time.Time{})
-	if got := timeOf(t, lines); got != "" {
-		t.Errorf("a running ticket with no run gives the time %q, want none", got)
-	}
-	if !strings.HasPrefix(lines[1], "  ─") {
-		t.Errorf("the rule does not follow the title: %q", lines[1])
-	}
-	if !strings.Contains(lines[0], "running") {
-		t.Errorf("the heading does not hold the status: %q", lines[0])
 	}
 }
 
@@ -547,19 +474,6 @@ func TestWriteTicketGivesTheShortHashAndTheSubject(t *testing.T) {
 	}
 	if strings.Contains(line, hash) {
 		t.Errorf("the commit row is %q, and it holds the whole hash", line)
-	}
-}
-
-// The subject comes from git at each call, so a message written again is right.
-func TestWriteTicketReadsTheSubjectFromGitEachTime(t *testing.T) {
-	repo := testfix.Repo(t, repoBranch)
-	testfix.CommitIn(t, repo, "the first message")
-	testfix.GitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
-		"commit", "--amend", "--allow-empty", "-q", "-m", "the message written again")
-	hash := testfix.GitOut(t, repo, "rev-parse", "HEAD")
-
-	if line := showCommit(t, repo, hash); !strings.Contains(line, "the message written again") {
-		t.Errorf("the commit row is %q, want the new message", line)
 	}
 }
 

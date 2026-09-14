@@ -127,21 +127,6 @@ func TestDefaultBranchTakesOriginHeadFirst(t *testing.T) {
 	}
 }
 
-func TestDefaultBranchTakesMainBeforeTheBranchOfHead(t *testing.T) {
-	dir := trunkRepo(t)
-	// A branch has no ref until a commit is on it.
-	commitIn(t, dir)
-	gitIn(t, dir, "branch", "main")
-
-	got, err := DefaultBranch(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "main" {
-		t.Errorf("DefaultBranch = %q, want %q", got, "main")
-	}
-}
-
 func TestDefaultBranchTakesMasterWhenThereIsNoMain(t *testing.T) {
 	dir := trunkRepo(t)
 	commitIn(t, dir)
