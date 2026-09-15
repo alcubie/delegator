@@ -29,13 +29,23 @@ var ErrNoTitle = errors.New("the ticket must have a title")
 // source, and dg cannot tell which of the two the person meant.
 var errTwoBodies = errors.New("dg ticket takes the prose from a body or from --body-file, and got both")
 
+// errBodyAndNoBody shows that a ticket was given prose and told that it has
+// none. The two contradict, and the person wrote one of them by mistake.
+var errBodyAndNoBody = errors.New("dg ticket takes a body or --no-body, and got both")
+
+// errNoBody shows that a title arrived on its own and said nothing about the
+// prose. A word that dg reads as a title makes a ticket that nobody meant, so
+// the empty body is a choice the person states.
+var errNoBody = errors.New("the ticket has no body: write one, or pass --no-body for a ticket that has none")
+
 // ticketCommand makes a ticket and shows its id. With no argument it opens the
 // editor of the person, with one it takes the title, and with two it takes the
 // title and the prose. The flag --body-file takes the prose from a file
-// instead.
+// instead, and --no-body says that the ticket has none.
 func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var bodyFile string
+	var noBody bool
 	var after []int64
 	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
@@ -44,6 +54,12 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bodyFile != "" && len(args) > 1 {
 				return errTwoBodies
+			}
+			if noBody && (len(args) > 1 || bodyFile != "") {
+				return errBodyAndNoBody
+			}
+			if len(args) == 1 && bodyFile == "" && !noBody {
+				return errNoBody
 			}
 			// The prose is read before the store is open, so a path that
 			// names nothing costs no ticket.
@@ -89,6 +105,8 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		"the directory of the project.  Defaults to current working directory.")
 	cmd.Flags().StringVar(&bodyFile, "body-file", "",
 		"the file that holds the prose of the ticket.  - is the standard input.")
+	cmd.Flags().BoolVar(&noBody, "no-body", false,
+		"add the ticket with no prose.")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"the ticket ID this ticket depends on.  Can be repeated.")
 	return cmd
