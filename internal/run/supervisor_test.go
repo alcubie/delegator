@@ -150,8 +150,12 @@ func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	fake := fakeAgent(t, "write made-by-the-agent done", "exit 0")
 
-	if err := StartNext(s, config.Config{Runs: 1}, fake); err != nil {
+	claimed, err := StartNext(s, config.Config{Runs: 1}, fake)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !claimed {
+		t.Error("claimed = false, want true from a supervisor that took a ticket")
 	}
 
 	ticket := testfix.ReadTicket(t, dataDir, id)
@@ -174,7 +178,8 @@ func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 
 // A trigger starts a supervisor for each free slot, and a supervisor that
 // finds the queue full or empty by the time it reads it has nothing to do. It
-// stops, and the trigger that started it reports no error.
+// stops, and the trigger that started it reports no error. It says that it
+// claimed nothing, which is what keeps its caller from launching another.
 func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
@@ -182,8 +187,12 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := StartNext(s, config.Config{Runs: 1}, fakeAgent(t, "exit 0")); err != nil {
+	claimed, err := StartNext(s, config.Config{Runs: 1}, fakeAgent(t, "exit 0"))
+	if err != nil {
 		t.Fatalf("err = %v, want nil from a supervisor with nothing to claim", err)
+	}
+	if claimed {
+		t.Error("claimed = true, want false from a supervisor with nothing to claim")
 	}
 
 	if _, err := os.Stat(WorktreePath(dataDir, id)); err == nil {

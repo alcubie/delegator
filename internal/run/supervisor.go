@@ -53,17 +53,22 @@ func Start(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) 
 // was free when the trigger counted it can be taken by the time this one reads
 // the queue, and that is the ordinary end of the second supervisor.
 //
+// The bool it returns says whether it claimed a ticket. A supervisor that
+// claimed nothing is the wrong one to start the next, because nothing has
+// changed in the queue since the trigger that started it counted the slots, so
+// the caller launches no supervisor for a false.
+//
 // cfg is the config of the person, which the claim counts the slots against
 // and which says how the run drives its agent.
-func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) error {
+func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) (bool, error) {
 	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	return supervise(s, cfg, ticket, runID, agent)
+	return true, supervise(s, cfg, ticket, runID, agent)
 }
 
 // noExitCode is the exit code of a run that ended with no process of its own
