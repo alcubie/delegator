@@ -1,3 +1,10 @@
+// The tests of the stop of a run on Unix. The suffix _unix is not a build
+// constraint of the go tool, so the constraint below is the whole of it: these
+// tests are in a build for Linux, for darwin and for the other Unix systems,
+// and in no build for Windows.
+
+//go:build unix
+
 package run
 
 import (
