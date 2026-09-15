@@ -10,15 +10,27 @@ import (
 	"strings"
 )
 
-// The four types an Event can have. A consumer switches on Type and ignores
-// what it does not know, so an agent that grows a new kind of output does not
+// The types an Event can have. A consumer switches on Type and ignores what
+// it does not know, so an agent that grows a new kind of output does not
 // break it. The constants are strings because the wire holds strings, and
 // a reader in another language sees the same words.
 const (
-	TypeText   string = "text"   // what the agent says
-	TypeTool   string = "tool"   // a tool the agent runs
-	TypeResult string = "result" // the run finished
-	TypeError  string = "error"  // the run failed
+	TypeText       string = "text"        // what the agent says
+	TypeThought    string = "thought"     // what the agent thinks on the way
+	TypeTool       string = "tool"        // a tool the agent runs
+	TypeToolUpdate string = "tool_update" // how a tool it started is going
+	TypePermission string = "permission"  // a permission the policy answered
+	TypeReplay     string = "replay"      // a turn of a loaded session, before this one
+	TypeResult     string = "result"      // the run finished
+	TypeError      string = "error"       // the run failed
+)
+
+// The two statuses a permission event has. A tool event carries the agent's
+// own status instead, which is one of pending, in_progress, completed and
+// failed.
+const (
+	StatusAllowed  string = "allowed"
+	StatusRejected string = "rejected"
 )
 
 // An Event is one thing an agent did, in the form every agent is turned into.
@@ -26,13 +38,16 @@ const (
 // and an empty field is left out of the JSON, so a reader in another language
 // sees only what the event carries.
 type Event struct {
-	Type    string `json:"type,omitempty"`    // text, tool, result or error
-	Text    string `json:"text,omitempty"`    // text and result
-	Tool    string `json:"tool,omitempty"`    // tool: the tool's name
-	Summary string `json:"summary,omitempty"` // tool: one line, the file or the command
+	Type    string `json:"type,omitempty"`    // one of the types above
+	Text    string `json:"text,omitempty"`    // text, thought and result
+	Tool    string `json:"tool,omitempty"`    // tool, tool_update and permission: the tool's name
+	Summary string `json:"summary,omitempty"` // tool and tool_update: one line, the file or the command
+	Kind    string `json:"kind,omitempty"`    // tool, tool_update and permission: read, edit, execute and the rest
+	Status  string `json:"status,omitempty"`  // tool and tool_update: how it is going; permission: allowed or rejected
 	Session string `json:"session,omitempty"` // result: the session id for the next call
 	Code    int    `json:"code,omitempty"`    // result and error: the exit code
 	Err     string `json:"err,omitempty"`     // error: what went wrong
+	Replay  bool   `json:"replay,omitempty"`  // the event is of a turn before the one running now
 }
 
 // WriteEvent writes one event as a compact JSON object and a newline. It

@@ -61,7 +61,11 @@ func TestRoundTripOfEveryType(t *testing.T) {
 	t.Parallel()
 	events := []Event{
 		{Type: TypeText, Text: "Looking at the file."},
-		{Type: TypeTool, Tool: "Edit", Summary: "internal/cli/run.go"},
+		{Type: TypeThought, Text: "The test names the field, so the field is wrong."},
+		{Type: TypeTool, Tool: "Edit", Summary: "internal/cli/run.go", Kind: "edit", Status: "pending"},
+		{Type: TypeToolUpdate, Tool: "Edit", Summary: "internal/cli/run.go", Kind: "edit", Status: "completed"},
+		{Type: TypePermission, Tool: "Edit internal/cli/run.go", Kind: "edit", Status: StatusAllowed},
+		{Type: TypeReplay, Text: "what the agent said before the session was loaded", Replay: true},
 		{Type: TypeResult, Text: "REPLY a1b2c3d4: done", Session: "d26a4837", Code: 0},
 		{Type: TypeError, Err: "the agent timed out", Code: 124},
 	}
@@ -81,10 +85,27 @@ func TestRoundTripOfEveryType(t *testing.T) {
 
 func TestGoldenBytes(t *testing.T) {
 	t.Parallel()
-	const want = `{"type":"tool","tool":"Edit","summary":"internal/cli/run.go"}` + "\n"
-	got := write(t, Event{Type: TypeTool, Tool: "Edit", Summary: "internal/cli/run.go"}).String()
-	if got != want {
-		t.Errorf("wrote %q, want %q", got, want)
+	for _, c := range []struct {
+		event Event
+		want  string
+	}{
+		{
+			Event{Type: TypeTool, Tool: "Edit", Summary: "internal/cli/run.go", Kind: "edit", Status: "pending"},
+			`{"type":"tool","tool":"Edit","summary":"internal/cli/run.go","kind":"edit","status":"pending"}`,
+		},
+		{
+			Event{Type: TypePermission, Tool: "Edit internal/cli/run.go", Kind: "edit", Status: StatusRejected},
+			`{"type":"permission","tool":"Edit internal/cli/run.go","kind":"edit","status":"rejected"}`,
+		},
+		{
+			Event{Type: TypeText, Text: "what the agent said before", Replay: true},
+			`{"type":"text","text":"what the agent said before","replay":true}`,
+		},
+	} {
+		got := write(t, c.event).String()
+		if want := c.want + "\n"; got != want {
+			t.Errorf("wrote %q, want %q", got, want)
+		}
 	}
 }
 
