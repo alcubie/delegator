@@ -38,7 +38,7 @@ func restartCommand(dataDir string, cfg *config.Config) *cobra.Command {
 					return fmt.Errorf("%w: the ticket is %s, and only a failed ticket restarts",
 						store.ErrInvalidTicketStateChange, ticket.Status)
 				}
-				return run.Launch(restartLaunch(id))
+				return run.Detach(restartLaunch(id))
 			})
 		},
 	}
