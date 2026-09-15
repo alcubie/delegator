@@ -38,6 +38,12 @@ func useChat(t *testing.T, program string) *started {
 	return &record
 }
 
+// resumeArgv is the command that opens a session of claude in a terminal, the
+// argv dg chat builds from the table of agents.
+func resumeArgv(session string) []string {
+	return []string{"claude", "--resume", session}
+}
+
 // chattableTicket makes a ticket that dg chat can continue: it has a session,
 // it is not running, and its worktree is on disk. It returns the id of the
 // ticket, the repository and the session.
@@ -88,22 +94,61 @@ func twoChattableProjects(t *testing.T) (dataDir, mine, other, mineSession, othe
 	return dataDir, mine, other, mineSession, otherSession
 }
 
-// The argv is the adapter's, because the adapter knows which program continues
-// a session and with which arguments, and the person types no line of config.
-func TestChatStartsTheResumeOfTheAdapter(t *testing.T) {
+// The argv is the table's, because delegator knows which program continues a
+// session of an agent and with which arguments, and the person types no line
+// of config.
+func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
-	fake := fakeAgent(t)
-	useAgent(t, fake)
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
 	}
 
-	want := fake.Resume(session)
+	want := resumeArgv(session)
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
+// A person whose agent is not on the path under the name delegator expects
+// says so once in the config file, and the command that opens a session is
+// theirs from then on. {session} is where the id of the session goes.
+func TestChatTakesTheResumeOfTheConfig(t *testing.T) {
+	writeConfig(t, "[agents.claude]\nresume = [\"my-claude\", \"--continue\", \"{session}\"]\n")
+	dataDir := t.TempDir()
+	ticketID, repo, session := chattableTicket(t, dataDir)
+	record := useChat(t, "true")
+
+	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"my-claude", "--continue", session}
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
+// An agent with no command that opens a session has nothing dg chat can start,
+// and an argv without the id of the session would open a conversation other
+// than the one the person asked for. The error names the agent.
+func TestChatRefusesAnAgentWithNoResume(t *testing.T) {
+	writeConfig(t, "[agents.claude]\nresume = []\n")
+	dataDir := t.TempDir()
+	ticketID, repo, _ := chattableTicket(t, dataDir)
+	record := useChat(t, "true")
+
+	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
+	if err == nil {
+		t.Fatal("dg chat started an agent that has no command that opens a session")
+	}
+	if !strings.Contains(err.Error(), chatKind) {
+		t.Errorf("error = %q, want the agent %s in it", err, chatKind)
+	}
+	if record.argv != nil {
+		t.Errorf("dg chat started %v, want nothing", record.argv)
 	}
 }
 
@@ -113,7 +158,6 @@ func TestChatStartsTheResumeOfTheAdapter(t *testing.T) {
 func TestChatStartsInTheWorktreeOfTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
@@ -135,7 +179,6 @@ func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	if err := s.SetSession(ticketID, "session-of-the-run"); err != nil {
 		t.Fatal(err)
 	}
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
@@ -158,7 +201,6 @@ func TestChatRefusesATicketWithNoSession(t *testing.T) {
 	if err := os.MkdirAll(run.WorktreePath(dataDir, ticketID), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
@@ -179,7 +221,6 @@ func TestChatRefusesATicketWithNoWorktree(t *testing.T) {
 	if err := os.RemoveAll(run.WorktreePath(dataDir, ticketID)); err != nil {
 		t.Fatal(err)
 	}
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
@@ -197,7 +238,6 @@ func TestChatRefusesATicketWithNoWorktree(t *testing.T) {
 func TestChatGivesTheStatusOfTheProgramItStarted(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
-	useAgent(t, fakeAgent(t))
 	useChat(t, "false")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
@@ -238,8 +278,6 @@ func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
-	fake := fakeAgent(t)
-	useAgent(t, fake)
 	record := useChat(t, "true")
 
 	later := queuedIn(t, s, repo, "the ticket that finished last")
@@ -251,7 +289,7 @@ func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := fake.Resume("session-of-the-head")
+	want := resumeArgv("session-of-the-head")
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want the head %d resumed with %v", record.argv, head, want)
 	}
@@ -262,15 +300,13 @@ func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 // one, whatever the order of the inbox as a whole.
 func TestChatWithNoIDSkipsAnotherProject(t *testing.T) {
 	dataDir, mine, _, mineSession, _ := twoChattableProjects(t)
-	fake := fakeAgent(t)
-	useAgent(t, fake)
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, mine, "chat"); err != nil {
 		t.Fatal(err)
 	}
 
-	want := fake.Resume(mineSession)
+	want := resumeArgv(mineSession)
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
 	}
@@ -281,8 +317,6 @@ func TestChatWithNoIDSkipsAnotherProject(t *testing.T) {
 // is relative, which is the form that has a directory to be joined to.
 func TestChatWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	dataDir, mine, other, _, otherSession := twoChattableProjects(t)
-	fake := fakeAgent(t)
-	useAgent(t, fake)
 	record := useChat(t, "true")
 
 	relative, err := filepath.Rel(mine, other)
@@ -293,7 +327,7 @@ func TestChatWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := fake.Resume(otherSession)
+	want := resumeArgv(otherSession)
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
 	}
@@ -308,7 +342,6 @@ func TestChatWithNoIDAndNoReadyTicket(t *testing.T) {
 	mine := testfix.Repo(t, repoBranch)
 	other := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	chattableIn(t, s, dataDir, other, "the ticket of the other project", "session-of-the-other-project")
@@ -329,7 +362,6 @@ func TestChatWithNoIDAndNoReadyTicket(t *testing.T) {
 // A directory outside any repository names no project, so there is no head of
 // READY whose session to continue.
 func TestChatWithNoIDOutsideAProject(t *testing.T) {
-	useAgent(t, fakeAgent(t))
 	record := useChat(t, "true")
 
 	_, err := runIn(t, t.TempDir(), t.TempDir(), "chat")

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,6 +33,26 @@ const (
 	stubAlwaysOptions = "always"
 )
 
+// What the stub agent's prompt does, named by an argument of the stub so
+// that a test says which turn it wants.
+const (
+	stubTurnPermissions = "permissions" // ask for two permissions and end the turn
+	stubTurnUpdates     = "updates"     // send one update of every kind and end the turn
+	stubTurnHang        = "hang"        // send one chunk and wait to be cancelled
+	stubTurnError       = "error"       // fail the turn
+)
+
+// What the updates turn sends. The command has a second line, so a test sees
+// that a summary is one line of the command and not all of it.
+const (
+	stubThought     = "the tests come first"
+	stubReadTitle   = "Read internal/cli/run.go"
+	stubReadPath    = "/repo/internal/cli/run.go"
+	stubCommand     = "go test ./internal/handler\nmake check"
+	stubCommandLine = "go test ./internal/handler…"
+	stubFailure     = "the stub agent has no model"
+)
+
 // The ids of the options the stub agent offers. A decision it records is the
 // id the client selected, or stubCancelled when the client took no option.
 const (
@@ -56,15 +77,16 @@ type stubRecord struct {
 }
 
 // stubKind gives the Kind that starts the stub agent offering one of the sets
-// of permission options, and the path of the file it records into.
-func stubKind(t *testing.T, options string) (Kind, string) {
+// of permission options and taking one of the turns, and the path of the file
+// it records into.
+func stubKind(t *testing.T, options, turn string) (Kind, string) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
 	record := filepath.Join(t.TempDir(), "record.json")
-	return Kind{Name: "stub", Argv: []string{self, "-test.run=TestStubAgent", "stub", record, options}}, record
+	return Kind{Name: "stub", Argv: []string{self, "-test.run=TestStubAgent", "stub", record, options, turn}}, record
 }
 
 // readRecord reads what the stub agent wrote.
@@ -86,11 +108,11 @@ func readRecord(t *testing.T, path string) stubRecord {
 // after the flags; every other run skips it.
 func TestStubAgent(t *testing.T) {
 	args := flag.Args()
-	if len(args) != 3 || args[0] != "stub" {
+	if len(args) != 4 || args[0] != "stub" {
 		t.Skip("this run is not the stub agent")
 	}
 	fmt.Fprintln(os.Stderr, stubHello)
-	agent := &stubAgent{record: args[1], options: args[2]}
+	agent := &stubAgent{record: args[1], options: args[2], turn: args[3]}
 	conn := acp.NewAgentSideConnection(agent, os.Stdout, os.Stdin)
 	agent.conn = conn
 	<-conn.Done()
@@ -100,6 +122,7 @@ func TestStubAgent(t *testing.T) {
 type stubAgent struct {
 	record    string
 	options   string
+	turn      string
 	conn      *acp.AgentSideConnection
 	fs        acp.FileSystemCapabilities
 	term      bool
@@ -122,10 +145,25 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID)}, nil
 }
 
-// Prompt asks permission for a tool of kind edit and then for one of kind
+// Prompt takes the turn the stub agent was started with.
+func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	switch a.turn {
+	case stubTurnPermissions:
+		return a.permissions(ctx, p)
+	case stubTurnUpdates:
+		return a.updates(ctx, p)
+	case stubTurnHang:
+		return a.hang(ctx, p)
+	case stubTurnError:
+		return acp.PromptResponse{}, errors.New(stubFailure)
+	}
+	return acp.PromptResponse{}, fmt.Errorf("the stub agent has no turn %q", a.turn)
+}
+
+// permissions asks permission for a tool of kind edit and then for one of kind
 // execute, and records what it was answered. It writes the record before it
 // replies, so the test reads the decisions as soon as the prompt is over.
-func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+func (a *stubAgent) permissions(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	for _, ask := range []struct {
 		id    string
 		kind  acp.ToolKind
@@ -156,6 +194,55 @@ func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.Prompt
 		return acp.PromptResponse{}, err
 	}
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+}
+
+// updates sends one update of each kind the handler maps and one plan, which
+// it does not. The first chunk is the text of the prompt, so a test that runs
+// two prompts at once tells the events of one turn from the other's.
+func (a *stubAgent) updates(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	for _, u := range []acp.SessionUpdate{
+		acp.UpdateAgentMessageText(promptText(p)),
+		acp.UpdateAgentThoughtText(stubThought),
+		acp.StartToolCall("call-1", stubReadTitle,
+			acp.WithStartKind(acp.ToolKindRead),
+			acp.WithStartStatus(acp.ToolCallStatusPending),
+			acp.WithStartLocations([]acp.ToolCallLocation{{Path: stubReadPath}})),
+		acp.UpdateToolCall("call-1", acp.WithUpdateStatus(acp.ToolCallStatusInProgress)),
+		acp.UpdatePlan(acp.PlanEntry{
+			Content:  "run the tests",
+			Priority: acp.PlanEntryPriorityMedium,
+			Status:   acp.PlanEntryStatusInProgress,
+		}),
+		acp.StartToolCall("call-2", stubExecuteTitle,
+			acp.WithStartKind(acp.ToolKindExecute),
+			acp.WithStartStatus(acp.ToolCallStatusPending),
+			acp.WithStartRawInput(map[string]any{"command": stubCommand})),
+	} {
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+			return acp.PromptResponse{}, err
+		}
+	}
+	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+}
+
+// hang sends one chunk and then waits, so that a test cancels a turn that has
+// started. The turn ends when the client cancels the request.
+func (a *stubAgent) hang(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	u := acp.UpdateAgentMessageText(promptText(p))
+	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+		return acp.PromptResponse{}, err
+	}
+	<-ctx.Done()
+	return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+}
+
+// promptText is the text of the first block of a prompt, which is all that
+// the handler sends.
+func promptText(p acp.PromptRequest) string {
+	if len(p.Prompt) == 0 || p.Prompt[0].Text == nil {
+		return ""
+	}
+	return p.Prompt[0].Text.Text
 }
 
 // permissionOptions gives the set of options the stub was started with.
