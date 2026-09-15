@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -79,12 +80,27 @@ func (c Config) Timeout() time.Duration {
 	return time.Duration(c.TimeoutMinutes) * time.Minute
 }
 
-// Dir returns the directory that holds config.toml. XDG_CONFIG_HOME names
-// it, and a person who has not set that variable gets the directory that the
-// XDG specification asks for.
+// Dir returns the directory that holds config.toml, for the system the build
+// is for.
 func Dir() (string, error) {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "delegator"), nil
+	return dir(runtime.GOOS)
+}
+
+// dir is Dir with the system as a parameter, so that the tests can ask for a
+// system that the build is not for. XDG_CONFIG_HOME names the directory on
+// every system. A person who has not set that variable gets what their system
+// asks for: APPDATA on Windows, which has no XDG rule, and the directory of
+// the XDG specification elsewhere.
+func dir(goos string) (string, error) {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "delegator"), nil
+	}
+	if goos == "windows" {
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			return "", errors.New("%APPDATA% is not set")
+		}
+		return filepath.Join(appData, "delegator"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
