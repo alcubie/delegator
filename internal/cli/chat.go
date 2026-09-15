@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/handler"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -42,8 +43,8 @@ func chatCmd(argv []string, dir string) *exec.Cmd {
 }
 
 // chatCommand returns the command dg chat. The line that continues a session
-// is the adapter's and not the person's: the adapter knows which program to
-// start and with which arguments, and delegator knows the worktree the
+// is delegator's and not the person's: the table of agents knows which program
+// to start and with which arguments, and delegator knows the worktree the
 // conversation ran in and whether a run is on it now. A line typed by hand
 // from the wrong directory starts a new conversation under the id of the old
 // one, and the person cannot see that it did.
@@ -82,6 +83,9 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	return cmd
 }
 
+// chatKind is the agent whose sessions dg chat opens.
+const chatKind = "claude"
+
 // resumeOf returns the argv that continues the session of one ticket and the
 // directory to start it in, and refuses each ticket that has no conversation
 // to continue.
@@ -114,7 +118,11 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error
 		return nil, "", fmt.Errorf(
 			"the worktree of ticket %d is gone: %s", id, worktree)
 	}
-	return agent.Resume(ticket.Session), worktree, nil
+	argv, err := handler.ResumeArgv(chatKind, ticket.Session)
+	if err != nil {
+		return nil, "", err
+	}
+	return argv, worktree, nil
 }
 
 // waitForChat waits for the conversation to end and gives its status to the
