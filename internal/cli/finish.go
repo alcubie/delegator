@@ -10,7 +10,7 @@ import (
 func finishCommand(dataDir string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "finish <id> <commit>",
-		Short: "Finish a Running ticket and mark as Ready.",
+		Short: "Record the commit of a ticket and mark it Ready.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
