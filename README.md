@@ -55,6 +55,17 @@ work touches, when you already know. And prefer a ticket that names one change
 over a ticket that asks the agent to go and find out what needs changing,
 because the second pays the cost of the search inside the run.
 
+## How a run drives its agent
+
+A run speaks the Agent Client Protocol to its agent. That is `runner = "acp"`
+in `config.toml`, and it is what a person who writes nothing gets. The key
+`agent` says which agent it starts, and the section `[agents.<name>]` gives the
+command for an agent that is not on the path under the name delegator expects.
+
+The other runner is `runner = "cli"`, which starts the agent's own command line
+and reads its output. It is still there for a person whose agent has no ACP
+server yet, and it will go.
+
 ## The agents an integration test drives
 
 `make check` needs nothing but Go and the tools in the Makefile. The tests
@@ -78,7 +89,7 @@ npm install -g @agentclientprotocol/codex-acp          # codex-acp
 | --- | --- |
 | `internal/handler` claude | `claude-agent-acp` and `claude` |
 | `internal/handler` codex | `codex-acp` and `codex` |
-| `internal/cli` | `claude`, which the run under test starts |
+| `internal/cli` | `claude-agent-acp`, which the run under test starts |
 
 Run them with `make integration`, or `make release` for those and everything
 `make check` does.

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/adapters"
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
@@ -47,12 +48,31 @@ func fakeAgent(t *testing.T, lines ...string) adapters.Fake {
 	return adapters.Fake{Binary: testfix.FakeAgentPath, Script: testfix.Script(t, lines...)}
 }
 
-// useAgent puts a in place of the agent dg run starts, for one test.
+// useAgent puts a in place of the agent dg run starts, for one test, and asks
+// for the command line runner, which is the one that starts an Adapter. The
+// default runner is ACP, and it would start the agent of the person instead.
 func useAgent(t *testing.T, a adapters.Adapter) {
 	t.Helper()
+	useCLIRunner(t)
 	saved := agent
 	agent = a
 	t.Cleanup(func() { agent = saved })
+}
+
+// useCLIRunner gives one test a config directory of its own, holding a file
+// that selects the command line runner. The tests of this package share one
+// config directory, so a test that wrote the runner in that one would select
+// it for the rest as well.
+func useCLIRunner(t *testing.T) {
+	t.Helper()
+	dir := testfix.XDGConfigDir(t)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	text := fmt.Sprintf("runner = %q\n", config.RunnerCLI)
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The file the script writes has a relative path, so it lands in the worktree
