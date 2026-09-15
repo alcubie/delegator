@@ -103,10 +103,11 @@ func said(events []Event) string {
 }
 
 // writeAndCommit opens a session of the agent in repo and has it write the
-// file and commit it. It checks that the policy allowed a permission, that
-// the file is on disk and that the commit landed, and gives back the id of
-// the session, which the caller loads once the process is gone.
-func writeAndCommit(t *testing.T, kind Kind, repo string) string {
+// file and commit it. It checks that the file is on disk and that the commit
+// landed, and gives back the id of the session, which the caller loads once
+// the process is gone, and the events of the turn, which hold whatever the
+// agent asked delegator to answer on the way.
+func writeAndCommit(t *testing.T, kind Kind, repo string) (string, []Event) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
@@ -122,16 +123,13 @@ func writeAndCommit(t *testing.T, kind Kind, repo string) string {
 	if err != nil {
 		t.Fatalf("the turn failed: %v", err)
 	}
-	if !allowed(events) {
-		t.Errorf("the turn allowed no permission, and the policy allows every tool: %v", permissions(events))
-	}
 	if _, err := os.Stat(filepath.Join(repo, integrationFile)); err != nil {
 		t.Fatalf("the agent wrote no %s: %v", integrationFile, err)
 	}
 	if got := testfix.GitOut(t, repo, "show", "HEAD:"+integrationFile); !strings.Contains(got, integrationWord) {
 		t.Errorf("the commit holds %q, and the file was to hold %q", got, integrationWord)
 	}
-	return s.ID()
+	return s.ID(), events
 }
 
 // loadAndAsk loads the session the id names and asks it one question. It
@@ -159,18 +157,20 @@ func loadAndAsk(t *testing.T, kind Kind, repo, id, question string) string {
 
 // driveASession is what both agents are asked for: a session that writes a
 // file and commits it, and that same session loaded by its id and asked about
-// the file. It gives back the repository and the id of the session.
-func driveASession(t *testing.T, name string) (string, string) {
+// the file. It gives back the repository, the id of the session and the
+// events of the turn that did the work, which the two agents answer for
+// differently.
+func driveASession(t *testing.T, name string) (string, string, []Event) {
 	t.Helper()
 	kind := agentOnThePath(t, name)
 	repo := integrationRepo(t)
-	id := writeAndCommit(t, kind, repo)
+	id, events := writeAndCommit(t, kind, repo)
 	t.Logf("%s opened session %s in %s", name, id, repo)
 	answer := loadAndAsk(t, kind, repo, id, integrationAsk)
 	if !strings.Contains(strings.ToLower(answer), integrationWord) {
 		t.Errorf("the loaded session answered %q, and %s holds %q", answer, integrationFile, integrationWord)
 	}
-	return repo, id
+	return repo, id, events
 }
 
 // TestClaudeTakesASessionFromStartToTheTerminal drives the real claude
@@ -183,7 +183,10 @@ func driveASession(t *testing.T, name string) (string, string) {
 // so the answer cannot come from reading the repository. -p makes the command
 // answer once and exit, where a person would get a terminal.
 func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
-	repo, id := driveASession(t, "claude")
+	repo, id, events := driveASession(t, "claude")
+	if !allowed(events) {
+		t.Errorf("the turn allowed no permission, and the policy allows every tool: %v", permissions(events))
+	}
 
 	argv, err := ResumeArgv("claude", id)
 	if err != nil {
@@ -207,8 +210,15 @@ func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 // TestCodexTakesASessionFromStartToLoad asks codex for the same session that
 // claude takes, up to the terminal: codex resumes into a terminal of its own
 // and has no batch form here, so the last step of claude's test is claude's
-// alone. It skips when codex-acp is not installed, which is the state of the
-// machine the agent table was written on.
+// alone. It skips when codex-acp is not installed.
+//
+// It does not ask that the policy answered a permission. codex-acp 1.11.0
+// opens a session in the mode it calls "Approve for me", which reviews its
+// own approvals, and on 2026-09-15 it wrote the file and made the commit
+// without asking delegator for anything. What it did ask for goes to the log,
+// so a run says what the policy was given to answer.
 func TestCodexTakesASessionFromStartToLoad(t *testing.T) {
-	driveASession(t, "codex")
+	_, _, events := driveASession(t, "codex")
+	asked := permissions(events)
+	t.Logf("codex asked delegator to answer %d permissions: %v", len(asked), asked)
 }
