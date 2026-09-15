@@ -150,6 +150,13 @@ func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
 	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "fake-1" {
 		t.Errorf("session = %q, want %q", got, "fake-1")
 	}
+	run, err := testfix.OpenStore(t, dataDir).Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Agent != "mine" {
+		t.Errorf("agent = %q, want %q", run.Agent, "mine")
+	}
 }
 
 // An agent that the config names and delegator does not know stops the run at

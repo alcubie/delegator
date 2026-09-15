@@ -35,6 +35,7 @@ var migrations = []string{
 	addTransitionsTable,
 	dropCompletedColumn,
 	dropCreatedColumn,
+	addAgentsTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -213,6 +214,17 @@ ALTER TABLE tickets DROP COLUMN completed;
 // created to seed the history of each ticket that the database already holds.
 const dropCreatedColumn = `
 ALTER TABLE tickets DROP COLUMN created;
+`
+
+const addAgentsTable = `
+CREATE TABLE agents (
+  id   INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+INSERT INTO agents (name) VALUES ('claude'), ('codex'), ('gemini');
+
+ALTER TABLE runs ADD COLUMN agent_id INTEGER REFERENCES agents(id);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

@@ -157,6 +157,7 @@ type shown struct {
 	Worktree  string
 	DependsOn []int64
 	Started   time.Time
+	Agent     string
 }
 
 // writeHeading writes the title and the status, the time below the status, and
@@ -207,6 +208,9 @@ func writeFields(out io.Writer, s shown) {
 	}
 	if s.Session != "" {
 		writeField(out, "session", s.Session)
+	}
+	if s.Agent != "" {
+		writeField(out, "agent", s.Agent)
 	}
 
 	// Each link, and not only the ones that still hold the ticket back. The
@@ -361,6 +365,7 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		return ticketJSON{}, err
 	}
 	t.Started = lastRun.StartedAt
+	t.Agent = lastRun.Agent
 
 	t.Worktree = run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(t.Worktree); err != nil {

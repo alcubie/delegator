@@ -1080,6 +1080,35 @@ func startRun(tx *sql.Tx, ticketID int64, started time.Time) (int64, error) {
 	return result.LastInsertId()
 }
 
+// AgentID returns the id of the named agent, adding a configured agent that
+// the built-in registry did not seed.
+func (s *Store) AgentID(name string) (int64, error) {
+	if _, err := s.db.Exec("INSERT INTO agents (name) VALUES (?) ON CONFLICT(name) DO NOTHING", name); err != nil {
+		return 0, err
+	}
+	var id int64
+	if err := s.db.QueryRow("SELECT id FROM agents WHERE name = ?", name).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// SetRunAgent records the agent one run started.
+func (s *Store) SetRunAgent(runID, agentID int64) error {
+	result, err := s.db.Exec("UPDATE runs SET agent_id = ? WHERE id = ?", agentID, runID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: run %d", ErrNoRun, runID)
+	}
+	return nil
+}
+
 // ErrNoRun shows that a ticket has no run: no supervisor has claimed it, or no
 // ticket holds the id.
 var ErrNoRun = errors.New("the ticket has no run")
@@ -1092,6 +1121,8 @@ var ErrNoRun = errors.New("the ticket has no run")
 type Run struct {
 	ID        int64
 	TicketID  int64
+	AgentID   int64
+	Agent     string
 	PID       int
 	StartedAt time.Time
 	EndedAt   time.Time
@@ -1105,12 +1136,14 @@ type Run struct {
 func (s *Store) Run(ticketID int64) (Run, error) {
 	var r Run
 	err := s.db.QueryRow(`
-		SELECT id, ticket_id, COALESCE(pid, 0), started_at, ended_at, exit_code
-		FROM runs
-		WHERE ticket_id = ?
-		ORDER BY id DESC
+		SELECT runs.id, runs.ticket_id, COALESCE(runs.agent_id, 0), COALESCE(agents.name, ''),
+		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code
+		FROM runs LEFT JOIN agents ON agents.id = runs.agent_id
+		WHERE runs.ticket_id = ?
+		ORDER BY runs.id DESC
 		LIMIT 1`, ticketID).Scan(
-		&r.ID, &r.TicketID, &r.PID, timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode)
+		&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
+		timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
 	}
@@ -1186,9 +1219,11 @@ func (s *Store) Reconcile(running func(Run) bool) (int, error) {
 // wait for the rows to close.
 func runningRuns(tx *sql.Tx) ([]Run, error) {
 	rows, err := tx.Query(`
-		SELECT r.id, r.ticket_id, COALESCE(r.pid, 0), r.started_at, r.ended_at, r.exit_code
+		SELECT r.id, r.ticket_id, COALESCE(r.agent_id, 0), COALESCE(a.name, ''),
+		       COALESCE(r.pid, 0), r.started_at, r.ended_at, r.exit_code
 		FROM runs r
 		JOIN tickets t ON t.id = r.ticket_id
+		LEFT JOIN agents a ON a.id = r.agent_id
 		WHERE t.status = ?
 		AND r.id = (SELECT MAX(id) FROM runs WHERE ticket_id = t.id)
 		ORDER BY r.ticket_id`, Running)
@@ -1200,7 +1235,7 @@ func runningRuns(tx *sql.Tx) ([]Run, error) {
 	var runs []Run
 	for rows.Next() {
 		var r Run
-		if err := rows.Scan(&r.ID, &r.TicketID, &r.PID,
+		if err := rows.Scan(&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
 			timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode); err != nil {
 			return nil, err
 		}
