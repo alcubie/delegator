@@ -55,6 +55,34 @@ work touches, when you already know. And prefer a ticket that names one change
 over a ticket that asks the agent to go and find out what needs changing,
 because the second pays the cost of the search inside the run.
 
+## The agents an integration test drives
+
+`make check` needs nothing but Go and the tools in the Makefile. The tests
+behind the `integration` build tag drive a real agent, so they need that agent
+installed and signed in, and they spend its tokens. The tests of
+`internal/handler` skip and say which command they wanted when it is not on the
+PATH; the test of `internal/cli` starts a run that has nowhere else to go, and
+fails.
+
+An agent is two commands. The ACP server is what delegator talks to, and it is
+a separate npm package from the CLI of the same name; installing claude or
+codex does not install it. The CLI is what a person resumes a session in, and
+`codex-acp` also starts `codex` itself.
+
+```
+npm install -g @agentclientprotocol/claude-agent-acp   # claude-agent-acp
+npm install -g @agentclientprotocol/codex-acp          # codex-acp
+```
+
+| Test | Needs |
+| --- | --- |
+| `internal/handler` claude | `claude-agent-acp` and `claude` |
+| `internal/handler` codex | `codex-acp` and `codex` |
+| `internal/cli` | `claude`, which the run under test starts |
+
+Run them with `make integration`, or `make release` for those and everything
+`make check` does.
+
 ## Documents
 
 - [Technical document](docs/TECHNICAL_DESIGN.md)
