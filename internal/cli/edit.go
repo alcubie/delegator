@@ -28,16 +28,16 @@ func editCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				return err
 			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
-				return editTicket(s, id)
+				return editFromEditor(s, id)
 			})
 		},
 	}
 }
 
-// editTicket opens the editor of the person on the title and the prose of a
+// editFromEditor opens the editor of the person on the title and the prose of a
 // ticket, and writes back what the editor gave: the first line to the column
 // title, and each line below it to the file of prose.
-func editTicket(s *store.Store, id int64) error {
+func editFromEditor(s *store.Store, id int64) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
