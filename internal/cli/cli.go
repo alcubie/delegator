@@ -26,6 +26,13 @@ import (
 // one output path themselves, so a caller that needs the value has one form to
 // read from every command that offers JSON.
 func writeValue(out io.Writer, value any, asJSON bool, writeText func(io.Writer)) error {
+	// rpc runs the same cobra tree as the terminal does.  Its writer takes the
+	// value here, before either renderer turns it into bytes, so the protocol
+	// never has to recover a value from the text form of a command.
+	if rpc, ok := out.(*rpcValueWriter); ok {
+		rpc.value = value
+		return nil
+	}
 	if !asJSON {
 		writeText(out)
 		return nil
