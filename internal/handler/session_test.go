@@ -17,14 +17,14 @@ import (
 // and gives back the record of what the agent saw and the agent's stderr.
 func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
 	t.Helper()
-	return startPolicy(t, cwd, Policy{}, stubFullOptions)
+	return startPolicy(t, cwd, Policy{}, stubFullOptions, stubTurnPermissions)
 }
 
-// startPolicy opens a session on the stub agent that answers by the policy
-// and offers one of the sets of permission options.
-func startPolicy(t *testing.T, cwd string, policy Policy, options string) (*Session, string, *bytes.Buffer) {
+// startPolicy opens a session on the stub agent that answers by the policy,
+// offers one of the sets of permission options and takes one of the turns.
+func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *bytes.Buffer) {
 	t.Helper()
-	kind, record := stubKind(t, options)
+	kind, record := stubKind(t, options, turn)
 	var stderr bytes.Buffer
 	s, err := Start(t.Context(), kind, policy, cwd, &stderr)
 	if err != nil {
@@ -39,7 +39,7 @@ func startPolicy(t *testing.T, cwd string, policy Policy, options string) (*Sess
 // the events the session kept.
 func prompt(t *testing.T, policy Policy, options string) ([]string, []Event) {
 	t.Helper()
-	s, record, _ := startPolicy(t, t.TempDir(), policy, options)
+	s, record, _ := startPolicy(t, t.TempDir(), policy, options, stubTurnPermissions)
 	if _, err := s.conn.Prompt(t.Context(), acp.PromptRequest{
 		SessionId: s.id,
 		Prompt:    []acp.ContentBlock{acp.TextBlock("do the work")},

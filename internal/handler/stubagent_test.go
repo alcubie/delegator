@@ -32,6 +32,12 @@ const (
 	stubAlwaysOptions = "always"
 )
 
+// What the stub agent's prompt does, named by an argument of the stub so
+// that a test says which turn it wants.
+const (
+	stubTurnPermissions = "permissions" // ask for two permissions and end the turn
+)
+
 // The ids of the options the stub agent offers. A decision it records is the
 // id the client selected, or stubCancelled when the client took no option.
 const (
@@ -56,15 +62,16 @@ type stubRecord struct {
 }
 
 // stubKind gives the Kind that starts the stub agent offering one of the sets
-// of permission options, and the path of the file it records into.
-func stubKind(t *testing.T, options string) (Kind, string) {
+// of permission options and taking one of the turns, and the path of the file
+// it records into.
+func stubKind(t *testing.T, options, turn string) (Kind, string) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
 	record := filepath.Join(t.TempDir(), "record.json")
-	return Kind{Name: "stub", Argv: []string{self, "-test.run=TestStubAgent", "stub", record, options}}, record
+	return Kind{Name: "stub", Argv: []string{self, "-test.run=TestStubAgent", "stub", record, options, turn}}, record
 }
 
 // readRecord reads what the stub agent wrote.
@@ -86,11 +93,11 @@ func readRecord(t *testing.T, path string) stubRecord {
 // after the flags; every other run skips it.
 func TestStubAgent(t *testing.T) {
 	args := flag.Args()
-	if len(args) != 3 || args[0] != "stub" {
+	if len(args) != 4 || args[0] != "stub" {
 		t.Skip("this run is not the stub agent")
 	}
 	fmt.Fprintln(os.Stderr, stubHello)
-	agent := &stubAgent{record: args[1], options: args[2]}
+	agent := &stubAgent{record: args[1], options: args[2], turn: args[3]}
 	conn := acp.NewAgentSideConnection(agent, os.Stdout, os.Stdin)
 	agent.conn = conn
 	<-conn.Done()
@@ -100,6 +107,7 @@ func TestStubAgent(t *testing.T) {
 type stubAgent struct {
 	record    string
 	options   string
+	turn      string
 	conn      *acp.AgentSideConnection
 	fs        acp.FileSystemCapabilities
 	term      bool
@@ -122,10 +130,19 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID)}, nil
 }
 
-// Prompt asks permission for a tool of kind edit and then for one of kind
+// Prompt takes the turn the stub agent was started with.
+func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	switch a.turn {
+	case stubTurnPermissions:
+		return a.permissions(ctx, p)
+	}
+	return acp.PromptResponse{}, fmt.Errorf("the stub agent has no turn %q", a.turn)
+}
+
+// permissions asks permission for a tool of kind edit and then for one of kind
 // execute, and records what it was answered. It writes the record before it
 // replies, so the test reads the decisions as soon as the prompt is over.
-func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+func (a *stubAgent) permissions(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	for _, ask := range []struct {
 		id    string
 		kind  acp.ToolKind
