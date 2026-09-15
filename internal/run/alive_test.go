@@ -64,7 +64,7 @@ func TestOnlyAWindowsBuildTakesTheWindowsAliveTest(t *testing.T) {
 // The tests in alive_windows_test.go need Windows, so make check cannot run
 // them. A type check for Windows is what is left, and it reads the two files
 // together, so a call the Windows file does not answer fails here. The whole
-// package cannot be built for Windows yet, because detach is for Unix only,
+// package cannot be built for Windows yet, because Stop is for Unix only,
 // which is why this names the two files and not the package.
 func TestTheWindowsAliveTypeChecks(t *testing.T) {
 	cmd := exec.Command("go", "vet", "alive_windows.go", "alive_windows_test.go")
