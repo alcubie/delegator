@@ -59,7 +59,7 @@ func TestOnlyAWindowsBuildTakesTheWindowsBootTest(t *testing.T) {
 // The test in boot_windows_test.go needs Windows, so make check cannot run it.
 // A type check for Windows is what is left, and it reads the two files together,
 // so a call the Windows file does not answer fails here. The whole package
-// cannot be built for Windows yet, because detach is for Unix only,
+// cannot be built for Windows yet, because Stop is for Unix only,
 // which is why this names the two files and not the package.
 func TestTheWindowsBootTimeTypeChecks(t *testing.T) {
 	cmd := exec.Command("go", "vet", "boot_windows.go", "boot_windows_test.go")
