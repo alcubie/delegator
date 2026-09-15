@@ -300,3 +300,47 @@ func TestLoadRefusesAKeyOfAnAgentItDoesNotKnow(t *testing.T) {
 		t.Errorf("error %q does not name the key", err)
 	}
 }
+
+func TestLoadReadsRunner(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runner = \"acp\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runner != RunnerACP {
+		t.Errorf("Runner = %q, want %q", cfg.Runner, RunnerACP)
+	}
+}
+
+func TestLoadWithNoRunnerGivesTheCommandLine(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runner != RunnerCLI {
+		t.Errorf("Runner = %q, want the default %q", cfg.Runner, RunnerCLI)
+	}
+}
+
+// A runner delegator does not know would leave the person with a run that
+// drove the agent some other way than the one they asked for.
+func TestLoadRefusesARunnerItDoesNotKnow(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "runner = \"mcp\"\n")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load accepted runner = \"mcp\"")
+	}
+	for _, want := range []string{"mcp", RunnerCLI, RunnerACP} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not name %q: %v", want, err)
+		}
+	}
+}

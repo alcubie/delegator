@@ -79,6 +79,10 @@ const noExitCode = -1
 // is claimed by then, so this marks it failed and ends the run: a ticket left
 // in running would hold the queue with no supervisor working on it.
 //
+// The runner of the config says which path the run takes. The ACP runner is
+// superviseACP, and the rest of this function is the command line of the
+// agent through internal/adapters.
+//
 // The session on the ticket goes down to the agent. It is empty for a ticket
 // that has not run, and after a restart it is the session of the run that
 // failed, which the agent continues in the worktree that run left.
@@ -99,6 +103,10 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 		return err
 	}
 	defer log.Close()
+
+	if cfg.Runner == config.RunnerACP {
+		return superviseACP(s, cfg, id, runID, worktree, log)
+	}
 
 	cmd := agent.Launch(adapters.RunSpec{
 		Worktree: worktree,

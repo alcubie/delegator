@@ -13,7 +13,12 @@
 //	update <status>           report that status of the tool it started last
 //	permission <title> <kind>   ask to run a tool and record the answer
 //	write <path> <content>    write the file through the client
+//	wait <duration>           wait that long, or until the client cancels
 //	stop <reason>             end the turn with that reason
+//
+// A wait that the client cancels ends the turn with the cancelled reason and
+// runs no more of the script, which is how a test drives a client that stops a
+// turn part way.
 //
 // A line of "history:" starts the section that runs to the end of the file.
 // Its actions are the turn the session already took, which the agent replays

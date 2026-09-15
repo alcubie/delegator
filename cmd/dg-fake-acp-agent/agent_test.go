@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -238,5 +239,41 @@ func TestAnActionTheScriptHasNoVerbForFailsTheTurn(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Err, "frobnicate") {
 		t.Errorf("the error is %q, and it does not name the action", got[0].Err)
+	}
+}
+
+// The wait action is how a test drives a client that stops a turn: nothing
+// else in a script takes long enough for the client to reach for the cancel.
+func TestTheWaitActionEndsTheTurnWhenTheClientCancels(t *testing.T) {
+	kind, _ := fakeKind(t, "text "+fakeText, "wait 1m", "stop end_turn")
+	s := startFake(t, t.TempDir(), kind)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	var got []handler.Event
+	for e, err := range s.Prompt(ctx, "do the work") {
+		if err != nil {
+			t.Fatalf("the prompt failed: %v", err)
+		}
+		got = append(got, e)
+		cancel()
+	}
+
+	same(t, got, []handler.Event{
+		{Type: handler.TypeText, Text: fakeText},
+		{Type: handler.TypeResult, Status: string(acp.StopReasonCancelled)},
+	})
+}
+
+func TestTheWaitActionRefusesATimeItCannotRead(t *testing.T) {
+	kind, _ := fakeKind(t, "wait soon")
+	var bad error
+	for _, err := range startFake(t, t.TempDir(), kind).Prompt(t.Context(), "do the work") {
+		if err != nil {
+			bad = err
+		}
+	}
+	if bad == nil || !strings.Contains(bad.Error(), "soon") {
+		t.Fatalf("the error is %v, and it does not name the time", bad)
 	}
 }

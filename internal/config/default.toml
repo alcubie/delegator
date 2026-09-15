@@ -12,3 +12,7 @@ done_hours = 24
 # max_runs_per_project is the number of tickets of one project that can be
 # Running or Ready at a time.  A value of 0 is ignored and runs is used as the limit.
 max_runs_per_project = 0
+
+# runner is how a run drives its agent. cli runs the agent's own command line,
+# and acp speaks the Agent Client Protocol to it.
+runner = "cli"
