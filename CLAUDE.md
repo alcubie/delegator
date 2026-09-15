@@ -9,7 +9,9 @@ Read this before you go looking. It is here so that a run does not have to
 derive the shape of the repository by reading it.
 
 - `cmd/dg` finds the directories and executes the cobra tree. `cmd/dg-fake-agent`
-  is the agent the tests drive instead of a real one.
+  is the agent the tests drive instead of a real one, and
+  `cmd/dg-fake-acp-agent` is that agent for the ACP path: an agent of the
+  protocol that does what a script says.
 - `internal/cli` is the command layer: the cobra tree, the work behind each
   command, and the text a command writes. One file per command, named for it,
   so `dg move` is `move.go`.
