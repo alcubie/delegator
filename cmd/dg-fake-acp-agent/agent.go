@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -98,6 +99,12 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 		case "write":
 			path, content, _ := strings.Cut(rest, " ")
 			_, err = a.conn.WriteTextFile(ctx, acp.WriteTextFileRequest{SessionId: id, Path: path, Content: content})
+		case "wait":
+			cancelled, bad := wait(ctx, rest)
+			if cancelled {
+				return acp.StopReasonCancelled, nil
+			}
+			err = bad
 		case "stop":
 			return acp.StopReason(rest), nil
 		default:
@@ -108,6 +115,21 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 		}
 	}
 	return acp.StopReasonEndTurn, nil
+}
+
+// wait holds the turn for the time the line names and says whether the client
+// cancelled before that time was up.
+func wait(ctx context.Context, rest string) (cancelled bool, err error) {
+	d, err := time.ParseDuration(rest)
+	if err != nil {
+		return false, err
+	}
+	select {
+	case <-ctx.Done():
+		return true, nil
+	case <-time.After(d):
+		return false, nil
+	}
 }
 
 // update sends one session update to the client.

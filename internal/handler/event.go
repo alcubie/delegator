@@ -8,6 +8,8 @@ import (
 	"io"
 	"iter"
 	"strings"
+
+	acp "github.com/coder/acp-go-sdk"
 )
 
 // The types an Event can have. A consumer switches on Type and ignores what
@@ -32,6 +34,11 @@ const (
 	StatusAllowed  string = "allowed"
 	StatusRejected string = "rejected"
 )
+
+// StopEndTurn is the reason an agent gives for a turn it ran to the end. It
+// is the Status of the result event of a turn that nothing stopped, and every
+// other reason is a turn that something ended early.
+const StopEndTurn = string(acp.StopReasonEndTurn)
 
 // An Event is one thing an agent did, in the form every agent is turned into.
 // A field belongs to the types its comment names and is empty in the others,

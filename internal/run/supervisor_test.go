@@ -81,7 +81,7 @@ func (a *specAgent) Launch(spec adapters.RunSpec) *exec.Cmd {
 func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 0")); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, fakeAgent(t, "exit 0")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +117,7 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- Start(s, id, agent)
+			errs <- Start(s, id, config.Default, agent)
 		}()
 	}
 	wg.Wait()
@@ -201,7 +201,7 @@ func TestStartRefusesATicketThatIsAlreadyRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := Start(s, id, fakeAgent(t, "exit 0"))
+	err := Start(s, id, config.Default, fakeAgent(t, "exit 0"))
 
 	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
 		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
@@ -230,7 +230,7 @@ func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 	}
 	s := testfix.OpenStore(t, dataDir)
 
-	if err := Start(s, id, fakeAgent(t, "exit 0")); err == nil {
+	if err := Start(s, id, config.Default, fakeAgent(t, "exit 0")); err == nil {
 		t.Fatal("err = nil, want the failure to make the worktree")
 	}
 
@@ -260,7 +260,7 @@ func TestStartRunsTheAgentInTheWorktreeAndWaits(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run sleep 0.3", "write made-by-the-agent done", "exit 0")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,7 +297,7 @@ func TestStartRecordsTheSessionOfARunThatFailed(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "exit 3")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err == nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err == nil {
 		t.Fatal("err = nil, want the exit status of the run")
 	}
 
@@ -314,7 +314,7 @@ func TestStartWritesTheEndTimeAndTheExitCodeWhenTheRunEnds(t *testing.T) {
 		dataDir, id := queuedTicket(t, "Add the thing")
 		agent := fakeAgent(t, "exit "+strconv.Itoa(exitCode))
 
-		err := Start(testfix.OpenStore(t, dataDir), id, agent)
+		err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent)
 		if (err != nil) != (exitCode != 0) {
 			t.Fatalf("exit %d: err = %v", exitCode, err)
 		}
@@ -338,7 +338,7 @@ func TestStartWritesTheLogOfTheRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'to stdout\\n'", "run printf 'to stderr\\n' >&2", "exit 0")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -387,7 +387,7 @@ func TestStartWritesEachLineOfTheRunToTheLogInFull(t *testing.T) {
 		"exit 0",
 	)
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -404,7 +404,7 @@ func TestStartWritesTheSessionWhileTheAgentIsAlive(t *testing.T) {
 	agent := fakeAgent(t, "run printf 'session: s-1\\n'", "run sleep 1", "exit 0")
 
 	done := make(chan error, 1)
-	go func() { done <- Start(testfix.OpenStore(t, dataDir), id, agent) }()
+	go func() { done <- Start(testfix.OpenStore(t, dataDir), id, config.Default, agent) }()
 
 	s := testfix.OpenStore(t, dataDir)
 	deadline := time.Now().Add(5 * time.Second)
@@ -449,7 +449,7 @@ func TestStartAsksForTheSessionAfterEachLineUntilItHasOne(t *testing.T) {
 		"exit 0",
 	)}
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -468,7 +468,7 @@ func TestStartKeepsNoSessionWhenTheRunReportsNone(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'it stopped early\\n'", "exit 0")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -483,7 +483,7 @@ func TestStartRecordsTheSessionOnTheLastLineWithNoNewline(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := fakeAgent(t, "run printf 'the work\\nsession: s-1'", "exit 0")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -497,7 +497,7 @@ func TestStartRecordsTheSessionOnTheLastLineWithNoNewline(t *testing.T) {
 func TestStartFailsTheTicketWhenTheAgentGivesAnError(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, fakeAgent(t, "exit 3")); err == nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, fakeAgent(t, "exit 3")); err == nil {
 		t.Fatal("err = nil, want the error of the agent")
 	}
 
@@ -517,7 +517,7 @@ func TestStartGivesTheAgentTheSessionOfTheTicket(t *testing.T) {
 	}
 	agent := &specAgent{Adapter: fakeAgent(t, "exit 0")}
 
-	if err := Start(s, id, agent); err != nil {
+	if err := Start(s, id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -536,7 +536,7 @@ func TestStartGivesNoSessionForAFirstRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	agent := &specAgent{Adapter: fakeAgent(t, "exit 0")}
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, agent); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, config.Default, agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -558,7 +558,7 @@ func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
 	agent := fakeAgent(t, "run printf 'a line\\n'", "exit 0")
 
 	for range 2 {
-		if err := Start(s, id, agent); err != nil {
+		if err := Start(s, id, config.Default, agent); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.Restart(id); err != nil {

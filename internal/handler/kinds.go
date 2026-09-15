@@ -75,21 +75,31 @@ func withAgents(kinds []Kind, agents map[string]config.Agent) []Kind {
 	return out
 }
 
+// Find is the agent of a name, from Kinds. A name that no agent has gives an
+// error that says which agents there are.
+func Find(name string) (Kind, error) {
+	kinds := Kinds()
+	i := slices.IndexFunc(kinds, func(k Kind) bool { return k.Name == name })
+	if i < 0 {
+		return Kind{}, fmt.Errorf("no agent %q; delegator knows %s", name, nameList(kinds))
+	}
+	return kinds[i], nil
+}
+
 // ResumeArgv is the command that opens a session of an agent in a terminal,
 // with the id of the session in the place the command holds for it. An agent
 // with no such command gives an error, because an argv without the id opens
 // something other than the session the person asked for.
 func ResumeArgv(kind, session string) ([]string, error) {
-	kinds := Kinds()
-	i := slices.IndexFunc(kinds, func(k Kind) bool { return k.Name == kind })
-	if i < 0 {
-		return nil, fmt.Errorf("no agent %q; delegator knows %s", kind, nameList(kinds))
+	found, err := Find(kind)
+	if err != nil {
+		return nil, err
 	}
-	if len(kinds[i].Resume) == 0 {
+	if len(found.Resume) == 0 {
 		return nil, fmt.Errorf("agent %q has no command that opens a session", kind)
 	}
-	argv := make([]string, 0, len(kinds[i].Resume))
-	for _, arg := range kinds[i].Resume {
+	argv := make([]string, 0, len(found.Resume))
+	for _, arg := range found.Resume {
 		argv = append(argv, strings.ReplaceAll(arg, sessionPlaceholder, session))
 	}
 	return argv, nil

@@ -384,12 +384,17 @@ func WaitFor(t failing, path string) string {
 	return ""
 }
 
-// FakeAgentPath is dg-fake-agent, built by RunTests once for the package.
-var FakeAgentPath string
+// FakeAgentPath is dg-fake-agent, built by RunTests once for the package, and
+// FakeACPAgentPath is dg-fake-acp-agent beside it: the same fake for the path
+// that speaks the Agent Client Protocol.
+var (
+	FakeAgentPath    string
+	FakeACPAgentPath string
+)
 
-// RunTests builds dg-fake-agent once for a package and runs its tests, and
-// builds dg beside it when withDG is set, for a fake agent whose script calls
-// dg finish. It is called from TestMain and returns the code to exit with:
+// RunTests builds the two fake agents once for a package and runs its tests,
+// and builds dg beside them when withDG is set, for a fake agent whose script
+// calls dg finish. It is called from TestMain and returns the code to exit with:
 // os.Exit runs no deferred call, so the cleanup lives here and not there.
 //
 // It also points XDG_CONFIG_HOME below its directory for the whole package.
@@ -411,6 +416,11 @@ func RunTests(m *testing.M, withDG bool) int {
 
 	FakeAgentPath = filepath.Join(dir, "dg-fake-agent")
 	if err := build(FakeAgentPath, "github.com/alcubie/delegator/cmd/dg-fake-agent"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	FakeACPAgentPath = filepath.Join(dir, "dg-fake-acp-agent")
+	if err := build(FakeACPAgentPath, "github.com/alcubie/delegator/cmd/dg-fake-acp-agent"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

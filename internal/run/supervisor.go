@@ -29,7 +29,9 @@ import (
 // A ticket the run claimed and did not finish is failed before Start returns.
 // dg finish is the only thing that makes a ticket ready, so a run that reached
 // its end with the ticket still in running gave no report, whatever ended it.
-func Start(s *store.Store, id int64, agent adapters.Adapter) error {
+//
+// cfg is the config of the person, which says how the run drives its agent.
+func Start(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -38,7 +40,7 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 	if err != nil {
 		return err
 	}
-	return supervise(s, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID, agent)
 }
 
 // StartNext claims the first ticket of the queue for this run and works it,
@@ -51,7 +53,8 @@ func Start(s *store.Store, id int64, agent adapters.Adapter) error {
 // was free when the trigger counted it can be taken by the time this one reads
 // the queue, and that is the ordinary end of the second supervisor.
 //
-// cfg is the config of the person, which the claim counts the slots against.
+// cfg is the config of the person, which the claim counts the slots against
+// and which says how the run drives its agent.
 func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) error {
 	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
@@ -60,7 +63,7 @@ func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) error 
 	if err != nil {
 		return err
 	}
-	return supervise(s, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID, agent)
 }
 
 // noExitCode is the exit code of a run that ended with no process of its own
@@ -76,10 +79,14 @@ const noExitCode = -1
 // is claimed by then, so this marks it failed and ends the run: a ticket left
 // in running would hold the queue with no supervisor working on it.
 //
+// The runner of the config says which path the run takes. The ACP runner is
+// superviseACP, and the rest of this function is the command line of the
+// agent through internal/adapters.
+//
 // The session on the ticket goes down to the agent. It is empty for a ticket
 // that has not run, and after a restart it is the session of the run that
 // failed, which the agent continues in the worktree that run left.
-func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.Adapter) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent adapters.Adapter) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// The caller has claimed the ticket, so this run holds it, and every way
@@ -96,6 +103,10 @@ func supervise(s *store.Store, ticket store.Ticket, runID int64, agent adapters.
 		return err
 	}
 	defer log.Close()
+
+	if cfg.Runner == config.RunnerACP {
+		return superviseACP(s, cfg, id, runID, worktree, log)
+	}
 
 	cmd := agent.Launch(adapters.RunSpec{
 		Worktree: worktree,
