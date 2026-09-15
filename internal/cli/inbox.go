@@ -1,7 +1,7 @@
 // The text of the inbox for a terminal. internal/inbox answers which ticket is
 // in which group and in what order, and this file answers how that looks: the
-// headings, the width of each column, and the line below a group that holds no
-// ticket.
+// headings, the note at the right of a row, and the line below a group that
+// holds no ticket. row.go holds the shape of a row itself.
 //
 // The two are apart so that a second interface can show the same list its own
 // way. This file therefore takes an inbox.Inbox and makes text from it, and it
@@ -12,11 +12,7 @@ package cli
 import (
 	"fmt"
 	"io"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/inbox"
@@ -92,57 +88,14 @@ func groups(box inbox.Inbox, done time.Duration) []group {
 	return append(gs, group{"QUEUED", box.Queued})
 }
 
-// rowWidth is the width of a row that carries a note. It is the width of the
-// rule of dg show, so the inbox and one ticket in full make the same shape on
-// the screen.
-const rowWidth = ruleWidth
-
-// timeGap is the space between the title of a row and the note at the right.
-const timeGap = 2
-
-// minTitleWidth is the least of a title that a row shows. A project with a
-// name long enough to push the title below it makes the row wider than
-// rowWidth instead, because a title cut to three characters names no ticket
-// and the person can still read the note.
-const minTitleWidth = 8
-
-// ellipsis ends a title that a row cut.
-const ellipsis = "…"
-
-// fit returns text at exactly width characters: it pads a short text with
-// spaces, and it cuts a long one and puts an ellipsis at the end. The count is
-// in characters and not in bytes, because the ellipsis takes three bytes and
-// one column, and a title holds whatever the person wrote.
-func fit(text string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= width {
-		return text + strings.Repeat(" ", width-len(runes))
-	}
-	return string(runes[:width-1]) + ellipsis
-}
-
-// minIDWidth is the smallest width of the column of ids. A column that grows
-// with the largest id would move each row to the right at the id 10, and the
-// inbox is a list that a person reads each day.
-const minIDWidth = 2
-
 // widths returns the width of the column of ids and the width of the column of
 // projects. One width holds for each group, so the titles of two groups are
 // below one another.
 func widths(gs []group) (id, project int) {
 	id = minIDWidth
 	for _, g := range gs {
-		for _, t := range g.tickets {
-			if w := len(strconv.FormatInt(t.ID, 10)); w > id {
-				id = w
-			}
-			if w := len(filepath.Base(t.Project)); w > project {
-				project = w
-			}
-		}
+		gid, gproject := ticketWidths(g.tickets)
+		id, project = max(id, gid), max(project, gproject)
 	}
 	return id, project
 }
@@ -206,22 +159,7 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 			continue
 		}
 		for _, t := range g.tickets {
-			left := fmt.Sprintf(" %*d %-*s  ",
-				idWidth, t.ID, projectWidth, filepath.Base(t.Project))
-
-			note := rowNote(t, now)
-			if note == "" {
-				fmt.Fprintln(out, left+t.Title)
-				continue
-			}
-
-			// The note ends the row at rowWidth, so the notes of two rows are
-			// in one column. The title takes what is left, and it is the field
-			// that gives way because it is the only one with no width of its
-			// own.
-			width := max(minTitleWidth,
-				rowWidth-utf8.RuneCountInString(left)-timeGap-utf8.RuneCountInString(note))
-			fmt.Fprintf(out, "%s%s%*s%s\n", left, fit(t.Title, width), timeGap, "", note)
+			fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowNote(t, now)))
 		}
 	}
 }
