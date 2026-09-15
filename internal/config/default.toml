@@ -16,3 +16,7 @@ max_runs_per_project = 0
 # runner is how a run drives its agent. cli runs the agent's own command line,
 # and acp speaks the Agent Client Protocol to it.
 runner = "cli"
+
+# agent is the agent that the acp runner starts: claude, codex or gemini, or a
+# name that an [agents.<name>] section of this file adds.
+agent = "claude"

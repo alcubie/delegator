@@ -21,12 +21,18 @@ import (
 // the command it starts, so the file is how a test says which agent to run.
 func acpConfig(t *testing.T, lines ...string) config.Config {
 	t.Helper()
+	return loadConfig(t, fmt.Sprintf("runner = %q\n\n[agents.claude]\nargv = [%q, %q]\n",
+		config.RunnerACP, testfix.FakeACPAgentPath, testfix.Script(t, lines...)))
+}
+
+// loadConfig writes the text as the config file of the person and gives it
+// back read, for a test whose config acpConfig does not write.
+func loadConfig(t *testing.T, text string) config.Config {
+	t.Helper()
 	dir := testfix.XDGConfigDir(t)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	text := fmt.Sprintf("runner = %q\n\n[agents.claude]\nargv = [%q, %q]\n",
-		config.RunnerACP, testfix.FakeACPAgentPath, testfix.Script(t, lines...))
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +134,49 @@ func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 	}
 	if err := <-done; err == nil {
 		t.Error("err = nil, want the run the timeout stopped")
+	}
+}
+
+// The runner starts the agent the config names and not one name of its own.
+// The person here put the fake agent under a name that handler's table does
+// not hold, and the session on the ticket is the one that fake gives, so the
+// process that ran is the one the key named.
+func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := loadConfig(t, fmt.Sprintf("runner = %q\nagent = \"mine\"\n\n[agents.mine]\nargv = [%q, %q]\n",
+		config.RunnerACP, testfix.FakeACPAgentPath, testfix.Script(t, "stop end_turn")))
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "fake-1" {
+		t.Errorf("session = %q, want %q", got, "fake-1")
+	}
+}
+
+// An agent that the config names and delegator does not know stops the run at
+// its first use, and the error names the agents there are: the person has to
+// write one of those names, or a section that adds another.
+func TestTheACPRunnerRefusesAnAgentItDoesNotKnow(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := loadConfig(t, fmt.Sprintf("runner = %q\nagent = \"mine\"\n", config.RunnerACP))
+
+	err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil)
+	if err == nil {
+		t.Fatal("err = nil, want the agent that delegator does not know")
+	}
+	want := []string{"mine"}
+	for _, kind := range handler.Kinds() {
+		want = append(want, kind.Name)
+	}
+	for _, name := range want {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("the error does not name %q: %v", name, err)
+		}
+	}
+	if got := statusOf(t, dataDir, id); got != store.Failed {
+		t.Errorf("status = %v, want %v", got, store.Failed)
 	}
 }
 

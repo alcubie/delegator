@@ -400,6 +400,49 @@ func TestLoadWithNoRunnerGivesTheCommandLine(t *testing.T) {
 	}
 }
 
+func TestLoadReadsAgent(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "agent = \"codex\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent != "codex" {
+		t.Errorf("Agent = %q, want %q", cfg.Agent, "codex")
+	}
+}
+
+// A name that no agent has is not refused here. The agents are handler's, and
+// the sections of this file add to them, so the run that starts one is where
+// the name is looked up and where a name that is not there is reported.
+func TestLoadTakesAnAgentItDoesNotKnow(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	writeConfig(t, xdg, "agent = \"mine\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent != "mine" {
+		t.Errorf("Agent = %q, want %q", cfg.Agent, "mine")
+	}
+}
+
+func TestLoadWithNoAgentGivesClaude(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent != "claude" {
+		t.Errorf("Agent = %q, want the default %q", cfg.Agent, "claude")
+	}
+}
+
 // A runner delegator does not know would leave the person with a run that
 // drove the agent some other way than the one they asked for.
 func TestLoadRefusesARunnerItDoesNotKnow(t *testing.T) {

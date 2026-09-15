@@ -37,6 +37,11 @@ type Config struct {
 	// the agent through internal/adapters, or RunnerACP, the Agent Client
 	// Protocol through internal/handler.
 	Runner string `toml:"runner"`
+	// Agent is the agent that the ACP runner starts, by the name delegator
+	// knows it under: one of the agents delegator holds, or one that a section
+	// of Agents adds. A name that no agent has is an error at the run that
+	// would have started it, and the error names the agents there are.
+	Agent string `toml:"agent"`
 	// Agents holds one section for each agent the person says something
 	// about, as [agents.claude]. A name delegator already knows takes the
 	// keys the section gives and keeps the rest of what delegator holds for
