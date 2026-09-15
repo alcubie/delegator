@@ -146,24 +146,35 @@ func shortHash(hash string) string {
 	return hash[:shortHashLen]
 }
 
-// writeTicket writes one ticket in full. started is the time that the last run
-// of the ticket began, and the zero time is a ticket that no supervisor has
-// claimed. worktree is the directory the run works in, and the empty string is
-// a ticket whose worktree is not on disk. dependsOn holds the ticket that each
-// link of this one names.
-func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, dependsOn []int64, prose string, started, now time.Time) {
+// shown is one ticket with the values that dg show gathers beside it: the file
+// that holds the prose, the prose itself, the worktree if it is on disk, the
+// ticket that each link of this one names, and the start of the last run. The
+// start is the zero time for a ticket that no supervisor has claimed, and the
+// worktree is the empty string for one whose worktree is not on disk.
+type shown struct {
+	store.Ticket
+	ProseFile string
+	Prose     string
+	Worktree  string
+	DependsOn []int64
+	Started   time.Time
+}
+
+// writeHeading writes the title and the status, the time below the status, and
+// the rule below them.
+func writeHeading(out io.Writer, s shown, now time.Time) {
 	// Each status names how long ago the ticket entered it, which is the time of
 	// the last change of its state. A running ticket names how long its run has
 	// been going instead, which is the clock the inbox gives on the same run.
 	var when string
-	switch t.Status {
+	switch s.Status {
 	case store.Running:
-		when = elapsed(started, now)
+		when = elapsed(s.Started, now)
 	default:
-		when = ago(t.Changed, now)
+		when = ago(s.Changed, now)
 	}
-	heading := fmt.Sprintf("  #%d  %s", t.ID, t.Title)
-	status := string(t.Status)
+	heading := fmt.Sprintf("  #%d  %s", s.ID, s.Title)
+	status := string(s.Status)
 	pad := max(1, ruleWidth-len(heading)-len(status))
 	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), status)
 
@@ -176,42 +187,55 @@ func writeTicket(out io.Writer, dataDir, worktree string, t store.Ticket, depend
 		fmt.Fprintf(out, "%*s\n", ruleWidth, when)
 	}
 	fmt.Fprintf(out, "  %s\n", strings.Repeat("─", ruleWidth-2))
+}
 
-	if t.Commit != "" {
-		writeField(out, "commit", commitText(t.Project.Path, t.Commit))
+// writeFields writes the commit and the variables that connect the ticket to
+// its work.
+func writeFields(out io.Writer, s shown) {
+	if s.Commit != "" {
+		writeField(out, "commit", commitText(s.Project.Path, s.Commit))
 		fmt.Fprintln(out)
 	}
 
 	home, _ := os.UserHomeDir()
-	writeField(out, "project", tilde(t.Project.Path, home))
-	writeField(out, "ticket", tilde(proseFile(dataDir, t.ID), home))
-	if worktree != "" {
-		writeField(out, "worktree", tilde(worktree, home))
+	writeField(out, "project", tilde(s.Project.Path, home))
+	writeField(out, "ticket", tilde(s.ProseFile, home))
+	if s.Worktree != "" {
+		writeField(out, "worktree", tilde(s.Worktree, home))
 	}
-	if t.Branch != "" {
-		writeField(out, "branch", t.Branch)
+	if s.Branch != "" {
+		writeField(out, "branch", s.Branch)
 	}
-	if t.Session != "" {
-		writeField(out, "session", t.Session)
+	if s.Session != "" {
+		writeField(out, "session", s.Session)
 	}
 
 	// Each link, and not only the ones that still hold the ticket back. The
 	// row of the inbox names the tickets that are not done, because that is
 	// what the queue acts on; here the person is reading the one ticket and
 	// asking what they linked it to.
-	if len(dependsOn) > 0 {
-		writeField(out, "depends on", ticketNames(dependsOn))
+	if len(s.DependsOn) > 0 {
+		writeField(out, "depends on", ticketNames(s.DependsOn))
 	}
+}
 
-	// The prose goes out as the person wrote it. It is markdown, and the person
-	// chose each line break: a re-wrap breaks a list, and it makes each long
-	// line into one long line and one short one.
-	if prose = strings.TrimRight(prose, "\n"); prose != "" {
+// writeProse writes the prose as the person wrote it. It is markdown, and the
+// person chose each line break: a re-wrap breaks a list, and it makes each long
+// line into one long line and one short one.
+func writeProse(out io.Writer, s shown) {
+	if prose := strings.TrimRight(s.Prose, "\n"); prose != "" {
 		fmt.Fprintln(out)
 		for _, line := range strings.Split(prose, "\n") {
 			fmt.Fprintln(out, strings.TrimRight("  "+line, " "))
 		}
 	}
+}
+
+// writeTicket writes one ticket in full.
+func writeTicket(out io.Writer, s shown, now time.Time) {
+	writeHeading(out, s, now)
+	writeFields(out, s)
+	writeProse(out, s)
 }
 
 // ticketJSON is one ticket for a reader that is not a person. Each key is the
@@ -253,25 +277,25 @@ func nullableTime(at time.Time) *time.Time {
 // writeJSON writes one ticket as one JSON object and nothing else. The three
 // paths are full: a script gives a path to another command, and no command
 // expands a tilde that came from a variable.
-func writeJSON(out io.Writer, dataDir, worktree string, t store.Ticket, prose string) error {
+func writeJSON(out io.Writer, s shown) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	// The prose is markdown, and the escape of `<`, `>` and `&` is for JSON
 	// that goes inside a page. Nothing here is a page.
 	enc.SetEscapeHTML(false)
 	return enc.Encode(ticketJSON{
-		ID:       t.ID,
-		Title:    t.Title,
-		Status:   string(t.Status),
-		Project:  t.Project.Path,
-		Ticket:   proseFile(dataDir, t.ID),
-		Worktree: nullable(worktree),
-		Branch:   nullable(t.Branch),
-		Session:  nullable(t.Session),
-		Commit:   nullable(t.Commit),
-		Created:  nullableTime(t.Created),
-		Accepted: nullableTime(t.Accepted),
-		Prose:    nullable(strings.TrimRight(prose, "\n")),
+		ID:       s.ID,
+		Title:    s.Title,
+		Status:   string(s.Status),
+		Project:  s.Project.Path,
+		Ticket:   s.ProseFile,
+		Worktree: nullable(s.Worktree),
+		Branch:   nullable(s.Branch),
+		Session:  nullable(s.Session),
+		Commit:   nullable(s.Commit),
+		Created:  nullableTime(s.Created),
+		Accepted: nullableTime(s.Accepted),
+		Prose:    nullable(strings.TrimRight(s.Prose, "\n")),
 	})
 }
 
@@ -293,19 +317,19 @@ const (
 // label, no wrap and no tilde, because a shell does not expand a tilde that
 // came from a variable. A field with no value writes no line, as the whole
 // ticket leaves out the row of a field that has none.
-func writeOnly(out io.Writer, dataDir, worktree string, t store.Ticket, only onlyField) {
+func writeOnly(out io.Writer, s shown, only onlyField) {
 	var value string
 	switch only {
 	case onlyProject:
-		value = t.Project.Path
+		value = s.Project.Path
 	case onlyTicket:
-		value = proseFile(dataDir, t.ID)
+		value = s.ProseFile
 	case onlyWorktree:
-		value = worktree
+		value = s.Worktree
 	case onlyBranch:
-		value = t.Branch
+		value = s.Branch
 	case onlySession:
-		value = t.Session
+		value = s.Session
 	}
 	if value == "" {
 		return
@@ -330,37 +354,40 @@ func showTicket(out io.Writer, s *store.Store, id int64, only onlyField, asJSON 
 	if err != nil {
 		return err
 	}
+	t := shown{Ticket: ticket, ProseFile: proseFile(dataDir, id)}
 
-	prose, err := os.ReadFile(proseFile(dataDir, id))
+	prose, err := os.ReadFile(t.ProseFile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	t.Prose = string(prose)
 
 	lastRun, err := s.Run(id)
 	if err != nil && !errors.Is(err, store.ErrNoRun) {
 		return err
 	}
+	t.Started = lastRun.StartedAt
 
-	worktree := run.WorktreePath(dataDir, id)
-	if _, err := os.Stat(worktree); err != nil {
-		worktree = ""
+	t.Worktree = run.WorktreePath(dataDir, id)
+	if _, err := os.Stat(t.Worktree); err != nil {
+		t.Worktree = ""
 	}
 
 	if asJSON {
-		return writeJSON(out, dataDir, worktree, ticket, string(prose))
+		return writeJSON(out, t)
 	}
 
 	if only != onlyNone {
-		writeOnly(out, dataDir, worktree, ticket, only)
+		writeOnly(out, t, only)
 		return nil
 	}
 
-	dependsOn, err := s.Dependencies(id)
+	t.DependsOn, err = s.Dependencies(id)
 	if err != nil {
 		return err
 	}
 
-	writeTicket(out, dataDir, worktree, ticket, dependsOn, string(prose), lastRun.StartedAt, time.Now().UTC())
+	writeTicket(out, t, time.Now().UTC())
 	return nil
 }
 

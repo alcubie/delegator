@@ -176,7 +176,13 @@ func TestTilde(t *testing.T) {
 func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, "/data", fmt.Sprintf("/data/worktrees/%d", ticket.ID), ticket, nil, prose, started, testNow)
+	writeTicket(&out, shown{
+		Ticket:    ticket,
+		ProseFile: proseFile("/data", ticket.ID),
+		Prose:     prose,
+		Worktree:  run.WorktreePath("/data", ticket.ID),
+		Started:   started,
+	}, testNow)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -224,12 +230,12 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 // arrive.
 func TestWriteTicketWithNoLinkWritesNoRow(t *testing.T) {
 	var out bytes.Buffer
-	writeTicket(&out, "/data", "", store.Ticket{
+	writeTicket(&out, shown{Ticket: store.Ticket{
 		ID:      4,
 		Project: store.Project{Path: "/projects/web-api"},
 		Title:   "Remove the staging app",
 		Status:  store.Queued,
-	}, nil, "", time.Time{}, testNow)
+	}, ProseFile: proseFile("/data", 4)}, testNow)
 
 	if strings.Contains(out.String(), "depends") {
 		t.Errorf("dg show holds a row of links for a ticket that has none:\n%s", out.String())
@@ -505,13 +511,13 @@ func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 func showCommit(t *testing.T, repo, hash string) string {
 	t.Helper()
 	var out bytes.Buffer
-	writeTicket(&out, t.TempDir(), "", store.Ticket{
+	writeTicket(&out, shown{Ticket: store.Ticket{
 		ID:      4,
 		Project: store.Project{Path: repo},
 		Title:   "a title",
 		Status:  store.Ready,
 		Commit:  hash,
-	}, nil, "", time.Time{}, time.Now())
+	}, ProseFile: proseFile(t.TempDir(), 4)}, time.Now())
 
 	for line := range strings.SplitSeq(out.String(), "\n") {
 		if strings.Contains(line, "commit") {
@@ -621,7 +627,11 @@ func TestWriteOnlyGivesOneField(t *testing.T) {
 	}
 	for _, test := range tests {
 		var out bytes.Buffer
-		writeOnly(&out, "/data", "/data/worktrees/4", ticket, test.only)
+		writeOnly(&out, shown{
+			Ticket:    ticket,
+			ProseFile: proseFile("/data", ticket.ID),
+			Worktree:  run.WorktreePath("/data", ticket.ID),
+		}, test.only)
 		if got, want := out.String(), test.want+"\n"; got != want {
 			t.Errorf("--%s-only wrote %q, want %q", test.only, got, want)
 		}
@@ -632,7 +642,7 @@ func TestWriteOnlyGivesOneField(t *testing.T) {
 // and a line with nothing on it reads as a value that failed to arrive.
 func TestWriteOnlyWithNoValueWritesNothing(t *testing.T) {
 	var out bytes.Buffer
-	writeOnly(&out, "/data", "", store.Ticket{ID: 4}, onlyWorktree)
+	writeOnly(&out, shown{Ticket: store.Ticket{ID: 4}, ProseFile: proseFile("/data", 4)}, onlyWorktree)
 	if got := out.String(); got != "" {
 		t.Errorf("--worktree-only wrote %q for a worktree that is not on disk, want nothing", got)
 	}
@@ -646,7 +656,10 @@ func TestWriteOnlyKeepsTheHomeOfAPath(t *testing.T) {
 	path := filepath.Join(home, "projects", "web-api")
 
 	var out bytes.Buffer
-	writeOnly(&out, "/data", "", store.Ticket{ID: 4, Project: store.Project{Path: path}}, onlyProject)
+	writeOnly(&out, shown{
+		Ticket:    store.Ticket{ID: 4, Project: store.Project{Path: path}},
+		ProseFile: proseFile("/data", 4),
+	}, onlyProject)
 	if got, want := out.String(), path+"\n"; got != want {
 		t.Errorf("--project-only wrote %q, want %q", got, want)
 	}
