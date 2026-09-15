@@ -7,39 +7,31 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Next starts a supervisor for each free slot of the queue, and one at most
-// for each ticket the queue holds. It names no ticket: each supervisor reads
-// the queue and claims a ticket for itself, in one transaction, so two
-// triggers at the same time cannot send two supervisors to one ticket. What
-// Next decides is how many supervisors to start, and a supervisor that finds
-// no slot by the time it reads the queue stops.
+// Next starts a supervisor for each ticket of the queue that a claim could
+// take now. It names no ticket: each supervisor reads the queue and claims a
+// ticket for itself, in one transaction, so two triggers at the same time
+// cannot send two supervisors to one ticket. What Next decides is how many
+// supervisors to start.
 //
-// cfg is the config of the person, and cfg.Runs is the limit it reads. A free
-// slot is one that no ticket in running and no ticket in ready holds, so a
-// limit of one starts a supervisor only for a queue that has nothing open at
-// all.
+// The count is ClaimableCount, which asks the question the claim asks: the
+// free slots of the whole queue, the places each project has left, and the
+// links of each ticket. A count of the free slots alone would start
+// supervisors for a queue whose tickets are all held back, and each of those
+// supervisors calls Next again as it stops, so the trigger that starts one
+// more than the claims will find never settles.
 //
 // It returns once the programs have started, and does not wait for them: the
 // caller is a command a person typed, or a supervisor that is about to exit,
-// and neither should stay alive for the length of a run. What a slot means is
-// in the store, with the claim that asks the same question.
+// and neither should stay alive for the length of a run.
 //
 // launch returns the command that starts a supervisor. dg passes its own
 // executable with "run", and a test passes something it can observe.
 func Next(s *store.Store, cfg config.Config, launch func() *exec.Cmd) error {
-	free, err := s.FreeSlots(cfg)
+	claimable, err := s.ClaimableCount(cfg)
 	if err != nil {
 		return err
 	}
-	if free == 0 {
-		return nil
-	}
-
-	queue, err := s.ListQueue()
-	if err != nil {
-		return err
-	}
-	for range min(free, len(queue)) {
+	for range claimable {
 		if err := detach(launch()); err != nil {
 			return err
 		}

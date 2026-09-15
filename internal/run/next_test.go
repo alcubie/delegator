@@ -25,6 +25,45 @@ func queueOf(t *testing.T, n int) (string, []int64) {
 	return dataDir, ids
 }
 
+// twoProjectQueue returns a data directory whose queue holds one ticket of each
+// of two projects. Next reads the store and starts programs, and nothing on the
+// way touches git, so the second project needs no repository of its own.
+func twoProjectQueue(t *testing.T) string {
+	t.Helper()
+	dataDir, _ := queuedTicket(t, "the first")
+	s := testfix.OpenStore(t, dataDir)
+	other, err := s.AddProject("/projects/other", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(other, "the other project's"); err != nil {
+		t.Fatal(err)
+	}
+	return dataDir
+}
+
+// dependentQueue returns a data directory whose queue holds two tickets that
+// both depend on a ticket that is running. Nothing in the queue can be claimed
+// until the person accepts that work.
+func dependentQueue(t *testing.T) string {
+	t.Helper()
+	dataDir, first := queuedTicket(t, "the first")
+	s := testfix.OpenStore(t, dataDir)
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"depends", "depends as well"} {
+		if _, err := s.AddTicket(projects[0].ID, title, first); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Claim(first, fmt.Sprintf("delegator/%d-the-first", first)); err != nil {
+		t.Fatal(err)
+	}
+	return dataDir
+}
+
 // An empty queue starts nothing.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
@@ -141,6 +180,64 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	}
 
 	testfix.WaitForStarts(t, marker, 1)
+}
+
+// The queue has slots free and the limit for each project holds every ticket
+// left in it. Each supervisor that started would find nothing to claim and call
+// Next again as it stopped, and a count above zero there is the loop that left
+// over 1,500 dg run processes alive at once.
+func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
+	dataDir, ids := queueOf(t, 3)
+	s := testfix.OpenStore(t, dataDir)
+	if _, err := s.Claim(ids[0], fmt.Sprintf("delegator/%d-ticket", ids[0])); err != nil {
+		t.Fatal(err)
+	}
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(s, config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 0)
+}
+
+// A link that is not done holds a ticket back the way the limit of its project
+// does, and a queue of nothing but tickets that wait starts nothing either.
+func TestNextWithEveryTicketWaitingOnALinkStartsNothing(t *testing.T) {
+	dataDir := dependentQueue(t)
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4}, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 0)
+}
+
+// Two tickets of one project with one place: the first claim fills the project,
+// so the second supervisor would find nothing. One starts.
+func TestNextStartsOneSupervisorForAProjectWithOnePlace(t *testing.T) {
+	dataDir, _ := queueOf(t, 2)
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 1)
+}
+
+// The limit for each project holds for each project on its own, so a queue of
+// two projects with a place each has work for two supervisors.
+func TestNextStartsOneSupervisorForEachProjectWithAPlace(t *testing.T) {
+	dataDir := twoProjectQueue(t)
+	launch, marker := testfix.RecordingLaunch(t)
+
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 2)
 }
 
 // A run started by a command must not die with that command's terminal. The
