@@ -12,10 +12,6 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// acpKind is the agent that the ACP runner starts. dg chat opens the sessions
-// of the same one.
-const acpKind = "claude"
-
 // runTimeout is how long a run may take, from the config. It is a variable so
 // that a test can shorten it: the config gives the time in minutes, and no
 // test can wait one.
@@ -26,6 +22,9 @@ var runTimeout = config.Config.Timeout
 // ticket before the turn starts, and writes each event of the turn to the log
 // as one line. The agent's own stderr goes to the same log, which is the only
 // place an ACP agent has to say what the protocol does not carry.
+//
+// The agent is the one the key agent of the config names, and a name that no
+// agent has ends the run before it starts, with the names there are.
 //
 // A turn the agent ran to its end is a run that succeeded, with an exit code
 // of 0. Any other reason it gives is a failed run, and the reason is in the
@@ -42,7 +41,7 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 	code := noExitCode
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
 
-	kind, err := handler.Find(acpKind)
+	kind, err := handler.Find(cfg.Agent)
 	if err != nil {
 		return err
 	}
