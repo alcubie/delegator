@@ -11,9 +11,11 @@ import (
 
 // client answers what an agent asks of delegator: the files it reads and
 // writes, the permission it asks for a tool, and the updates it sends as a
-// turn goes on.
+// turn goes on. What it decides on its own it puts onto events, so the run
+// reads the decision that was made for it.
 type client struct {
 	policy Policy
+	events chan Event
 }
 
 var _ acp.Client = (*client)(nil)
@@ -46,12 +48,65 @@ func (c *client) WriteTextFile(_ context.Context, p acp.WriteTextFileRequest) (a
 	return acp.WriteTextFileResponse{}, os.WriteFile(p.Path, []byte(p.Content), 0o644)
 }
 
-// RequestPermission cancels every request. The options an agent offers are
-// not read yet, so the only answer the client can give is none.
-func (c *client) RequestPermission(_ context.Context, _ acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+// RequestPermission answers the agent by the policy. It takes the option that
+// answers once before the one that answers always, so the answer to one tool
+// call never widens the next, and it records the decision as an event.
+//
+// An agent that offers no option of the answer the policy gives is told the
+// request was cancelled, which is the protocol's way of saying that no option
+// was taken. Nothing was decided, so nothing is recorded.
+func (c *client) RequestPermission(ctx context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	kind, title := acp.ToolKindOther, ""
+	if p.ToolCall.Kind != nil {
+		kind = *p.ToolCall.Kind
+	}
+	if p.ToolCall.Title != nil {
+		title = *p.ToolCall.Title
+	}
+	answer, status := []acp.PermissionOptionKind{
+		acp.PermissionOptionKindRejectOnce,
+		acp.PermissionOptionKindRejectAlways,
+	}, StatusRejected
+	if c.policy.Allow != nil && c.policy.Allow(kind, title) {
+		answer, status = []acp.PermissionOptionKind{
+			acp.PermissionOptionKindAllowOnce,
+			acp.PermissionOptionKindAllowAlways,
+		}, StatusAllowed
+	}
+	id, ok := pick(p.Options, answer)
+	if !ok {
+		return acp.RequestPermissionResponse{
+			Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
+		}, nil
+	}
+	c.emit(ctx, Event{Type: TypePermission, Tool: title, Kind: string(kind), Status: status})
 	return acp.RequestPermissionResponse{
-		Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}},
+		Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: id}},
 	}, nil
+}
+
+// pick gives the id of the first option the agent offered of the first kind
+// that it has, so the order of the kinds is the order of the preference and
+// the order of the options is the agent's.
+func pick(options []acp.PermissionOption, kinds []acp.PermissionOptionKind) (acp.PermissionOptionId, bool) {
+	for _, kind := range kinds {
+		for _, o := range options {
+			if o.Kind == kind {
+				return o.OptionId, true
+			}
+		}
+	}
+	return "", false
+}
+
+// emit keeps an event for the drain to take. It gives up when the request is
+// over, so an agent that asks more than the channel holds while nothing reads
+// it stops the turn rather than the process.
+func (c *client) emit(ctx context.Context, e Event) {
+	select {
+	case c.events <- e:
+	case <-ctx.Done():
+	}
 }
 
 // SessionUpdate drops what the agent reports.
