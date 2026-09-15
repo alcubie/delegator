@@ -76,15 +76,16 @@ type outcome struct {
 // another does not wait on the reader between them.
 const eventRoom = 64
 
-// Start runs the agent's command in cwd, which must be an absolute path, and
-// opens a session there. The agent's stderr goes to stderr, which is the only
-// place an ACP agent has to report what it cannot say in the protocol. The
-// client offers the agent the files of the machine and no terminal, and gives
-// it no MCP servers.
+// open runs the agent's command in cwd, which must be an absolute path, and
+// agrees the protocol with it. The agent's stderr goes to stderr, which is
+// the only place an ACP agent has to report what it cannot say in the
+// protocol. The client offers the agent the files of the machine and no
+// terminal.
 //
-// The process is ended before Start gives an error, so a failed start leaves
-// nothing running.
-func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
+// The process is ended before open gives an error, so a failed start leaves
+// nothing running. What it gives back has no session yet: the caller asks the
+// agent for the one it wants.
+func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
 	if len(kind.Argv) == 0 {
 		return nil, fmt.Errorf("agent %q has no command", kind.Name)
 	}
@@ -113,6 +114,19 @@ func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.
 	}); err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("initialize agent %q: %w", kind.Name, err)
+	}
+	return s, nil
+}
+
+// Start runs the agent's command in cwd and opens a new session there, with
+// no MCP servers.
+//
+// The process is ended before Start gives an error, so a failed start leaves
+// nothing running.
+func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, kind, policy, cwd, stderr)
+	if err != nil {
+		return nil, err
 	}
 	r, err := s.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
