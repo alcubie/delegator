@@ -138,6 +138,17 @@ func claimBranch(t Ticket) string {
 	return fmt.Sprintf("delegator/%d-%s", t.ID, t.Title)
 }
 
+// claimableCount returns how many tickets of the queue a claim could take, and
+// stops the test when the read fails.
+func claimableCount(t *testing.T, s *Store, cfg config.Config) int {
+	t.Helper()
+	n, err := s.ClaimableCount(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
 // mustProject returns the id of the one project that a fixture made.
 func mustProject(t *testing.T, s *Store) int64 {
 	t.Helper()
@@ -1969,6 +1980,76 @@ func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	if claimed.ID != second[0] {
 		t.Errorf("claimed ticket %d, want the first ticket of the other project %d",
 			claimed.ID, second[0])
+	}
+}
+
+// A queue of tickets that nothing holds back counts one for each of them, and
+// that is what a trigger starts supervisors for.
+func TestClaimableCountCountsTheTicketsOfTheQueue(t *testing.T) {
+	s, _ := threeTickets(t)
+
+	if got := claimableCount(t, s, config.Config{Runs: 4}); got != 3 {
+		t.Errorf("count = %d, want 3: every ticket of the queue can be claimed", got)
+	}
+}
+
+// The count never passes the free slots of the whole queue, whatever room the
+// projects have between them. Two projects with three tickets the rule holds
+// for, a limit of two for the queue and one run active leaves one slot, and
+// one slot is what the supervisors will find.
+func TestClaimableCountStopsAtTheFreeSlots(t *testing.T) {
+	s, first, _ := twoProjects(t)
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+		t.Fatal(err)
+	}
+
+	got := claimableCount(t, s, config.Config{Runs: 2, MaxRunsPerProject: 2})
+
+	if got != 1 {
+		t.Errorf("count = %d with one slot of the queue free, want 1", got)
+	}
+}
+
+// The fault this count was written for. The queue has slots free and every
+// ticket left in it belongs to a project that is at its limit, so every
+// supervisor a trigger started would find ErrNoRoom and stop. None starts.
+func TestClaimableCountWithEveryProjectAtItsLimitCountsNothing(t *testing.T) {
+	s, first, second := twoProjects(t)
+	for _, id := range []int64{first[0], second[0]} {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := claimableCount(t, s, config.Config{Runs: 4, MaxRunsPerProject: 1})
+
+	if got != 0 {
+		t.Errorf("count = %d with two slots free and every project at its limit, want 0", got)
+	}
+}
+
+// Two tickets of one project can be claimed one at a time, not both: the first
+// claim fills the one place the project has. The count is the tickets the
+// claims will take and not the tickets the rule holds for right now.
+func TestClaimableCountStopsAtTheRoomOfOneProject(t *testing.T) {
+	s, _ := threeTickets(t)
+
+	got := claimableCount(t, s, config.Config{Runs: 4, MaxRunsPerProject: 1})
+
+	if got != 1 {
+		t.Errorf("count = %d for three tickets of one project with a limit of one, want 1", got)
+	}
+}
+
+// The limit for each project holds for each project on its own, so a queue of
+// two projects with a place each counts one of each.
+func TestClaimableCountCountsTheRoomOfEveryProject(t *testing.T) {
+	s, _, _ := twoProjects(t)
+
+	got := claimableCount(t, s, config.Config{Runs: 4, MaxRunsPerProject: 1})
+
+	if got != 2 {
+		t.Errorf("count = %d for two projects with a place each, want 2", got)
 	}
 }
 

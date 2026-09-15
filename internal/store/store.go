@@ -919,15 +919,34 @@ func freeSlots(q querier, cfg config.Config) (int, error) {
 	return max(cfg.Runs-held, 0), nil
 }
 
-// FreeSlots reports how many runs the queue has room for. A trigger asks it to
-// decide how many supervisors to start; the claim of each supervisor asks it
-// again inside its own transaction, which is the answer that counts.
+// ClaimableCount reports how many tickets of the queue a claim could take now,
+// which is how many supervisors a trigger has work for. A supervisor that
+// finds no ticket stops and calls the trigger again as it goes, so a count
+// above what the claims will find is a loop that starts processes without end.
 //
-// It takes the whole config, and not the one key it reads, because the rule
-// for a slot belongs to the person and grows with their file: a limit for each
-// project is the next key that this count has to read.
-func (s *Store) FreeSlots(cfg config.Config) (int, error) {
-	return freeSlots(s.db, cfg)
+// A ticket counts when claimableRule holds for it, the same rule the claim
+// reads. One project counts at most the places it has left, because the first
+// claim of a project fills those places and the claims behind it would find
+// none: the rule holds for every queued ticket of a project with one place
+// free, and only one of them can start. The whole count stops at the free
+// slots of the queue, which a paused queue leaves at zero.
+func (s *Store) ClaimableCount(cfg config.Config) (int, error) {
+	free, err := freeSlots(s.db, cfg)
+	if err != nil {
+		return 0, err
+	}
+	args := append([]any{cfg.ProjectRuns(), Running, Ready}, claimableArgs(cfg)...)
+	var claimable int
+	err = s.db.QueryRow(`
+		SELECT COALESCE(SUM(MIN(waiting, room)), 0) FROM (
+			SELECT COUNT(*) AS waiting, ? - `+placesHeld+` AS room
+			FROM tickets AS t
+			WHERE `+claimableRule+`
+			GROUP BY t.project_id)`, args...).Scan(&claimable)
+	if err != nil {
+		return 0, err
+	}
+	return min(free, claimable), nil
 }
 
 // ClaimNext claims the first ticket of the queue whose project has room for

@@ -167,6 +167,39 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 	}
 }
 
+// The other half of the fault that ClaimableCount was written for: the queue
+// has slots free and every ticket in it waits on work that is not done, so a
+// supervisor started for one of those slots would find ErrNoRoom and stop.
+func TestClaimableCountWithEveryTicketWaitingOnALinkCountsNothing(t *testing.T) {
+	s, _, _, free := dependentQueue(t)
+	if _, err := s.Claim(free, claimBranch(Ticket{ID: free})); err != nil {
+		t.Fatal(err)
+	}
+
+	got := claimableCount(t, s, config.Config{Runs: 4})
+
+	if got != 0 {
+		t.Errorf("count = %d with slots free and every ticket waiting on a link, want 0", got)
+	}
+}
+
+// A link that is done holds nothing back, and the ticket behind it is counted
+// like any other.
+func TestClaimableCountCountsATicketWhoseLinksAreDone(t *testing.T) {
+	s, dependedOn, _, _ := dependentQueue(t)
+	for _, status := range []TicketStatus{Ready, Done} {
+		if err := s.ChangeStatus(dependedOn, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := claimableCount(t, s, config.Config{Runs: 4})
+
+	if got != 2 {
+		t.Errorf("count = %d, want 2: the link is done and both tickets of the queue can run", got)
+	}
+}
+
 // inboxDependsOn returns the DependsOn of one ticket of the inbox, and stops the
 // test when the inbox does not hold it.
 func inboxDependsOn(t *testing.T, s *Store, id int64) []int64 {
