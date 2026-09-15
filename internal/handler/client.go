@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -109,8 +110,75 @@ func (c *client) emit(ctx context.Context, e Event) {
 	}
 }
 
-// SessionUpdate drops what the agent reports.
-func (c *client) SessionUpdate(context.Context, acp.SessionNotification) error { return nil }
+// SessionUpdate turns what the agent reports of the turn into an event and
+// keeps it for the drain, in the order the agent sent it. An update of a kind
+// the Event type has no room for is dropped: a client that fails on an update
+// it does not know would stop the turn every time an agent grew one.
+func (c *client) SessionUpdate(ctx context.Context, n acp.SessionNotification) error {
+	switch u := n.Update; {
+	case u.AgentMessageChunk != nil:
+		c.emit(ctx, Event{Type: TypeText, Text: blockText(u.AgentMessageChunk.Content)})
+	case u.AgentThoughtChunk != nil:
+		c.emit(ctx, Event{Type: TypeThought, Text: blockText(u.AgentThoughtChunk.Content)})
+	case u.ToolCall != nil:
+		c.emit(ctx, Event{
+			Type:    TypeTool,
+			Tool:    u.ToolCall.Title,
+			Summary: summary(u.ToolCall.Kind, u.ToolCall.Locations, u.ToolCall.RawInput),
+			Kind:    string(u.ToolCall.Kind),
+			Status:  string(u.ToolCall.Status),
+		})
+	case u.ToolCallUpdate != nil && u.ToolCallUpdate.Status != nil:
+		c.emit(ctx, Event{Type: TypeToolUpdate, Status: string(*u.ToolCallUpdate.Status)})
+	}
+	return nil
+}
+
+// blockText is the text of a block of content. A block of an image or of a
+// resource has none, and reports nothing rather than a line about itself.
+func blockText(b acp.ContentBlock) string {
+	if b.Text == nil {
+		return ""
+	}
+	return b.Text.Text
+}
+
+// summary is the one line a tool event shows of what the tool was given: the
+// command of a tool that runs one, and the first file of a tool that names
+// one. The raw input is the tool's own arguments, which every agent names
+// differently but for the command.
+func summary(kind acp.ToolKind, locations []acp.ToolCallLocation, rawInput any) string {
+	if kind == acp.ToolKindExecute {
+		if input, ok := rawInput.(map[string]any); ok {
+			if command, ok := input["command"].(string); ok {
+				return oneLine(command)
+			}
+		}
+	}
+	if len(locations) > 0 {
+		return locations[0].Path
+	}
+	return ""
+}
+
+// summaryWidth is how many characters of a command a summary shows. A run is
+// read in a terminal beside the text around it, and a command of three
+// hundred characters would take the screen from it.
+const summaryWidth = 120
+
+// oneLine is the first line of s, cut to summaryWidth characters. What is cut
+// ends in an ellipsis, so a reader knows that the line is not all there was.
+func oneLine(s string) string {
+	first, rest, _ := strings.Cut(strings.TrimSpace(s), "\n")
+	line := []rune(strings.TrimSpace(first))
+	if len(line) <= summaryWidth && strings.TrimSpace(rest) == "" {
+		return string(line)
+	}
+	if len(line) > summaryWidth-1 {
+		line = line[:summaryWidth-1]
+	}
+	return string(line) + "…"
+}
 
 // The terminal methods are refused. The client offers no terminal in its
 // capabilities, so an agent that asks for one is asking for what it was told

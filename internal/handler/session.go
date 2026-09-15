@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os/exec"
+	"sync"
 
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -59,6 +61,14 @@ type Session struct {
 	conn   *acp.ClientSideConnection
 	id     acp.SessionId
 	events chan Event
+	turn   sync.Mutex
+}
+
+// An outcome is how a turn ended: the reason the agent gave for stopping, or
+// the error that stopped it.
+type outcome struct {
+	stop acp.StopReason
+	err  error
 }
 
 // eventRoom is how many events the client can keep before the drain has to
@@ -111,6 +121,108 @@ func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.
 	}
 	s.id = r.SessionId
 	return s, nil
+}
+
+// Prompt sends text to the agent and gives the turn it takes as a sequence of
+// events: what it says, what it thinks, the tools it runs, and the
+// permissions the policy answered for it, in the order they happened. The
+// last event ends the sequence, and is a result with the reason the agent
+// stopped, or an error with what went wrong, which is given as the error of
+// the sequence as well.
+//
+// Cancelling the context tells the agent to stop and the sequence ends with
+// the cancelled stop reason, which is a turn that ended and not a failure. A
+// caller that stops reading stops the turn the same way. Either way the turn
+// ends when the agent says it has ended, so an agent that answers a stop with
+// nothing ends the sequence only when Close takes the process away.
+//
+// One session takes one turn at a time. A second prompt waits for the first
+// to end, because the agent has one session and the events of two turns down
+// one channel could not be told apart.
+func (s *Session) Prompt(ctx context.Context, text string) iter.Seq2[Event, error] {
+	return func(yield func(Event, error) bool) {
+		s.turn.Lock()
+		defer s.turn.Unlock()
+		// The request the agent answers does not carry the caller's context.
+		// A cancelled request would end the wait while the agent was still
+		// reporting the turn it is stopping, and the updates it had yet to
+		// send would arrive in the middle of the turn after this one.
+		request := context.WithoutCancel(ctx)
+		done := make(chan outcome, 1)
+		go func() {
+			r, err := s.conn.Prompt(request, acp.PromptRequest{
+				SessionId: s.id,
+				Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
+			})
+			done <- outcome{stop: r.StopReason, err: err}
+		}()
+		stopping := ctx.Done()
+		for {
+			select {
+			case e := <-s.events:
+				if !yield(e, nil) {
+					s.stop(request)
+					s.abandon(done)
+					return
+				}
+			case <-stopping:
+				stopping = nil // the turn is stopped once, and stays stopped
+				s.stop(request)
+			case out := <-done:
+				s.end(out, yield)
+				return
+			}
+		}
+	}
+}
+
+// stop asks the agent to end the turn. The agent answers the prompt all the
+// same, so the sequence ends where the turn ends and not where the caller
+// stopped waiting for it.
+func (s *Session) stop(ctx context.Context) {
+	_ = s.conn.Cancel(ctx, acp.CancelNotification{SessionId: s.id})
+}
+
+// end gives the events the agent sent last and then the one that ends the
+// sequence.
+func (s *Session) end(out outcome, yield func(Event, error) bool) {
+	for _, e := range s.last() {
+		if !yield(e, nil) {
+			return
+		}
+	}
+	if out.err != nil {
+		yield(Event{Type: TypeError, Err: out.err.Error()}, out.err)
+		return
+	}
+	yield(Event{Type: TypeResult, Status: string(out.stop)}, nil)
+}
+
+// abandon drops what the agent goes on sending until the turn is over, so
+// that the turn after this one starts on an empty channel. It also keeps the
+// agent from blocking on a report that nothing is taking.
+func (s *Session) abandon(done <-chan outcome) {
+	for {
+		select {
+		case <-s.events:
+		case <-done:
+			s.last()
+			return
+		}
+	}
+}
+
+// last takes the events the agent sent before it answered the prompt and that
+// the turn has not taken yet. The SDK answers only once every notification
+// the agent sent before that answer has been handled, so what the channel
+// holds when the answer comes is the end of the turn and nothing is coming
+// after it. A turn has one reader, so what len reports is there to take.
+func (s *Session) last() []Event {
+	events := make([]Event, 0, len(s.events))
+	for len(s.events) > 0 {
+		events = append(events, <-s.events)
+	}
+	return events
 }
 
 // ID is the id the agent gave the session. Claude's is the id of the Claude
