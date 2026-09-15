@@ -4,7 +4,6 @@ package store
 
 import (
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -39,14 +38,7 @@ func (s *Store) Restart(id int64) (int64, error) {
 	if err := changeStatus(tx, id, Running, started); err != nil {
 		return 0, err
 	}
-	result, err := tx.Exec(
-		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
-		id, os.Getpid(), rfc3339(started),
-	)
-	if err != nil {
-		return 0, err
-	}
-	runID, err := result.LastInsertId()
+	runID, err := startRun(tx, id, started)
 	if err != nil {
 		return 0, err
 	}

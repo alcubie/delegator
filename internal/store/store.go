@@ -1063,9 +1063,16 @@ func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
 		return 0, err
 	}
+	return startRun(tx, id, started)
+}
+
+// startRun writes the row of a supervisor that has already changed its ticket
+// to running. Claim and Restart have different ways to take a ticket, but the
+// run they begin has the same process and start time.
+func startRun(tx *sql.Tx, ticketID int64, started time.Time) (int64, error) {
 	result, err := tx.Exec(
 		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
-		id, os.Getpid(), rfc3339(started),
+		ticketID, os.Getpid(), rfc3339(started),
 	)
 	if err != nil {
 		return 0, err
