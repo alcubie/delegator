@@ -1269,7 +1269,7 @@ func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 	}
 }
 
-// A ticket that failed and went back to the queue has a run for each claim,
+// A ticket that failed and restarted has a run for each claim,
 // and the run that holds it now is the last one. The time of an earlier run
 // would give the inbox a duration of hours for a run of a minute.
 func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
@@ -1277,12 +1277,10 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []TicketStatus{Failed, Queued} {
-		if err := s.ChangeStatus(id, status); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.ChangeStatus(id, Failed); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2161,7 +2159,7 @@ func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	}
 }
 
-// A ticket that failed and went back to the queue has a run for each claim,
+// A ticket that failed and restarted has a run for each claim,
 // and the run of the ticket is the last one: the earlier run ended, and its
 // process id belongs to nobody or to a different program by now.
 func TestRunGivesTheLastRunOfATicket(t *testing.T) {
@@ -2169,12 +2167,10 @@ func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []TicketStatus{Failed, Queued} {
-		if err := s.ChangeStatus(id, status); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.ChangeStatus(id, Failed); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2254,7 +2250,7 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 }
 
 // The supervisor ends the run it holds, and it names that run. A ticket that
-// failed and was claimed again has a later run that a different supervisor
+// failed and restarted has a later run that a different supervisor
 // holds, and the end of this one must not land on that row.
 func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	s, id := oneTicket(t)
@@ -2262,12 +2258,10 @@ func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []TicketStatus{Failed, Queued} {
-		if err := s.ChangeStatus(id, status); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.ChangeStatus(id, Failed); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2635,19 +2629,17 @@ func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	}
 }
 
-// A ticket that failed and was claimed again has one row for each claim, and
+// A ticket that failed and restarted has one row for each claim, and
 // only the last one can still be alive.
 func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []TicketStatus{Failed, Queued} {
-		if err := s.ChangeStatus(id, status); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.ChangeStatus(id, Failed); err != nil {
+		t.Fatal(err)
 	}
-	last, err := s.Claim(id, "delegator/1-my-ticket")
+	last, err := s.Restart(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2772,9 +2764,8 @@ func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
 
 // The run that a cancel closes is the run the caller named, and not whichever
 // run of the ticket is the last one. A ticket that failed between the stop and
-// the write went back to the queue and a new supervisor claimed it, and that
-// supervisor is working: an end time on its row would say that a run which is
-// going has ended.
+// the write restarted, and a new supervisor holds it. An end time on its row
+// would say that a run which is going has ended.
 func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	s, id := oneTicket(t)
 	stopped, err := s.Claim(id, "delegator/1-my-ticket")
@@ -2784,10 +2775,7 @@ func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	if err := s.FailUnfinished(stopped); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ChangeStatus(id, Queued); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 	// FailUnfinished closed the run the cancel names, so this reopens it: the

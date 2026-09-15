@@ -37,8 +37,13 @@ func TestMain(m *testing.M) {
 func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	t.Helper()
 	saved := launch
+	savedRestart := restartLaunch
 	launch = l
-	t.Cleanup(func() { launch = saved })
+	restartLaunch = func(int64) *exec.Cmd { return l() }
+	t.Cleanup(func() {
+		launch = saved
+		restartLaunch = savedRestart
+	})
 }
 
 // fakeAgent returns an Adapter that runs the given script. It is here and not

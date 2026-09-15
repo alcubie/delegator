@@ -22,19 +22,25 @@ func failedTicket(t *testing.T) (*Store, int64) {
 	return s, id
 }
 
-// A restart gives the work again, and the tickets that were waiting were
-// waiting first, so the ticket goes to the end of the queue and not to the
-// place it held before its run.
-func TestRestartPutsAFailedTicketAtTheEndOfTheQueue(t *testing.T) {
+// A restart gives the failed ticket the slot it had before the failure. The
+// queued tickets keep their places while the restarted ticket is running.
+func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 	s, id := failedTicket(t)
 	waiting := queuedTickets(t, s, mustProject(t, s), "the second")
 
-	if err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := queueTitles(t, s); !slices.Equal(got, []string{"the second", "My Ticket"}) {
-		t.Errorf("the queue is %v, want the restarted ticket last", got)
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Running {
+		t.Errorf("status = %q, want %q", ticket.Status, Running)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, []string{"the second"}) {
+		t.Errorf("the queue is %v, want only the ticket that was waiting", got)
 	}
 	if got := ticketPosition(t, s, "position", waiting[0]); !got.Valid {
 		t.Error("the ticket that was waiting lost its place in the queue")
@@ -49,7 +55,7 @@ func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,9 +71,9 @@ func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 	}
 }
 
-// Only a failed ticket restarts. The change ready -> queued is legal and it
-// belongs to dg revise, so a restart refuses it as it refuses the rest, and
-// the refusal writes nothing at all.
+// Only a failed ticket restarts. The changes queued -> running and ready ->
+// queued belong to other commands, so a restart refuses them and writes
+// nothing at all.
 func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Running, Ready, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
@@ -77,7 +83,7 @@ func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 			}
 			before := steps(t, s, id)
 
-			err := s.Restart(id)
+			_, err := s.Restart(id)
 
 			if !errors.Is(err, ErrInvalidTicketStateChange) {
 				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
@@ -102,7 +108,7 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 
-	err := s.Restart(id)
+	_, err := s.Restart(id)
 
 	if err == nil || !strings.Contains(err.Error(), string(Done)) {
 		t.Errorf("err = %v, want it to name %q", err, Done)
@@ -112,21 +118,18 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 func TestRestartWithNoSuchTicket(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	if err := s.Restart(404); !errors.Is(err, ErrNoTicket) {
+	if _, err := s.Restart(404); !errors.Is(err, ErrNoTicket) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
 	}
 }
 
-// A run is a first class entity, so the claim that follows a restart writes a
-// row of its own. The row of the run that failed stays as that run left it.
-func TestRestartAndClaimGiveTheTicketASecondRun(t *testing.T) {
+// A run is a first class entity, so restart writes a row of its own. The row
+// of the run that failed stays as that run left it.
+func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	s, id := failedTicket(t)
 	first := runRows(t, s, id)
 
-	if err := s.Restart(id); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 
