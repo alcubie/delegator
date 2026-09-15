@@ -168,7 +168,7 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Queued:    {Running, Cancelled},
 	Running:   {Ready, Failed, Cancelled},
 	Ready:     {Done, Queued, Cancelled},
-	Failed:    {Queued, Cancelled},
+	Failed:    {Running, Cancelled},
 	Done:      nil,
 	Cancelled: nil,
 }

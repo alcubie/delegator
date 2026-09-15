@@ -524,18 +524,21 @@ func TestStartFailsTheTicketWhenTheAgentGivesAnError(t *testing.T) {
 	}
 }
 
-// A restart claims the ticket again, and the run that follows continues the
+// A restart starts the ticket again, and the run that follows continues the
 // conversation of the run that failed. The session is on the ticket, so the
 // supervisor is what carries it down to the agent.
-func TestStartGivesTheAgentTheSessionOfTheTicket(t *testing.T) {
+func TestRestartGivesTheAgentTheSessionOfTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
+	if err := Start(s, id, cliConfig(), fakeAgent(t, "exit 0")); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.SetSession(id, "s-1"); err != nil {
 		t.Fatal(err)
 	}
 	agent := &specAgent{Adapter: fakeAgent(t, "exit 0")}
 
-	if err := Start(s, id, cliConfig(), agent); err != nil {
+	if err := Restart(s, id, cliConfig(), agent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -575,13 +578,11 @@ func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	cfg := acpConfig(t, "text a line", "stop end_turn")
 
-	for range 2 {
-		if err := Start(s, id, cfg, nil); err != nil {
-			t.Fatal(err)
-		}
-		if err := s.Restart(id); err != nil {
-			t.Fatal(err)
-		}
+	if err := Start(s, id, cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restart(s, id, cfg, nil); err != nil {
+		t.Fatal(err)
 	}
 
 	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))

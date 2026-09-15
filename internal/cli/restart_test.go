@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,27 +28,8 @@ func restartIn(t *testing.T, dataDir, workDir string, id int64) {
 	}
 }
 
-// A run can fail from outside, and the person gives the work again with no new
-// ticket. The tickets that were waiting were waiting first, so the ticket that
-// failed goes to the end of the queue.
-func TestRestartPutsAFailedTicketAtTheEndOfTheQueue(t *testing.T) {
-	dataDir := t.TempDir()
-	_, ticketID, repo := failedTicket(t, dataDir)
-	testfix.SecondTicket(t, dataDir)
-
-	restartIn(t, dataDir, repo, ticketID)
-
-	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Queued {
-		t.Errorf("status = %q, want %q", got, store.Queued)
-	}
-	want := []string{"the second", "ticket title"}
-	if got := queueTitlesOf(t, dataDir); !slices.Equal(got, want) {
-		t.Errorf("the queue is %v, want %v", got, want)
-	}
-}
-
 // Only a failed ticket restarts. A queued ticket keeps its place, which a
-// restart that went through would have taken from it.
+// restart that went through would have made it run again.
 func TestRestartRefusesATicketThatDidNotFail(t *testing.T) {
 	tests := []struct {
 		state string
@@ -77,17 +58,26 @@ func TestRestartRefusesATicketThatDidNotFail(t *testing.T) {
 	}
 }
 
-// The queue is where a person restarts from, so the command starts a
-// supervisor for the ticket it put back rather than leaving it until the
-// person types something else.
+// A restart starts the supervisor for the failed ticket directly rather than
+// putting the ticket back in the queue to wait behind other work.
 func TestRestartStartsTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := failedTicket(t, dataDir)
 	l, marker := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
+	var launched int64
+	saved := restartLaunch
+	restartLaunch = func(id int64) *exec.Cmd {
+		launched = id
+		return l()
+	}
+	t.Cleanup(func() { restartLaunch = saved })
 
 	restartIn(t, dataDir, repo, ticketID)
 
+	if launched != ticketID {
+		t.Errorf("restart launched ticket %d, want %d", launched, ticketID)
+	}
 	testfix.WaitForStarts(t, marker, 1)
 }
 

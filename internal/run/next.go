@@ -39,6 +39,12 @@ func Next(s *store.Store, cfg config.Config, launch func() *exec.Cmd) error {
 	return nil
 }
 
+// Launch starts one supervisor apart from its caller. Restart uses this for a
+// supervisor that already knows which failed ticket it must resume.
+func Launch(cmd *exec.Cmd) error {
+	return detach(cmd)
+}
+
 // detach starts cmd so that it outlives the program that started it. What
 // takes the child out of the reach of the terminal is detachAttr, which is
 // the one of the system the build is for. It gets none of the parent's

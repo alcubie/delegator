@@ -140,7 +140,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if err := s.FailUnfinished(secondRun); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ChangeStatus(id, Queued); err != nil {
+	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Cancel(id, 0); err != nil {
@@ -154,8 +154,8 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 		"ready to queued",
 		"queued to running",
 		"running to failed",
-		"failed to queued",
-		"queued to cancelled",
+		"failed to running",
+		"running to cancelled",
 	}
 	if got := steps(t, s, id); !slices.Equal(got, want) {
 		t.Errorf("the history is\n%v\nwant\n%v", got, want)

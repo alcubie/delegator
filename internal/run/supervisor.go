@@ -43,6 +43,21 @@ func Start(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) 
 	return supervise(s, cfg, ticket, runID, agent)
 }
 
+// Restart starts a failed ticket again. Restart writes the running state and
+// the run row in the transaction that gives this supervisor the ticket, so a
+// restarted ticket never waits behind the queue.
+func Restart(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) error {
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		return err
+	}
+	runID, err := s.Restart(id)
+	if err != nil {
+		return err
+	}
+	return supervise(s, cfg, ticket, runID, agent)
+}
+
 // StartNext claims the first ticket of the queue for this run and works it,
 // the way Start works the ticket a person named. The read of the queue and the
 // claim are one transaction, so two supervisors that a trigger started at the

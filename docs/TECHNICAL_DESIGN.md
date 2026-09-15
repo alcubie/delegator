@@ -544,7 +544,7 @@ stateDiagram-v2
     queued --> running: a supervisor starts
     running --> ready: dg finish
     running --> failed: timeout, error, or no dg finish
-    failed --> queued: dg restart
+    failed --> running: dg restart
     ready --> done: dg accept
     ready --> queued: dg revise
     done --> [*]
@@ -558,7 +558,7 @@ Each change of state is in the table below.
 | `queued` | `running` | No command. A supervisor takes the first ticket of the queue. |
 | `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
-| `failed` | `queued` | `dg restart`. The run continues the same session, in the same worktree. |
+| `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
 | `ready` | `done` | `dg accept`. Delegator removes the worktree and keeps the branch. |
 | `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its commit goes away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
