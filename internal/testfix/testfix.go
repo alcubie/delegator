@@ -221,6 +221,23 @@ func AgeRun(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
 	setRunColumn(t, dataDir, ticketID, "started_at", started)
 }
 
+// AgeAcceptance moves the moment that the person accepted a ticket back by
+// age. The window of DONE reads that moment, and a test cannot wait a day for
+// the window to pass a ticket, so it writes the row of the history itself.
+func AgeAcceptance(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
+	t.Helper()
+	at := time.Now().Add(-age).UTC().Format(time.RFC3339)
+	result, err := openDB(t, dataDir).Exec(`
+		UPDATE transitions SET at = ?
+		WHERE ticket_id = ? AND to_status = 'done'`, at, ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
+		t.Fatalf("the acceptance of %d rows of ticket %d was written, want 1 row: %v", n, ticketID, err)
+	}
+}
+
 // setRunColumn writes one column of the last run of a ticket. It opens the
 // database itself, because no command can leave a run in the states above: a
 // claim writes the moment it happens and the id of the program that claims,

@@ -2764,3 +2764,101 @@ func TestCancelWithNoSuchTicket(t *testing.T) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
 	}
 }
+
+// dg list shows every ticket, so AllTickets holds each status and not the four
+// that are open. A done ticket that the window of the inbox has passed is the
+// one a person goes to this list for: the inbox stops showing it after a day,
+// and the work it names does not stop existing then.
+func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
+	s, projectID := emptyStore(t)
+	want := map[int64]TicketStatus{}
+	var done int64
+	for _, status := range []TicketStatus{Queued, Running, Ready, Failed, Done, Cancelled} {
+		id, err := s.AddTicket(projectID, string(status))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A new ticket is queued and holds a position, which setStatus takes
+		// away.
+		if status != Queued {
+			setStatus(t, s, id, status)
+		}
+		want[id] = status
+		if status == Done {
+			done = id
+		}
+	}
+	// The person accepted the done ticket two days ago, which is outside the
+	// window that DoneTickets reads.
+	setAccepted(t, s, done, rfc3339(time.Now().Add(-48*time.Hour)))
+
+	all, err := s.AllTickets("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != len(want) {
+		t.Fatalf("AllTickets gives %d tickets, want %d", len(all), len(want))
+	}
+	for _, ticket := range all {
+		if status := want[ticket.ID]; ticket.Status != status {
+			t.Errorf("ticket %d has the status %q, want %q", ticket.ID, ticket.Status, status)
+		}
+	}
+}
+
+// The list is in the order of the ids, which is the order the tickets were
+// made in. A person who reads it goes to a ticket by its number.
+func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
+	s, ids := threeTickets(t)
+	if err := s.MoveTicket(ids[2], Top); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := s.AllTickets("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, ticket := range all {
+		got = append(got, ticket.ID)
+	}
+	if !slices.Equal(got, ids) {
+		t.Errorf("AllTickets gives the ids %v, want %v", got, ids)
+	}
+}
+
+// A path takes the list to the tickets of one project, which is dg list
+// --project. The query does the work, so a list of one project of many reads
+// only the rows it gives back.
+func TestAllTicketsTakesTheTicketsOfOneProject(t *testing.T) {
+	s, _, second := twoProjects(t)
+
+	all, err := s.AllTickets("/projects/other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, ticket := range all {
+		got = append(got, ticket.ID)
+		if ticket.Project != "/projects/other" {
+			t.Errorf("ticket %d has the project %q, want /projects/other", ticket.ID, ticket.Project)
+		}
+	}
+	if !slices.Equal(got, second) {
+		t.Errorf("AllTickets gives the ids %v, want the ids %v of that project", got, second)
+	}
+}
+
+// A path that no project holds gives no ticket, and it is not an error: the
+// person named a directory that delegator has no ticket for.
+func TestAllTicketsOfAProjectThatHasNone(t *testing.T) {
+	s, _ := threeTickets(t)
+
+	all, err := s.AllTickets("/projects/nothing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Errorf("AllTickets gives %d tickets for a path that no project holds, want none", len(all))
+	}
+}
