@@ -42,6 +42,32 @@ const (
 	stubTurnError       = "error"       // fail the turn
 )
 
+// What the stub agent does with a load, named by an argument of the stub. It
+// implements the loader whatever it says, so a request that reaches an agent
+// that says it cannot load is answered rather than refused, and a test sees
+// whether the client asked at all.
+const (
+	stubLoads     = "loads"      // say it loads, and replay two updates
+	stubLoadsLong = "loads-long" // say it loads, and replay more than the channel holds
+	stubNoLoad    = "no-load"    // say it cannot load
+)
+
+// The two updates the stub agent replays when it loads a session, which stand
+// for the turn the session already took.
+const (
+	stubReplayFirst  = "the session said this before"
+	stubReplaySecond = "and then it said this"
+)
+
+// stubLongHistory is how many updates the long replay sends. It is more than
+// the channel between the client and a turn holds, which is the history of
+// any session a person has worked in for a while.
+const stubLongHistory = 3 * eventRoom
+
+// stubHistoryLine is the text of one update of the long history. The updates
+// are numbered so that a test reads back the order as well as the count.
+func stubHistoryLine(i int) string { return fmt.Sprintf("history line %d", i) }
+
 // What the updates turn sends. The command has a second line, so a test sees
 // that a summary is one line of the command and not all of it.
 const (
@@ -52,6 +78,11 @@ const (
 	stubCommandLine = "go test ./internal/handler…"
 	stubFailure     = "the stub agent has no model"
 )
+
+// What the stub agent says of an id it never issued. It names neither the id
+// nor the agent, so a test that wants both in the error is reading what the
+// handler put there and not what the agent happened to say.
+const stubUnknownSession = "there is no session of that id"
 
 // The ids of the options the stub agent offers. A decision it records is the
 // id the client selected, or stubCancelled when the client took no option.
@@ -77,16 +108,17 @@ type stubRecord struct {
 }
 
 // stubKind gives the Kind that starts the stub agent offering one of the sets
-// of permission options and taking one of the turns, and the path of the file
-// it records into.
-func stubKind(t *testing.T, options, turn string) (Kind, string) {
+// of permission options, taking one of the turns and saying whether it can
+// load a session, and the path of the file it records into.
+func stubKind(t *testing.T, options, turn, loading string) (Kind, string) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
 	record := filepath.Join(t.TempDir(), "record.json")
-	return Kind{Name: "stub", Argv: []string{self, "-test.run=TestStubAgent", "stub", record, options, turn}}, record
+	argv := []string{self, "-test.run=TestStubAgent", "stub", record, options, turn, loading}
+	return Kind{Name: "stub", Argv: argv}, record
 }
 
 // readRecord reads what the stub agent wrote.
@@ -108,11 +140,11 @@ func readRecord(t *testing.T, path string) stubRecord {
 // after the flags; every other run skips it.
 func TestStubAgent(t *testing.T) {
 	args := flag.Args()
-	if len(args) != 4 || args[0] != "stub" {
+	if len(args) != 5 || args[0] != "stub" {
 		t.Skip("this run is not the stub agent")
 	}
 	fmt.Fprintln(os.Stderr, stubHello)
-	agent := &stubAgent{record: args[1], options: args[2], turn: args[3]}
+	agent := &stubAgent{record: args[1], options: args[2], turn: args[3], loading: args[4]}
 	conn := acp.NewAgentSideConnection(agent, os.Stdout, os.Stdin)
 	agent.conn = conn
 	<-conn.Done()
@@ -123,6 +155,7 @@ type stubAgent struct {
 	record    string
 	options   string
 	turn      string
+	loading   string
 	conn      *acp.AgentSideConnection
 	fs        acp.FileSystemCapabilities
 	term      bool
@@ -130,11 +163,17 @@ type stubAgent struct {
 	decisions []string
 }
 
-var _ acp.Agent = (*stubAgent)(nil)
+var (
+	_ acp.Agent       = (*stubAgent)(nil)
+	_ acp.AgentLoader = (*stubAgent)(nil)
+)
 
 func (a *stubAgent) Initialize(_ context.Context, p acp.InitializeRequest) (acp.InitializeResponse, error) {
 	a.fs, a.term = p.ClientCapabilities.Fs, p.ClientCapabilities.Terminal
-	return acp.InitializeResponse{ProtocolVersion: acp.ProtocolVersionNumber}, nil
+	return acp.InitializeResponse{
+		ProtocolVersion:   acp.ProtocolVersionNumber,
+		AgentCapabilities: acp.AgentCapabilities{LoadSession: a.loading != stubNoLoad},
+	}, nil
 }
 
 func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.NewSessionResponse, error) {
@@ -143,6 +182,40 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 		return acp.NewSessionResponse{}, err
 	}
 	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID)}, nil
+}
+
+// LoadSession replays the two updates of the session's history and then
+// answers, which is the order the protocol asks for, and refuses an id it
+// never issued. It records the directory first, so a test that expects the
+// load to be refused before it is sent sees that nothing was recorded.
+func (a *stubAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	a.cwd = p.Cwd
+	if err := a.write(); err != nil {
+		return acp.LoadSessionResponse{}, err
+	}
+	if string(p.SessionId) != stubSessionID {
+		return acp.LoadSessionResponse{}, errors.New(stubUnknownSession)
+	}
+	for _, text := range a.history() {
+		u := acp.UpdateAgentMessageText(text)
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+			return acp.LoadSessionResponse{}, err
+		}
+	}
+	return acp.LoadSessionResponse{}, nil
+}
+
+// history is the text the stub agent replays, which is two updates or a whole
+// session's worth of them.
+func (a *stubAgent) history() []string {
+	if a.loading != stubLoadsLong {
+		return []string{stubReplayFirst, stubReplaySecond}
+	}
+	lines := make([]string, 0, stubLongHistory)
+	for i := range stubLongHistory {
+		lines = append(lines, stubHistoryLine(i))
+	}
+	return lines
 }
 
 // Prompt takes the turn the stub agent was started with.

@@ -55,11 +55,16 @@ func Deny() Policy {
 // started it goes on editing a worktree that nothing is watching.
 //
 // The client puts what it decides on its own onto events, which a prompt
-// drains into the stream it gives the caller.
+// drains into the stream it gives the caller. A session that was loaded also
+// holds the history the agent replayed, which the first prompt gives before
+// the turn it starts.
 type Session struct {
 	cmd    *exec.Cmd
 	conn   *acp.ClientSideConnection
+	caps   acp.AgentCapabilities
 	id     acp.SessionId
+	loaded bool
+	replay []Event
 	events chan Event
 	turn   sync.Mutex
 }
@@ -105,16 +110,18 @@ func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.W
 	}
 	s := &Session{cmd: cmd, events: make(chan Event, eventRoom)}
 	s.conn = acp.NewClientSideConnection(&client{policy: policy, events: s.events}, stdin, stdout)
-	if _, err := s.conn.Initialize(ctx, acp.InitializeRequest{
+	r, err := s.conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
 			Fs:       acp.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 			Terminal: false,
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("initialize agent %q: %w", kind.Name, err)
 	}
+	s.caps = r.AgentCapabilities
 	return s, nil
 }
 
@@ -137,6 +144,82 @@ func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.
 	return s, nil
 }
 
+// Load runs the agent's command in cwd and opens the session the id names,
+// which the agent kept from an earlier run in that directory. It is Start for
+// a session that has a history: the agent replays that history as updates
+// before it answers, and each of them is an event with Replay set, given at
+// the start of the first prompt's sequence, so a caller shows the history or
+// skips it. The replay is the agent reading back what the session already
+// holds and costs no more than resuming it: what the session remembers is
+// there either way, and only the next prompt spends anything on it.
+//
+// An agent whose capabilities say it cannot load a session is refused before
+// the session is asked for, and an id the agent does not know is an error
+// that names it. Either way the process is ended before Load gives the error.
+func Load(ctx context.Context, kind Kind, policy Policy, cwd, id string, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, kind, policy, cwd, stderr)
+	if err != nil {
+		return nil, err
+	}
+	if !s.caps.LoadSession {
+		_ = s.Close()
+		return nil, fmt.Errorf("agent %q cannot load a session", kind.Name)
+	}
+	replay, err := s.collect(func() error {
+		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
+			Cwd:        cwd,
+			McpServers: []acp.McpServer{},
+			SessionId:  acp.SessionId(id),
+		})
+		return err
+	})
+	if err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("load session %s of agent %q in %s: %w", id, kind.Name, cwd, err)
+	}
+	s.replay, s.id, s.loaded = replay, acp.SessionId(id), true
+	return s, nil
+}
+
+// collect runs the request in f and gives back everything the agent sent
+// while it ran, in order and marked as replay.
+//
+// It reads the events as they arrive rather than taking them once f is done,
+// because a session's history is longer than the channel holds and no turn is
+// draining it yet. The client would block putting the event that overflowed,
+// the SDK holds the response behind every notification it has yet to hand
+// over, and the request would never return. Once f is done the SDK has
+// handled every notification the agent sent before its answer, so what is
+// still in the channel is the end of the history and nothing follows it.
+func (s *Session) collect(f func() error) ([]Event, error) {
+	collected := make(chan []Event, 1)
+	stop := make(chan struct{})
+	go func() {
+		var got []Event
+		for {
+			select {
+			case e := <-s.events:
+				got = append(got, e)
+			case <-stop:
+				collected <- append(got, s.last()...)
+				return
+			}
+		}
+	}()
+	err := f()
+	close(stop)
+	got := <-collected
+	for i := range got {
+		got[i].Replay = true
+	}
+	return got, err
+}
+
+// Loaded says whether the session came from a history rather than being
+// opened new. A loaded session gives that history as the events with Replay
+// set at the start of its first turn.
+func (s *Session) Loaded() bool { return s.loaded }
+
 // Prompt sends text to the agent and gives the turn it takes as a sequence of
 // events: what it says, what it thinks, the tools it runs, and the
 // permissions the policy answered for it, in the order they happened. The
@@ -157,6 +240,16 @@ func (s *Session) Prompt(ctx context.Context, text string) iter.Seq2[Event, erro
 	return func(yield func(Event, error) bool) {
 		s.turn.Lock()
 		defer s.turn.Unlock()
+		// The history of a loaded session opens its first turn, and is taken
+		// before it is given, so a caller that walks away in the middle of it
+		// does not get it again from the turn after this one.
+		replay := s.replay
+		s.replay = nil
+		for _, e := range replay {
+			if !yield(e, nil) {
+				return
+			}
+		}
 		// The request the agent answers does not carry the caller's context.
 		// A cancelled request would end the wait while the agent was still
 		// reporting the turn it is stopping, and the updates it had yet to
