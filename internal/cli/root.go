@@ -1,18 +1,35 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // DataDir returns the directory that holds the database and the prose of each
-// ticket. XDG_DATA_HOME names it, and a person who has not set that variable
-// gets the directory that the XDG specification asks for.
+// ticket, for the system the build is for.
 func DataDir() (string, error) {
+	return dataDir(runtime.GOOS)
+}
+
+// dataDir is DataDir with the system as a parameter, so that the tests can ask
+// for a system that the build is not for. XDG_DATA_HOME names the directory on
+// every system. A person who has not set that variable gets what their system
+// asks for: LOCALAPPDATA on Windows, which has no XDG rule, and the directory
+// of the XDG specification elsewhere.
+func dataDir(goos string) (string, error) {
 	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "delegator"), nil
+	}
+	if goos == "windows" {
+		dir := os.Getenv("LOCALAPPDATA")
+		if dir == "" {
+			return "", errors.New("%LOCALAPPDATA% is not set")
+		}
 		return filepath.Join(dir, "delegator"), nil
 	}
 	home, err := os.UserHomeDir()
