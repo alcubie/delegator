@@ -66,7 +66,7 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				argv, worktree, err = resumeOf(s, dataDir, id)
+				argv, worktree, err = resumeOf(s, dataDir, cfg.Agent, id)
 				return err
 			})
 			if err != nil {
@@ -83,9 +83,6 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	return cmd
 }
 
-// chatKind is the agent whose sessions dg chat opens.
-const chatKind = "claude"
-
 // resumeOf returns the argv that continues the session of one ticket and the
 // directory to start it in, and refuses each ticket that has no conversation
 // to continue.
@@ -94,7 +91,7 @@ const chatKind = "claude"
 // supervisor is gone, so a ticket still in running here has an agent on that
 // session now, and a second writer on one conversation is the fault this
 // command exists to stop.
-func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error) {
+func resumeOf(s *store.Store, dataDir, agent string, id int64) ([]string, string, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return nil, "", err
@@ -118,7 +115,7 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error
 		return nil, "", fmt.Errorf(
 			"the worktree of ticket %d is gone: %s", id, worktree)
 	}
-	argv, err := handler.ResumeArgv(chatKind, ticket.Session)
+	argv, err := handler.ResumeArgv(agent, ticket.Session)
 	if err != nil {
 		return nil, "", err
 	}

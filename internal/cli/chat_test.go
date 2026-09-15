@@ -112,6 +112,24 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
+// The agent of a run comes from the config, so chat must use that agent's
+// resume command rather than always opening a Claude conversation.
+func TestChatStartsTheResumeOfTheSelectedAgent(t *testing.T) {
+	writeConfig(t, "agent = \"codex\"\n")
+	dataDir := t.TempDir()
+	ticketID, repo, session := chattableTicket(t, dataDir)
+	record := useChat(t, "true")
+
+	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"codex", "resume", session}
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
 // A person whose agent is not on the path under the name delegator expects
 // says so once in the config file, and the command that opens a session is
 // theirs from then on. {session} is where the id of the session goes.
@@ -144,8 +162,8 @@ func TestChatRefusesAnAgentWithNoResume(t *testing.T) {
 	if err == nil {
 		t.Fatal("dg chat started an agent that has no command that opens a session")
 	}
-	if !strings.Contains(err.Error(), chatKind) {
-		t.Errorf("error = %q, want the agent %s in it", err, chatKind)
+	if !strings.Contains(err.Error(), "claude") {
+		t.Errorf("error = %q, want the agent claude in it", err)
 	}
 	if record.argv != nil {
 		t.Errorf("dg chat started %v, want nothing", record.argv)
