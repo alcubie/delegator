@@ -1,9 +1,7 @@
 package run
 
 import (
-	"errors"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -50,7 +48,8 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, cfg config.Config) error
 //     after a restart of the computer, and the program that asks is itself a
 //     dg, so an id that the system gave again would look like a live
 //     supervisor and hold the ticket in running for ever.
-//   - No program holds its process id. This is signal 0.
+//   - No program holds its process id. This is alive, which is signal 0 on
+//     Unix and the exit code of the process on Windows.
 //   - It is past the timeout. That is the backstop for the one case the two
 //     rules above leave: an id that the system gave again, inside one boot, to
 //     a program that is alive.
@@ -66,20 +65,4 @@ func running(r store.Run, boot, now time.Time, timeout time.Duration) bool {
 		return false
 	}
 	return alive(r.PID)
-}
-
-// alive reports whether a process id has a program. Signal 0 sends nothing and
-// gives the error that a real signal would give, which is how a program asks
-// about another one.
-//
-// Only ESRCH says that the id is free. A program of another person answers
-// with a permission error, and that is a program that is there; the timeout
-// covers it. An id of 0 or less is not asked about at all: signal 0 to the id
-// 0 reaches every program of the group of the caller, and a row that holds no
-// process id reads as 0.
-func alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 }

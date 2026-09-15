@@ -5,14 +5,9 @@
 package run
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/printer"
-	"go/token"
 	"os"
 	"os/exec"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -20,52 +15,14 @@ import (
 // delegator builds for.
 var bootFiles = []string{"boot_linux.go", "boot_darwin.go", "boot_windows.go"}
 
-// signature gives the declaration of bootTime in one file as text, so that the
-// declaration of one file can be compared with the declaration of another.
-func signature(t *testing.T, file string) string {
-	t.Helper()
-	fset := token.NewFileSet()
-	parsed, err := parser.ParseFile(fset, file, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, decl := range parsed.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "bootTime" {
-			continue
-		}
-		var out strings.Builder
-		if err := printer.Fprint(&out, fset, fn.Type); err != nil {
-			t.Fatal(err)
-		}
-		return out.String()
-	}
-	t.Fatalf("%s declares no bootTime", file)
-	return ""
-}
-
-// files gives the files that a build for one system takes from this package.
-// The field is the name that go list gives the list, GoFiles for the code of
-// the package and TestGoFiles for its tests.
-func files(t *testing.T, goos, field string) []string {
-	t.Helper()
-	cmd := exec.Command("go", "list", "-f", "{{."+field+"}}", ".")
-	cmd.Env = append(os.Environ(), "GOOS="+goos)
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list %s for %s: %v", field, goos, err)
-	}
-	return strings.Fields(strings.Trim(strings.TrimSpace(string(out)), "[]"))
-}
-
 // The reconcile calls bootTime for whichever system the build is for, so the
 // three files must agree on what that call looks like. A Windows file that
 // returns one value, or a Duration, breaks the build of the package, and no
 // test of this package can report it, because none of them runs on Windows.
 func TestEachBootTimeHasTheSameSignature(t *testing.T) {
-	want := signature(t, bootFiles[0])
+	want := signature(t, bootFiles[0], "bootTime")
 	for _, file := range bootFiles[1:] {
-		if got := signature(t, file); got != want {
+		if got := signature(t, file, "bootTime"); got != want {
 			t.Errorf("%s declares %s, want the %s of %s", file, got, want, bootFiles[0])
 		}
 	}
@@ -102,7 +59,7 @@ func TestOnlyAWindowsBuildTakesTheWindowsBootTest(t *testing.T) {
 // The test in boot_windows_test.go needs Windows, so make check cannot run it.
 // A type check for Windows is what is left, and it reads the two files together,
 // so a call the Windows file does not answer fails here. The whole package
-// cannot be built for Windows yet, because alive and detach are for Unix only,
+// cannot be built for Windows yet, because detach is for Unix only,
 // which is why this names the two files and not the package.
 func TestTheWindowsBootTimeTypeChecks(t *testing.T) {
 	cmd := exec.Command("go", "vet", "boot_windows.go", "boot_windows_test.go")
