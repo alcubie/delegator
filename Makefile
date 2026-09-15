@@ -49,9 +49,16 @@ watch:
 # vet also compiles the tests behind the integration tag without running them.
 # The tag keeps those files out of every ordinary build, so without this a
 # change to an adapter could break one and nobody would know until release.
+#
+# The last line builds dg for Windows, which the desktop GUI targets. It names
+# cmd/dg and not ./..., because internal/testfix starts a shell with Setsid and
+# signals a process group, and it is a package and not a test file, so ./...
+# reaches it. The output goes nowhere: what this asks is whether the build is
+# there, and go build takes /dev/null for that.
 vet:
 	go vet ./...
 	go vet -tags integration ./...
+	GOOS=windows go build -o /dev/null ./cmd/dg
 
 # lint runs each check that staticcheck has, and not only the ones that it has
 # by default. The two that are not default earn their place: ST1000 asks each

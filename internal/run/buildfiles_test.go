@@ -1,8 +1,9 @@
-// The helpers of the tests about the files that a build takes for one system.
-// bootTime has one file for each system, and alive has one for Unix and one
-// for Windows, and the tests of both ask the same two questions: which files a
-// build takes, and whether the declaration in one file is the declaration in
-// another.
+// The helpers of the tests about the files that a build takes for one system,
+// and the type check of the files that a build for Windows takes. bootTime has
+// one file for each system, and alive, detachAttr and stop each have one for
+// Unix and one for Windows, and the tests of all of them ask the same two
+// questions: which files a build takes, and whether the declaration in one file
+// is the declaration in another.
 
 package run
 
@@ -13,6 +14,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -53,4 +55,31 @@ func files(t *testing.T, goos, field string) []string {
 		t.Fatalf("go list %s for %s: %v", field, goos, err)
 	}
 	return strings.Fields(strings.Trim(strings.TrimSpace(string(out)), "[]"))
+}
+
+// The tests that need Windows cannot run in make check, which runs on Linux. A
+// type check for Windows is what is left, and this is the whole of it: every
+// code file that a build for Windows takes, and every test file that a build
+// for Windows takes and a build for Linux does not. A Windows file that does
+// not answer the call another file makes fails here, and so does a Windows test
+// that names something no file declares.
+//
+// This names the files and not the package because the tests of the package do
+// not build for Windows. internal/testfix starts a shell with Setsid and
+// signals a process group, and next_test.go reads a process group with ps, so
+// go vet of the package reaches them and stops.
+func TestTheWindowsFilesTypeCheck(t *testing.T) {
+	vetted := files(t, "windows", "GoFiles")
+	onLinux := files(t, "linux", "TestGoFiles")
+	for _, file := range files(t, "windows", "TestGoFiles") {
+		if !slices.Contains(onLinux, file) {
+			vetted = append(vetted, file)
+		}
+	}
+
+	cmd := exec.Command("go", append([]string{"vet"}, vetted...)...)
+	cmd.Env = append(os.Environ(), "GOOS=windows")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go vet for windows: %v: %s", err, out)
+	}
 }
