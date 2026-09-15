@@ -386,6 +386,9 @@ $XDG_DATA_HOME/delegator/
       2026-08-17T09-30-00.log        the raw output of the agent
 ```
 
+On Windows, if `XDG_DATA_HOME` is not set, delegator keeps these files in
+`%LOCALAPPDATA%\delegator`.
+
 **Why a database, after lesson 3.** Lesson 3 in §3 says that `CREATE TABLE IF NOT EXISTS`
 does not add a new column. That lesson is correct. Its cause was the absence of a
 migration, and not the database: `CREATE TABLE IF NOT EXISTS` is not a migration.

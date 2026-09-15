@@ -83,18 +83,75 @@ func TestDataDirTakesXDGDataHome(t *testing.T) {
 	}
 }
 
-func TestDataDirWithNoXDGDataHome(t *testing.T) {
+// Windows has no XDG rule, and a person there keeps the data of a program
+// below LOCALAPPDATA. make check runs on Linux, so the system is a parameter
+// of the unexported dataDir and the test names it.
+func TestDataDirOnWindowsTakesLocalAppData(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)
 
-	got, err := DataDir()
+	got, err := dataDir("windows")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if want := filepath.Join(`C:\Users\person\AppData\Local`, "delegator"); got != want {
+		t.Errorf("dataDir(windows) = %q, want %q", got, want)
+	}
+}
+
+// Windows sets LOCALAPPDATA for a person who signed in, so a run with it empty
+// is a run with nothing to join, and joining nothing gives the relative path
+// delegator, which would put the database wherever the command was run.
+func TestDataDirOnWindowsWithNoLocalAppData(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("LOCALAPPDATA", "")
+
+	got, err := dataDir("windows")
+	if err == nil {
+		t.Fatalf("dataDir(windows) with no LOCALAPPDATA = %q, want an error", got)
+	}
+	if !strings.Contains(err.Error(), "LOCALAPPDATA") {
+		t.Errorf("the error is %q, which does not name LOCALAPPDATA", err)
+	}
+}
+
+// A person who sets XDG_DATA_HOME means it on whichever system they are on,
+// and the tests of this repository set it to hold their own directory, so it
+// comes before the directory the system asks for. LOCALAPPDATA is set here to
+// name the one that would otherwise win.
+func TestXDGDataHomeWinsOnEachSystem(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
+	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)
+
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		got, err := dataDir(goos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join("/somewhere/data", "delegator"); got != want {
+			t.Errorf("dataDir(%s) = %q, want %q", goos, got, want)
+		}
+	}
+}
+
+// Linux and macOS keep the directory they had. LOCALAPPDATA is set here
+// because a person can set any variable on any system, and neither of these
+// systems reads it.
+func TestDataDirOffWindowsIsTheXDGDirectory(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(home, ".local", "share", "delegator"); got != want {
-		t.Errorf("DataDir = %q, want %q", got, want)
+
+	for _, goos := range []string{"linux", "darwin"} {
+		got, err := dataDir(goos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(home, ".local", "share", "delegator"); got != want {
+			t.Errorf("dataDir(%s) = %q, want %q", goos, got, want)
+		}
 	}
 }
