@@ -29,6 +29,7 @@ func staleTicket(t *testing.T, dataDir string) (repo string, stale, queued int64
 func TestEachCommandDoesTheReconcile(t *testing.T) {
 	for _, args := range [][]string{
 		{},
+		{"list"},
 		{"show", "1"},
 		{"move", "2", "top"},
 		{"ticket", "Add rate limiting"},

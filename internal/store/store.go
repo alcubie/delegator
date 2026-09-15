@@ -610,6 +610,17 @@ func (s *Store) OpenTickets() ([]OpenTicket, error) {
 		ORDER BY tickets.id`, Queued, Running, Ready, Failed)
 }
 
+// AllTickets returns every ticket of every project, in the order of the ids,
+// whatever its status. dg list reads it.
+//
+// The order is the order the tickets were made in, and it is not the order of
+// the inbox: the inbox is the work of a day in the order a person deals with
+// it, and this list is the record of every ticket there has ever been, which a
+// person reads by number.
+func (s *Store) AllTickets() ([]OpenTicket, error) {
+	return s.inboxTickets(inboxTicketQuery + `ORDER BY tickets.id`)
+}
+
 // DoneTickets returns each ticket that dg accept closed at or after since. The
 // inbox holds them for a while after they close, so a person who accepted a
 // ticket can still read what it was.
