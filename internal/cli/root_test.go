@@ -42,7 +42,7 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	if _, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 

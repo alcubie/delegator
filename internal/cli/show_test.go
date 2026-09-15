@@ -257,7 +257,7 @@ func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
 	}
 
 	out, err := runIn(t, dataDir, repo, "ticket",
-		"--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it")
+		"--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}

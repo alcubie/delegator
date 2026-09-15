@@ -67,7 +67,7 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure")
+	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	}
 
 	// the second ticket shows the next id
-	out, err = runIn(t, dataDir, repo, "ticket", "Add rate limiting")
+	out, err = runIn(t, dataDir, repo, "ticket", "Add rate limiting", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
 	here := testfix.Repo(t, repoBranch)
 	elsewhere := testfix.Repo(t, "release")
 
-	out, err := runIn(t, dataDir, here, "ticket", "--project", elsewhere, "Remove staging infrastructure")
+	out, err := runIn(t, dataDir, here, "ticket", "--project", elsewhere, "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := runIn(t, dataDir, here, "ticket", "--project", relative, "Remove staging infrastructure"); err != nil {
+	if _, err := runIn(t, dataDir, here, "ticket", "--project", relative, "Remove staging infrastructure", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +159,7 @@ func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	missing := filepath.Join(t.TempDir(), "nowhere")
 
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", missing, "Remove staging infrastructure")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", missing, "Remove staging infrastructure", "--no-body")
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("err = %v, want a path that is not there", err)
 	}
@@ -182,7 +182,7 @@ func TestRunTicketWithAProjectThatIsAFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", file, "Remove staging infrastructure")
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", file, "Remove staging infrastructure", "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
@@ -350,7 +350,7 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	l, marker := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
-	if _, err := runIn(t, dataDir, repo, "ticket", "Add the thing"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "Add the thing", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -364,7 +364,7 @@ func TestRunTicketAfterTwoTickets(t *testing.T) {
 	first, second := twoTickets(t, dataDir, repo)
 
 	out, err := runIn(t, dataDir, repo,
-		"ticket", "--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it")
+		"ticket", "--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestRunTicketAfterACommaList(t *testing.T) {
 	first, second := twoTickets(t, dataDir, repo)
 
 	out, err := runIn(t, dataDir, repo,
-		"ticket", "--after", fmt.Sprintf("%d,%d", first, second), "Remove the last of it")
+		"ticket", "--after", fmt.Sprintf("%d,%d", first, second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 	first, _ := twoTickets(t, dataDir, repo)
 	withEditor(t, "Remove the last of it\n\nAnd the app with it.\n")
 
-	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first))
+	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first), "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 func TestRunTicketAfterSomethingThatIsNotANumber(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--after", "twelve", "Remove the last of it")
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--after", "twelve", "Remove the last of it", "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
@@ -430,7 +430,7 @@ func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
 	const missing = 12
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "--after", fmt.Sprint(missing), "Remove the last of it")
+		"ticket", "--after", fmt.Sprint(missing), "Remove the last of it", "--no-body")
 	if !errors.Is(err, store.ErrNoTicket) {
 		t.Fatalf("err = %v, want ErrNoTicket", err)
 	}
@@ -587,5 +587,157 @@ func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
 	}
 	if files := proseFiles(t, dataDir); len(files) != 0 {
 		t.Errorf("the files of prose are %v, want none", files)
+	}
+}
+
+// A body is optional, and the silence around an empty one turned a mistyped
+// command into a ticket: dg ticket list made ticket 159, titled "list". A
+// title on its own now has to say that the ticket has no prose.
+func TestRunTicketWithNoBodyAndNoFlag(t *testing.T) {
+	dataDir := t.TempDir()
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "list")
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	for _, want := range []string{"no body", "--no-body"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error is %q, and does not say %q", err, want)
+		}
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want none", len(queue))
+	}
+}
+
+// --no-body says that the ticket has no prose, and there is nothing for dg show
+// to show: writeProse puts a blank line in front of the prose, so a blank line
+// under the fields is the section that should not be there.
+func TestRunTicketWithNoBodyAddsTheTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got := proseOfTicket(t, dataDir, id); got != "" {
+		t.Errorf("the prose is %q, want nothing", got)
+	}
+
+	shown, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fields, ok := strings.Cut(shown, "─\n")
+	if !ok {
+		t.Fatalf("dg show wrote no rule under the title:\n%s", shown)
+	}
+	if strings.Contains(fields, "\n\n") {
+		t.Errorf("dg show holds a prose section for a ticket with no body:\n%s", shown)
+	}
+}
+
+// A body beside --no-body is two answers to the one question, and dg cannot
+// tell which the person meant, so it refuses and writes no ticket.
+func TestRunTicketWithABodyArgumentAndNoBody(t *testing.T) {
+	dataDir := t.TempDir()
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
+		"ticket", "Remove staging infrastructure", "Remove the staging app.", "--no-body")
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	if want := "dg ticket takes a body or --no-body, and got both"; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+}
+
+// --body-file names the prose, so it contradicts --no-body as a body argument
+// does. Without this dg would take the prose of the file and say nothing.
+func TestRunTicketWithABodyFileAndNoBody(t *testing.T) {
+	dataDir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte("From the file.\n"), filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
+		"ticket", "Remove staging infrastructure", "--body-file", path, "--no-body")
+	if err == nil {
+		t.Fatal("the command gave no error")
+	}
+	if want := "dg ticket takes a body or --no-body, and got both"; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if files := proseFiles(t, dataDir); len(files) != 0 {
+		t.Errorf("the files of prose are %v, want none", files)
+	}
+}
+
+// The flag guards the command line, where a word read as a title becomes a
+// ticket. A person in the editor wrote the file and saw it, so a title on its
+// own there is still a ticket with no prose.
+func TestRunTicketFromTheEditorNeedsNoNoBody(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	withEditor(t, "Remove staging infrastructure\n")
+
+	out, err := runIn(t, dataDir, repo, "ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	if got := proseOfTicket(t, dataDir, id); got != "" {
+		t.Errorf("the prose is %q, want nothing", got)
+	}
+
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Remove staging infrastructure"; len(queue) != 1 || queue[0].Title != want {
+		t.Errorf("the queue is %v, want the one ticket %q", queue, want)
+	}
+}
+
+// A person who hits the error looks at the help for the flag it names, so the
+// help of dg ticket has a line for --no-body.
+func TestTicketHelpNamesNoBody(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "ticket", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "--no-body") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("the help of dg ticket names no --no-body:\n%s", out)
+	}
+	if !strings.Contains(line, "no prose") {
+		t.Errorf("the help line of --no-body is %q, and does not say that the ticket has no prose", line)
 	}
 }

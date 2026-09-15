@@ -147,10 +147,10 @@ func TestListTakesTheTicketsOfOneProject(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
 	elsewhere := testfix.Repo(t, "release")
-	if _, err := runIn(t, dataDir, here, "ticket", "the ticket here"); err != nil {
+	if _, err := runIn(t, dataDir, here, "ticket", "the ticket here", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runIn(t, dataDir, elsewhere, "ticket", "the ticket elsewhere"); err != nil {
+	if _, err := runIn(t, dataDir, elsewhere, "ticket", "the ticket elsewhere", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
