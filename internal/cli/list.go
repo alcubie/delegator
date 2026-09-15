@@ -52,27 +52,13 @@ func listTickets(out io.Writer, dataDir, workDir string, cfg *config.Config, pro
 		}
 	}
 	return withStore(dataDir, cfg, func(s *store.Store) error {
-		tickets, err := s.AllTickets()
+		tickets, err := s.AllTickets(root)
 		if err != nil {
 			return err
-		}
-		if root != "" {
-			tickets = ofProject(tickets, root)
 		}
 		writeList(out, tickets)
 		return nil
 	})
-}
-
-// ofProject returns the tickets whose project is the one at root.
-func ofProject(tickets []store.OpenTicket, root string) []store.OpenTicket {
-	var kept []store.OpenTicket
-	for _, t := range tickets {
-		if t.Project == root {
-			kept = append(kept, t)
-		}
-	}
-	return kept
 }
 
 // writeList writes one row for each ticket, in the order it is given, with the

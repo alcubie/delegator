@@ -2792,7 +2792,7 @@ func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 	// window that DoneTickets reads.
 	setAccepted(t, s, done, rfc3339(time.Now().Add(-48*time.Hour)))
 
-	all, err := s.AllTickets()
+	all, err := s.AllTickets("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2814,7 +2814,7 @@ func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, err := s.AllTickets()
+	all, err := s.AllTickets("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2824,5 +2824,41 @@ func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
 	}
 	if !slices.Equal(got, ids) {
 		t.Errorf("AllTickets gives the ids %v, want %v", got, ids)
+	}
+}
+
+// A path takes the list to the tickets of one project, which is dg list
+// --project. The query does the work, so a list of one project of many reads
+// only the rows it gives back.
+func TestAllTicketsTakesTheTicketsOfOneProject(t *testing.T) {
+	s, _, second := twoProjects(t)
+
+	all, err := s.AllTickets("/projects/other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, ticket := range all {
+		got = append(got, ticket.ID)
+		if ticket.Project != "/projects/other" {
+			t.Errorf("ticket %d has the project %q, want /projects/other", ticket.ID, ticket.Project)
+		}
+	}
+	if !slices.Equal(got, second) {
+		t.Errorf("AllTickets gives the ids %v, want the ids %v of that project", got, second)
+	}
+}
+
+// A path that no project holds gives no ticket, and it is not an error: the
+// person named a directory that delegator has no ticket for.
+func TestAllTicketsOfAProjectThatHasNone(t *testing.T) {
+	s, _ := threeTickets(t)
+
+	all, err := s.AllTickets("/projects/nothing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Errorf("AllTickets gives %d tickets for a path that no project holds, want none", len(all))
 	}
 }
