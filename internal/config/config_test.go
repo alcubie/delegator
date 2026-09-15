@@ -300,3 +300,76 @@ func TestLoadRefusesAKeyOfAnAgentItDoesNotKnow(t *testing.T) {
 		t.Errorf("error %q does not name the key", err)
 	}
 }
+
+// Windows has no XDG rule, and a person there keeps the config of a program
+// below APPDATA. make check runs on Linux, so the system is a parameter of the
+// unexported dir and the test names it.
+func TestDirOnWindowsTakesAppData(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("APPDATA", `C:\Users\person\AppData\Roaming`)
+
+	got, err := dir("windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(`C:\Users\person\AppData\Roaming`, "delegator"); got != want {
+		t.Errorf("dir(windows) = %q, want %q", got, want)
+	}
+}
+
+// Windows sets APPDATA for a person who signed in, so a run with it empty is a
+// run with nothing to join, and joining nothing gives the relative path
+// delegator, which would look for config.toml wherever the command was run.
+func TestDirOnWindowsWithNoAppData(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("APPDATA", "")
+
+	got, err := dir("windows")
+	if err == nil {
+		t.Fatalf("dir(windows) with no APPDATA = %q, want an error", got)
+	}
+	if !strings.Contains(err.Error(), "APPDATA") {
+		t.Errorf("the error is %q, which does not name APPDATA", err)
+	}
+}
+
+// A person who sets XDG_CONFIG_HOME means it on whichever system they are on,
+// and the tests of this repository set it to hold their own directory, so it
+// comes before the directory the system asks for. APPDATA is set here to name
+// the one that would otherwise win.
+func TestXDGConfigHomeWinsOnEachSystem(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/somewhere/config")
+	t.Setenv("APPDATA", `C:\Users\person\AppData\Roaming`)
+
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		got, err := dir(goos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join("/somewhere/config", "delegator"); got != want {
+			t.Errorf("dir(%s) = %q, want %q", goos, got, want)
+		}
+	}
+}
+
+// Linux and macOS keep the directory they had. APPDATA is set here because a
+// person can set any variable on any system, and neither of these systems
+// reads it.
+func TestDirOffWindowsIsTheXDGDirectory(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("APPDATA", `C:\Users\person\AppData\Roaming`)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, goos := range []string{"linux", "darwin"} {
+		got, err := dir(goos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(home, ".config", "delegator"); got != want {
+			t.Errorf("dir(%s) = %q, want %q", goos, got, want)
+		}
+	}
+}
