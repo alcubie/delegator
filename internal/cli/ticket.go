@@ -38,6 +38,11 @@ var errBodyAndNoBody = errors.New("dg ticket takes a body or --no-body, and got 
 // the empty body is a choice the person states.
 var errNoBody = errors.New("the ticket has no body: write one, or pass --no-body for a ticket that has none")
 
+// ticketID is the value dg ticket and dg accept write when they name a ticket.
+type ticketID struct {
+	ID int64 `json:"id"`
+}
+
 // ticketCommand makes a ticket and shows its id. With no argument it opens the
 // editor of the person, with one it takes the title, and with two it takes the
 // title and the prose. The flag --body-file takes the prose from a file
@@ -96,7 +101,11 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), id)
+				if err := writeValue(cmd.OutOrStdout(), ticketID{ID: id}, false, func(out io.Writer) {
+					fmt.Fprintln(out, id)
+				}); err != nil {
+					return err
+				}
 				return run.Next(s, *cfg, launch)
 			})
 		},

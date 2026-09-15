@@ -6,7 +6,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -40,21 +39,12 @@ func versionCommand() *cobra.Command {
 		Short: "Show the version of dg.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if asJSON {
-				return writeVersionJSON(cmd.OutOrStdout())
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "dg", Version)
-			return nil
+			return writeValue(cmd.OutOrStdout(), versionJSON{Version: Version, Schema: jsonSchema}, asJSON, func(out io.Writer) {
+				fmt.Fprintln(out, "dg", Version)
+			})
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false,
 		"write the version as one JSON object")
 	return cmd
-}
-
-// writeVersionJSON writes the version as one JSON object and nothing else.
-func writeVersionJSON(out io.Writer) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(versionJSON{Version: Version, Schema: jsonSchema})
 }

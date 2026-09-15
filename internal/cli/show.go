@@ -7,7 +7,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -255,6 +254,8 @@ type ticketJSON struct {
 	Created  *time.Time `json:"created"`
 	Accepted *time.Time `json:"accepted"`
 	Prose    *string    `json:"prose"`
+
+	shown shown
 }
 
 // nullable gives the value, and nothing for the empty string.
@@ -274,16 +275,10 @@ func nullableTime(at time.Time) *time.Time {
 	return &at
 }
 
-// writeJSON writes one ticket as one JSON object and nothing else. The three
-// paths are full: a script gives a path to another command, and no command
-// expands a tilde that came from a variable.
-func writeJSON(out io.Writer, s shown) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	// The prose is markdown, and the escape of `<`, `>` and `&` is for JSON
-	// that goes inside a page. Nothing here is a page.
-	enc.SetEscapeHTML(false)
-	return enc.Encode(ticketJSON{
+// ticketValue turns one shown ticket into the value that dg writes. shown is
+// kept with it for the text renderer, and the exported fields are its JSON.
+func ticketValue(s shown) ticketJSON {
+	return ticketJSON{
 		ID:       s.ID,
 		Title:    s.Title,
 		Status:   string(s.Status),
@@ -296,7 +291,8 @@ func writeJSON(out io.Writer, s shown) error {
 		Created:  nullableTime(s.Created),
 		Accepted: nullableTime(s.Accepted),
 		Prose:    nullable(strings.TrimRight(s.Prose, "\n")),
-	})
+		shown:    s,
+	}
 }
 
 // onlyField names the one field that a --*-only flag asks for. The empty
@@ -337,34 +333,32 @@ func writeOnly(out io.Writer, s shown, only onlyField) {
 	fmt.Fprintln(out, value)
 }
 
-// showTicket reads one ticket and writes it. The fields come from the database,
-// and the prose comes from the file, because the person owns the prose and an
-// editor opens a file and not a row. only names the one field to write in
-// place of the whole ticket, and asJSON writes every field as one JSON object
-// in place of the text.
+// showTicket reads one ticket into the value that dg writes. The fields come
+// from the database, and the prose comes from the file, because the person
+// owns the prose and an editor opens a file and not a row.
 //
 // The caller gives the store, because a command opens one and reconciles once,
 // whatever else it reads from the database. The data directory comes off the
 // store, which is the directory it was opened on, so there is no second value
 // that could name another one.
-func showTicket(out io.Writer, s *store.Store, id int64, only onlyField, asJSON bool) error {
+func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	dataDir := s.DataDir()
 
 	ticket, err := s.Ticket(id)
 	if err != nil {
-		return err
+		return ticketJSON{}, err
 	}
 	t := shown{Ticket: ticket, ProseFile: proseFile(dataDir, id)}
 
 	prose, err := os.ReadFile(t.ProseFile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return ticketJSON{}, err
 	}
 	t.Prose = string(prose)
 
 	lastRun, err := s.Run(id)
 	if err != nil && !errors.Is(err, store.ErrNoRun) {
-		return err
+		return ticketJSON{}, err
 	}
 	t.Started = lastRun.StartedAt
 
@@ -373,22 +367,11 @@ func showTicket(out io.Writer, s *store.Store, id int64, only onlyField, asJSON 
 		t.Worktree = ""
 	}
 
-	if asJSON {
-		return writeJSON(out, t)
-	}
-
-	if only != onlyNone {
-		writeOnly(out, t, only)
-		return nil
-	}
-
 	t.DependsOn, err = s.Dependencies(id)
 	if err != nil {
-		return err
+		return ticketJSON{}, err
 	}
-
-	writeTicket(out, t, time.Now().UTC())
-	return nil
+	return ticketValue(t), nil
 }
 
 // onlyFlag is one --*-only flag. asks is the field of that flag, and field is
@@ -445,7 +428,17 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return showTicket(cmd.OutOrStdout(), s, id, only, asJSON)
+				value, err := showTicket(s, id)
+				if err != nil {
+					return err
+				}
+				return writeValue(cmd.OutOrStdout(), value, asJSON, func(out io.Writer) {
+					if only != onlyNone {
+						writeOnly(out, value.shown, only)
+						return
+					}
+					writeTicket(out, value.shown, time.Now().UTC())
+				})
 			})
 		},
 	}

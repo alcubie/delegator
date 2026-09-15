@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
@@ -24,7 +25,11 @@ func startCommand(dataDir string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 
-				fmt.Fprintln(cmd.OutOrStdout(), startMessage)
+				if err := writeValue(cmd.OutOrStdout(), nil, false, func(out io.Writer) {
+					fmt.Fprintln(out, startMessage)
+				}); err != nil {
+					return err
+				}
 				return run.Next(s, *cfg, launch)
 			})
 		},
