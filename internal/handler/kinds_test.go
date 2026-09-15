@@ -159,3 +159,29 @@ func TestResumeArgvRefusesAnAgentWithNoResumeCommand(t *testing.T) {
 		t.Fatal("ResumeArgv of an agent with no resume command gave no error")
 	}
 }
+
+func TestFindGivesTheAgentOfTheName(t *testing.T) {
+	useConfig(t, "")
+
+	found, err := Find("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := kindNamed(t, Kinds(), "codex"); !slices.Equal(found.Argv, want.Argv) {
+		t.Errorf("argv = %v, want %v", found.Argv, want.Argv)
+	}
+}
+
+func TestFindRefusesAnAgentThatIsNotInTheTable(t *testing.T) {
+	useConfig(t, "")
+
+	_, err := Find("cursor")
+	if err == nil {
+		t.Fatal("Find of an unknown agent gave no error")
+	}
+	for _, want := range []string{"cursor", "claude", "codex", "gemini"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+}

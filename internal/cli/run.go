@@ -55,7 +55,7 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				start = func(s *store.Store) error { return run.Start(s, id, agent) }
+				start = func(s *store.Store) error { return run.Start(s, id, *cfg, agent) }
 			}
 			// A run that could not start does not start the next one. What
 			// stopped it is the database or the repository of the project,
