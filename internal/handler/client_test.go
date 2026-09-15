@@ -203,8 +203,53 @@ func TestATitleAndAKindTheAgentLeavesOutReachThePolicy(t *testing.T) {
 	}
 }
 
-func TestSessionUpdateIsIgnored(t *testing.T) {
-	if err := serve().SessionUpdate(t.Context(), acp.SessionNotification{Update: acp.UpdateAgentMessageText("hello")}); err != nil {
-		t.Errorf("SessionUpdate: %v", err)
+func TestSessionUpdateDropsWhatIsNotAnEvent(t *testing.T) {
+	c := &client{events: make(chan Event, 1)}
+	plan := acp.UpdatePlan(acp.PlanEntry{Content: "run the tests", Status: acp.PlanEntryStatusPending})
+	if err := c.SessionUpdate(t.Context(), acp.SessionNotification{Update: plan}); err != nil {
+		t.Fatalf("SessionUpdate: %v", err)
+	}
+	if len(c.events) > 0 {
+		t.Errorf("the client kept %+v of a plan, and a plan is not an event", <-c.events)
+	}
+}
+
+func TestSummaryIsTheCommandOfAToolThatRunsOne(t *testing.T) {
+	raw := map[string]any{"command": "make check", "description": "check it"}
+	got := summary(acp.ToolKindExecute, []acp.ToolCallLocation{{Path: "/repo/Makefile"}}, raw)
+	if got != "make check" {
+		t.Errorf("the summary of a command is %q, and the agent ran %q", got, "make check")
+	}
+}
+
+func TestSummaryIsTheFirstFileTheToolNames(t *testing.T) {
+	locations := []acp.ToolCallLocation{{Path: "/repo/one.go"}, {Path: "/repo/two.go"}}
+	if got := summary(acp.ToolKindRead, locations, nil); got != "/repo/one.go" {
+		t.Errorf("the summary is %q, and the first file is %q", got, "/repo/one.go")
+	}
+	if got := summary(acp.ToolKindExecute, locations, map[string]any{}); got != "/repo/one.go" {
+		t.Errorf("the summary of a command that raw input does not hold is %q, and the tool names %q", got, "/repo/one.go")
+	}
+	if got := summary(acp.ToolKindFetch, nil, nil); got != "" {
+		t.Errorf("the summary of a tool that names no file is %q, and there is nothing to say", got)
+	}
+}
+
+func TestSummaryIsOneLineOfAtMost120Characters(t *testing.T) {
+	for _, c := range []struct{ name, command, want string }{
+		{"one short line", "make check", "make check"},
+		{"more than one line", "cd /repo\nmake check", "cd /repo…"},
+		{"a line of over 120", strings.Repeat("a", 200), strings.Repeat("a", 119) + "…"},
+		{"a line of 120", strings.Repeat("a", 120), strings.Repeat("a", 120)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := summary(acp.ToolKindExecute, nil, map[string]any{"command": c.command})
+			if got != c.want {
+				t.Errorf("the summary is %q, want %q", got, c.want)
+			}
+			if n := len([]rune(got)); n > 120 {
+				t.Errorf("the summary is %d characters, and a line is at most 120", n)
+			}
+		})
 	}
 }
