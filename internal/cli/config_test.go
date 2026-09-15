@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestACommandWritesTheConfigWhenItIsNotThere(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refuses the file the command wrote: %v\n%s", err, data)
 	}
-	if cfg != config.Default {
+	if !reflect.DeepEqual(cfg, config.Default) {
 		t.Errorf("Load gives %+v from the file the command wrote, want the default %+v", cfg, config.Default)
 	}
 
