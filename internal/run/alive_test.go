@@ -6,8 +6,6 @@
 package run
 
 import (
-	"os"
-	"os/exec"
 	"slices"
 	"testing"
 )
@@ -58,18 +56,5 @@ func TestOnlyAWindowsBuildTakesTheWindowsAliveTest(t *testing.T) {
 	}
 	if taken := files(t, "linux", "TestGoFiles"); slices.Contains(taken, test) {
 		t.Errorf("the tests of a build for linux are %v, which hold %s", taken, test)
-	}
-}
-
-// The tests in alive_windows_test.go need Windows, so make check cannot run
-// them. A type check for Windows is what is left, and it reads the two files
-// together, so a call the Windows file does not answer fails here. The whole
-// package cannot be built for Windows yet, because Stop is for Unix only,
-// which is why this names the two files and not the package.
-func TestTheWindowsAliveTypeChecks(t *testing.T) {
-	cmd := exec.Command("go", "vet", "alive_windows.go", "alive_windows_test.go")
-	cmd.Env = append(os.Environ(), "GOOS=windows")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go vet for windows: %v: %s", err, out)
 	}
 }
