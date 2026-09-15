@@ -49,20 +49,28 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			// With no id the supervisor reads the queue and claims in one
 			// transaction, which is what a trigger starts; with one, a person
 			// named the ticket.
-			start := func(s *store.Store) error { return run.StartNext(s, *cfg, agent) }
+			start := func(s *store.Store) (bool, error) { return run.StartNext(s, *cfg, agent) }
 			if len(args) == 1 {
 				id, err := ticketArg(args[0])
 				if err != nil {
 					return err
 				}
-				start = func(s *store.Store) error { return run.Start(s, id, *cfg, agent) }
+				start = func(s *store.Store) (bool, error) { return true, run.Start(s, id, *cfg, agent) }
 			}
 			// A run that could not start does not start the next one. What
 			// stopped it is the database or the repository of the project,
-			// and the next run would meet the same fault.
+			// and the next run would meet the same fault. A supervisor that
+			// claimed nothing does not start the next one either: the queue
+			// is as the trigger that started this one found it, and a
+			// supervisor that launched another for the same queue would make
+			// a chain that does not end.
 			return withStore(dataDir, cfg, func(s *store.Store) error {
-				if err := start(s); err != nil {
+				claimed, err := start(s)
+				if err != nil {
 					return err
+				}
+				if !claimed {
+					return nil
 				}
 				return run.Next(s, *cfg, launch)
 			})

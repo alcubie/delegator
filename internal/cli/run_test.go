@@ -156,6 +156,53 @@ func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
+// A supervisor that claimed nothing launches nothing. The queue here holds a
+// ticket and the limit leaves a slot free, so the count of Next says one
+// supervisor, but the ticket waits on a cancelled one and no supervisor can
+// claim it. Each one that launched another would read the same queue, and the
+// chain would not end.
+func TestRunWithNoIDThatClaimsNothingStartsNothing(t *testing.T) {
+	dataDir := testfix.XDGDataDir(t)
+	s, first, repo := queuedTicket(t, dataDir)
+	second := testfix.SecondTicket(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(first, store.Cancelled); err != nil {
+		t.Fatal(err)
+	}
+	l, marker := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	out, err := runIn(t, dataDir, repo, "run")
+	if err != nil {
+		t.Fatalf("err = %v, want nil: a supervisor with nothing to claim is not a fault", err)
+	}
+	if out != "" {
+		t.Errorf("dg run wrote %q, want nothing", out)
+	}
+
+	testfix.WaitForStarts(t, marker, 0)
+}
+
+// A supervisor that claimed a ticket and ran it to its end launches the next
+// one. The slot it held is the one that is free now, so the queue has moved
+// since the trigger counted the slots.
+func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
+	dataDir := testfix.XDGDataDir(t)
+	_, _, repo := queuedTicket(t, dataDir)
+	testfix.SecondTicket(t, dataDir)
+	useAgent(t, fakeAgent(t, "exit 0"))
+	l, marker := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, marker, 1)
+}
+
 // A run that could not start leaves the queue where it is. What stopped it is
 // the repository of the project or the database, and a run started after it
 // would meet the same fault. The repository is removed here, so git cannot
