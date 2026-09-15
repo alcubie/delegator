@@ -374,29 +374,30 @@ func TestDirOffWindowsIsTheXDGDirectory(t *testing.T) {
 	}
 }
 
+// The key is read, and the value that says so is the one the default is not.
 func TestLoadReadsRunner(t *testing.T) {
 	xdg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "runner = \"acp\"\n")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Runner != RunnerACP {
-		t.Errorf("Runner = %q, want %q", cfg.Runner, RunnerACP)
-	}
-}
-
-func TestLoadWithNoRunnerGivesTheCommandLine(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	writeConfig(t, xdg, "runner = \"cli\"\n")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Runner != RunnerCLI {
-		t.Errorf("Runner = %q, want the default %q", cfg.Runner, RunnerCLI)
+		t.Errorf("Runner = %q, want %q", cfg.Runner, RunnerCLI)
+	}
+}
+
+func TestLoadWithNoRunnerGivesACP(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Runner != RunnerACP {
+		t.Errorf("Runner = %q, want the default %q", cfg.Runner, RunnerACP)
 	}
 }
 

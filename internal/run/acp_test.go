@@ -15,14 +15,11 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// acpConfig writes the config file of a person who selected the ACP runner and
-// put dg-fake-acp-agent, on the script of the lines, where claude's command
-// goes, and gives back that config read. The supervisor asks handler.Kinds for
-// the command it starts, so the file is how a test says which agent to run.
+// acpConfig replaces the agent with the fake and leaves the runner at its default.
 func acpConfig(t *testing.T, lines ...string) config.Config {
 	t.Helper()
-	return loadConfig(t, fmt.Sprintf("runner = %q\n\n[agents.claude]\nargv = [%q, %q]\n",
-		config.RunnerACP, testfix.FakeACPAgentPath, testfix.Script(t, lines...)))
+	return loadConfig(t, fmt.Sprintf("[agents.claude]\nargv = [%q, %q]\n",
+		testfix.FakeACPAgentPath, testfix.Script(t, lines...)))
 }
 
 // loadConfig writes the text as the config file of the person and gives it
@@ -249,10 +246,10 @@ func TestTheACPRunnerRunsWithNoLimitWhenTheTimeoutIsZero(t *testing.T) {
 	}
 }
 
-// The runner of the config is what selects the path. The default is the
-// command line, which every other test of the supervisor drives.
-func TestTheDefaultRunnerIsTheCommandLine(t *testing.T) {
-	if config.Default.Runner != config.RunnerCLI {
-		t.Errorf("the default runner is %q, want %q", config.Default.Runner, config.RunnerCLI)
+// The runner of the config is what selects the path. A person who says nothing
+// gets this one, and the command line is what a person asks for by name.
+func TestTheDefaultRunnerIsACP(t *testing.T) {
+	if config.Default.Runner != config.RunnerACP {
+		t.Errorf("the default runner is %q, want %q", config.Default.Runner, config.RunnerACP)
 	}
 }
