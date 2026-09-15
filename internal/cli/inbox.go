@@ -164,22 +164,20 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 	}
 }
 
-// showInbox reads the tickets and writes the inbox. How far back DONE reaches
-// comes from the config file. asJSON writes the object of inbox_json.go
-// instead of the text.
-func showInbox(out io.Writer, dataDir string, cfg *config.Config, mode colourMode, asJSON bool) error {
+// showInbox reads the tickets into the value that dg writes. How far back DONE
+// reaches comes from the config file.
+func showInbox(dataDir string, cfg *config.Config) (inboxJSON, error) {
 	done := cfg.DoneWindow()
-	return withStore(dataDir, cfg, func(s *store.Store) error {
+	var value inboxJSON
+	err := withStore(dataDir, cfg, func(s *store.Store) error {
 
 		now := time.Now()
 		box, err := inbox.Get(s, now.Add(-done))
 		if err != nil {
 			return err
 		}
-		if asJSON {
-			return writeInboxJSON(out, box)
-		}
-		writeInbox(out, box, mode, now, done)
+		value = inboxValue(box, now, done)
 		return nil
 	})
+	return value, err
 }

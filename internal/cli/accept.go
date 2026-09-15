@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -41,8 +42,12 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if len(args) == 0 {
-					fmt.Fprintln(cmd.OutOrStdout(), id)
+				if err := writeValue(cmd.OutOrStdout(), ticketID{ID: id}, false, func(out io.Writer) {
+					if len(args) == 0 {
+						fmt.Fprintln(out, id)
+					}
+				}); err != nil {
+					return err
 				}
 				return run.Next(s, *cfg, launch)
 			})

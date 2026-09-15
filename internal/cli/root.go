@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -78,7 +79,13 @@ func Root(dataDir, workDir string) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showInbox(cmd.OutOrStdout(), dataDir, &cfg, mode, asJSON)
+			box, err := showInbox(dataDir, &cfg)
+			if err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), box, asJSON, func(out io.Writer) {
+				writeInbox(out, box.box, mode, box.now, box.done)
+			})
 		},
 	}
 	root.PersistentFlags().Var(&mode, "color",

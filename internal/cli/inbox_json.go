@@ -10,8 +10,6 @@
 package cli
 
 import (
-	"encoding/json"
-	"io"
 	"time"
 
 	"github.com/alcubie/delegator/internal/inbox"
@@ -35,6 +33,10 @@ type inboxJSON struct {
 	Running []inboxTicketJSON `json:"running"`
 	Failed  []inboxTicketJSON `json:"failed"`
 	Queued  []inboxTicketJSON `json:"queued"`
+
+	box  inbox.Inbox
+	now  time.Time
+	done time.Duration
 }
 
 // inboxTicketJSON is one row of the inbox. Each key that names a field of
@@ -82,19 +84,18 @@ func queueState(running bool) string {
 	return queuePaused
 }
 
-// writeInboxJSON writes the inbox as one JSON object and nothing else.
-func writeInboxJSON(out io.Writer, box inbox.Inbox) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	// The title is what the person wrote, and the escape of `<`, `>` and `&`
-	// is for JSON that goes inside a page. Nothing here is a page.
-	enc.SetEscapeHTML(false)
-	return enc.Encode(inboxJSON{
+// inboxValue turns the inbox into the value that dg writes. Its unexported
+// fields hold the values the text renderer needs alongside the JSON form.
+func inboxValue(box inbox.Inbox, now time.Time, done time.Duration) inboxJSON {
+	return inboxJSON{
 		Queue:   queueState(box.QueueRunning),
 		Done:    inboxTickets(box.Done),
 		Ready:   inboxTickets(box.Ready),
 		Running: inboxTickets(box.Running),
 		Failed:  inboxTickets(box.Failed),
 		Queued:  inboxTickets(box.Queued),
-	})
+		box:     box,
+		now:     now,
+		done:    done,
+	}
 }

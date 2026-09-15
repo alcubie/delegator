@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
@@ -26,8 +27,9 @@ func pauseCommand(dataDir string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 
-				fmt.Fprintln(cmd.OutOrStdout(), pausedMessage)
-				return nil
+				return writeValue(cmd.OutOrStdout(), nil, false, func(out io.Writer) {
+					fmt.Fprintln(out, pausedMessage)
+				})
 			})
 		},
 	}

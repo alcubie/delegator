@@ -6,7 +6,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +20,22 @@ import (
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
+
+// writeValue writes value as JSON when asJSON is set, and otherwise leaves its
+// text form to writeText. Commands give their value here rather than choosing
+// one output path themselves, so a caller that needs the value has one form to
+// read from every command that offers JSON.
+func writeValue(out io.Writer, value any, asJSON bool, writeText func(io.Writer)) error {
+	if !asJSON {
+		writeText(out)
+		return nil
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	// Values from tickets are prose and paths, not HTML for a page.
+	enc.SetEscapeHTML(false)
+	return enc.Encode(value)
+}
 
 // withStore opens the store, reconciles the runs whose supervisor is gone, and
 // then calls fn with the same store. Every command goes through it, so each
