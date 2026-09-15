@@ -24,7 +24,7 @@ func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
 // offers one of the sets of permission options and takes one of the turns.
 func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *bytes.Buffer) {
 	t.Helper()
-	kind, record := stubKind(t, options, turn)
+	kind, record := stubKind(t, options, turn, stubLoads)
 	var stderr bytes.Buffer
 	s, err := Start(t.Context(), kind, policy, cwd, &stderr)
 	if err != nil {
