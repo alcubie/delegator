@@ -33,11 +33,7 @@ type Config struct {
 	// and names no project. A value of 0 is no limit of its own, and each
 	// project then takes Runs. ProjectRuns gives the limit that holds.
 	MaxRunsPerProject int `toml:"max_runs_per_project"`
-	// Runner is how a run drives its agent: RunnerCLI, the command line of
-	// the agent through internal/adapters, or RunnerACP, the Agent Client
-	// Protocol through internal/handler.
-	Runner string `toml:"runner"`
-	// Agent is the agent that the ACP runner starts, by the name delegator
+	// Agent is the agent that a run starts, by the name delegator
 	// knows it under: one of the agents delegator holds, or one that a section
 	// of Agents adds. A name that no agent has is an error at the run that
 	// would have started it, and the error names the agents there are.
@@ -48,13 +44,6 @@ type Config struct {
 	// it; a name delegator does not know is an agent of its own.
 	Agents map[string]Agent `toml:"agents"`
 }
-
-// The runners a run can drive its agent with. A person selects one with the
-// key runner, and the two paths are the two packages that start an agent.
-const (
-	RunnerCLI = "cli"
-	RunnerACP = "acp"
-)
 
 // An Agent is the section [agents.<name>] of the config file: the command
 // that starts the agent's ACP server on stdio, and the command that opens one
@@ -187,9 +176,7 @@ func Init() error {
 // Load reads config.toml from Dir. A file that is not there gives Default and
 // no error. A value of the wrong type, or a key that delegator does not know,
 // gives an error that names the key: a misspelt key that quietly became a
-// default would be the hardest fault to find. A runner that is neither of the
-// two is refused for the same reason, because a key that reads is not yet a
-// value that delegator can act on.
+// default would be the hardest fault to find.
 func Load() (Config, error) {
 	path, err := file()
 	if err != nil {
@@ -205,10 +192,6 @@ func Load() (Config, error) {
 	}
 	if unknown := md.Undecoded(); len(unknown) > 0 {
 		return Config{}, fmt.Errorf("%s: unknown key %q", path, unknown[0].String())
-	}
-	if cfg.Runner != RunnerCLI && cfg.Runner != RunnerACP {
-		return Config{}, fmt.Errorf("%s: runner is %q, and it is %q or %q",
-			path, cfg.Runner, RunnerCLI, RunnerACP)
 	}
 	return cfg, nil
 }

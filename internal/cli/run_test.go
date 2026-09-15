@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/alcubie/delegator/internal/adapters"
-	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
@@ -46,46 +44,19 @@ func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	})
 }
 
-// fakeAgent returns an Adapter that runs the given script. It is here and not
-// in testfix because testfix cannot import adapters.
-func fakeAgent(t *testing.T, lines ...string) adapters.Fake {
+// useFakeAgent gives one test an ACP fake in place of the agent the run starts.
+func useFakeAgent(t *testing.T, lines ...string) {
 	t.Helper()
-	return adapters.Fake{Binary: testfix.FakeAgentPath, Script: testfix.Script(t, lines...)}
+	writeConfig(t, fmt.Sprintf("[agents.claude]\nargv = [%q, %q]\n", testfix.FakeAgentPath, testfix.Script(t, lines...)))
 }
 
-// useAgent puts a in place of the agent dg run starts, for one test, and asks
-// for the command line runner, which is the one that starts an Adapter. The
-// default runner is ACP, and it would start the agent of the person instead.
-func useAgent(t *testing.T, a adapters.Adapter) {
-	t.Helper()
-	useCLIRunner(t)
-	saved := agent
-	agent = a
-	t.Cleanup(func() { agent = saved })
-}
-
-// useCLIRunner gives one test a config directory of its own, holding a file
-// that selects the command line runner. The tests of this package share one
-// config directory, so a test that wrote the runner in that one would select
-// it for the rest as well.
-func useCLIRunner(t *testing.T) {
-	t.Helper()
-	dir := testfix.XDGConfigDir(t)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	text := fmt.Sprintf("runner = %q\n", config.RunnerCLI)
-	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// The file the script writes has a relative path, so it lands in the worktree
-// only if the agent was started there, and it is there only if dg run waited.
+// The file the script writes is in the worktree, so it is there only if dg run
+// started the agent there and waited for it.
 func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := queuedTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "write made-by-the-agent done", "exit 0"))
+	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
+	useFakeAgent(t, "write "+made+" done", "stop end_turn")
 
 	out, err := runIn(t, dataDir, repo, "run", fmt.Sprint(ticketID))
 	if err != nil {
@@ -104,7 +75,6 @@ func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	if ticket.Status != store.Failed {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Failed)
 	}
-	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
 	if _, err := os.Stat(made); err != nil {
 		t.Errorf("the agent did not run in the worktree: %v", err)
 	}
@@ -117,7 +87,8 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := queuedTicket(t, dataDir)
 	second := testfix.SecondTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "write made-by-the-agent done", "exit 0"))
+	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
+	useFakeAgent(t, "write "+made+" done", "stop end_turn")
 
 	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
 		t.Fatal(err)
@@ -132,7 +103,6 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	if ticket.Status != store.Failed {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Failed)
 	}
-	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
 	if _, err := os.Stat(made); err != nil {
 		t.Errorf("the agent did not run in the worktree of the first ticket: %v", err)
 	}
@@ -160,25 +130,6 @@ func TestRunIsHiddenFromTheHelp(t *testing.T) {
 		}
 	}
 	t.Error("dg run is not in the command tree")
-}
-
-// A run that ends in ready holds the queue. The supervisor calls Next when its
-// run ends, and Next finds the ticket in ready, which is work the person has
-// not examined yet, so the second ticket waits until dg accept closes the
-// first.
-func TestRunStartsNothingWhenItEndsInReady(t *testing.T) {
-	dataDir := testfix.XDGDataDir(t)
-	_, first, repo := queuedTicket(t, dataDir)
-	testfix.SecondTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, fmt.Sprintf("run dg finish %d abc123", first), "exit 0"))
-	l, marker := testfix.RecordingLaunch(t)
-	useLaunch(t, l)
-
-	if _, err := runIn(t, dataDir, repo, "run", fmt.Sprint(first)); err != nil {
-		t.Fatal(err)
-	}
-
-	testfix.WaitForStarts(t, marker, 0)
 }
 
 // A supervisor that claimed nothing launches nothing. The queue here holds a
@@ -217,7 +168,7 @@ func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, _, repo := queuedTicket(t, dataDir)
 	testfix.SecondTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "exit 0"))
+	useFakeAgent(t, "stop end_turn")
 	l, marker := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 

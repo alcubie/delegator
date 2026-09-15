@@ -19,7 +19,7 @@ import (
 func acpConfig(t *testing.T, lines ...string) config.Config {
 	t.Helper()
 	return loadConfig(t, fmt.Sprintf("[agents.claude]\nargv = [%q, %q]\n",
-		testfix.FakeACPAgentPath, testfix.Script(t, lines...)))
+		testfix.FakeAgentPath, testfix.Script(t, lines...)))
 }
 
 // loadConfig writes the text as the config file of the person and gives it
@@ -76,7 +76,7 @@ func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, "text "+acpSaid, "stop end_turn")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +102,7 @@ func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, "stop end_turn")
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +123,7 @@ func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 	shortTimeout(t, 2*time.Second)
 
 	done := make(chan error, 1)
-	go func() { done <- Start(testfix.OpenStore(t, dataDir), id, cfg, nil) }()
+	go func() { done <- Start(testfix.OpenStore(t, dataDir), id, cfg) }()
 
 	testfix.WaitFor(t, marker)
 	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "fake-1" {
@@ -140,10 +140,10 @@ func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 // process that ran is the one the key named.
 func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := loadConfig(t, fmt.Sprintf("runner = %q\nagent = \"mine\"\n\n[agents.mine]\nargv = [%q, %q]\n",
-		config.RunnerACP, testfix.FakeACPAgentPath, testfix.Script(t, "stop end_turn")))
+	cfg := loadConfig(t, fmt.Sprintf("agent = \"mine\"\n\n[agents.mine]\nargv = [%q, %q]\n",
+		testfix.FakeAgentPath, testfix.Script(t, "stop end_turn")))
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -157,9 +157,9 @@ func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
 // write one of those names, or a section that adds another.
 func TestTheACPRunnerRefusesAnAgentItDoesNotKnow(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := loadConfig(t, fmt.Sprintf("runner = %q\nagent = \"mine\"\n", config.RunnerACP))
+	cfg := loadConfig(t, "agent = \"mine\"\n")
 
-	err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil)
+	err := Start(testfix.OpenStore(t, dataDir), id, cfg)
 	if err == nil {
 		t.Fatal("err = nil, want the agent that delegator does not know")
 	}
@@ -184,7 +184,7 @@ func TestTheACPRunnerFailsARunTheAgentStoppedForAnotherReason(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, "text "+acpSaid, "stop refusal")
 
-	err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil)
+	err := Start(testfix.OpenStore(t, dataDir), id, cfg)
 	if err == nil {
 		t.Fatal("err = nil, want the reason the agent stopped")
 	}
@@ -218,7 +218,7 @@ func TestTheACPRunnerStopsATurnThatRanPastTheTimeout(t *testing.T) {
 	cfg := acpConfig(t, "text "+acpSaid, "wait 1m", "stop end_turn")
 	shortTimeout(t, 200*time.Millisecond)
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err == nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
 		t.Fatal("err = nil, want the run the timeout stopped")
 	}
 
@@ -241,15 +241,7 @@ func TestTheACPRunnerRunsWithNoLimitWhenTheTimeoutIsZero(t *testing.T) {
 	cfg := acpConfig(t, "stop end_turn")
 	cfg.TimeoutMinutes = 0
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, cfg, nil); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// The runner of the config is what selects the path. A person who says nothing
-// gets this one, and the command line is what a person asks for by name.
-func TestTheDefaultRunnerIsACP(t *testing.T) {
-	if config.Default.Runner != config.RunnerACP {
-		t.Errorf("the default runner is %q, want %q", config.Default.Runner, config.RunnerACP)
 	}
 }

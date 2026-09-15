@@ -9,9 +9,7 @@ Read this before you go looking. It is here so that a run does not have to
 derive the shape of the repository by reading it.
 
 - `cmd/dg` finds the directories and executes the cobra tree. `cmd/dg-fake-agent`
-  is the agent the tests drive instead of a real one, and
-  `cmd/dg-fake-acp-agent` is that agent for the ACP path: an agent of the
-  protocol that does what a script says.
+  is the Agent Client Protocol agent the tests drive instead of a real one.
 - `internal/cli` is the command layer: the cobra tree, the work behind each
   command, and the text a command writes. One file per command, named for it,
   so `dg move` is `move.go`.
@@ -19,9 +17,7 @@ derive the shape of the repository by reading it.
   migrations. The prose of a ticket is not in it; that is a file under
   `tickets/` in the data directory.
 - `internal/run` starts a run and supervises it. The prompt the agent gets is
-  `prompt` in `supervisor.go`.
-- `internal/adapters` is the seam for an agent, and holds the argv that starts
-  claude.
+  `prompt` in `supervisor.go`; `internal/handler` starts its ACP session.
 - `internal/project` is the only package that starts git.
 - `internal/inbox` decides which ticket is in which group and in what order,
   and writes no text.
@@ -52,18 +48,16 @@ the wrong place, that is the signal to correct this.
 
 - **A mutation can leave files in the repository.** `go test` runs each test
   binary with the package directory as its working directory, so a mutation that
-  corrupts a path writes there and not into a temporary directory. Two files
-  landed in `internal/fakeagent` this way and reached a commit through
-  `git add -A`. After a mutation run, read `git status` before staging, and
-  stage the paths you changed rather than everything.
+  corrupts a path writes there and not into a temporary directory. After a
+  mutation run, read `git status` before staging, and stage the paths you
+  changed rather than everything.
 
 - **Run `make integration` after changing the agent path.** The tests behind
   the build tag `integration` drive a real agent; they cost money, so
   `make check` only compiles them and `make release` runs them. `go test` will
-  not list them and nothing runs them for you. Run them when you change an
-  adapter in `internal/adapters`, the prompt in `internal/run/supervisor.go`,
-  or how `run.Start` captures output, and say in the commit message that they
-  passed.
+  not list them and nothing runs them for you. Run them when you change the
+  prompt in `internal/run/supervisor.go` or how `run.Start` captures output,
+  and say in the commit message that they passed.
 
 - **A launch that defaults to `os.Executable` is the test binary under test.**
   `launch` in `internal/cli` starts dg's own executable with `run <id>`. Under

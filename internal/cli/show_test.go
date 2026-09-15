@@ -560,12 +560,12 @@ func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
 
 // A person opens the conversation of a run while the agent works, with
 // claude --resume <session>, so dg show on a running ticket gives the
-// session. The agent reports its id and then sleeps, and dg show is read
+// session. The agent starts its session and then sleeps, and dg show is read
 // while dg run is still waiting on it.
 func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "run printf 'session: s-1\\n'", "run sleep 1", "exit 0"))
+	useFakeAgent(t, "wait 1s", "stop end_turn")
 
 	done := make(chan error, 1)
 	go func() {
@@ -579,7 +579,7 @@ func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(out, "session") && strings.Contains(out, "s-1") {
+		if strings.Contains(out, "session") && strings.Contains(out, "fake-1") {
 			if !strings.Contains(out, "running") {
 				t.Errorf("dg show gives the session on a ticket that is not running:\n%s", out)
 			}

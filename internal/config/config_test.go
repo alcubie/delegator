@@ -374,33 +374,6 @@ func TestDirOffWindowsIsTheXDGDirectory(t *testing.T) {
 	}
 }
 
-// The key is read, and the value that says so is the one the default is not.
-func TestLoadReadsRunner(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "runner = \"cli\"\n")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Runner != RunnerCLI {
-		t.Errorf("Runner = %q, want %q", cfg.Runner, RunnerCLI)
-	}
-}
-
-func TestLoadWithNoRunnerGivesACP(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Runner != RunnerACP {
-		t.Errorf("Runner = %q, want the default %q", cfg.Runner, RunnerACP)
-	}
-}
-
 func TestLoadReadsAgent(t *testing.T) {
 	xdg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
@@ -441,23 +414,5 @@ func TestLoadWithNoAgentGivesClaude(t *testing.T) {
 	}
 	if cfg.Agent != "claude" {
 		t.Errorf("Agent = %q, want the default %q", cfg.Agent, "claude")
-	}
-}
-
-// A runner delegator does not know would leave the person with a run that
-// drove the agent some other way than the one they asked for.
-func TestLoadRefusesARunnerItDoesNotKnow(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "runner = \"mcp\"\n")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load accepted runner = \"mcp\"")
-	}
-	for _, want := range []string{"mcp", RunnerCLI, RunnerACP} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the error does not name %q: %v", want, err)
-		}
 	}
 }

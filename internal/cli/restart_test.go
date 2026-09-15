@@ -87,11 +87,11 @@ func TestRestartStartsTheRun(t *testing.T) {
 func TestRestartRunsTheAgentInTheWorktreeOfTheFailedRun(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, ticketID, repo := queuedTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "write made-by-the-agent done", "exit 0"))
+	worktree := run.WorktreePath(dataDir, ticketID)
+	useFakeAgent(t, "write "+filepath.Join(worktree, "made-by-the-agent")+" done", "stop end_turn")
 	if _, err := runIn(t, dataDir, repo, "run", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
 	}
-	worktree := run.WorktreePath(dataDir, ticketID)
 	if err := os.WriteFile(filepath.Join(worktree, "not-committed"), []byte("work"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestRestartRunsTheAgentInTheWorktreeOfTheFailedRun(t *testing.T) {
 func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	s, ticketID, repo := queuedTicket(t, dataDir)
-	useAgent(t, fakeAgent(t, "exit 0"))
+	useFakeAgent(t, "stop end_turn")
 	if _, err := runIn(t, dataDir, repo, "run", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
 	}

@@ -46,7 +46,7 @@ func TestEachCommandDoesTheReconcile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dataDir := t.TempDir()
 			repo, stale, _ := staleTicket(t, dataDir)
-			useAgent(t, fakeAgent(t, "exit 0"))
+			useFakeAgent(t, "stop end_turn")
 
 			// The command itself can refuse: dg finish and dg accept are
 			// given the ticket that the reconcile has just failed. What the

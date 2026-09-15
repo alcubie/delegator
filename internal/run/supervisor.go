@@ -1,17 +1,13 @@
 package run
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -30,8 +26,8 @@ import (
 // dg finish is the only thing that makes a ticket ready, so a run that reached
 // its end with the ticket still in running gave no report, whatever ended it.
 //
-// cfg is the config of the person, which says how the run drives its agent.
-func Start(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) error {
+// cfg is the config of the person, which says which agent the run starts.
+func Start(s *store.Store, id int64, cfg config.Config) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -40,13 +36,13 @@ func Start(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) 
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID)
 }
 
 // Restart starts a failed ticket again. Restart writes the running state and
 // the run row in the transaction that gives this supervisor the ticket, so a
 // restarted ticket never waits behind the queue.
-func Restart(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter) error {
+func Restart(s *store.Store, id int64, cfg config.Config) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -55,7 +51,7 @@ func Restart(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID)
 }
 
 // StartNext claims the first ticket of the queue for this run and works it,
@@ -73,9 +69,8 @@ func Restart(s *store.Store, id int64, cfg config.Config, agent adapters.Adapter
 // changed in the queue since the trigger that started it counted the slots, so
 // the caller launches no supervisor for a false.
 //
-// cfg is the config of the person, which the claim counts the slots against
-// and which says how the run drives its agent.
-func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) (bool, error) {
+// cfg is the config of the person, which the claim counts the slots against.
+func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
 		return false, nil
@@ -83,7 +78,7 @@ func StartNext(s *store.Store, cfg config.Config, agent adapters.Adapter) (bool,
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID, agent)
+	return true, supervise(s, cfg, ticket, runID)
 }
 
 // noExitCode is the exit code of a run that ended with no process of its own
@@ -98,15 +93,7 @@ const noExitCode = -1
 // A worktree that git will not make ends the run before it starts. The ticket
 // is claimed by then, so this marks it failed and ends the run: a ticket left
 // in running would hold the queue with no supervisor working on it.
-//
-// The runner of the config says which path the run takes. The ACP runner is
-// superviseACP, and the rest of this function is the command line of the
-// agent through internal/adapters.
-//
-// The session on the ticket goes down to the agent. It is empty for a ticket
-// that has not run, and after a restart it is the session of the run that
-// failed, which the agent continues in the worktree that run left.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent adapters.Adapter) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// The caller has claimed the ticket, so this run holds it, and every way
@@ -124,96 +111,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	if cfg.Runner == config.RunnerACP {
-		return superviseACP(s, cfg, id, runID, worktree, log)
-	}
-
-	cmd := agent.Launch(adapters.RunSpec{
-		Worktree: worktree,
-		Prompt:   prompt(id),
-		Session:  ticket.Session,
-	})
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = log
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	followErr := follow(s, id, agent, stdout, log)
-	// Wait returns only after the process exits, and every line has been
-	// read above. The session is recorded before the run's failure is
-	// reported: a run that failed is the one a person most wants to open.
-	runErr := cmd.Wait()
-	// The end time and the exit code go on the row of the run whatever the
-	// exit was. ProcessState is there after Wait whether or not Wait gave an
-	// error, and its ExitCode is -1 for a process that a signal ended.
-	endErr := s.EndRun(runID, cmd.ProcessState.ExitCode())
-	if followErr != nil {
-		return followErr
-	}
-	if endErr != nil {
-		return endErr
-	}
-	return runErr
-}
-
-// follow reads the output of a run as it arrives. Each line goes to the log,
-// and the output so far goes to the adapter after each line until it gives
-// the session. The session goes on the ticket at once: a run that stops part
-// way, from a cancel, the timeout or a restart, has then already left the id
-// a person opens it with. Once the adapter has answered, follow asks no more
-// and keeps no more, because the log holds the output and nothing else reads
-// it.
-//
-// A fault of the log or of the session does not stop the reading: a pipe
-// that nobody reads fills, and the agent would then wait on it for ever.
-// follow reads to the end and returns the faults it kept.
-func follow(s *store.Store, id int64, agent adapters.Adapter, stdout io.Reader, log io.Writer) error {
-	var out bytes.Buffer
-	var logErr, sessionErr error
-	found := false
-	readErr := eachLine(stdout, func(line []byte) {
-		if _, err := log.Write(line); err != nil && logErr == nil {
-			logErr = err
-		}
-		if found || sessionErr != nil {
-			return
-		}
-		out.Write(line)
-		session, err := agent.SessionID(out.Bytes())
-		if err == nil && session != "" {
-			err = s.SetSession(id, session)
-			found = err == nil
-		}
-		if found {
-			out = bytes.Buffer{}
-		}
-		sessionErr = err
-	})
-	return errors.Join(readErr, logErr, sessionErr)
-}
-
-// eachLine calls each with every line of r as it arrives, newline included,
-// and with the last line whether or not a newline ends it. A line has no
-// limit on its length: a tool result in the stream of a real agent runs to
-// hundreds of kilobytes, which is past what a scanner takes.
-func eachLine(r io.Reader, each func(line []byte)) error {
-	lines := bufio.NewReader(r)
-	for {
-		line, err := lines.ReadBytes('\n')
-		if len(line) > 0 {
-			each(line)
-		}
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-	}
+	return superviseACP(s, cfg, id, runID, worktree, log)
 }
 
 // logTime is the layout of a log's name. It is RFC 3339 with the colons
