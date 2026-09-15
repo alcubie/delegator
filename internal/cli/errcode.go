@@ -20,6 +20,9 @@ const (
 	codeTwoBodies
 	codeBodyAndNoBody
 	codeNoBody
+	codeEditTwoBodies
+	codeEditorAndText
+	codeEditNoForm
 )
 
 const (
@@ -52,6 +55,9 @@ var errorCodes = map[error]int{
 	errTwoBodies:                      codeTwoBodies,
 	errBodyAndNoBody:                  codeBodyAndNoBody,
 	errNoBody:                         codeNoBody,
+	errEditTwoBodies:                  codeEditTwoBodies,
+	errEditorAndText:                  codeEditorAndText,
+	errEditNoForm:                     codeEditNoForm,
 	project.ErrGitNotOnPath:           codeGitNotOnPath,
 	project.ErrNoCommit:               codeNoCommit,
 	project.ErrNotARepository:         codeNotARepository,
