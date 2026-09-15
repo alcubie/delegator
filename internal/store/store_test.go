@@ -2765,6 +2765,109 @@ func TestCancelWithNoSuchTicket(t *testing.T) {
 	}
 }
 
+// A finish on a running ticket records the commit, puts the ticket at the end
+// of READY and writes the change into its history.
+func TestFinishTicketOnARunningTicket(t *testing.T) {
+	s, _ := threeReady(t)
+	fourth, err := s.AddTicket(mustProject(t, s), "fourth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(fourth, "delegator/4-fourth"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.FinishTicket(fourth, "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(fourth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Ready {
+		t.Errorf("status = %s, want ready", ticket.Status)
+	}
+	if ticket.Commit != "abc1234" {
+		t.Errorf("commit_id = %q, want abc1234", ticket.Commit)
+	}
+	wantReady := []string{"first", "second", "third", "fourth"}
+	if got := readyTitles(t, s); !slices.Equal(got, wantReady) {
+		t.Errorf("READY is %v, want %v", got, wantReady)
+	}
+	wantSteps := []string{"new to queued", "queued to running", "running to ready"}
+	if got := steps(t, s, fourth); !slices.Equal(got, wantSteps) {
+		t.Errorf("the history is\n%v\nwant\n%v", got, wantSteps)
+	}
+}
+
+// A commit that was amended or rebased after the finish has a new hash, and a
+// second finish writes it. The ticket is ready already, so nothing else about
+// it moves: it keeps its place in READY, which decides the turn dg accept
+// takes, and its history, which the age dg show prints comes from.
+func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
+	s, ids := threeReady(t)
+	if err := s.FinishTicket(ids[1], "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+	position := ticketPosition(t, s, "ready_position", ids[1])
+	history := steps(t, s, ids[1])
+
+	if err := s.FinishTicket(ids[1], "def5678"); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Commit != "def5678" {
+		t.Errorf("commit_id = %q, want def5678", ticket.Commit)
+	}
+	if ticket.Status != Ready {
+		t.Errorf("status = %s, want ready", ticket.Status)
+	}
+	if got := ticketPosition(t, s, "ready_position", ids[1]); got != position {
+		t.Errorf("ready_position = %+v, want %+v", got, position)
+	}
+	wantReady := []string{"first", "second", "third"}
+	if got := readyTitles(t, s); !slices.Equal(got, wantReady) {
+		t.Errorf("READY is %v, want %v", got, wantReady)
+	}
+	if got := steps(t, s, ids[1]); !slices.Equal(got, history) {
+		t.Errorf("the history is\n%v\nwant\n%v", got, history)
+	}
+}
+
+// A ticket that is closed is past the point of taking a commit, and a finish on
+// one writes nothing and names the change it refused.
+func TestFinishTicketOnAClosedTicket(t *testing.T) {
+	for _, status := range []TicketStatus{Done, Cancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			s, ids := threeReady(t)
+			if err := s.ChangeStatus(ids[1], status); err != nil {
+				t.Fatal(err)
+			}
+
+			err := s.FinishTicket(ids[1], "abc1234")
+			if !errors.Is(err, ErrInvalidTicketStateChange) {
+				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+			}
+
+			ticket, err := s.Ticket(ids[1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ticket.Commit != "" {
+				t.Errorf("commit_id = %q, want none", ticket.Commit)
+			}
+			if ticket.Status != status {
+				t.Errorf("status = %s, want %s", ticket.Status, status)
+			}
+		})
+	}
+}
+
 // dg list shows every ticket, so AllTickets holds each status and not the four
 // that are open. A done ticket that the window of the inbox has passed is the
 // one a person goes to this list for: the inbox stops showing it after a day,

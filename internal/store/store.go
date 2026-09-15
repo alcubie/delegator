@@ -1276,11 +1276,18 @@ func (s *Store) Cancel(id, runID int64) error {
 	return tx.Commit()
 }
 
-// FinishTicket completes a Running ticket. It records the commit of the run, and
-// the change into ready holds the time that the run stopped, which DONE is
-// ordered by and dg show writes.
+// FinishTicket records the commit of the work on a ticket. A Running ticket
+// becomes Ready, and the change into ready holds the time that the run stopped,
+// which DONE is ordered by and dg show writes.
 //
-// If the ticket is not Running, it returns ErrInvalidTicketStateChange.
+// A ticket that is already Ready keeps its status, and the commit alone is
+// written, so a commit that was amended or rebased after the finish can still
+// be named. Only the change of status must not happen twice: entering Ready
+// appends the ticket to READY, which decides the turn dg accept takes, and
+// writes a row of history, which the age dg show prints comes from.
+//
+// From every other status it returns ErrInvalidTicketStateChange, so a ticket
+// that is closed takes no commit.
 func (s *Store) FinishTicket(id int64, commit string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1288,8 +1295,14 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 	}
 	defer tx.Rollback()
 
-	if err := changeStatus(tx, id, Ready, time.Now()); err != nil {
+	status, err := statusOf(tx, id)
+	if err != nil {
 		return err
+	}
+	if status != Ready {
+		if err := changeStatus(tx, id, Ready, time.Now()); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(
 		"UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id,
