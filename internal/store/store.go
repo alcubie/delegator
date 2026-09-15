@@ -983,33 +983,51 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 	return t, runID, nil
 }
 
-// nextWithRoom returns the id of the first ticket of the queue whose project
-// has room for one more, and ErrNoRoom when no ticket of the queue has. The
-// order is the order of the queue, so what it gives is the first ticket the
-// person sees whose project is not full: a later ticket can start before an
-// earlier one of a project that is at its limit.
+// placesHeld counts the tickets of one project that hold a place of it: a
+// ticket in running and a ticket in ready each take one, which is what a slot
+// of the whole queue counts as well. It is a piece of a statement and not one
+// of its own; it reads the project of the ticket the statement calls t, and
+// takes the two statuses as parameters.
+const placesHeld = `(SELECT COUNT(*) FROM tickets AS held
+		       WHERE held.project_id = t.project_id AND held.status IN (?, ?))`
+
+// claimableRule is what makes a ticket of the queue one that a claim can take
+// now: it is in the queue, its project has room for one more, and every ticket
+// it depends on is done. It is a piece of a statement, over the ticket the
+// statement calls t, and takes the parameters of claimableArgs.
 //
-// A project holds one of its own places for each of its tickets in running and
-// in ready, which is what a slot of the whole queue counts as well. The limit
-// is cfg.ProjectRuns and it is the same for every project, so the statement
-// names no project and the config file names none either.
-//
-// A ticket that depends on a ticket that is not done is passed over the same
-// way. Done satisfies a link and nothing else does, so a ticket does not start
-// on work that a person has not accepted yet, and a link to a ticket that was
+// The limit for each project is cfg.ProjectRuns and it is the same for every
+// project, so the rule names no project and the config file names none either.
+// Done satisfies a link and nothing else does, so a ticket does not start on
+// work that a person has not accepted yet, and a link to a ticket that was
 // cancelled holds the ticket back until the link goes.
+//
+// Both the claim and the count of the supervisors to start read this one rule,
+// so the tickets a trigger counts are the tickets the claims will find.
+const claimableRule = `t.status = ? AND t.position IS NOT NULL
+		  AND ` + placesHeld + ` < ?
+		  AND NOT EXISTS (SELECT 1 FROM ticket_deps
+		       JOIN tickets AS dependency ON dependency.id = ticket_deps.depends_on
+		       WHERE ticket_deps.ticket_id = t.id AND dependency.status <> ?)`
+
+// claimableArgs gives the parameters of claimableRule in the order it takes
+// them.
+func claimableArgs(cfg config.Config) []any {
+	return []any{Queued, Running, Ready, cfg.ProjectRuns(), Done}
+}
+
+// nextWithRoom returns the id of the first ticket of the queue that
+// claimableRule holds for, and ErrNoRoom when no ticket of the queue has. The
+// order is the order of the queue, so what it gives is the first ticket the
+// person sees whose project is not full and whose links are done: a later
+// ticket can start before an earlier one that waits.
 func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 	var id int64
 	err := q.QueryRow(`
 		SELECT t.id FROM tickets AS t
-		WHERE t.status = ? AND t.position IS NOT NULL
-		  AND (SELECT COUNT(*) FROM tickets AS held
-		       WHERE held.project_id = t.project_id AND held.status IN (?, ?)) < ?
-		  AND NOT EXISTS (SELECT 1 FROM ticket_deps
-		       JOIN tickets AS dependency ON dependency.id = ticket_deps.depends_on
-		       WHERE ticket_deps.ticket_id = t.id AND dependency.status <> ?)
+		WHERE `+claimableRule+`
 		ORDER BY t.position
-		LIMIT 1`, Queued, Running, Ready, cfg.ProjectRuns(), Done).Scan(&id)
+		LIMIT 1`, claimableArgs(cfg)...).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNoRoom
 	}
