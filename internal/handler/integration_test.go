@@ -225,3 +225,13 @@ func TestCodexTakesASessionFromStartToLoad(t *testing.T) {
 	asked := permissions(events)
 	t.Logf("codex asked delegator to answer %d permissions: %v", len(asked), asked)
 }
+
+// TestOpenCodeTakesASessionFromStartToLoad drives OpenCode's built-in ACP
+// server through a new session, a prompt, and a load of that same session.
+// It skips when OpenCode is not installed; a signed-in OpenCode is required
+// when make integration runs it.
+func TestOpenCodeTakesASessionFromStartToLoad(t *testing.T) {
+	_, _, events := driveASession(t, "opencode")
+	asked := permissions(events)
+	t.Logf("opencode asked delegator to answer %d permissions: %v", len(asked), asked)
+}
