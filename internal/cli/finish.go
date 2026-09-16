@@ -23,6 +23,8 @@ func finishCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// Let FinishTicket report an invalid state before consulting Git,
+				// so a bad commit does not hide that the ticket cannot be finished.
 				if ticket.Status != store.Running && ticket.Status != store.Ready {
 					return s.FinishTicket(id, args[1])
 				}
