@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -252,52 +251,15 @@ func TestProjectRunsIsTheKeyAndFallsBackToRuns(t *testing.T) {
 	}
 }
 
-func TestLoadReadsASectionOfTheAgentsTable(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "[agents.claude]\nargv = [\"my-acp\", \"--stdio\"]\nresume = [\"my-agent\", \"{session}\"]\n")
+func TestLoadRefusesTheObsoleteAgentKeys(t *testing.T) {
+	for _, text := range []string{"agent = \"codex\"\n", "[agents.claude]\nargv = [\"claude-agent-acp\"]\n"} {
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+		writeConfig(t, xdg, text)
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	agent, ok := cfg.Agents["claude"]
-	if !ok {
-		t.Fatalf("Agents = %v, want a section for claude", cfg.Agents)
-	}
-	if want := []string{"my-acp", "--stdio"}; !slices.Equal(agent.Argv, want) {
-		t.Errorf("Argv = %v, want %v", agent.Argv, want)
-	}
-	if want := []string{"my-agent", "{session}"}; !slices.Equal(agent.Resume, want) {
-		t.Errorf("Resume = %v, want %v", agent.Resume, want)
-	}
-}
-
-// A person who names no agent gets no section, and the defaults say nothing
-// about an agent: the table of the handler holds every agent delegator knows.
-func TestLoadGivesNoAgentsWhenTheFileNamesNone(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.Agents) != 0 {
-		t.Errorf("Agents = %v, want none", cfg.Agents)
-	}
-}
-
-func TestLoadRefusesAKeyOfAnAgentItDoesNotKnow(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "[agents.claude]\nargvv = [\"my-acp\"]\n")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load of a key it does not know gave no error")
-	}
-	if !strings.Contains(err.Error(), "argvv") {
-		t.Errorf("error %q does not name the key", err)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load(%q) succeeded for an obsolete agent key", text)
+		}
 	}
 }
 
@@ -371,48 +333,5 @@ func TestDirOffWindowsIsTheXDGDirectory(t *testing.T) {
 		if want := filepath.Join(home, ".config", "delegator"); got != want {
 			t.Errorf("dir(%s) = %q, want %q", goos, got, want)
 		}
-	}
-}
-
-func TestLoadReadsAgent(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "agent = \"codex\"\n")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Agent != "codex" {
-		t.Errorf("Agent = %q, want %q", cfg.Agent, "codex")
-	}
-}
-
-// A name that no agent has is not refused here. The agents are handler's, and
-// the sections of this file add to them, so the run that starts one is where
-// the name is looked up and where a name that is not there is reported.
-func TestLoadTakesAnAgentItDoesNotKnow(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	writeConfig(t, xdg, "agent = \"mine\"\n")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Agent != "mine" {
-		t.Errorf("Agent = %q, want %q", cfg.Agent, "mine")
-	}
-}
-
-func TestLoadWithNoAgentGivesClaude(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Agent != "claude" {
-		t.Errorf("Agent = %q, want the default %q", cfg.Agent, "claude")
 	}
 }

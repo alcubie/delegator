@@ -129,9 +129,8 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
-// Chat uses the agent that opened the session even after the config changes.
+// Chat uses the agent that opened the session even after the default changes.
 func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
-	writeConfig(t, "agent = \"claude\"\n")
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
