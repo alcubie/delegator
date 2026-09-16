@@ -393,7 +393,7 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 		t.Error(err)
 	}
 
-	for _, name := range []string{"projects", "tickets"} {
+	for _, name := range []string{"projects", "tickets", "agents"} {
 		var got string
 		err := s.db.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", name).Scan(&got)
@@ -410,9 +410,33 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code"}
+	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id"}
 	if got := columnsOf(t, s.db, "runs"); !slices.Equal(got, want) {
 		t.Errorf("the columns of runs = %v, want %v", got, want)
+	}
+}
+
+func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
+	s, _ := emptyStore(t)
+	rows, err := s.db.Query("SELECT name FROM agents ORDER BY name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var got []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"claude", "codex", "gemini"}; !slices.Equal(got, want) {
+		t.Errorf("seeded agents = %v, want %v", got, want)
 	}
 }
 
@@ -2156,6 +2180,41 @@ func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	}
 	if got := rfc3339(got.StartedAt); got != rows[0].startedAt {
 		t.Errorf("started at = %q, want %q", got, rows[0].startedAt)
+	}
+}
+
+func TestRunGivesTheAgentItReferences(t *testing.T) {
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentID, err := s.AgentID("mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRunAgent(runID, agentID); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.AgentID != agentID || run.Agent != "mine" {
+		t.Errorf("agent = (%d, %q), want (%d, %q)", run.AgentID, run.Agent, agentID, "mine")
+	}
+}
+
+func TestRunAgentMustReferToAnAgent(t *testing.T) {
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetRunAgent(runID, 404); err == nil {
+		t.Fatal("SetRunAgent accepted an id that no agent has")
 	}
 }
 

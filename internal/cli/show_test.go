@@ -341,6 +341,45 @@ func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	}
 }
 
+func TestRunShowGivesTheAgentOfTheLastRun(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "Record the agent")
+	runID, err := s.Claim(id, "delegator/1-record-the-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentID, err := s.AgentID("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRunAgent(runID, agentID); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "agent       claude") {
+		t.Errorf("dg show does not hold the agent of the run:\n%s", out)
+	}
+}
+
+func TestRunShowWithNoRunGivesNoAgent(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "agent") {
+		t.Errorf("dg show holds an agent for a ticket with no run:\n%s", out)
+	}
+}
+
 func TestRunShowGivesTheWorktreeUntilAcceptTakesItAway(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)

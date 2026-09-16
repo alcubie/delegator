@@ -45,6 +45,13 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 	if err != nil {
 		return err
 	}
+	agentID, err := s.AgentID(kind.Name)
+	if err != nil {
+		return err
+	}
+	if err := s.SetRunAgent(runID, agentID); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	if limit := runTimeout(cfg); limit > 0 {
 		var cancel context.CancelFunc
