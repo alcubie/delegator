@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/handler"
 	acp "github.com/coder/acp-go-sdk"
@@ -276,4 +277,34 @@ func TestTheWaitActionRefusesATimeItCannotRead(t *testing.T) {
 	if bad == nil || !strings.Contains(bad.Error(), "soon") {
 		t.Fatalf("the error is %v, and it does not name the time", bad)
 	}
+}
+
+// The continue action models an agent or one of its programs that does not
+// cooperate with cancellation. A supervisor timeout has to end its process,
+// rather than rely on the ACP cancellation that is enough for wait.
+func TestTheContinueActionRunsPastCancellation(t *testing.T) {
+	kind, _ := fakeKind(t, "continue 100ms", "stop end_turn")
+	s := startFake(t, t.TempDir(), kind)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+
+	got := turnWithContext(t, ctx, s)
+
+	if elapsed := time.Since(started); elapsed < 80*time.Millisecond {
+		t.Errorf("the action ran for %v, want it to continue past cancellation", elapsed)
+	}
+	same(t, got, []handler.Event{{Type: handler.TypeResult, Status: string(acp.StopReasonEndTurn)}})
+}
+
+func turnWithContext(t *testing.T, ctx context.Context, s *handler.Session) []handler.Event {
+	t.Helper()
+	var got []handler.Event
+	for e, err := range s.Prompt(ctx, "do the work") {
+		if err != nil {
+			t.Fatalf("the prompt failed: %v", err)
+		}
+		got = append(got, e)
+	}
+	return got
 }

@@ -105,6 +105,8 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 				return acp.StopReasonCancelled, nil
 			}
 			err = bad
+		case "continue":
+			err = continueFor(rest)
 		case "stop":
 			return acp.StopReason(rest), nil
 		default:
@@ -115,6 +117,17 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 		}
 	}
 	return acp.StopReasonEndTurn, nil
+}
+
+// continueFor waits without consulting the turn's context. It represents an
+// agent or a program below it that only the supervisor's process stop ends.
+func continueFor(rest string) error {
+	d, err := time.ParseDuration(rest)
+	if err != nil {
+		return err
+	}
+	time.Sleep(d)
+	return nil
 }
 
 // wait holds the turn for the time the line names and says whether the client

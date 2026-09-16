@@ -49,6 +49,21 @@ func shortTimeout(t *testing.T, limit time.Duration) {
 	runTimeout = func(config.Config) time.Duration { return limit }
 }
 
+// recordStops replaces the process-group stop with one a test can observe.
+// Start runs in the process of the test, which is not a detached supervisor
+// and must not signal the process group of the test runner.
+func recordStops(t *testing.T) <-chan int {
+	t.Helper()
+	stopped := make(chan int, 1)
+	was := stopRun
+	t.Cleanup(func() { stopRun = was })
+	stopRun = func(pid int, _ time.Duration) error {
+		stopped <- pid
+		return nil
+	}
+	return stopped
+}
+
 // eventsOf is the events in the log of a run. The agent's own stderr shares
 // the log and is not an event, so a line that does not read as one is skipped.
 func eventsOf(t *testing.T, dataDir string, id int64) []handler.Event {
@@ -224,6 +239,7 @@ func TestTheACPRunnerStopsATurnThatRanPastTheTimeout(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, "text "+acpSaid, "wait 1m", "stop end_turn")
 	shortTimeout(t, 200*time.Millisecond)
+	stopped := recordStops(t)
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
 		t.Fatal("err = nil, want the run the timeout stopped")
@@ -238,6 +254,72 @@ func TestTheACPRunnerStopsATurnThatRanPastTheTimeout(t *testing.T) {
 	}
 	if got := statusOf(t, dataDir, id); got != store.Failed {
 		t.Errorf("status = %v, want %v", got, store.Failed)
+	}
+	select {
+	case pid := <-stopped:
+		if pid != os.Getpid() {
+			t.Errorf("the timeout stopped process %d, want supervisor %d", pid, os.Getpid())
+		}
+	default:
+		t.Error("the timeout did not stop the supervisor's process group")
+	}
+	run, err := testfix.OpenStore(t, dataDir).Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.EndedAt.IsZero() {
+		t.Error("the timed out run has no end time")
+	}
+}
+
+// A run that reaches its ordinary end disarms the timer. Waiting past the
+// short limit proves that no late callback can stop a later use of the same
+// supervisor process.
+func TestTheACPRunnerThatEndsBeforeTheTimeoutIsNotStopped(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	shortTimeout(t, 100*time.Millisecond)
+	stopped := recordStops(t)
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, "stop end_turn")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	select {
+	case pid := <-stopped:
+		t.Errorf("the timeout stopped process %d after the run ended", pid)
+	default:
+	}
+}
+
+// dg finish can win the race with the timeout. The timeout still stops an
+// agent that continues to work, but it leaves ready as the report of the run.
+func TestTheACPRunnerTimeoutKeepsATicketThatFinishedFirstReady(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	marker := filepath.Join(t.TempDir(), "working")
+	shortTimeout(t, 200*time.Millisecond)
+	stopped := recordStops(t)
+	cfg := acpConfig(t, "write "+marker+" working", "wait 1m", "stop end_turn")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Start(s, id, cfg)
+	}()
+	testfix.WaitFor(t, marker)
+	commit := testfix.GitOut(t, WorktreePath(dataDir, id), "rev-parse", "HEAD")
+	if err := s.FinishTicket(id, commit); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil {
+		t.Error("err = nil, want the timeout that stopped the run")
+	}
+	if got := statusOf(t, dataDir, id); got != store.Ready {
+		t.Errorf("status = %v, want %v", got, store.Ready)
+	}
+	select {
+	case <-stopped:
+	default:
+		t.Error("the timeout did not stop the run after dg finish")
 	}
 }
 

@@ -12,11 +12,6 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// runTimeout is how long a run may take, from the config. It is a variable so
-// that a test can shorten it: the config gives the time in minutes, and no
-// test can wait one.
-var runTimeout = config.Config.Timeout
-
 // superviseACP works the claimed ticket through internal/handler: it starts
 // the agent's ACP server in the worktree, puts the id of the session on the
 // ticket before the turn starts, and writes each event of the turn to the log
@@ -30,10 +25,10 @@ var runTimeout = config.Config.Timeout
 // of 0. Any other reason it gives is a failed run, and the reason is in the
 // error and in the last line of the log.
 //
-// The timeout of the config is on the context, so a run that goes past it has
-// its turn cancelled and then its agent killed. A timeout of nothing is no
-// timeout, which is what a person who writes 0 in the config asks for.
-func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree string, log io.Writer) (err error) {
+// The supervisor owns the context. Its timeout cancels the turn as it stops
+// the process group, while a run with no limit keeps the context until its
+// ordinary end.
+func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, runID int64, worktree string, log io.Writer) (err error) {
 	// The caller claimed the ticket and this run holds it, so the row of the
 	// run is ended whatever way the function below is left. The code is the
 	// one of a run with no process of its own to give one until a turn ends
@@ -51,12 +46,6 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 	}
 	if err := s.SetRunAgent(runID, agentID); err != nil {
 		return err
-	}
-	ctx := context.Background()
-	if limit := runTimeout(cfg); limit > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, limit)
-		defer cancel()
 	}
 	session, err := handler.Start(ctx, kind, handler.AllowAll(), worktree, log)
 	if err != nil {
