@@ -133,6 +133,12 @@ func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 	}
 
 	root := Root(dataDir, workDir)
+	if request.Method == "rpc.discover" {
+		if !rpcHasNoParams(request.Params) {
+			return rpcErrorResponse(request.ID, rpcInvalidParams, "Invalid params")
+		}
+		return rpcResultResponse(request.ID, rpcOpenRPC(root))
+	}
 	target, err := rpcTarget(root, request.Method)
 	if err != nil {
 		return rpcErrorResponse(request.ID, rpcMethodNotFound, "Method not found")
@@ -159,6 +165,26 @@ func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 	// A command with no value has still succeeded: JSON-RPC requires its
 	// result member, and null tells the caller the write happened.
 	return rpcResultResponse(request.ID, value.value)
+}
+
+// rpcHasNoParams accepts an omitted parameter value and each JSON-RPC shape
+// that can hold no parameters.
+func rpcHasNoParams(raw json.RawMessage) bool {
+	if raw == nil {
+		return true
+	}
+	var params any
+	if json.Unmarshal(raw, &params) != nil {
+		return false
+	}
+	switch params := params.(type) {
+	case map[string]any:
+		return len(params) == 0
+	case []any:
+		return len(params) == 0
+	default:
+		return false
+	}
 }
 
 func readRPCRequest(raw json.RawMessage) (rpcRequest, error) {
