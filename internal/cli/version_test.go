@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,36 +94,19 @@ func TestVersionWritesTheValueOfTheVariable(t *testing.T) {
 func TestVersionJSONHoldsTheVersionAndTheSchema(t *testing.T) {
 	setVersion(t, "v1.2.3")
 
-	out, err := runIn(t, t.TempDir(), t.TempDir(), "version", "--json")
-	if err != nil {
-		t.Fatal(err)
+	got := rpcDocument(t, t.TempDir(), t.TempDir(), "version")
+	if got["version"] != "v1.2.3" {
+		t.Errorf("version = %v, want v1.2.3", got["version"])
 	}
-	var got struct {
-		Version string `json:"version"`
-		Schema  int    `json:"schema"`
-	}
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("dg version --json wrote %q, which is not JSON: %v", out, err)
-	}
-	if got.Version != "v1.2.3" {
-		t.Errorf("version is %q, want %q", got.Version, "v1.2.3")
-	}
-	if got.Schema != 1 {
-		t.Errorf("schema is %d, want 1", got.Schema)
+	if got["schema"] != float64(1) {
+		t.Errorf("schema = %v, want 1", got["schema"])
 	}
 }
 
 // schema is a number and not a string, so a reader compares it with the schema
 // it holds and does not parse it first.
 func TestVersionJSONWritesTheSchemaAsANumber(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), t.TempDir(), "version", "--json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatal(err)
-	}
+	got := rpcDocument(t, t.TempDir(), t.TempDir(), "version")
 	if _, ok := got["schema"].(float64); !ok {
 		t.Errorf("schema is %T and holds %v, want a number", got["schema"], got["schema"])
 	}

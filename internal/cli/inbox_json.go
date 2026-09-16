@@ -1,6 +1,6 @@
-// The inbox for a reader that is not a person. §9.3 says that each command
-// which shows data also accepts --json, and §12 says that a GUI in a different
-// language uses that flag and needs no Go code.
+// The inbox for a reader that is not a person. Section 9.3 says that a program
+// reads command documents through dg rpc, and section 12 says that a GUI in a
+// different language uses that endpoint and needs no Go code.
 //
 // This file writes the inbox.Inbox structure and decides nothing about which
 // ticket goes where: the groups and their order are the answer of
@@ -40,7 +40,7 @@ type inboxJSON struct {
 }
 
 // inboxTicketJSON is one row of the inbox. Each key that names a field of
-// dg show --json is the same word there, so a reader of the two knows the
+// the show result of dg rpc is the same word there, so a reader of the two knows the
 // field without a second table.
 type inboxTicketJSON struct {
 	ID      int64  `json:"id"`

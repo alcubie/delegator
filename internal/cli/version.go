@@ -18,13 +18,13 @@ import (
 // keeps dev, which says the binary came from a tree and not from a release.
 var Version = "dev"
 
-// jsonSchema is the version of the JSON that dg --json and dg show --json
-// write. It goes up by one when a key of either changes its name or its type,
+// jsonSchema is the version of the documents that dg rpc
+// writes. It goes up by one when a key changes its name or its type,
 // or goes away; a new key leaves it where it is, because a reader that does not
 // know the key ignores it. §9.3 says so to the reader of the document.
 const jsonSchema = 1
 
-// versionJSON is what dg version --json writes. A program reads version to
+// versionJSON is the result of the version method of dg rpc. A program reads version to
 // show it to a person, and schema to decide whether it can read the rest.
 type versionJSON struct {
 	Version string `json:"version"`
@@ -33,18 +33,15 @@ type versionJSON struct {
 
 // versionCommand returns the command for dg version.
 func versionCommand() *cobra.Command {
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Show the version of dg.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return writeValue(cmd.OutOrStdout(), versionJSON{Version: Version, Schema: jsonSchema}, asJSON, func(out io.Writer) {
+			return writeValue(cmd.OutOrStdout(), versionJSON{Version: Version, Schema: jsonSchema}, false, func(out io.Writer) {
 				fmt.Fprintln(out, "dg", Version)
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false,
-		"write the version as one JSON object")
 	return cmd
 }

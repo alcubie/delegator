@@ -2,7 +2,7 @@
 // a run wrote, the four variables that connect the ticket to its work, and the
 // prose that the person wrote. A --*-only flag gives one of those values on a
 // line of its own, for the person who is writing another command line with it,
-// and --json gives every field to a script or to another interface.
+// and dg rpc gives every field to a script or to another interface.
 
 package cli
 
@@ -422,7 +422,6 @@ var onlyFlags = []struct {
 func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
 	var projectDir string
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "show [id]",
 		Short: "Show the details of a ticket. Defaults to the first Ready ticket for the project.",
@@ -437,7 +436,7 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return writeValue(cmd.OutOrStdout(), value, asJSON, func(out io.Writer) {
+				return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
 					if only != onlyNone {
 						writeOnly(out, value.shown, only)
 						return
@@ -447,8 +446,6 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false,
-		"write the fields of the ticket as one JSON object")
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project whose first ready ticket to show.  Defaults to current working directory.")
 	for _, flag := range onlyFlags {

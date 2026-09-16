@@ -2,10 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -64,27 +62,13 @@ func nextSecond(t *testing.T) {
 	}
 }
 
-// showJSON runs dg show --json and gives the one object that it wrote. It
-// reads the rest of the stream as well, because the flag promises one object
-// and nothing else.
+// showJSON reads the show document through dg rpc.
 func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]any {
 	t.Helper()
-	out, err := runIn(t, dataDir, workDir, append([]string{"show"}, args...)...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dec := json.NewDecoder(strings.NewReader(out))
-	var got map[string]any
-	if err := dec.Decode(&got); err != nil {
-		t.Fatalf("dg show --json wrote %q, which is not one JSON object: %v", out, err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		t.Errorf("dg show --json wrote more than one object:\n%s", out)
-	}
-	return got
+	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
-// jsonFields is every key that dg show --json writes, in the order that the
+// jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
@@ -899,7 +883,7 @@ func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
 	}
 }
 
-// §9.3 says that each command which shows data also accepts --json, so that a
+// §9.3 says that a program reads command documents through dg rpc, so that a
 // script of the person reads the data and not the text.
 func TestRunShowJSONHoldsEachField(t *testing.T) {
 	dataDir := t.TempDir()
@@ -916,11 +900,11 @@ func TestRunShowJSONHoldsEachField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id))
 
 	keys := slices.Sorted(maps.Keys(got))
 	if want := slices.Sorted(slices.Values(jsonFields)); !slices.Equal(keys, want) {
-		t.Errorf("dg show --json holds the keys %v, want %v", keys, want)
+		t.Errorf("RPC show result holds the keys %v, want %v", keys, want)
 	}
 	if got["id"] != float64(id) {
 		t.Errorf("id = %v, want %d", got["id"], id)
@@ -955,7 +939,7 @@ func TestRunShowJSONGivesTheFullPaths(t *testing.T) {
 	// the text form writes a tilde for.
 	t.Setenv("HOME", filepath.Dir(dataDir))
 
-	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id))
 
 	for _, key := range []string{"project", "ticket", "worktree"} {
 		path, ok := got[key].(string)
@@ -973,7 +957,7 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)
 
-	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id))
 
 	for _, key := range []string{"worktree", "branch", "session", "commit", "accepted"} {
 		if value, held := got[key]; !held || value != nil {
@@ -990,23 +974,25 @@ func TestRunShowJSONGivesTheTimeOfTheAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := showJSON(t, dataDir, repo, fmt.Sprint(id), "--json")
+	got := showJSON(t, dataDir, repo, fmt.Sprint(id))
 
 	if _, err := time.Parse(time.RFC3339, fmt.Sprint(got["accepted"])); err != nil {
 		t.Errorf("accepted = %v, want a time of RFC 3339", got["accepted"])
 	}
 }
 
-// An id that names no ticket gives the error that the text form gives, and no
-// JSON at all: a script that reads the object of a ticket that is not there
-// would read a ticket with every field empty.
+// A missing ticket returns an RPC error without a ticket result.
 func TestRunShowJSONWithATicketThatIsNotThere(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "show", "9999", "--json")
-	if !errors.Is(err, store.ErrNoTicket) {
-		t.Fatalf("err = %v, want ErrNoTicket", err)
+	out, err := rpcIn(t, t.TempDir(), testfix.Repo(t, repoBranch), `{"jsonrpc":"2.0","method":"show","params":{"args":[9999]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if out != "" {
-		t.Errorf("dg show --json wrote %q, want nothing", out)
+	response := rpcObject(t, out)
+	if failure, ok := response["error"].(map[string]any); !ok || failure["code"] != float64(codeNoTicket) {
+		t.Fatalf("response = %#v, want an error", response)
+	}
+	if _, ok := response["result"]; ok {
+		t.Fatalf("response = %#v, want no result", response)
 	}
 }
 
@@ -1021,11 +1007,11 @@ func TestRunShowJSONKeepsTheCharactersOfTheProse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id), "--json")
+	out, err := rpcIn(t, dataDir, repo, fmt.Sprintf(`{"jsonrpc":"2.0","method":"show","params":{"args":[%d]},"id":1}`, id))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, prose) {
-		t.Errorf("dg show --json does not hold the prose as it is:\n%s", out)
+		t.Errorf("RPC show result does not hold the prose as it is:\n%s", out)
 	}
 }

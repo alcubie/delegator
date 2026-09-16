@@ -327,3 +327,37 @@ func TestRPCListReturnsTheListValueWithoutWritingRows(t *testing.T) {
 		t.Fatalf("list result = %#v, want its one ticket", got["result"])
 	}
 }
+
+// rpcDocument reads a command's document from the protocol result.
+func rpcDocument(t *testing.T, dataDir, workDir, method string, args ...string) map[string]any {
+	t.Helper()
+	request, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method, "params": map[string]any{"args": append([]string{}, args...)}, "id": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := rpcIn(t, dataDir, workDir, string(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("response = %#v, want an object result", response)
+	}
+	return result
+}
+
+func TestJSONFlagsAreRemoved(t *testing.T) {
+	for _, command := range []string{"", "show", "version"} {
+		t.Run(command, func(t *testing.T) {
+			args := []string{"--json"}
+			if command != "" {
+				args = append([]string{command}, args...)
+			}
+			_, err := runIn(t, t.TempDir(), t.TempDir(), args...)
+			if err == nil || !strings.Contains(err.Error(), "unknown flag: --json") {
+				t.Fatalf("error = %v, want unknown json flag", err)
+			}
+		})
+	}
+}
