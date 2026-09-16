@@ -39,6 +39,8 @@ var namedErrors = map[string]error{
 	"errEditNoForm":               errEditNoForm,
 	"ErrGitNotOnPath":             project.ErrGitNotOnPath,
 	"ErrNoCommit":                 project.ErrNoCommit,
+	"ErrUnknownCommit":            project.ErrUnknownCommit,
+	"ErrCommitNotOnBranch":        project.ErrCommitNotOnBranch,
 	"ErrNotARepository":           project.ErrNotARepository,
 	"ErrNewerDatabase":            store.ErrNewerDatabase,
 	"ErrSelfDependency":           store.ErrSelfDependency,

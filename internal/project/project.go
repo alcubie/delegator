@@ -23,6 +23,13 @@ var ErrGitNotOnPath = errors.New("git is not on the PATH")
 // to give it an identity.
 var ErrNoCommit = errors.New("the repository has no commit")
 
+// ErrUnknownCommit shows that a revision does not name a commit in the
+// repository.
+var ErrUnknownCommit = errors.New("git does not know the commit")
+
+// ErrCommitNotOnBranch shows that a branch does not contain the commit.
+var ErrCommitNotOnBranch = errors.New("the ticket branch does not hold the commit")
+
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
 
@@ -193,6 +200,42 @@ func Commit(root, hash string) (short, subject string, err error) {
 	}
 	short, subject, _ = strings.Cut(out, "\n")
 	return short, subject, nil
+}
+
+// resolveCommit returns the full hash of the commit named by revision. An
+// error means the repository does not hold a commit with that name.
+func resolveCommit(root, revision string) (string, error) {
+	full, err := gitOutput(root, "rev-parse", "--verify", "--quiet", "--end-of-options", revision+"^{commit}")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", ErrGitNotOnPath
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf("%w: %s", ErrUnknownCommit, revision)
+		}
+		return "", err
+	}
+	return full, nil
+}
+
+// CommitOnBranch returns the full hash of the commit named by revision when
+// branch contains it. It returns ErrUnknownCommit when revision names no
+// commit, and ErrCommitNotOnBranch when the commit is outside branch.
+func CommitOnBranch(root, revision, branch string) (string, error) {
+	full, err := resolveCommit(root, revision)
+	if err != nil {
+		return "", err
+	}
+	_, err = gitOutput(root, "merge-base", "--is-ancestor", full, "refs/heads/"+branch)
+	if err == nil {
+		return full, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return "", fmt.Errorf("%w: %s is not on %s", ErrCommitNotOnBranch, full, branch)
+	}
+	return "", err
 }
 
 // RemoveWorktree removes the worktree at path and the record git keeps of it.

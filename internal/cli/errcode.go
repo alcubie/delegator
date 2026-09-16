@@ -29,6 +29,8 @@ const (
 	codeGitNotOnPath = 200 + iota
 	codeNoCommit
 	codeNotARepository
+	codeUnknownCommit
+	codeCommitNotOnBranch
 )
 
 const (
@@ -60,6 +62,8 @@ var errorCodes = map[error]int{
 	errEditNoForm:                     codeEditNoForm,
 	project.ErrGitNotOnPath:           codeGitNotOnPath,
 	project.ErrNoCommit:               codeNoCommit,
+	project.ErrUnknownCommit:          codeUnknownCommit,
+	project.ErrCommitNotOnBranch:      codeCommitNotOnBranch,
 	project.ErrNotARepository:         codeNotARepository,
 	store.ErrNewerDatabase:            codeNewerDatabase,
 	store.ErrSelfDependency:           codeSelfDependency,

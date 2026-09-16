@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -18,8 +21,21 @@ func finishCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				return err
 			}
 			return withStore(dataDir, cfg, func(s *store.Store) error {
-
-				return s.FinishTicket(id, args[1])
+				ticket, err := s.Ticket(id)
+				if err != nil {
+					return err
+				}
+				// Report the state before consulting Git, without passing an
+				// unvalidated commit to a ticket that cannot be finished.
+				if ticket.Status != store.Running && ticket.Status != store.Ready {
+					return fmt.Errorf("%w: %s to %s",
+						store.ErrInvalidTicketStateChange, ticket.Status, store.Ready)
+				}
+				commit, err := project.CommitOnBranch(ticket.Project.Path, args[1], ticket.Branch)
+				if err != nil {
+					return err
+				}
+				return s.FinishTicket(id, commit)
 			})
 		},
 	}
