@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -65,10 +66,10 @@ func withoutGitEnv(env []string) []string {
 	return out
 }
 
-// Root returns the top-level git directory for the argument.
+// Root returns the primary checkout of the repository that holds the argument.
 // It returns an error if the path is not in a git repository.
 func Root(path string) (string, error) {
-	gitDir, err := Command(path, "rev-parse", "--show-toplevel").Output()
+	gitDir, err := Command(path, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return "", ErrGitNotOnPath
@@ -80,22 +81,7 @@ func Root(path string) (string, error) {
 		return "", err
 	}
 
-	return strings.TrimSuffix(string(gitDir), "\n"), nil
-}
-
-// MainWorktree returns the primary checkout of the repository that holds root.
-// Git lists that checkout first, before every linked worktree.
-func MainWorktree(root string) (string, error) {
-	out, err := gitOutput(root, "worktree", "list", "--porcelain")
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if path, ok := strings.CutPrefix(line, "worktree "); ok {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("git gave no primary worktree for %s", root)
+	return filepath.Dir(strings.TrimSuffix(string(gitDir), "\n")), nil
 }
 
 // gitOutput runs one git command in root and returns its output with no final

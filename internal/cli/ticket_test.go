@@ -154,7 +154,7 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 }
 
 // linkedWorktree makes the primary checkout and one linked worktree that git
-// records for it. The linked directory must not be used as a ticket project.
+// records for it.
 func linkedWorktree(t *testing.T) (string, string) {
 	t.Helper()
 	primary := testfix.Repo(t, repoBranch)
@@ -165,42 +165,35 @@ func linkedWorktree(t *testing.T) (string, string) {
 	return primary, linked
 }
 
-func TestRunTicketRefusesALinkedWorktree(t *testing.T) {
+func TestRunTicketInALinkedWorktreeUsesThePrimaryCheckout(t *testing.T) {
 	dataDir := t.TempDir()
 	primary, linked := linkedWorktree(t)
 
 	out, err := runIn(t, dataDir, linked, "ticket", "Remove staging infrastructure", "--no-body")
-	if err == nil {
-		t.Fatal("dg ticket made a ticket for a linked worktree")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{primary, "--project"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %q, and does not name %q", err, want)
-		}
+	if out != "1\n" {
+		t.Errorf("the command wrote %q, want %q", out, "1\n")
 	}
-	if out != "" {
-		t.Errorf("the command wrote %q, want nothing", out)
-	}
-	if rows := projectRows(t, dataDir); len(rows) != 0 {
-		t.Errorf("the database holds %d projects, want none", len(rows))
+	if rows := projectRows(t, dataDir); len(rows) != 1 || rows[0].Path != primary {
+		t.Errorf("projects = %v, want the primary checkout %q", rows, primary)
 	}
 }
 
-func TestRunTicketRefusesALinkedWorktreeNamedByProject(t *testing.T) {
+func TestRunTicketWithALinkedWorktreeProjectUsesThePrimaryCheckout(t *testing.T) {
 	dataDir := t.TempDir()
 	primary, linked := linkedWorktree(t)
 
-	_, err := runIn(t, dataDir, primary, "ticket", "--project", linked, "Remove staging infrastructure", "--no-body")
-	if err == nil {
-		t.Fatal("dg ticket made a ticket for a linked worktree named by --project")
+	out, err := runIn(t, dataDir, primary, "ticket", "--project", linked, "Remove staging infrastructure", "--no-body")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{primary, "--project"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %q, and does not name %q", err, want)
-		}
+	if out != "1\n" {
+		t.Errorf("the command wrote %q, want %q", out, "1\n")
 	}
-	if rows := projectRows(t, dataDir); len(rows) != 0 {
-		t.Errorf("the database holds %d projects, want none", len(rows))
+	if rows := projectRows(t, dataDir); len(rows) != 1 || rows[0].Path != primary {
+		t.Errorf("projects = %v, want the primary checkout %q", rows, primary)
 	}
 }
 
