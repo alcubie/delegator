@@ -41,10 +41,15 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 	code := noExitCode
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
 
-	kind, err := handler.Find(cfg.Agent)
+	name, err := s.DefaultAgent()
 	if err != nil {
 		return err
 	}
+	entry, err := s.Agent(name)
+	if err != nil {
+		return err
+	}
+	kind := handler.KindFromAgent(entry.Name, entry.Argv, entry.Resume)
 	agentID, err := s.AgentID(kind.Name)
 	if err != nil {
 		return err

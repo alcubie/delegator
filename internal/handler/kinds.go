@@ -9,6 +9,12 @@ import (
 	"github.com/alcubie/delegator/internal/config"
 )
 
+// KindFromAgent adapts a database registry entry without making the handler
+// package responsible for how the registry is stored.
+func KindFromAgent(name string, argv, resume []string) Kind {
+	return Kind{Name: name, Argv: slices.Clone(argv), Resume: slices.Clone(resume)}
+}
+
 // sessionPlaceholder is what a resume command holds where the id of the
 // session goes.
 const sessionPlaceholder = "{session}"

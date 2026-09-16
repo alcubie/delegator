@@ -44,10 +44,10 @@ func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	})
 }
 
-// useFakeAgent gives one test an ACP fake in place of the agent the run starts.
-func useFakeAgent(t *testing.T, lines ...string) {
+// useFakeAgent makes the ACP fake the default registry agent for one test.
+func useFakeAgent(t *testing.T, dataDir string, lines ...string) {
 	t.Helper()
-	writeConfig(t, fmt.Sprintf("[agents.claude]\nargv = [%q, %q]\n", testfix.FakeAgentPath, testfix.Script(t, lines...)))
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
 }
 
 // The file the script writes is in the worktree, so it is there only if dg run
@@ -56,7 +56,7 @@ func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := queuedTicket(t, dataDir)
 	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
-	useFakeAgent(t, "write "+made+" done", "stop end_turn")
+	useFakeAgent(t, dataDir, "write "+made+" done", "stop end_turn")
 
 	out, err := runIn(t, dataDir, repo, "run", fmt.Sprint(ticketID))
 	if err != nil {
@@ -88,7 +88,7 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	s, ticketID, repo := queuedTicket(t, dataDir)
 	second := testfix.SecondTicket(t, dataDir)
 	made := filepath.Join(run.WorktreePath(dataDir, ticketID), "made-by-the-agent")
-	useFakeAgent(t, "write "+made+" done", "stop end_turn")
+	useFakeAgent(t, dataDir, "write "+made+" done", "stop end_turn")
 
 	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, _, repo := queuedTicket(t, dataDir)
 	testfix.SecondTicket(t, dataDir)
-	useFakeAgent(t, "stop end_turn")
+	useFakeAgent(t, dataDir, "stop end_turn")
 	l, marker := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 

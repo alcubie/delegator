@@ -36,6 +36,7 @@ var migrations = []string{
 	dropCompletedColumn,
 	dropCreatedColumn,
 	addAgentsTable,
+	addAgentRegistry,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -225,6 +226,38 @@ CREATE TABLE agents (
 INSERT INTO agents (name) VALUES ('claude'), ('codex'), ('gemini');
 
 ALTER TABLE runs ADD COLUMN agent_id INTEGER REFERENCES agents(id);
+`
+
+// addAgentRegistry makes the database the source of truth for runnable
+// agents. JSON keeps argv as one value while preserving argument boundaries.
+const addAgentRegistry = `
+ALTER TABLE agents ADD COLUMN argv TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE agents ADD COLUMN resume_argv TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE agents ADD COLUMN install_hint TEXT;
+
+UPDATE agents SET
+  argv = CASE name
+    WHEN 'claude' THEN '["claude-agent-acp"]'
+    WHEN 'codex' THEN '["codex-acp"]'
+    WHEN 'gemini' THEN '["gemini","--experimental-acp"]'
+    ELSE '[]' END,
+  resume_argv = CASE name
+    WHEN 'claude' THEN '["claude","--resume","{session}"]'
+    WHEN 'codex' THEN '["codex","resume","{session}"]'
+    ELSE '[]' END;
+
+INSERT INTO agents (name, argv, resume_argv, install_hint) VALUES
+  ('opencode', '["opencode","acp"]', '["opencode","--session","{session}"]', 'Install OpenCode'),
+  ('goose', '["goose","acp"]', '[]', 'Install Goose'),
+  ('github-copilot', '["copilot","--acp"]', '[]', 'Install GitHub Copilot CLI'),
+  ('cursor', '["cursor-agent","acp"]', '["cursor-agent","--resume","{session}"]', 'Install Cursor Agent'),
+  ('pi', '["pi","--acp"]', '[]', 'Install Pi');
+
+CREATE TABLE settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+INSERT INTO settings (key, value) VALUES ('default_agent', 'codex');
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

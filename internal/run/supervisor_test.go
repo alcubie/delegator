@@ -35,7 +35,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 
 func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, "stop end_turn")); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, dataDir, "stop end_turn")); err != nil {
 		t.Fatal(err)
 	}
 	ticket := testfix.ReadTicket(t, dataDir, id)
@@ -57,7 +57,7 @@ func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {
 
 func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "stop end_turn")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
@@ -87,7 +87,7 @@ func TestStartGivesOneTicketToOneRun(t *testing.T) {
 func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	second := testfix.SecondTicket(t, dataDir)
-	claimed, err := StartNext(testfix.OpenStore(t, dataDir), acpConfig(t, "stop end_turn"))
+	claimed, err := StartNext(testfix.OpenStore(t, dataDir), acpConfig(t, dataDir, "stop end_turn"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := StartNext(s, acpConfig(t, "stop end_turn"))
+	claimed, err := StartNext(s, acpConfig(t, dataDir, "stop end_turn"))
 	if err != nil {
 		t.Fatalf("err = %v, want nil from a supervisor with nothing to claim", err)
 	}
@@ -133,7 +133,7 @@ func TestStartRefusesATicketThatIsAlreadyRunning(t *testing.T) {
 	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
 		t.Fatal(err)
 	}
-	err := Start(s, id, acpConfig(t, "stop end_turn"))
+	err := Start(s, id, acpConfig(t, dataDir, "stop end_turn"))
 	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
 		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
 	}
@@ -155,7 +155,7 @@ func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testfix.OpenStore(t, dataDir)
-	if err := Start(s, id, acpConfig(t, "stop end_turn")); err == nil {
+	if err := Start(s, id, acpConfig(t, dataDir, "stop end_turn")); err == nil {
 		t.Fatal("err = nil, want the failure to make the worktree")
 	}
 	if got := testfix.ReadTicket(t, dataDir, id).Status; got != store.Failed {
@@ -207,7 +207,7 @@ func TestPromptSaysHowToRead(t *testing.T) {
 func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
-	cfg := acpConfig(t, "text a line", "stop end_turn")
+	cfg := acpConfig(t, dataDir, "text a line", "stop end_turn")
 	if err := Start(s, id, cfg); err != nil {
 		t.Fatal(err)
 	}
