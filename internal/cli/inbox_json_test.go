@@ -1,10 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -16,11 +13,11 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// jsonGroups is every group that dg --json writes, in the order that the text
+// jsonGroups is every group that RPC inbox result writes, in the order that the text
 // form of the inbox gives them.
 var jsonGroups = []string{"done", "ready", "running", "failed", "queued"}
 
-// jsonInboxFields is every key that one ticket of dg --json holds.
+// jsonInboxFields is every key that one ticket of RPC inbox result holds.
 var jsonInboxFields = []string{
 	"id", "title", "status", "project", "created", "accepted", "started",
 }
@@ -53,24 +50,10 @@ func eachGroup(t *testing.T, dataDir string) (*store.Store, string, map[string]i
 	return s, repo, ids
 }
 
-// readInboxJSON runs dg --json and gives the one object that it wrote. It
-// reads the rest of the stream as well, because the flag promises one object
-// and nothing else.
+// readInboxJSON reads the inbox document through dg rpc.
 func readInboxJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]any {
 	t.Helper()
-	out, err := runIn(t, dataDir, workDir, append([]string{"--json"}, args...)...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dec := json.NewDecoder(strings.NewReader(out))
-	var got map[string]any
-	if err := dec.Decode(&got); err != nil {
-		t.Fatalf("dg --json wrote %q, which is not one JSON object: %v", out, err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		t.Errorf("dg --json wrote more than one object:\n%s", out)
-	}
-	return got
+	return rpcDocument(t, dataDir, workDir, "inbox", args...)
 }
 
 // jsonGroup returns the tickets of one group of the document.
@@ -78,7 +61,7 @@ func jsonGroup(t *testing.T, got map[string]any, name string) []map[string]any {
 	t.Helper()
 	held, there := got[name]
 	if !there {
-		t.Fatalf("dg --json holds no group %q: %v", name, got)
+		t.Fatalf("RPC inbox result holds no group %q: %v", name, got)
 	}
 	list, ok := held.([]any)
 	if !ok {
@@ -120,9 +103,9 @@ func ticketIDs(tickets []store.OpenTicket) []int64 {
 	return ids
 }
 
-// §9.3 says that each command which shows data also accepts --json, so that a
+// §9.3 says that a program reads command documents through dg rpc, so that a
 // different interface reads the data and not the text. The desktop GUI reads
-// the inbox through this flag at each refresh.
+// the inbox through this endpoint at each refresh.
 func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, ids := eachGroup(t, dataDir)
@@ -132,7 +115,7 @@ func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 	keys := slices.Sorted(maps.Keys(got))
 	want := slices.Sorted(slices.Values(append([]string{"queue"}, jsonGroups...)))
 	if !slices.Equal(keys, want) {
-		t.Errorf("dg --json holds the keys %v, want %v", keys, want)
+		t.Errorf("RPC inbox result holds the keys %v, want %v", keys, want)
 	}
 	for _, name := range jsonGroups {
 		if held := jsonGroupIDs(t, got, name); !slices.Equal(held, []int64{ids[name]}) {
@@ -244,7 +227,7 @@ func TestRunJSONHoldsEachFieldOfATicket(t *testing.T) {
 
 	keys := slices.Sorted(maps.Keys(got))
 	if want := slices.Sorted(slices.Values(jsonInboxFields)); !slices.Equal(keys, want) {
-		t.Errorf("a ticket of dg --json holds the keys %v, want %v", keys, want)
+		t.Errorf("a ticket of RPC inbox result holds the keys %v, want %v", keys, want)
 	}
 	if got["id"] != float64(ids["ready"]) {
 		t.Errorf("id = %v, want %d", got["id"], ids["ready"])
@@ -327,7 +310,7 @@ func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	}
 }
 
-// Where a key of the inbox and a key of dg show --json name the same field,
+// Where a key of the inbox and a key of RPC show result name the same field,
 // the two keys are the same word and carry the same value, so a reader of one
 // document knows the other without a second table. started is the one key of a
 // row that dg show does not give: the inbox counts the run, and one ticket in
@@ -337,7 +320,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	_, repo, ids := eachGroup(t, dataDir)
 
 	row := one(t, readInboxJSON(t, dataDir, repo), "done")
-	shown := showJSON(t, dataDir, repo, fmt.Sprint(ids["done"]), "--json")
+	shown := showJSON(t, dataDir, repo, fmt.Sprint(ids["done"]))
 
 	for key, want := range row {
 		if key == "started" {
@@ -345,7 +328,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 		}
 		got, there := shown[key]
 		if !there {
-			t.Errorf("dg --json holds the key %q and dg show --json holds %v", key, slices.Sorted(maps.Keys(shown)))
+			t.Errorf("RPC inbox result holds the key %q and RPC show result holds %v", key, slices.Sorted(maps.Keys(shown)))
 			continue
 		}
 		if got != want {
@@ -354,45 +337,45 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	}
 }
 
-// --color has no effect on --json. A reader that asks for the colour of the
+// --color has no effect on RPC results. A reader that asks for the colour of the
 // terminal it writes to still gets JSON that parses, and the text form keeps
 // the colour that TestColorFlagDecidesTheColour holds it to.
 func TestRunJSONTakesNoColour(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, _ := eachGroup(t, dataDir)
 
-	plain, err := runIn(t, dataDir, repo, "--json")
+	plain, err := rpcIn(t, dataDir, repo, `{"jsonrpc":"2.0","method":"inbox","id":1}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"always", "never", "auto"} {
-		got, err := runIn(t, dataDir, repo, "--json", "--color="+mode)
+		got, err := rpcIn(t, dataDir, repo, fmt.Sprintf(`{"jsonrpc":"2.0","method":"inbox","params":{"color":%q},"id":1}`, mode))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got != plain {
-			t.Errorf("dg --json --color=%s wrote\n%s\nwant\n%s", mode, got, plain)
+			t.Errorf("RPC inbox result --color=%s wrote\n%s\nwant\n%s", mode, got, plain)
 		}
 	}
 	if strings.Contains(plain, "\x1b") {
-		t.Errorf("dg --json is coloured:\n%q", plain)
+		t.Errorf("RPC inbox result is coloured:\n%q", plain)
 	}
 }
 
 // The title is what the person wrote, and the encoder of Go escapes `<`, `>`
 // and `&` for a browser that reads JSON inside a page. Nothing here is a page,
-// and dg show --json makes the same choice for the prose.
+// and RPC show result makes the same choice for the prose.
 func TestRunJSONKeepsTheCharactersOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	s, _, repo := queuedTicket(t, dataDir)
 	const title = "Take <staging> out of the DNS & the load balancer"
 	queuedIn(t, s, repo, title)
 
-	out, err := runIn(t, dataDir, repo, "--json")
+	out, err := rpcIn(t, dataDir, repo, `{"jsonrpc":"2.0","method":"inbox","id":1}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, title) {
-		t.Errorf("dg --json does not hold the title as it is:\n%s", out)
+		t.Errorf("RPC inbox result does not hold the title as it is:\n%s", out)
 	}
 }

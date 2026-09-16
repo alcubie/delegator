@@ -109,7 +109,7 @@ them. Section 4 gives that list.
 - The inbox, with the groups DONE, READY, RUNNING, FAILED and QUEUED.
 - One commit for each run, and its hash on the ticket.
 - The four variables for each ticket, for use by other programs.
-- The option `--json` on each command that shows data.
+- The endpoint `dg rpc` for programs to call commands.
 - Commands of the person, which delegator starts in a new window.
 - One installer for Linux and macOS.
 - The claude agent.
@@ -398,8 +398,8 @@ migration step above that number, in one transaction. The earlier design had no 
 because of lesson 3, and this design answers the lesson directly.
 
 The person loses one thing. A ticket is no longer a file that `cat` can show. The command
-`dg show 4 --json` gives the same fields, and §12 says why each command that shows data
-also accepts `--json`.
+`dg rpc` with the method `show` and ticket id 4 gives the same fields, and §12 says
+why a program uses that endpoint.
 
 **Ticket ids are one sequence for all projects.** The column `id` of the table `tickets`
 is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg show 4` is
@@ -766,18 +766,20 @@ installer.
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
 | `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |
 | `dg completion <shell>` | Write the script that completes each command for bash, zsh, fish or powershell. |
-| `dg version` | Show the version of the binary. The flag `--json` writes one object with `version` and `schema`. A build sets the version, and a build that sets none writes `dev`. |
+| `dg version` | Show the version of the binary. Through `dg rpc`, its result is one object with `version` and `schema`. A build sets the version, and a build that sets none writes `dev`. |
 
 The package `github.com/spf13/cobra` holds the tree of commands. One tree gives the
 dispatch, the text of `dg help`, the completion of each shell, and the man page that
 `cobra/doc` makes at a release. A command that arrives is therefore in each of them, and a
 test walks the tree to say so.
 
-Each command that shows data also accepts `--json`. A different interface, or a script of
-the person, can therefore read the data and not the text. Section 12 shows why.
+A program uses `dg rpc`, not a flag on each command. Its JSON-RPC result gives the
+command's document, so a different interface or a script reads data and not terminal
+text. The method `inbox` gives the root command's document; `show` and `version` give
+the documents of those commands. Section 12 shows why.
 
-`dg version --json` writes a second value beside the version. `schema` is a number, and it
-is the version of the JSON that `dg --json` and `dg show --json` write. It goes up by one
+The `version` result of `dg rpc` writes a second value beside the version. `schema` is a
+number, and it is the version of the documents that `dg rpc` writes. It goes up by one
 when a key of that JSON changes its name, or changes its type, or goes away. A new key
 does not change it, because a reader ignores a key that it does not know. A program that
 starts `dg` reads the two values first, and then decides if it can read the data.
@@ -878,7 +880,7 @@ A TUI therefore becomes `internal/tui/`. It reads the same structure from `inbox
 stays inside the binary `dg`, as the command `dg --watch`.
 
 A GUI in Go becomes a second binary `cmd/dg-gui/`. A graphical library is large, and the
-binary `dg` must stay small. A GUI in a different language uses `dg --json`, and no Go
+binary `dg` must stay small. A GUI in a different language uses `dg rpc`, and no Go
 code is necessary for it.
 
 **Go.** Go gives one binary with no other program below it. The person installs no other
