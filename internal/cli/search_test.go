@@ -32,7 +32,7 @@ func TestSearchFindsATitle(t *testing.T) {
 	}
 }
 
-func TestSearchFindsAProseLine(t *testing.T) {
+func TestSearchFindsProseWithoutWritingIt(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	if _, err := runIn(t, dataDir, repo, "ticket", "Remove the app", "--no-body"); err != nil {
@@ -45,8 +45,8 @@ func TestSearchFindsAProseLine(t *testing.T) {
 	}
 
 	rows := searchRows(t, dataDir, repo, "DNS")
-	if len(rows) != 2 || !strings.Contains(rows[0], "Remove the app") || rows[1] != "  Remove the DNS records." {
-		t.Errorf("dg search wrote %q, want the ticket and its matching prose line", rows)
+	if len(rows) != 1 || !strings.Contains(rows[0], "Remove the app") || strings.Contains(rows[0], "DNS") {
+		t.Errorf("dg search wrote %q, want the ticket but not its matching prose", rows)
 	}
 }
 
@@ -79,11 +79,11 @@ func TestSearchProjectAndCase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if rows := searchRows(t, dataDir, here, "frobnicator"); len(rows) != 4 {
-		t.Errorf("dg search wrote %q, want both tickets and their prose", rows)
+	if rows := searchRows(t, dataDir, here, "frobnicator"); len(rows) != 2 {
+		t.Errorf("dg search wrote %q, want both tickets", rows)
 	}
 	rows := searchRows(t, dataDir, here, "FROBNICATOR", "--project", elsewhere)
-	if len(rows) != 2 || !strings.Contains(rows[0], "remote") {
+	if len(rows) != 1 || !strings.Contains(rows[0], "remote") {
 		t.Errorf("dg search --project wrote %q, want only the other project", rows)
 	}
 }
