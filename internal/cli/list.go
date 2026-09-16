@@ -28,7 +28,13 @@ func listCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		Short: listShort,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return listTickets(cmd.OutOrStdout(), dataDir, workDir, cfg, projectDir)
+			tickets, err := listTickets(dataDir, workDir, cfg, projectDir)
+			if err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), tickets, false, func(out io.Writer) {
+				writeList(out, tickets)
+			})
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
@@ -36,29 +42,31 @@ func listCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	return cmd
 }
 
-// listTickets reads the tickets and writes the list. projectDir is the value of
-// --project, and the empty string is every project: a person who gives no
+// listTickets reads the tickets that dg list writes. projectDir is the value
+// of --project, and the empty string is every project: a person who gives no
 // directory asked for the whole list, and dg ticket has no such reading to
 // take from it because a ticket belongs to one project.
-func listTickets(out io.Writer, dataDir, workDir string, cfg *config.Config, projectDir string) error {
+func listTickets(dataDir, workDir string, cfg *config.Config, projectDir string) ([]store.OpenTicket, error) {
 	var root string
 	if projectDir != "" {
 		dir, err := ticketProject(workDir, projectDir)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if root, err = project.Root(dir); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return withStore(dataDir, cfg, func(s *store.Store) error {
-		tickets, err := s.AllTickets(root)
+	var tickets []store.OpenTicket
+	err := withStore(dataDir, cfg, func(s *store.Store) error {
+		var err error
+		tickets, err = s.AllTickets(root)
 		if err != nil {
 			return err
 		}
-		writeList(out, tickets)
 		return nil
 	})
+	return tickets, err
 }
 
 // writeList writes one row for each ticket, in the order it is given, with the
