@@ -12,15 +12,6 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// A Kind is one agent: the name a person selects it by, the command that
-// starts its ACP server on stdio, and the command that opens one of its
-// sessions in a terminal.
-type Kind struct {
-	Name   string
-	Argv   []string
-	Resume []string
-}
-
 // A Policy decides how a permission request is answered. Allow is given the
 // kind of tool the agent wants to run and the line it shows for it. A Policy
 // with no Allow allows nothing, so a caller that forgets one gets the answer
@@ -90,11 +81,11 @@ const eventRoom = 64
 // The process is ended before open gives an error, so a failed start leaves
 // nothing running. What it gives back has no session yet: the caller asks the
 // agent for the one it wants.
-func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
-	if len(kind.Argv) == 0 {
-		return nil, fmt.Errorf("agent %q has no command", kind.Name)
+func open(ctx context.Context, name string, argv []string, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("agent %q has no command", name)
 	}
-	cmd := exec.Command(kind.Argv[0], kind.Argv[1:]...)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
@@ -106,7 +97,7 @@ func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.W
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start agent %q: %w", kind.Name, err)
+		return nil, fmt.Errorf("start agent %q: %w", name, err)
 	}
 	s := &Session{cmd: cmd, events: make(chan Event, eventRoom)}
 	s.conn = acp.NewClientSideConnection(&client{policy: policy, events: s.events}, stdin, stdout)
@@ -119,7 +110,7 @@ func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.W
 	})
 	if err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("initialize agent %q: %w", kind.Name, err)
+		return nil, fmt.Errorf("initialize agent %q: %w", name, err)
 	}
 	s.caps = r.AgentCapabilities
 	return s, nil
@@ -130,15 +121,15 @@ func open(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.W
 //
 // The process is ended before Start gives an error, so a failed start leaves
 // nothing running.
-func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
-	s, err := open(ctx, kind, policy, cwd, stderr)
+func Start(ctx context.Context, name string, argv []string, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, name, argv, policy, cwd, stderr)
 	if err != nil {
 		return nil, err
 	}
 	r, err := s.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("open a session of agent %q in %s: %w", kind.Name, cwd, err)
+		return nil, fmt.Errorf("open a session of agent %q in %s: %w", name, cwd, err)
 	}
 	s.id = r.SessionId
 	return s, nil
@@ -156,14 +147,14 @@ func Start(ctx context.Context, kind Kind, policy Policy, cwd string, stderr io.
 // An agent whose capabilities say it cannot load a session is refused before
 // the session is asked for, and an id the agent does not know is an error
 // that names it. Either way the process is ended before Load gives the error.
-func Load(ctx context.Context, kind Kind, policy Policy, cwd, id string, stderr io.Writer) (*Session, error) {
-	s, err := open(ctx, kind, policy, cwd, stderr)
+func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, id string, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, name, argv, policy, cwd, stderr)
 	if err != nil {
 		return nil, err
 	}
 	if !s.caps.LoadSession {
 		_ = s.Close()
-		return nil, fmt.Errorf("agent %q cannot load a session", kind.Name)
+		return nil, fmt.Errorf("agent %q cannot load a session", name)
 	}
 	replay, err := s.collect(func() error {
 		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
@@ -175,7 +166,7 @@ func Load(ctx context.Context, kind Kind, policy Policy, cwd, id string, stderr 
 	})
 	if err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("load session %s of agent %q in %s: %w", id, kind.Name, cwd, err)
+		return nil, fmt.Errorf("load session %s of agent %q in %s: %w", id, name, cwd, err)
 	}
 	s.replay, s.id, s.loaded = replay, acp.SessionId(id), true
 	return s, nil

@@ -107,10 +107,10 @@ type stubRecord struct {
 	Decisions []string                   `json:"decisions"`
 }
 
-// stubKind gives the Kind that starts the stub agent offering one of the sets
-// of permission options, taking one of the turns and saying whether it can
-// load a session, and the path of the file it records into.
-func stubKind(t *testing.T, options, turn, loading string) (Kind, string) {
+// stubLaunch gives the name and command that start the stub agent offering one
+// of the sets of permission options, taking one of the turns and saying
+// whether it can load a session, and the path of the file it records into.
+func stubLaunch(t *testing.T, options, turn, loading string) (string, []string, string) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
@@ -118,7 +118,7 @@ func stubKind(t *testing.T, options, turn, loading string) (Kind, string) {
 	}
 	record := filepath.Join(t.TempDir(), "record.json")
 	argv := []string{self, "-test.run=TestStubAgent", "stub", record, options, turn, loading}
-	return Kind{Name: "stub", Argv: argv}, record
+	return "stub", argv, record
 }
 
 // readRecord reads what the stub agent wrote.
@@ -136,7 +136,7 @@ func readRecord(t *testing.T, path string) stubRecord {
 }
 
 // TestStubAgent is the stub agent and not a test. It runs only in the copy of
-// the test binary that stubKind starts, which names itself in the arguments
+// the test binary that stubLaunch starts, which names itself in the arguments
 // after the flags; every other run skips it.
 func TestStubAgent(t *testing.T) {
 	args := flag.Args()

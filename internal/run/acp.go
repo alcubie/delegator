@@ -49,8 +49,7 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 	if err != nil {
 		return err
 	}
-	kind := handler.KindFromAgent(entry.Name, entry.Argv, entry.Resume)
-	agentID, err := s.AgentID(kind.Name)
+	agentID, err := s.AgentID(entry.Name)
 	if err != nil {
 		return err
 	}
@@ -63,7 +62,7 @@ func superviseACP(s *store.Store, cfg config.Config, id, runID int64, worktree s
 		ctx, cancel = context.WithTimeout(ctx, limit)
 		defer cancel()
 	}
-	session, err := handler.Start(ctx, kind, handler.AllowAll(), worktree, log)
+	session, err := handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, log)
 	if err != nil {
 		return err
 	}
