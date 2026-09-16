@@ -348,6 +348,23 @@ func TestChatWithNoIDSkipsAnotherProject(t *testing.T) {
 	}
 }
 
+func TestChatWithNoIDInALinkedWorktreeFindsThePrimaryProject(t *testing.T) {
+	dataDir := t.TempDir()
+	primary, linked := linkedWorktree(t)
+	s := testfix.OpenStore(t, dataDir)
+	chattableIn(t, s, dataDir, primary, "the ticket of the primary project", "primary-session")
+	record := useChat(t, "true")
+
+	if _, err := runIn(t, dataDir, linked, "chat"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := resumeArgv("primary-session")
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
 // --project names the project, as it does on dg show and dg accept, so a
 // person continues the work of a repository from somewhere else. The path here
 // is relative, which is the form that has a directory to be joined to.

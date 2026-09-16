@@ -48,6 +48,23 @@ func TestRootFindsTheRoot(t *testing.T) {
 	}
 }
 
+func TestRootOfALinkedWorktreeFindsThePrimaryCheckout(t *testing.T) {
+	primary := t.TempDir()
+	initRepo(t, primary)
+	commitIn(t, primary)
+	linked := filepath.Join(t.TempDir(), "linked")
+	gitIn(t, primary, "worktree", "add", "-b", "linked", linked)
+	t.Cleanup(func() { gitIn(t, primary, "worktree", "remove", "--force", linked) })
+
+	got, err := Root(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != primary {
+		t.Errorf("Root(linked worktree) = %q, want primary checkout %q", got, primary)
+	}
+}
+
 func TestRootErrorsOutsideARepository(t *testing.T) {
 	dir := t.TempDir()
 	_, err := Root(dir)
