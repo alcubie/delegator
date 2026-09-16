@@ -12,8 +12,8 @@
 // itself, and a ring of tickets that each depend on the next.
 //
 // Two reads are here as well. unmetDependencies answers, for the whole inbox at
-// once, which links still hold a ticket back, and Dependencies gives every link
-// of one ticket for dg show.
+// once, which links still hold a ticket back, Dependencies gives every link of
+// one ticket for dg show, and Dependents gives every ticket that waits on one.
 
 package store
 
@@ -177,6 +177,28 @@ func (s *Store) Dependencies(id int64) ([]int64, error) {
 			return nil, err
 		}
 		ids = append(ids, on)
+	}
+	return ids, rows.Err()
+}
+
+// Dependents returns the id of each ticket that depends on id, in the order of
+// the ids. It gives every link, whether or not the ticket is ready to run, so
+// dg show can name the work that finishing one ticket lets go.
+func (s *Store) Dependents(id int64) ([]int64, error) {
+	rows, err := s.db.Query(
+		"SELECT ticket_id FROM ticket_deps WHERE depends_on = ? ORDER BY ticket_id", id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var dependent int64
+		if err := rows.Scan(&dependent); err != nil {
+			return nil, err
+		}
+		ids = append(ids, dependent)
 	}
 	return ids, rows.Err()
 }

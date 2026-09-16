@@ -156,6 +156,7 @@ type shown struct {
 	Prose     string
 	Worktree  string
 	DependsOn []int64
+	Blocks    []int64
 	Started   time.Time
 	Agent     string
 }
@@ -219,6 +220,9 @@ func writeFields(out io.Writer, s shown) {
 	// asking what they linked it to.
 	if len(s.DependsOn) > 0 {
 		writeField(out, "depends on", ticketNames(s.DependsOn))
+	}
+	if len(s.Blocks) > 0 {
+		writeField(out, "blocks", ticketNames(s.Blocks))
 	}
 }
 
@@ -373,6 +377,10 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	}
 
 	t.DependsOn, err = s.Dependencies(id)
+	if err != nil {
+		return ticketJSON{}, err
+	}
+	t.Blocks, err = s.Dependents(id)
 	if err != nil {
 		return ticketJSON{}, err
 	}

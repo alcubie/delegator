@@ -31,6 +31,17 @@ func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	return ids
 }
 
+// blockersOf returns the id of each ticket that depends on id, and stops the
+// test when the read fails.
+func blockersOf(t *testing.T, s *Store, id int64) []int64 {
+	t.Helper()
+	ids, err := s.Dependents(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
 // dependentQueue returns a store whose queue holds one ticket that depends on an
 // earlier ticket and then one that depends on nothing, with the id of the ticket
 // depended on, the id of the dependent ticket and the id of the free one.
@@ -61,6 +72,29 @@ func TestAddTicketRecordsTheTicketsItDependsOn(t *testing.T) {
 	}
 	if got := linksOf(t, s, ids[0]); len(got) != 0 {
 		t.Errorf("ticket %d depends on %v, want nothing", ids[0], got)
+	}
+}
+
+// The reverse read tells a person what work finishing one ticket lets go. It
+// keeps the ids in order and gives nothing when no link names the ticket.
+func TestDependentsNamesTheTicketsThatWaitOnOne(t *testing.T) {
+	s, ids := threeTickets(t)
+
+	if err := s.AddDependencies(ids[1], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := blockersOf(t, s, ids[0]), []int64{ids[1], ids[2]}; !slices.Equal(got, want) {
+		t.Errorf("tickets waiting on %d = %v, want %v", ids[0], got, want)
+	}
+	if got := blockersOf(t, s, ids[1]); len(got) != 0 {
+		t.Errorf("tickets waiting on %d = %v, want nothing", ids[1], got)
+	}
+	if got := blockersOf(t, s, ids[2]+1000); len(got) != 0 {
+		t.Errorf("tickets waiting on untouched id = %v, want nothing", got)
 	}
 }
 
