@@ -181,6 +181,13 @@ func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (in
 	if err != nil {
 		return 0, err
 	}
+	primary, err := project.MainWorktree(root)
+	if err != nil {
+		return 0, err
+	}
+	if root != primary {
+		return 0, fmt.Errorf("%s is a linked worktree; pass %s with --project", root, primary)
+	}
 	branch, err := project.DefaultBranch(root)
 	if err != nil {
 		return 0, err

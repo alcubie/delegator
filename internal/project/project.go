@@ -83,6 +83,21 @@ func Root(path string) (string, error) {
 	return strings.TrimSuffix(string(gitDir), "\n"), nil
 }
 
+// MainWorktree returns the primary checkout of the repository that holds root.
+// Git lists that checkout first, before every linked worktree.
+func MainWorktree(root string) (string, error) {
+	out, err := gitOutput(root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if path, ok := strings.CutPrefix(line, "worktree "); ok {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("git gave no primary worktree for %s", root)
+}
+
 // gitOutput runs one git command in root and returns its output with no final
 // newline. An error means that git said no, and each caller decides what that
 // answer means.

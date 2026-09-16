@@ -153,6 +153,74 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 	}
 }
 
+// linkedWorktree makes the primary checkout and one linked worktree that git
+// records for it. The linked directory must not be used as a ticket project.
+func linkedWorktree(t *testing.T) (string, string) {
+	t.Helper()
+	primary := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, primary, "first")
+	linked := filepath.Join(t.TempDir(), "linked")
+	testfix.GitIn(t, primary, "worktree", "add", "-b", "linked", linked)
+	t.Cleanup(func() { testfix.GitIn(t, primary, "worktree", "remove", "--force", linked) })
+	return primary, linked
+}
+
+func TestRunTicketRefusesALinkedWorktree(t *testing.T) {
+	dataDir := t.TempDir()
+	primary, linked := linkedWorktree(t)
+
+	out, err := runIn(t, dataDir, linked, "ticket", "Remove staging infrastructure", "--no-body")
+	if err == nil {
+		t.Fatal("dg ticket made a ticket for a linked worktree")
+	}
+	for _, want := range []string{primary, "--project"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, and does not name %q", err, want)
+		}
+	}
+	if out != "" {
+		t.Errorf("the command wrote %q, want nothing", out)
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("the database holds %d projects, want none", len(rows))
+	}
+}
+
+func TestRunTicketRefusesALinkedWorktreeNamedByProject(t *testing.T) {
+	dataDir := t.TempDir()
+	primary, linked := linkedWorktree(t)
+
+	_, err := runIn(t, dataDir, primary, "ticket", "--project", linked, "Remove staging infrastructure", "--no-body")
+	if err == nil {
+		t.Fatal("dg ticket made a ticket for a linked worktree named by --project")
+	}
+	for _, want := range []string{primary, "--project"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, and does not name %q", err, want)
+		}
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("the database holds %d projects, want none", len(rows))
+	}
+}
+
+func TestRunTicketWithThePrimaryProjectFromALinkedWorktree(t *testing.T) {
+	dataDir := t.TempDir()
+	primary, linked := linkedWorktree(t)
+
+	out, err := runIn(t, dataDir, linked, "ticket", "--project", primary, "Remove staging infrastructure", "--no-body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "1\n" {
+		t.Errorf("the command wrote %q, want %q", out, "1\\n")
+	}
+	rows := projectRows(t, dataDir)
+	if len(rows) != 1 || rows[0].Path != primary {
+		t.Errorf("projects = %v, want the primary checkout %q", rows, primary)
+	}
+}
+
 // A --project that names nothing costs no ticket, and the error is the path and
 // not a sentence about git.
 func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
