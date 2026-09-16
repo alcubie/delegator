@@ -50,6 +50,7 @@ func resumeArgv(session string) []string {
 func chattableTicket(t *testing.T, dataDir string) (int64, string, string) {
 	t.Helper()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	setChatAgent(t, s, ticketID, "claude")
 	const session = "session-of-the-run"
 	if err := s.SetSession(ticketID, session); err != nil {
 		t.Fatal(err)
@@ -69,6 +70,7 @@ func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session str
 	t.Helper()
 	id := queuedIn(t, s, repo, title)
 	finishIn(t, s, id)
+	setChatAgent(t, s, id, "claude")
 	if err := s.SetSession(id, session); err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +78,21 @@ func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session str
 		t.Fatal(err)
 	}
 	return id
+}
+
+func setChatAgent(t *testing.T, s *store.Store, ticketID int64, name string) {
+	t.Helper()
+	r, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentID, err := s.AgentID(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRunAgent(r.ID, agentID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // twoChattableProjects makes two repositories, each with one ready ticket that
@@ -112,12 +129,13 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
-// The agent of a run comes from the config, so chat must use that agent's
-// resume command rather than always opening a Claude conversation.
-func TestChatStartsTheResumeOfTheSelectedAgent(t *testing.T) {
-	writeConfig(t, "agent = \"codex\"\n")
+// Chat uses the agent that opened the session even after the config changes.
+func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
+	writeConfig(t, "agent = \"claude\"\n")
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	setChatAgent(t, s, ticketID, "codex")
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
@@ -389,5 +407,27 @@ func TestChatWithNoIDOutsideAProject(t *testing.T) {
 	}
 	if record.argv != nil {
 		t.Errorf("dg chat started %v, want nothing", record.argv)
+	}
+}
+
+// A session without a run is corrupt state, not a reason to use config.
+func TestChatRefusesSessionWithoutRun(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+	repo := testfix.Repo(t, repoBranch)
+	id := queuedIn(t, s, repo, "session without run")
+	if err := s.SetSession(id, "orphan-session"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(run.WorktreePath(dataDir, id), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	record := useChat(t, "true")
+	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(id))
+	if !errors.Is(err, store.ErrNoRun) {
+		t.Fatalf("error = %v, want ErrNoRun", err)
+	}
+	if record.argv != nil {
+		t.Errorf("started %v, want nothing", record.argv)
 	}
 }
