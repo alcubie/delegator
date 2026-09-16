@@ -144,6 +144,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	defer func() { err = errors.Join(err, s.FailUnfinished(runID)) }()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// A context deadline only asks ACP to stop; the timer also records the run and stops its whole process group.
 	watch := startSupervisorTimer(s, runID, os.Getpid(), runTimeout(cfg), cancel)
 	defer func() { err = errors.Join(err, watch.Close()) }()
 
