@@ -18,6 +18,10 @@ const (
 	rpcInvalidParams  = -32602
 )
 
+// rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat needs the
+// terminal a person is at, and rpc is the endpoint that already owns stdin.
+var rpcRefusedMethods = map[string]bool{"chat": true, "rpc": true}
+
 // rpcValueWriter takes the value that a command gives writeValue.  It also
 // discards bytes from commands that have no value yet, so nothing a request
 // runs reaches the terminal.
@@ -72,18 +76,18 @@ func rpcResponses(dataDir, workDir string, data []byte) any {
 	var raw json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&raw); err != nil {
-		return rpcErrorResponse(nil, rpcParseError, "parse error")
+		return rpcErrorResponse(nil, rpcParseError, "Parse error")
 	}
 	// A request is one JSON value.  Decode again to reject trailing values
 	// rather than silently running only the first; a clean end returns io.EOF.
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return rpcErrorResponse(nil, rpcParseError, "parse error")
+		return rpcErrorResponse(nil, rpcParseError, "Parse error")
 	}
 
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
-		return rpcErrorResponse(nil, rpcParseError, "parse error")
+		return rpcErrorResponse(nil, rpcParseError, "Parse error")
 	}
 	if trimmed[0] != '[' {
 		return rpcResponseFor(dataDir, workDir, raw)
@@ -91,7 +95,7 @@ func rpcResponses(dataDir, workDir string, data []byte) any {
 
 	var batch []json.RawMessage
 	if err := json.Unmarshal(raw, &batch); err != nil {
-		return rpcErrorResponse(nil, rpcInvalidRequest, "invalid request")
+		return rpcErrorResponse(nil, rpcInvalidRequest, "Invalid Request")
 	}
 	responses := make([]rpcResponse, 0, len(batch))
 	for _, request := range batch {
@@ -121,17 +125,17 @@ func rpcResultResponse(id json.RawMessage, value any) rpcResponse {
 func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 	request, err := readRPCRequest(raw)
 	if err != nil {
-		return rpcErrorResponse(nil, rpcInvalidRequest, err.Error())
+		return rpcErrorResponse(nil, rpcInvalidRequest, "Invalid Request")
 	}
 
 	root := Root(dataDir, workDir)
 	target, err := rpcTarget(root, request.Method)
 	if err != nil {
-		return rpcErrorResponse(request.ID, rpcMethodNotFound, err.Error())
+		return rpcErrorResponse(request.ID, rpcMethodNotFound, "Method not found")
 	}
 	argv, err := rpcArgv(target, request)
 	if err != nil {
-		return rpcErrorResponse(request.ID, rpcInvalidParams, err.Error())
+		return rpcErrorResponse(request.ID, rpcInvalidParams, "Invalid params")
 	}
 
 	var value rpcValueWriter
@@ -168,6 +172,9 @@ func readRPCRequest(raw json.RawMessage) (rpcRequest, error) {
 }
 
 func rpcTarget(root *cobra.Command, method string) (*cobra.Command, error) {
+	if rpcRefusedMethods[method] {
+		return nil, fmt.Errorf("method %q was not found", method)
+	}
 	if method == "inbox" {
 		return root, nil
 	}
@@ -188,6 +195,20 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 		trimmed := bytes.TrimSpace(request.Params)
 		if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &params) != nil {
 			return nil, fmt.Errorf("params must be an object")
+		}
+	}
+	// The request consumed standard input before cobra sees this command, so no
+	// method can use - as the file that holds its prose.
+	if raw, found := params["body-file"]; found {
+		if bodyFile, err := rpcString(raw); err == nil && bodyFile == "-" {
+			return nil, fmt.Errorf("body-file cannot be standard input")
+		}
+	}
+	// An editor belongs to the person at a terminal; an RPC caller supplies the
+	// title or prose itself instead.
+	if command.Name() == "edit" {
+		if _, found := params["editor"]; found {
+			return nil, fmt.Errorf("editor is not available through rpc")
 		}
 	}
 

@@ -3,11 +3,15 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/testfix"
+	"github.com/spf13/cobra"
 )
 
 // rpcIn sends one JSON-RPC request to dg rpc and returns the single line it
@@ -28,6 +32,174 @@ func rpcObject(t *testing.T, out string) map[string]any {
 		t.Fatalf("dg rpc wrote invalid JSON %q: %v", out, err)
 	}
 	return got
+}
+
+func rpcProtocolError(t *testing.T, out string, code int, message string) map[string]any {
+	t.Helper()
+	got := rpcObject(t, out)
+	errorObject, ok := got["error"].(map[string]any)
+	if !ok || errorObject["code"] != float64(code) || errorObject["message"] != message {
+		t.Fatalf("response = %#v, want error %d %q", got, code, message)
+	}
+	if _, hasResult := got["result"]; hasResult {
+		t.Fatalf("error response has result: %#v", got)
+	}
+	return got
+}
+
+func TestRPCReportsProtocolParseAndRequestErrors(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	for _, test := range []struct {
+		name    string
+		request string
+		code    int
+	}{
+		{"text that is not JSON", "not JSON", rpcParseError},
+		{"the wrong protocol version", `{"jsonrpc":"1.0","method":"show","id":1}`, rpcInvalidRequest},
+		{"a method that is not a string", `{"jsonrpc":"2.0","method":1,"id":1}`, rpcInvalidRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out, err := rpcIn(t, dataDir, repo, test.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			message := "Invalid Request"
+			if test.code == rpcParseError {
+				message = "Parse error"
+			}
+			got := rpcProtocolError(t, out, test.code, message)
+			if got["id"] != nil {
+				t.Errorf("response id = %#v, want null", got["id"])
+			}
+		})
+	}
+}
+
+func TestRPCRefusesAMethodThatNamesNoCommand(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	out, err := rpcIn(t, dataDir, repo, `{"jsonrpc":"2.0","method":"not-a-command","id":"missing"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rpcProtocolError(t, out, rpcMethodNotFound, "Method not found")
+	if got["id"] != "missing" {
+		t.Errorf("response id = %#v, want the request id", got["id"])
+	}
+}
+
+func TestRPCRefusesTerminalAndPersonOnlyMethods(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	for _, method := range []string{"chat", "rpc"} {
+		t.Run(method, func(t *testing.T) {
+			out, err := rpcIn(t, dataDir, repo, fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"id":1}`, method))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rpcProtocolError(t, out, rpcMethodNotFound, "Method not found")
+		})
+	}
+
+	out, err := rpcIn(t, dataDir, repo, `{"jsonrpc":"2.0","method":"edit","params":{"args":[1],"editor":true},"id":2}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+}
+
+func TestRPCRunsTheNonEditorFormsOfEdit(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	bodyFile := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(bodyFile, []byte("From the body file.\n"), filePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		params map[string]any
+	}{
+		{"title", map[string]any{"title": "Changed through RPC"}},
+		{"body", map[string]any{"body": "Changed through RPC.\n"}},
+		{"body file", map[string]any{"body-file": bodyFile}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			id, err := ticketIn(t, dataDir, repo, "Before edit", "Before edit.\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			params := maps.Clone(test.params)
+			params["args"] = []any{id}
+			request, err := json.Marshal(map[string]any{
+				"jsonrpc": "2.0", "method": "edit", "params": params, "id": test.name,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := rpcIn(t, dataDir, repo, string(request))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := rpcObject(t, out)
+			if _, hasError := got["error"]; hasError {
+				t.Errorf("response = %#v, want edit to run", got)
+			}
+		})
+	}
+}
+
+func TestRPCRefusesBodyFileFromStandardInputForEveryMethod(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	root := Root(dataDir, repo)
+
+	for _, command := range root.Commands() {
+		if command.Name() == "chat" || command.Name() == "rpc" {
+			continue
+		}
+		t.Run(command.Name(), func(t *testing.T) {
+			request, err := json.Marshal(map[string]any{
+				"jsonrpc": "2.0", "method": command.Name(),
+				"params": map[string]any{"body-file": "-"}, "id": command.Name(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := rpcIn(t, dataDir, repo, string(request))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+		})
+	}
+}
+
+func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
+	root := Root(t.TempDir(), t.TempDir())
+	if _, err := rpcTarget(root, "inbox"); err != nil {
+		t.Errorf("the root inbox is not callable through RPC: %v", err)
+	}
+
+	var walk func(*cobra.Command)
+	walk = func(parent *cobra.Command) {
+		for _, command := range parent.Commands() {
+			_, err := rpcTarget(root, command.Name())
+			if rpcRefusedMethods[command.Name()] {
+				if err == nil {
+					t.Errorf("refused command %q is callable through RPC", command.CommandPath())
+				}
+			} else if err != nil {
+				t.Errorf("command %q is neither callable through RPC nor refused: %v", command.CommandPath(), err)
+			}
+			walk(command)
+		}
+	}
+	walk(root)
 }
 
 func TestRPCShowRunsTheNamedCommandAndWritesOnlyItsResponse(t *testing.T) {
@@ -100,8 +272,8 @@ func TestRPCReportsInvalidParamsAndCommandErrors(t *testing.T) {
 	}
 	got := rpcObject(t, out)
 	errorObject, ok := got["error"].(map[string]any)
-	if !ok || errorObject["code"] != float64(-32602) || !strings.Contains(fmt.Sprint(errorObject["message"]), "not-a-flag") {
-		t.Errorf("invalid flag response = %#v, want invalid-params error naming the flag", got)
+	if !ok || errorObject["code"] != float64(-32602) || errorObject["message"] != "Invalid params" {
+		t.Errorf("invalid flag response = %#v, want the Invalid params protocol error", got)
 	}
 	if _, hasResult := got["result"]; hasResult {
 		t.Errorf("invalid flag response has result: %#v", got)
