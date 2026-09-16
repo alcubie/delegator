@@ -221,8 +221,27 @@ func TestWriteTicketWithNoLinkWritesNoRow(t *testing.T) {
 		Status:  store.Queued,
 	}, ProseFile: proseFile("/data", 4)}, testNow)
 
-	if strings.Contains(out.String(), "depends") {
+	if strings.Contains(out.String(), "depends") || strings.Contains(out.String(), "blocks") {
 		t.Errorf("dg show holds a row of links for a ticket that has none:\n%s", out.String())
+	}
+}
+
+// A ticket can both wait on earlier work and let later work go. Both relations
+// name every linked ticket, and blocks follows depends on in the display.
+func TestWriteTicketNamesWhatItBlocks(t *testing.T) {
+	var out bytes.Buffer
+	writeTicket(&out, shown{Ticket: store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api"},
+		Title:   "Remove the staging app",
+		Status:  store.Queued,
+	}, ProseFile: proseFile("/data", 4), DependsOn: []int64{1, 2}, Blocks: []int64{5, 6}}, testNow)
+
+	text := out.String()
+	depends := strings.Index(text, "depends on  #1 #2")
+	blocks := strings.Index(text, "blocks      #5 #6")
+	if depends < 0 || blocks < 0 || blocks < depends {
+		t.Errorf("dg show links = %q, want depends on followed by blocks", text)
 	}
 }
 
