@@ -8,15 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alcubie/delegator/internal/adapters"
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
-
-// agent is the adapter that dg run starts. It is a variable so that a test can
-// put the fake agent in its place.
-var agent adapters.Adapter = adapters.Claude{}
 
 // launch returns the command that starts a supervisor: this program, dg, with
 // "run" and no id. It is a variable so that a test can put a program it can
@@ -68,15 +63,15 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			// With no id the supervisor reads the queue and claims in one
 			// transaction, which is what a trigger starts; with one, a person
 			// named the ticket.
-			start := func(s *store.Store) (bool, error) { return run.StartNext(s, *cfg, agent) }
+			start := func(s *store.Store) (bool, error) { return run.StartNext(s, *cfg) }
 			if len(args) == 1 {
 				id, err := ticketArg(args[0])
 				if err != nil {
 					return err
 				}
-				start = func(s *store.Store) (bool, error) { return true, run.Start(s, id, *cfg, agent) }
+				start = func(s *store.Store) (bool, error) { return true, run.Start(s, id, *cfg) }
 				if restart {
-					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg, agent) }
+					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg) }
 				}
 			}
 			// A run that could not start does not start the next one. What

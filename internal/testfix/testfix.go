@@ -1,15 +1,13 @@
 // Package testfix holds the fixtures that the tests of more than one package
 // need: a repository, a store, a queued ticket, the fake agent, and a launch a
-// test can watch. Each was copied between the cli, run and adapters tests
+// test can watch. Each was copied between the cli and run tests
 // before this package existed.
 //
 // It imports testing, which a package that is not a test normally does not.
 // The alternative was the copies. Only a test binary will ever import it.
 //
-// It must not import adapters: the adapters tests import this package, and an
-// internal test package cannot be on a cycle. The tests of project and store
-// keep their own helpers for the same reason and one more: Open and the git
-// commands are what those tests examine.
+// The tests of project and store keep their own helpers because Open and the
+// git commands are what those tests examine.
 package testfix
 
 import (
@@ -384,16 +382,11 @@ func WaitFor(t failing, path string) string {
 	return ""
 }
 
-// FakeAgentPath is dg-fake-agent, built by RunTests once for the package, and
-// FakeACPAgentPath is dg-fake-acp-agent beside it: the same fake for the path
-// that speaks the Agent Client Protocol.
-var (
-	FakeAgentPath    string
-	FakeACPAgentPath string
-)
+// FakeAgentPath is dg-fake-agent, built by RunTests once for the package.
+var FakeAgentPath string
 
-// RunTests builds the two fake agents once for a package and runs its tests,
-// and builds dg beside them when withDG is set, for a fake agent whose script
+// RunTests builds the fake agent once for a package and runs its tests, and
+// builds dg beside them when withDG is set, for a fake agent whose script
 // calls dg finish. It is called from TestMain and returns the code to exit with:
 // os.Exit runs no deferred call, so the cleanup lives here and not there.
 //
@@ -416,11 +409,6 @@ func RunTests(m *testing.M, withDG bool) int {
 
 	FakeAgentPath = filepath.Join(dir, "dg-fake-agent")
 	if err := build(FakeAgentPath, "github.com/alcubie/delegator/cmd/dg-fake-agent"); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	FakeACPAgentPath = filepath.Join(dir, "dg-fake-acp-agent")
-	if err := build(FakeACPAgentPath, "github.com/alcubie/delegator/cmd/dg-fake-acp-agent"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

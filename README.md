@@ -57,14 +57,9 @@ because the second pays the cost of the search inside the run.
 
 ## How a run drives its agent
 
-A run speaks the Agent Client Protocol to its agent. That is `runner = "acp"`
-in `config.toml`, and it is what a person who writes nothing gets. The key
-`agent` says which agent it starts, and the section `[agents.<name>]` gives the
-command for an agent that is not on the path under the name delegator expects.
-
-The other runner is `runner = "cli"`, which starts the agent's own command line
-and reads its output. It is still there for a person whose agent has no ACP
-server yet, and it will go.
+A run speaks the Agent Client Protocol to its agent. The key `agent` says
+which agent it starts, and the section `[agents.<name>]` gives the command for
+an agent that is not on the path under the name delegator expects.
 
 ## The agents an integration test drives
 
