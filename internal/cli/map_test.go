@@ -28,6 +28,15 @@ func mapIn(t *testing.T, dataDir, repo string, id int64) string {
 	return out
 }
 
+func mermaidMapIn(t *testing.T, dataDir, repo string, id int64) string {
+	t.Helper()
+	out, err := runIn(t, dataDir, repo, "map", fmt.Sprint(id), "--mermaid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func TestMapAChain(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -192,5 +201,110 @@ func TestTopologicalMapOrdersBlockersFirst(t *testing.T) {
 	}
 	if _, err := mapTickets(testfix.OpenStore(t, t.TempDir()), 1); !errors.Is(err, store.ErrNoTicket) {
 		t.Errorf("missing ticket error = %v, want ErrNoTicket", err)
+	}
+}
+
+func TestMermaidMapRendersAChain(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	third, err := ticketIn(t, dataDir, repo, "Deploy it", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(third, second); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "flowchart TD\n" +
+		"    ticket1[\"#1 Remove staging infrastructure\"]:::queued\n" +
+		"    ticket2[\"#2 Add rate limiting\"]:::queued\n" +
+		"    ticket3[\"#3 Deploy it\"]:::queued\n" +
+		"    ticket1 --> ticket2\n" +
+		"    ticket2 --> ticket3\n"
+	if got := mermaidMapIn(t, dataDir, repo, second); got != want {
+		t.Errorf("dg map --mermaid wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestMermaidMapRendersEveryEdgeOfAFork(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	third, err := ticketIn(t, dataDir, repo, "Add checks", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(third, first); err != nil {
+		t.Fatal(err)
+	}
+
+	out := mermaidMapIn(t, dataDir, repo, first)
+	for _, edge := range []string{"ticket1 --> ticket2", "ticket1 --> ticket3"} {
+		if strings.Count(out, edge) != 1 {
+			t.Errorf("Mermaid map does not have one %q edge:\n%s", edge, out)
+		}
+	}
+}
+
+func TestMermaidMapQuotesAndEscapesLabels(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	id, err := ticketIn(t, dataDir, repo, `Render [the "quoted"] title`, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := "flowchart TD\n" +
+		`    ticket1["#1 Render [the &quot;quoted&quot;] title"]:::queued` + "\n"
+	if got := mermaidMapIn(t, dataDir, repo, id); got != want {
+		t.Errorf("dg map --mermaid wrote %q, want %q", got, want)
+	}
+}
+
+func TestMermaidMapUsesTheTextMapComponent(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	separate, err := ticketIn(t, dataDir, repo, "Separate work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+
+	textMap := mapIn(t, dataDir, repo, second)
+	mermaidMap := mermaidMapIn(t, dataDir, repo, second)
+	for _, id := range []int64{first, second, separate} {
+		name := fmt.Sprintf("#%d ", id)
+		if strings.Contains(textMap, name) != strings.Contains(mermaidMap, name) {
+			t.Errorf("ticket %d differs between maps:\ntext:\n%s\nMermaid:\n%s", id, textMap, mermaidMap)
+		}
+	}
+}
+
+func TestMermaidMapCarriesStatusAsAClass(t *testing.T) {
+	tickets := []mappedTicket{
+		{Ticket: store.Ticket{ID: 1, Title: "Done", Status: store.Done}},
+		{Ticket: store.Ticket{ID: 2, Title: "Running", Status: store.Running}},
+		{Ticket: store.Ticket{ID: 3, Title: "Ready", Status: store.Ready}},
+		{Ticket: store.Ticket{ID: 4, Title: "Queued", Status: store.Queued}},
+	}
+	var out strings.Builder
+	writeMermaid(&out, tickets)
+	for _, status := range []store.TicketStatus{store.Done, store.Running, store.Ready, store.Queued} {
+		if got := strings.Count(out.String(), ":::"+string(status)); got != 1 {
+			t.Errorf("class %q occurs %d times:\n%s", status, got, out.String())
+		}
 	}
 }
