@@ -97,6 +97,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 		"write the inbox as one JSON object")
 	root.AddCommand(ticketCommand(dataDir, workDir, &cfg))
 	root.AddCommand(listCommand(dataDir, workDir, &cfg))
+	root.AddCommand(searchCommand(dataDir, workDir, &cfg))
 	root.AddCommand(showCommand(dataDir, workDir, &cfg))
 	root.AddCommand(editCommand(dataDir, &cfg))
 	root.AddCommand(moveCommand(dataDir, &cfg))
