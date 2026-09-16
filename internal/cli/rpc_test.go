@@ -290,6 +290,47 @@ func TestRPCReportsInvalidParamsAndCommandErrors(t *testing.T) {
 	}
 }
 
+func TestRPCTicketRequiresAProjectAndUsesIt(t *testing.T) {
+	dataDir := t.TempDir()
+	workDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	out, err := rpcIn(t, dataDir, workDir, `{"jsonrpc":"2.0","method":"ticket","params":{"args":["No implicit project","The request must name one."]},"id":"missing-project"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rpcProtocolError(t, out, rpcInvalidParams, "project is required")
+	if got["id"] != "missing-project" {
+		t.Errorf("response id = %#v, want the request id", got["id"])
+	}
+	if tickets, err := testfix.OpenStore(t, dataDir).AllTickets(""); err != nil {
+		t.Fatal(err)
+	} else if len(tickets) != 0 {
+		t.Errorf("rejected request created %d tickets, want none", len(tickets))
+	}
+
+	out, err = rpcIn(t, dataDir, workDir, fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket","params":{"args":["Explicit project","The request named its project."],"project":%q},"id":1}`, repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("response = %#v, want a ticket id", response)
+	}
+	id, ok := result["id"].(float64)
+	if !ok {
+		t.Fatalf("result = %#v, want a ticket id", result)
+	}
+	ticket, err := testfix.OpenStore(t, dataDir).Ticket(int64(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Project.Path != repo {
+		t.Errorf("ticket project = %q, want %q", ticket.Project.Path, repo)
+	}
+}
+
 func TestRPCBatchKeepsResponseOrder(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

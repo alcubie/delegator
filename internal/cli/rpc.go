@@ -22,6 +22,10 @@ const (
 // terminal a person is at, and rpc is the endpoint that already owns stdin.
 var rpcRefusedMethods = map[string]bool{"chat": true, "rpc": true}
 
+type rpcProjectRequiredError struct{}
+
+func (rpcProjectRequiredError) Error() string { return "project is required" }
+
 // rpcValueWriter takes the value that a command gives writeValue.  It also
 // discards bytes from commands that have no value yet, so nothing a request
 // runs reaches the terminal.
@@ -135,6 +139,9 @@ func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 	}
 	argv, err := rpcArgv(target, request)
 	if err != nil {
+		if _, ok := err.(rpcProjectRequiredError); ok {
+			return rpcErrorResponse(request.ID, rpcInvalidParams, err.Error())
+		}
 		return rpcErrorResponse(request.ID, rpcInvalidParams, "Invalid params")
 	}
 
@@ -202,6 +209,16 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 	if raw, found := params["body-file"]; found {
 		if bodyFile, err := rpcString(raw); err == nil && bodyFile == "-" {
 			return nil, fmt.Errorf("body-file cannot be standard input")
+		}
+	}
+	if command.Name() == "ticket" {
+		rawProject, found := params["project"]
+		if !found {
+			return nil, rpcProjectRequiredError{}
+		}
+		project, err := rpcString(rawProject)
+		if err != nil || project == "" {
+			return nil, rpcProjectRequiredError{}
 		}
 	}
 	// An editor belongs to the person at a terminal; an RPC caller supplies the
