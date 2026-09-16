@@ -66,7 +66,7 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				argv, worktree, err = resumeOf(s, dataDir, cfg.Agent, id)
+				argv, worktree, err = resumeOf(s, dataDir, id)
 				return err
 			})
 			if err != nil {
@@ -91,7 +91,7 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 // supervisor is gone, so a ticket still in running here has an agent on that
 // session now, and a second writer on one conversation is the fault this
 // command exists to stop.
-func resumeOf(s *store.Store, dataDir, agent string, id int64) ([]string, string, error) {
+func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return nil, "", err
@@ -115,7 +115,11 @@ func resumeOf(s *store.Store, dataDir, agent string, id int64) ([]string, string
 		return nil, "", fmt.Errorf(
 			"the worktree of ticket %d is gone: %s", id, worktree)
 	}
-	argv, err := handler.ResumeArgv(agent, ticket.Session)
+	r, err := s.Run(id)
+	if err != nil {
+		return nil, "", err
+	}
+	argv, err := handler.ResumeArgv(r.Agent, ticket.Session)
 	if err != nil {
 		return nil, "", err
 	}
