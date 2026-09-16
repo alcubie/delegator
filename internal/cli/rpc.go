@@ -74,6 +74,8 @@ func rpcResponses(dataDir, workDir string, data []byte) any {
 	if err := dec.Decode(&raw); err != nil {
 		return rpcErrorResponse(nil, rpcParseError, "parse error")
 	}
+	// A request is one JSON value.  Decode again to reject trailing values
+	// rather than silently running only the first; a clean end returns io.EOF.
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
 		return rpcErrorResponse(nil, rpcParseError, "parse error")
