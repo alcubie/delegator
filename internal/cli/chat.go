@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
-	"github.com/alcubie/delegator/internal/handler"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -119,9 +119,16 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error
 	if err != nil {
 		return nil, "", err
 	}
-	argv, err := handler.ResumeArgv(r.Agent, ticket.Session)
+	agent, err := s.Agent(r.Agent)
 	if err != nil {
 		return nil, "", err
+	}
+	if len(agent.Resume) == 0 {
+		return nil, "", fmt.Errorf("agent %q has no command that opens a session", r.Agent)
+	}
+	argv := make([]string, 0, len(agent.Resume))
+	for _, arg := range agent.Resume {
+		argv = append(argv, strings.ReplaceAll(arg, "{session}", ticket.Session))
 	}
 	return argv, worktree, nil
 }

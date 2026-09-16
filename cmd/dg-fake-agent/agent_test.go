@@ -47,9 +47,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// fakeKind writes the script to a file and gives the Kind that starts the
+type agentLaunch struct {
+	name string
+	argv []string
+}
+
+// fakeLaunch writes the script to a file and gives the launch that starts the
 // agent on it and the path the agent records its permission answers in.
-func fakeKind(t *testing.T, lines ...string) (handler.Kind, string) {
+func fakeLaunch(t *testing.T, lines ...string) (agentLaunch, string) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
@@ -59,14 +64,14 @@ func fakeKind(t *testing.T, lines ...string) (handler.Kind, string) {
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return handler.Kind{Name: "fake", Argv: []string{self, selfArg, path}}, path + recordSuffix
+	return agentLaunch{name: "fake", argv: []string{self, selfArg, path}}, path + recordSuffix
 }
 
 // startFake starts the agent on the script in cwd and closes it when the test
 // ends.
-func startFake(t *testing.T, cwd string, kind handler.Kind) *handler.Session {
+func startFake(t *testing.T, cwd string, agent agentLaunch) *handler.Session {
 	t.Helper()
-	s, err := handler.Start(t.Context(), kind, handler.AllowAll(), cwd, io.Discard)
+	s, err := handler.Start(t.Context(), agent.name, agent.argv, handler.AllowAll(), cwd, io.Discard)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -107,12 +112,12 @@ func same(t *testing.T, got, want []handler.Event) {
 // notifications: the agent waits for the answer, so everything after it
 // reaches the client after it, while a request sent after a notification can
 // be seen before it.
-func everyAction(t *testing.T) (kind handler.Kind, record, written string, want []handler.Event) {
+func everyAction(t *testing.T) (agent agentLaunch, record, written string, want []handler.Event) {
 	t.Helper()
 	dir := t.TempDir()
 	read := filepath.Join(dir, "run.go")
 	written = filepath.Join(dir, "reports", "done.md")
-	kind, record = fakeKind(t,
+	agent, record = fakeLaunch(t,
 		"permission "+fakeAsk+" edit",
 		"text "+fakeText,
 		"thought "+fakeThought,
@@ -121,7 +126,7 @@ func everyAction(t *testing.T) (kind handler.Kind, record, written string, want 
 		"write "+written+" "+fakeContent,
 		"stop end_turn",
 	)
-	return kind, record, written, []handler.Event{
+	return agent, record, written, []handler.Event{
 		{
 			Type:   handler.TypePermission,
 			Tool:   fakeAsk,
@@ -143,13 +148,13 @@ func everyAction(t *testing.T) (kind handler.Kind, record, written string, want 
 }
 
 func TestTheAgentDoesEveryActionOfAScript(t *testing.T) {
-	kind, _, _, want := everyAction(t)
-	same(t, turn(t, startFake(t, t.TempDir(), kind), "do the work"), want)
+	agent, _, _, want := everyAction(t)
+	same(t, turn(t, startFake(t, t.TempDir(), agent), "do the work"), want)
 }
 
 func TestTheWriteActionGoesThroughTheClient(t *testing.T) {
-	kind, _, written, _ := everyAction(t)
-	turn(t, startFake(t, t.TempDir(), kind), "do the work")
+	agent, _, written, _ := everyAction(t)
+	turn(t, startFake(t, t.TempDir(), agent), "do the work")
 	content, err := os.ReadFile(written)
 	if err != nil {
 		t.Fatalf("the agent wrote no file: %v", err)
@@ -160,8 +165,8 @@ func TestTheWriteActionGoesThroughTheClient(t *testing.T) {
 }
 
 func TestThePermissionActionRecordsTheAnswer(t *testing.T) {
-	kind, record, _, _ := everyAction(t)
-	turn(t, startFake(t, t.TempDir(), kind), "do the work")
+	agent, record, _, _ := everyAction(t)
+	turn(t, startFake(t, t.TempDir(), agent), "do the work")
 	got, err := os.ReadFile(record)
 	if err != nil {
 		t.Fatalf("the agent recorded nothing: %v", err)
@@ -172,28 +177,28 @@ func TestThePermissionActionRecordsTheAnswer(t *testing.T) {
 }
 
 func TestTheAgentIssuesTheSessionItCounted(t *testing.T) {
-	kind, _ := fakeKind(t, "stop end_turn")
-	if got := startFake(t, t.TempDir(), kind).ID(); got != "fake-1" {
+	agent, _ := fakeLaunch(t, "stop end_turn")
+	if got := startFake(t, t.TempDir(), agent).ID(); got != "fake-1" {
 		t.Errorf("the agent issued %q, want %q", got, "fake-1")
 	}
 }
 
 func TestASecondPromptRunsTheScriptAgain(t *testing.T) {
-	kind, _, _, want := everyAction(t)
-	s := startFake(t, t.TempDir(), kind)
+	agent, _, _, want := everyAction(t)
+	s := startFake(t, t.TempDir(), agent)
 	turn(t, s, "the first prompt")
 	same(t, turn(t, s, "the second prompt"), want)
 }
 
 func TestTheStopActionGivesTheReasonTheScriptNamed(t *testing.T) {
-	kind, _ := fakeKind(t, "stop refusal")
-	same(t, turn(t, startFake(t, t.TempDir(), kind), "do the work"),
+	agent, _ := fakeLaunch(t, "stop refusal")
+	same(t, turn(t, startFake(t, t.TempDir(), agent), "do the work"),
 		[]handler.Event{{Type: handler.TypeResult, Status: string(acp.StopReasonRefusal)}})
 }
 
 func TestAScriptThatNamesNoReasonEndsTheTurn(t *testing.T) {
-	kind, _ := fakeKind(t, "text "+fakeText)
-	same(t, turn(t, startFake(t, t.TempDir(), kind), "do the work"), []handler.Event{
+	agent, _ := fakeLaunch(t, "text "+fakeText)
+	same(t, turn(t, startFake(t, t.TempDir(), agent), "do the work"), []handler.Event{
 		{Type: handler.TypeText, Text: fakeText},
 		{Type: handler.TypeResult, Status: string(acp.StopReasonEndTurn)},
 	})
@@ -201,14 +206,14 @@ func TestAScriptThatNamesNoReasonEndsTheTurn(t *testing.T) {
 
 func TestTheHistorySectionIsReplayedOnLoad(t *testing.T) {
 	dir := t.TempDir()
-	kind, _ := fakeKind(t,
+	agent, _ := fakeLaunch(t,
 		"text "+fakeText,
 		"stop end_turn",
 		"history:",
 		"text "+fakeSaid,
 		"thought "+fakeMeant,
 	)
-	s, err := handler.Load(t.Context(), kind, handler.AllowAll(), dir, "fake-1", io.Discard)
+	s, err := handler.Load(t.Context(), agent.name, agent.argv, handler.AllowAll(), dir, "fake-1", io.Discard)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -222,8 +227,8 @@ func TestTheHistorySectionIsReplayedOnLoad(t *testing.T) {
 }
 
 func TestAnActionTheScriptHasNoVerbForFailsTheTurn(t *testing.T) {
-	kind, _ := fakeKind(t, "frobnicate the run")
-	s := startFake(t, t.TempDir(), kind)
+	agent, _ := fakeLaunch(t, "frobnicate the run")
+	s := startFake(t, t.TempDir(), agent)
 	var got []handler.Event
 	var bad error
 	for e, err := range s.Prompt(t.Context(), "do the work") {
@@ -246,8 +251,8 @@ func TestAnActionTheScriptHasNoVerbForFailsTheTurn(t *testing.T) {
 // The wait action is how a test drives a client that stops a turn: nothing
 // else in a script takes long enough for the client to reach for the cancel.
 func TestTheWaitActionEndsTheTurnWhenTheClientCancels(t *testing.T) {
-	kind, _ := fakeKind(t, "text "+fakeText, "wait 1m", "stop end_turn")
-	s := startFake(t, t.TempDir(), kind)
+	agent, _ := fakeLaunch(t, "text "+fakeText, "wait 1m", "stop end_turn")
+	s := startFake(t, t.TempDir(), agent)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -267,9 +272,9 @@ func TestTheWaitActionEndsTheTurnWhenTheClientCancels(t *testing.T) {
 }
 
 func TestTheWaitActionRefusesATimeItCannotRead(t *testing.T) {
-	kind, _ := fakeKind(t, "wait soon")
+	agent, _ := fakeLaunch(t, "wait soon")
 	var bad error
-	for _, err := range startFake(t, t.TempDir(), kind).Prompt(t.Context(), "do the work") {
+	for _, err := range startFake(t, t.TempDir(), agent).Prompt(t.Context(), "do the work") {
 		if err != nil {
 			bad = err
 		}
@@ -283,7 +288,7 @@ func TestTheWaitActionRefusesATimeItCannotRead(t *testing.T) {
 // cooperate with cancellation. A supervisor timeout has to end its process,
 // rather than rely on the ACP cancellation that is enough for wait.
 func TestTheContinueActionRunsPastCancellation(t *testing.T) {
-	kind, _ := fakeKind(t, "continue 100ms", "stop end_turn")
+	kind, _ := fakeLaunch(t, "continue 100ms", "stop end_turn")
 	s := startFake(t, t.TempDir(), kind)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()

@@ -607,7 +607,7 @@ func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
 func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)
-	useFakeAgent(t, "wait 1s", "stop end_turn")
+	useFakeAgent(t, dataDir, "wait 1s", "stop end_turn")
 
 	done := make(chan error, 1)
 	go func() {

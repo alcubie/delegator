@@ -5,12 +5,14 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -1080,17 +1082,143 @@ func startRun(tx *sql.Tx, ticketID int64, started time.Time) (int64, error) {
 	return result.LastInsertId()
 }
 
-// AgentID returns the id of the named agent, adding a configured agent that
-// the built-in registry did not seed.
+// AgentID returns the id of a registry entry. The registry is authoritative:
+// a run cannot silently create an agent with no launch command.
 func (s *Store) AgentID(name string) (int64, error) {
-	if _, err := s.db.Exec("INSERT INTO agents (name) VALUES (?) ON CONFLICT(name) DO NOTHING", name); err != nil {
-		return 0, err
-	}
 	var id int64
 	if err := s.db.QueryRow("SELECT id FROM agents WHERE name = ?", name).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("%w: %s", ErrInvalidAgent, name)
+		}
 		return 0, err
 	}
 	return id, nil
+}
+
+// Agent is one runnable ACP agent in the registry.
+type Agent struct {
+	ID          int64
+	Name        string
+	Argv        []string
+	Resume      []string
+	InstallHint string
+}
+
+var ErrInvalidAgent = errors.New("invalid agent")
+
+func validateAgent(a Agent) error {
+	if strings.TrimSpace(a.Name) == "" || len(a.Argv) == 0 {
+		return fmt.Errorf("%w: name and a non-empty argv are required", ErrInvalidAgent)
+	}
+	for _, arg := range a.Argv {
+		if strings.TrimSpace(arg) == "" {
+			return fmt.Errorf("%w: argv cannot contain an empty argument", ErrInvalidAgent)
+		}
+	}
+	for _, arg := range a.Resume {
+		if strings.TrimSpace(arg) == "" {
+			return fmt.Errorf("%w: resume argv cannot contain an empty argument", ErrInvalidAgent)
+		}
+	}
+	return nil
+}
+
+func encodeArgv(argv []string) (string, error) { b, err := json.Marshal(argv); return string(b), err }
+func decodeArgv(raw string) ([]string, error) {
+	var v []string
+	return v, json.Unmarshal([]byte(raw), &v)
+}
+
+// Agents returns the registry in name order.
+func (s *Store) Agents() ([]Agent, error) {
+	rows, err := s.db.Query("SELECT id, name, argv, resume_argv, COALESCE(install_hint, '') FROM agents ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Agent
+	for rows.Next() {
+		var a Agent
+		var argv, resume string
+		if err := rows.Scan(&a.ID, &a.Name, &argv, &resume, &a.InstallHint); err != nil {
+			return nil, err
+		}
+		var err error
+		if a.Argv, err = decodeArgv(argv); err != nil {
+			return nil, err
+		}
+		if a.Resume, err = decodeArgv(resume); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// Agent returns the named registry entry.
+func (s *Store) Agent(name string) (Agent, error) {
+	var a Agent
+	var argv, resume string
+	err := s.db.QueryRow("SELECT id, name, argv, resume_argv, COALESCE(install_hint, '') FROM agents WHERE name = ?", name).
+		Scan(&a.ID, &a.Name, &argv, &resume, &a.InstallHint)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Agent{}, fmt.Errorf("%w: %s", ErrInvalidAgent, name)
+	}
+	if err != nil {
+		return Agent{}, err
+	}
+	var e error
+	if a.Argv, e = decodeArgv(argv); e != nil {
+		return Agent{}, e
+	}
+	if a.Resume, e = decodeArgv(resume); e != nil {
+		return Agent{}, e
+	}
+	return a, nil
+}
+
+// SaveAgent adds or replaces an agent registry entry.
+func (s *Store) SaveAgent(a Agent) error {
+	if err := validateAgent(a); err != nil {
+		return err
+	}
+	argv, err := encodeArgv(a.Argv)
+	if err != nil {
+		return err
+	}
+	resume, err := encodeArgv(a.Resume)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO agents (name, argv, resume_argv, install_hint) VALUES (?, ?, ?, ?)
+ON CONFLICT(name) DO UPDATE SET argv=excluded.argv, resume_argv=excluded.resume_argv, install_hint=excluded.install_hint`, a.Name, argv, resume, a.InstallHint)
+	return err
+}
+
+// DefaultAgent returns the name selected for new runs.
+func (s *Store) DefaultAgent() (string, error) {
+	var name string
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'default_agent'").Scan(&name)
+	return name, err
+}
+
+// SetDefaultAgent selects an existing registry entry for new runs.
+func (s *Store) SetDefaultAgent(name string) error {
+	if _, err := s.Agent(name); err != nil {
+		return err
+	}
+	result, err := s.db.Exec("UPDATE settings SET value = ? WHERE key = 'default_agent'", name)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("%w: default agent setting is missing", ErrInvalidAgent)
+	}
+	return nil
 }
 
 // SetRunAgent records the agent one run started.

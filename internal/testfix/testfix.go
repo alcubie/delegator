@@ -83,6 +83,18 @@ func OpenStore(t *testing.T, dataDir string) *store.Store {
 	return s
 }
 
+// UseAgent saves agent as the default registry entry for one test database.
+func UseAgent(t *testing.T, dataDir, name string, argv ...string) {
+	t.Helper()
+	s := OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{Name: name, Argv: argv}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetDefaultAgent(name); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ReadTicket returns one ticket from the data directory.
 func ReadTicket(t *testing.T, dataDir string, id int64) store.Ticket {
 	t.Helper()

@@ -1,7 +1,6 @@
 package run
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,29 +14,12 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// acpConfig replaces the agent with the fake and leaves the runner at its default.
-func acpConfig(t *testing.T, lines ...string) config.Config {
+// acpConfig registers the fake as the default agent and leaves the runner at
+// its default timeout.
+func acpConfig(t *testing.T, dataDir string, lines ...string) config.Config {
 	t.Helper()
-	return loadConfig(t, fmt.Sprintf("[agents.claude]\nargv = [%q, %q]\n",
-		testfix.FakeAgentPath, testfix.Script(t, lines...)))
-}
-
-// loadConfig writes the text as the config file of the person and gives it
-// back read, for a test whose config acpConfig does not write.
-func loadConfig(t *testing.T, text string) config.Config {
-	t.Helper()
-	dir := testfix.XDGConfigDir(t)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(text), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return cfg
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
+	return config.Default
 }
 
 // shortTimeout puts a limit on a run that a test can wait for, and gives the
@@ -89,7 +71,7 @@ const acpSaid = "the work is done"
 // no error, and every event of the turn in the log, one to the line.
 func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "text "+acpSaid, "stop end_turn")
+	cfg := acpConfig(t, dataDir, "text "+acpSaid, "stop end_turn")
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
@@ -115,7 +97,7 @@ func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 // session rather than from anything the agent printed.
 func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "stop end_turn")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
@@ -134,7 +116,7 @@ func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	marker := filepath.Join(t.TempDir(), "started")
-	cfg := acpConfig(t, "write "+marker+" go", "wait 1m", "stop end_turn")
+	cfg := acpConfig(t, dataDir, "write "+marker+" go", "wait 1m", "stop end_turn")
 	shortTimeout(t, 2*time.Second)
 
 	done := make(chan error, 1)
@@ -149,14 +131,11 @@ func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 	}
 }
 
-// The runner starts the agent the config names and not one name of its own.
-// The person here put the fake agent under a name that handler's table does
-// not hold, and the session on the ticket is the one that fake gives, so the
-// process that ran is the one the key named.
-func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
+// The runner starts the registry default, including an agent that is not part
+// of the built-in catalog.
+func TestTheACPRunnerStartsTheDefaultRegistryAgent(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := loadConfig(t, fmt.Sprintf("agent = \"mine\"\n\n[agents.mine]\nargv = [%q, %q]\n",
-		testfix.FakeAgentPath, testfix.Script(t, "stop end_turn")))
+	cfg := acpConfig(t, dataDir, "stop end_turn")
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {
 		t.Fatal(err)
@@ -169,33 +148,8 @@ func TestTheACPRunnerStartsTheAgentOfTheConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Agent != "mine" {
-		t.Errorf("agent = %q, want %q", run.Agent, "mine")
-	}
-}
-
-// An agent that the config names and delegator does not know stops the run at
-// its first use, and the error names the agents there are: the person has to
-// write one of those names, or a section that adds another.
-func TestTheACPRunnerRefusesAnAgentItDoesNotKnow(t *testing.T) {
-	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := loadConfig(t, "agent = \"mine\"\n")
-
-	err := Start(testfix.OpenStore(t, dataDir), id, cfg)
-	if err == nil {
-		t.Fatal("err = nil, want the agent that delegator does not know")
-	}
-	want := []string{"mine"}
-	for _, kind := range handler.Kinds() {
-		want = append(want, kind.Name)
-	}
-	for _, name := range want {
-		if !strings.Contains(err.Error(), name) {
-			t.Errorf("the error does not name %q: %v", name, err)
-		}
-	}
-	if got := statusOf(t, dataDir, id); got != store.Failed {
-		t.Errorf("status = %v, want %v", got, store.Failed)
+	if run.Agent != "fake" {
+		t.Errorf("agent = %q, want %q", run.Agent, "fake")
 	}
 }
 
@@ -204,7 +158,7 @@ func TestTheACPRunnerRefusesAnAgentItDoesNotKnow(t *testing.T) {
 // one of a run with no process of its own to give one.
 func TestTheACPRunnerFailsARunTheAgentStoppedForAnotherReason(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "text "+acpSaid, "stop refusal")
+	cfg := acpConfig(t, dataDir, "text "+acpSaid, "stop refusal")
 
 	err := Start(testfix.OpenStore(t, dataDir), id, cfg)
 	if err == nil {
@@ -237,7 +191,7 @@ func TestTheACPRunnerFailsARunTheAgentStoppedForAnotherReason(t *testing.T) {
 // and the run fails. The agent is left waiting and the reason is cancelled.
 func TestTheACPRunnerStopsATurnThatRanPastTheTimeout(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "text "+acpSaid, "wait 1m", "stop end_turn")
+	cfg := acpConfig(t, dataDir, "text "+acpSaid, "wait 1m", "stop end_turn")
 	shortTimeout(t, 200*time.Millisecond)
 	stopped := recordStops(t)
 
@@ -280,7 +234,7 @@ func TestTheACPRunnerThatEndsBeforeTheTimeoutIsNotStopped(t *testing.T) {
 	shortTimeout(t, 100*time.Millisecond)
 	stopped := recordStops(t)
 
-	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, "stop end_turn")); err != nil {
+	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, dataDir, "stop end_turn")); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(150 * time.Millisecond)
@@ -299,7 +253,7 @@ func TestTheACPRunnerTimeoutKeepsATicketThatFinishedFirstReady(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "working")
 	shortTimeout(t, 200*time.Millisecond)
 	stopped := recordStops(t)
-	cfg := acpConfig(t, "write "+marker+" working", "wait 1m", "stop end_turn")
+	cfg := acpConfig(t, dataDir, "write "+marker+" working", "wait 1m", "stop end_turn")
 
 	done := make(chan error, 1)
 	go func() {
@@ -327,7 +281,7 @@ func TestTheACPRunnerTimeoutKeepsATicketThatFinishedFirstReady(t *testing.T) {
 // agent does.
 func TestTheACPRunnerRunsWithNoLimitWhenTheTimeoutIsZero(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	cfg := acpConfig(t, "stop end_turn")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
 	cfg.TimeoutMinutes = 0
 
 	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err != nil {

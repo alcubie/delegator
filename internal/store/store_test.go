@@ -435,8 +435,53 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"claude", "codex", "gemini"}; !slices.Equal(got, want) {
+	if want := []string{"claude", "codex", "cursor", "gemini", "github-copilot", "goose", "opencode", "pi"}; !slices.Equal(got, want) {
 		t.Errorf("seeded agents = %v, want %v", got, want)
+	}
+	opencode, err := s.Agent("opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"opencode", "acp"}; !slices.Equal(opencode.Argv, want) {
+		t.Errorf("opencode argv = %v, want %v", opencode.Argv, want)
+	}
+	if opencode.InstallHint == "" {
+		t.Error("opencode has no installation hint")
+	}
+}
+
+func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {
+	s, _ := emptyStore(t)
+	if got, err := s.DefaultAgent(); err != nil || got != "codex" {
+		t.Fatalf("default agent = %q, %v; want codex", got, err)
+	}
+	want := Agent{Name: "local", Argv: []string{"local-acp", "--stdio"}, Resume: []string{"local", "{session}"}, InstallHint: "install local"}
+	if err := s.SaveAgent(want); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetDefaultAgent("local"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Agent("local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Argv, want.Argv) || !slices.Equal(got.Resume, want.Resume) || got.InstallHint != want.InstallHint {
+		t.Errorf("agent = %+v, want %+v", got, want)
+	}
+}
+
+func TestSaveAgentValidatesItsLaunchCommand(t *testing.T) {
+	s, _ := emptyStore(t)
+	if err := s.SaveAgent(Agent{Name: "broken"}); !errors.Is(err, ErrInvalidAgent) {
+		t.Fatalf("SaveAgent error = %v, want ErrInvalidAgent", err)
+	}
+}
+
+func TestAgentIDRefusesAnAgentOutsideTheRegistry(t *testing.T) {
+	s, _ := emptyStore(t)
+	if _, err := s.AgentID("not-registered"); !errors.Is(err, ErrInvalidAgent) {
+		t.Fatalf("AgentID error = %v, want ErrInvalidAgent", err)
 	}
 }
 
@@ -2185,6 +2230,9 @@ func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 
 func TestRunGivesTheAgentItReferences(t *testing.T) {
 	s, id := oneTicket(t)
+	if err := s.SaveAgent(Agent{Name: "mine", Argv: []string{"mine-acp"}}); err != nil {
+		t.Fatal(err)
+	}
 	runID, err := s.Claim(id, "delegator/1-my-ticket")
 	if err != nil {
 		t.Fatal(err)

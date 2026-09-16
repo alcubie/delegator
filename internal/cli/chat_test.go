@@ -129,9 +129,8 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
-// Chat uses the agent that opened the session even after the config changes.
+// Chat uses the agent that opened the session even after the default changes.
 func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
-	writeConfig(t, "agent = \"claude\"\n")
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
@@ -148,13 +147,14 @@ func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
 	}
 }
 
-// A person whose agent is not on the path under the name delegator expects
-// says so once in the config file, and the command that opens a session is
-// theirs from then on. {session} is where the id of the session goes.
-func TestChatTakesTheResumeOfTheConfig(t *testing.T) {
-	writeConfig(t, "[agents.claude]\nresume = [\"my-claude\", \"--continue\", \"{session}\"]\n")
+// The registry supplies the resume command for an existing session.
+func TestChatTakesTheResumeOfTheRegistry(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{Name: "claude", Argv: []string{"claude-agent-acp"}, Resume: []string{"my-claude", "--continue", "{session}"}}); err != nil {
+		t.Fatal(err)
+	}
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
@@ -171,9 +171,12 @@ func TestChatTakesTheResumeOfTheConfig(t *testing.T) {
 // and an argv without the id of the session would open a conversation other
 // than the one the person asked for. The error names the agent.
 func TestChatRefusesAnAgentWithNoResume(t *testing.T) {
-	writeConfig(t, "[agents.claude]\nresume = []\n")
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{Name: "claude", Argv: []string{"claude-agent-acp"}}); err != nil {
+		t.Fatal(err)
+	}
 	record := useChat(t, "true")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))

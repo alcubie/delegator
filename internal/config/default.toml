@@ -12,7 +12,3 @@ done_hours = 24
 # max_runs_per_project is the number of tickets of one project that can be
 # Running or Ready at a time.  A value of 0 is ignored and runs is used as the limit.
 max_runs_per_project = 0
-
-# agent is the agent that a run starts: claude, codex or gemini, or a
-# name that an [agents.<name>] section of this file adds.
-agent = "claude"

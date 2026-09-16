@@ -42,20 +42,22 @@ const (
 // the run to the timeout of the whole package.
 const integrationTurn = 5 * time.Minute
 
-// agentOnThePath is the kind of the name as the config of the person leaves
-// it, which is the agent delegator itself would start. A machine without that
-// command skips the test and says which command it wanted, because an agent
-// nobody has installed is not a failure of the code.
-func agentOnThePath(t *testing.T, name string) Kind {
+// agentOnThePath is the registry entry that delegator itself would start. A
+// machine without that command skips the test and says which command it
+// wanted, because an agent nobody has installed is not a failure of the code.
+func agentOnThePath(t *testing.T, name string) (string, []string, []string) {
 	t.Helper()
-	kind := kindNamed(t, Kinds(), name)
-	if len(kind.Argv) == 0 {
+	agent, err := testfix.OpenStore(t, t.TempDir()).Agent(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agent.Argv) == 0 {
 		t.Skipf("the agent %q has no command, so no session is driven", name)
 	}
-	if _, err := exec.LookPath(kind.Argv[0]); err != nil {
-		t.Skipf("%s is not on the PATH, so no %s session is driven: %v", kind.Argv[0], name, err)
+	if _, err := exec.LookPath(agent.Argv[0]); err != nil {
+		t.Skipf("%s is not on the PATH, so no %s session is driven: %v", agent.Argv[0], name, err)
 	}
-	return kind
+	return agent.Name, agent.Argv, agent.Resume
 }
 
 // integrationRepo is a git repository of one commit, with an identity of its
@@ -107,11 +109,11 @@ func said(events []Event) string {
 // landed, and gives back the id of the session, which the caller loads once
 // the process is gone, and the events of the turn, which hold whatever the
 // agent asked delegator to answer on the way.
-func writeAndCommit(t *testing.T, kind Kind, repo string) (string, []Event) {
+func writeAndCommit(t *testing.T, name string, argv []string, repo string) (string, []Event) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
-	s, err := Start(ctx, kind, AllowAll(), repo, os.Stderr)
+	s, err := Start(ctx, name, argv, AllowAll(), repo, os.Stderr)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -136,11 +138,11 @@ func writeAndCommit(t *testing.T, kind Kind, repo string) (string, []Event) {
 // checks that the agent replayed a history, which is what tells a loaded
 // session from a new one in the same directory, and gives back what the agent
 // said in the turn.
-func loadAndAsk(t *testing.T, kind Kind, repo, id, question string) string {
+func loadAndAsk(t *testing.T, name string, argv []string, repo, id, question string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
-	s, err := Load(ctx, kind, AllowAll(), repo, id, os.Stderr)
+	s, err := Load(ctx, name, argv, AllowAll(), repo, id, os.Stderr)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -162,11 +164,11 @@ func loadAndAsk(t *testing.T, kind Kind, repo, id, question string) string {
 // differently.
 func driveASession(t *testing.T, name string) (string, string, []Event) {
 	t.Helper()
-	kind := agentOnThePath(t, name)
+	name, argv, _ := agentOnThePath(t, name)
 	repo := integrationRepo(t)
-	id, events := writeAndCommit(t, kind, repo)
+	id, events := writeAndCommit(t, name, argv, repo)
 	t.Logf("%s opened session %s in %s", name, id, repo)
-	answer := loadAndAsk(t, kind, repo, id, integrationAsk)
+	answer := loadAndAsk(t, name, argv, repo, id, integrationAsk)
 	if !strings.Contains(strings.ToLower(answer), integrationWord) {
 		t.Errorf("the loaded session answered %q, and %s holds %q", answer, integrationFile, integrationWord)
 	}
@@ -188,14 +190,15 @@ func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 		t.Errorf("the turn allowed no permission, and the policy allows every tool: %v", permissions(events))
 	}
 
-	argv, err := ResumeArgv("claude", id)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, _, resume := agentOnThePath(t, "claude")
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
-	args := slices.Concat(argv[1:], []string{"-p", integrationRecall})
-	cmd := exec.CommandContext(ctx, argv[0], args...)
+	argv := make([]string, 0, len(resume)+2)
+	for _, arg := range resume {
+		argv = append(argv, strings.ReplaceAll(arg, "{session}", id))
+	}
+	argv = append(argv, "-p", integrationRecall)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = repo
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()

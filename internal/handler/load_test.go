@@ -16,13 +16,13 @@ import (
 // load to be refused sees that the agent was never asked.
 func loadSession(t *testing.T, id, loading string) (*Session, string, error) {
 	t.Helper()
-	kind, record := stubKind(t, stubFullOptions, stubTurnUpdates, loading)
+	name, argv, record := stubLaunch(t, stubFullOptions, stubTurnUpdates, loading)
 	// A load that never returns is the failure this bounds: the history can be
 	// longer than the channel between the client and a turn, and nothing
 	// drains that channel until the first prompt.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	s, err := Load(ctx, kind, AllowAll(), t.TempDir(), id, io.Discard)
+	s, err := Load(ctx, name, argv, AllowAll(), t.TempDir(), id, io.Discard)
 	if s != nil {
 		t.Cleanup(func() { _ = s.Close() })
 	}

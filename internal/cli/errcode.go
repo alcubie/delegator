@@ -45,6 +45,7 @@ const (
 	codeNoTicket
 	codeNoRoom
 	codeNoRun
+	codeInvalidAgent
 )
 
 // errorCodes gives the code of each named error of internal/cli,
@@ -76,6 +77,7 @@ var errorCodes = map[error]int{
 	store.ErrNoTicket:                 codeNoTicket,
 	store.ErrNoRoom:                   codeNoRoom,
 	store.ErrNoRun:                    codeNoRun,
+	store.ErrInvalidAgent:             codeInvalidAgent,
 }
 
 // ErrorCode gives the code of an error. A command says what it was doing and
