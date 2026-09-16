@@ -12,7 +12,7 @@ LDFLAGS := -X $(PKG)/internal/cli.Version=$(VERSION)
 # which packages the number applies to. cmd/dg is not in the list: a package
 # with no test file counts as 0 percent, and it goes into the total, so the
 # command layer would stop each commit before it has its own tests.
-COVER_MIN  := 70
+COVER_MIN  := 75
 COVER_PKGS := ./internal/...
 
 .PHONY: build install test integration release vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
