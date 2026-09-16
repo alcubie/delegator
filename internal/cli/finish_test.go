@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -65,6 +68,68 @@ func TestFinishReadyTicket(t *testing.T) {
 	}
 	if ticket.Commit != commit {
 		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
+	}
+}
+
+func TestFinishRefusesACommitGitDoesNotKnow(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, _ := runningTicket(t, dataDir)
+	unknown := strings.Repeat("0", 40)
+
+	_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), unknown)
+	if !errors.Is(err, project.ErrUnknownCommit) {
+		t.Errorf("err = %v, want ErrUnknownCommit", err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Running {
+		t.Errorf("status = %s, want running", ticket.Status)
+	}
+	if ticket.Commit != "" {
+		t.Errorf("commit_id = %q, want none", ticket.Commit)
+	}
+}
+
+func TestFinishRefusesACommitTheTicketBranchDoesNotHold(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, _ := runningTicket(t, dataDir)
+	testfix.CommitIn(t, repo, "commit outside the ticket branch")
+	other := testfix.GitOut(t, repo, "rev-parse", "HEAD")
+
+	_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), other)
+	if !errors.Is(err, project.ErrCommitNotOnBranch) {
+		t.Errorf("err = %v, want ErrCommitNotOnBranch", err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Running {
+		t.Errorf("status = %s, want running", ticket.Status)
+	}
+	if ticket.Commit != "" {
+		t.Errorf("commit_id = %q, want none", ticket.Commit)
+	}
+}
+
+func TestFinishWritesTheFullHashWhenGivenAShortHash(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit[:7]); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %q, want full hash %q", ticket.Commit, commit)
 	}
 }
 
