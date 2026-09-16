@@ -29,6 +29,7 @@ type mappedTicket struct {
 // starts at the head of READY, as dg show does.
 func mapCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
+	var mermaid bool
 	cmd := &cobra.Command{
 		Use:   "map [id]",
 		Short: mapShort,
@@ -43,13 +44,18 @@ func mapCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				writeMap(cmd.OutOrStdout(), tickets)
+				if mermaid {
+					writeMermaid(cmd.OutOrStdout(), tickets)
+				} else {
+					writeMap(cmd.OutOrStdout(), tickets)
+				}
 				return nil
 			})
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project whose first ready ticket to map.  Defaults to current working directory.")
+	cmd.Flags().BoolVar(&mermaid, "mermaid", false, "write the graph as a Mermaid flowchart")
 	return cmd
 }
 
