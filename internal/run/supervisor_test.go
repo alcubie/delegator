@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
@@ -31,6 +33,39 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 	testfix.GitIn(t, repo, "checkout", "-q", "-b", "other")
 	testfix.CommitIn(t, repo, "second")
 	return dataDir, id
+}
+
+// The timer uses the same process-group stop as dg cancel. The group in this
+// test has a supervisor and a child below it, and both must be gone when the
+// timeout has finished. The timeout also closes the run before it sends the
+// signal, because the supervisor itself belongs to the group it stops.
+func TestTheSupervisorTimeoutStopsTheRunGroupAndFailsTheRun(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	s := testfix.OpenStore(t, dataDir)
+	runID, err := s.Claim(id, branch(id, "Add the thing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgid := testfix.Group(t, `sleep 60 & : > "$1"; sleep 60`)
+
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	timer := startSupervisorTimer(s, runID, pgid, 20*time.Millisecond, cancel)
+	if err := <-timer.done; err != nil {
+		t.Fatal(err)
+	}
+	testfix.WaitForGroupGone(t, pgid)
+
+	if got := testfix.ReadTicket(t, dataDir, id).Status; got != store.Failed {
+		t.Errorf("status = %q, want %q", got, store.Failed)
+	}
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.EndedAt.IsZero() {
+		t.Error("the timed out run has no end time")
+	}
 }
 
 func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -85,6 +86,48 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 // to give one. os/exec gives the same for a process that a signal ended.
 const noExitCode = -1
 
+// runTimeout is how long a run may take, from the config. It is a variable so
+// that a test can shorten it: the config gives the time in minutes, and no
+// test can wait one.
+var runTimeout = config.Config.Timeout
+
+// stopRun is the process-group stop used when the timer expires. A test runs
+// Start inside its own process and replaces this before shortening the timer,
+// because that process is not a detached supervisor.
+var stopRun = Stop
+
+type supervisorTimer struct {
+	timer *time.Timer
+	done  chan error
+}
+
+// startSupervisorTimer marks a run over and stops the process group when its
+// limit expires. The state is written first because the supervisor belongs to
+// the group being stopped and cannot report after the final signal.
+func startSupervisorTimer(s *store.Store, runID int64, pid int, limit time.Duration, cancel context.CancelFunc) *supervisorTimer {
+	watch := &supervisorTimer{}
+	if limit <= 0 {
+		return watch
+	}
+	watch.done = make(chan error, 1)
+	watch.timer = time.AfterFunc(limit, func() {
+		err := s.FailUnfinished(runID)
+		cancel()
+		err = errors.Join(err, stopRun(pid, StopGrace))
+		watch.done <- err
+	})
+	return watch
+}
+
+// Close disarms a timer whose run ended in time, or waits for a timeout that
+// has begun so that its database write is part of the result of the run.
+func (t *supervisorTimer) Close() error {
+	if t.timer == nil || t.timer.Stop() {
+		return nil
+	}
+	return <-t.done
+}
+
 // supervise works the ticket that the caller has claimed: it makes the
 // worktree and runs the agent in it. runID is the run that the claim wrote,
 // and everything this function puts on the row of a run names it, because the
@@ -99,6 +142,11 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	// The caller has claimed the ticket, so this run holds it, and every way
 	// out of the function below is a way out with no report.
 	defer func() { err = errors.Join(err, s.FailUnfinished(runID)) }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// A context deadline only asks ACP to stop; the timer also records the run and stops its whole process group.
+	watch := startSupervisorTimer(s, runID, os.Getpid(), runTimeout(cfg), cancel)
+	defer func() { err = errors.Join(err, watch.Close()) }()
 
 	worktree, err := Worktree(dataDir, ticket)
 	if err != nil {
@@ -111,7 +159,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(s, cfg, id, runID, worktree, log)
+	return superviseACP(ctx, s, cfg, id, runID, worktree, log)
 }
 
 // logTime is the layout of a log's name. It is RFC 3339 with the colons

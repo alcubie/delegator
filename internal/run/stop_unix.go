@@ -9,6 +9,8 @@ package run
 
 import (
 	"errors"
+	"os"
+	ossignal "os/signal"
 	"syscall"
 	"time"
 )
@@ -27,6 +29,11 @@ const stopPoll = 20 * time.Millisecond
 // up to grace for the group to empty and sends SIGKILL to what is left, which
 // no program can keep.
 func stop(pid int, grace time.Duration) error {
+	if pid == os.Getpid() && syscall.Getpgrp() == pid {
+		term := make(chan os.Signal, 1)
+		ossignal.Notify(term, syscall.SIGTERM)
+		defer ossignal.Stop(term)
+	}
 	if err := signal(pid, syscall.SIGTERM); err != nil {
 		return err
 	}
