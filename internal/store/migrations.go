@@ -37,6 +37,7 @@ var migrations = []string{
 	dropCreatedColumn,
 	addAgentsTable,
 	addAgentRegistry,
+	verifyGooseACP,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -258,6 +259,17 @@ CREATE TABLE settings (
   value TEXT NOT NULL
 );
 INSERT INTO settings (key, value) VALUES ('default_agent', 'codex');
+`
+
+// verifyGooseACP records the commands verified with Goose 1.50.1. Goose
+// serves ACP over stdio with "goose acp", while its terminal client resumes
+// a session by its ACP id through "goose session --resume --session-id".
+const verifyGooseACP = `
+UPDATE agents SET
+  argv = '["goose","acp"]',
+  resume_argv = '["goose","session","--resume","--session-id","{session}"]',
+  install_hint = 'Install Goose 1.50.1 or later'
+WHERE name = 'goose';
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then

@@ -448,6 +448,19 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if opencode.InstallHint == "" {
 		t.Error("opencode has no installation hint")
 	}
+	goose, err := s.Agent("goose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"goose", "acp"}; !slices.Equal(goose.Argv, want) {
+		t.Errorf("goose argv = %v, want %v", goose.Argv, want)
+	}
+	if want := []string{"goose", "session", "--resume", "--session-id", "{session}"}; !slices.Equal(goose.Resume, want) {
+		t.Errorf("goose resume argv = %v, want %v", goose.Resume, want)
+	}
+	if goose.InstallHint == "" {
+		t.Error("goose has no installation hint")
+	}
 }
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {
