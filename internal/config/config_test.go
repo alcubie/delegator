@@ -59,8 +59,8 @@ func TestLoadWithNoFileGivesTheDefaultsAndNoError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load with no file: %v", err)
 	}
-	if cfg.Runs != 1 {
-		t.Errorf("Runs = %d, want the default 1", cfg.Runs)
+	if cfg.Runs != 2 {
+		t.Errorf("Runs = %d, want the default 2", cfg.Runs)
 	}
 }
 
@@ -73,8 +73,8 @@ func TestLoadGivesRunsTheDefaultWhenTheFileDoesNotSetIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Runs != 1 {
-		t.Errorf("Runs = %d, want the default 1", cfg.Runs)
+	if cfg.Runs != 2 {
+		t.Errorf("Runs = %d, want the default 2", cfg.Runs)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1195,19 +1196,19 @@ ON CONFLICT(name) DO UPDATE SET argv=excluded.argv, resume_argv=excluded.resume_
 	return err
 }
 
-// DefaultAgent returns the name selected for new runs.
+// DefaultAgent returns the name selected for new runs. An empty name means
+// that the person has not selected an agent yet.
 func (s *Store) DefaultAgent() (string, error) {
 	var name string
-	err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'default_agent'").Scan(&name)
+	err := s.db.QueryRow(`SELECT COALESCE(agents.name, '') FROM settings
+LEFT JOIN agents ON agents.id = settings.default_agent_id WHERE settings.id = 1`).Scan(&name)
 	return name, err
 }
 
 // SetDefaultAgent selects an existing registry entry for new runs.
 func (s *Store) SetDefaultAgent(name string) error {
-	if _, err := s.Agent(name); err != nil {
-		return err
-	}
-	result, err := s.db.Exec("UPDATE settings SET value = ? WHERE key = 'default_agent'", name)
+	result, err := s.db.Exec(`UPDATE settings SET default_agent_id = agents.id
+FROM agents WHERE settings.id = 1 AND agents.name = ?`, name)
 	if err != nil {
 		return err
 	}
@@ -1216,7 +1217,60 @@ func (s *Store) SetDefaultAgent(name string) error {
 		return err
 	}
 	if changed != 1 {
-		return fmt.Errorf("%w: default agent setting is missing", ErrInvalidAgent)
+		return fmt.Errorf("%w: %s", ErrInvalidAgent, name)
+	}
+	return nil
+}
+
+// Settings returns one typed snapshot of all instance settings.
+func (s *Store) Settings() (config.Config, error) {
+	var cfg config.Config
+	err := s.db.QueryRow(`SELECT settings.runs, settings.timeout_minutes,
+settings.done_hours, settings.max_runs_per_project, COALESCE(agents.name, '')
+FROM settings LEFT JOIN agents ON agents.id = settings.default_agent_id
+WHERE settings.id = 1`).Scan(&cfg.Runs, &cfg.TimeoutMinutes, &cfg.DoneHours,
+		&cfg.MaxRunsPerProject, &cfg.DefaultAgent)
+	if err != nil {
+		return config.Config{}, err
+	}
+	return cfg, nil
+}
+
+// integerSettingColumns is both the allowlist for a configurable integer and
+// the SQL identifier it names. The query below uses only values from this map;
+// a setting name supplied by a person is never concatenated into SQL.
+var integerSettingColumns = map[string]string{
+	"runs":                 "runs",
+	"timeout_minutes":      "timeout_minutes",
+	"done_hours":           "done_hours",
+	"max_runs_per_project": "max_runs_per_project",
+}
+
+// SetSetting parses and atomically updates one named setting. default_agent
+// is special because its public value is a registry name while SQLite stores
+// the referenced agent id.
+func (s *Store) SetSetting(name, value string) error {
+	if name == "default_agent" {
+		return s.SetDefaultAgent(value)
+	}
+	column, ok := integerSettingColumns[name]
+	if !ok {
+		return fmt.Errorf("unknown setting %q", name)
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("setting %s must be an integer", name)
+	}
+	result, err := s.db.Exec("UPDATE settings SET "+column+" = ? WHERE id = 1", n)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return errors.New("settings: instance settings row is missing")
 	}
 	return nil
 }

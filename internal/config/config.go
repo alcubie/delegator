@@ -33,6 +33,27 @@ type Config struct {
 	// and names no project. A value of 0 is no limit of its own, and each
 	// project then takes Runs. ProjectRuns gives the limit that holds.
 	MaxRunsPerProject int `toml:"max_runs_per_project"`
+	// DefaultAgent is the registry name used for new runs. It is stored in
+	// SQLite; the TOML file never supplied agent registry settings.
+	DefaultAgent string `toml:"-"`
+}
+
+// Definition describes one setting shown by configuration commands. Settings
+// are fixed by this version of delegator, so their explanatory text belongs
+// with the code that understands them rather than in mutable instance data.
+type Definition struct {
+	Name        string
+	Description string
+}
+
+// Definitions is the ordered list of settings and the help text that used to
+// accompany their defaults in default.toml.
+var Definitions = []Definition{
+	{"runs", "runs is the number of tickets that can be Running or Ready at a time."},
+	{"timeout_minutes", "timeout_minutes is the time in minutes that a run can take before delegator stops it."},
+	{"done_hours", "done_hours is the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty."},
+	{"max_runs_per_project", "max_runs_per_project is the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit."},
+	{"default_agent", "The registered agent used for new runs."},
 }
 
 // ProjectRuns is how many tickets of one project can be open at one time. Two
