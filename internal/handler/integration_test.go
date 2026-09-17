@@ -175,6 +175,32 @@ func driveASession(t *testing.T, name string) (string, string, []Event) {
 	return repo, id, events
 }
 
+// resumeAndRecall runs the registry's terminal resume command and asks for a
+// word held only in the session. extra holds the agent-specific flags that
+// make the terminal command answer once and exit.
+func resumeAndRecall(t *testing.T, name, repo, id string, extra ...string) {
+	t.Helper()
+	_, _, resume := agentOnThePath(t, name)
+	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
+	defer cancel()
+	argv := make([]string, 0, len(resume)+len(extra)+1)
+	for _, arg := range resume {
+		argv = append(argv, strings.ReplaceAll(arg, "{session}", id))
+	}
+	argv = append(argv, extra...)
+	argv = append(argv, integrationRecall)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = repo
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%v: %v", cmd.Args, err)
+	}
+	if !strings.Contains(strings.ToLower(string(out)), integrationKept) {
+		t.Errorf("%v answered %q, and the session was given %q", cmd.Args, strings.TrimSpace(string(out)), integrationKept)
+	}
+}
+
 // TestClaudeTakesASessionFromStartToTheTerminal drives the real claude
 // through everything delegator asks of an agent: a new session that writes a
 // file and commits it under AllowAll, the same session loaded by its id, and
@@ -190,24 +216,7 @@ func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 		t.Errorf("the turn allowed no permission, and the policy allows every tool: %v", permissions(events))
 	}
 
-	_, _, resume := agentOnThePath(t, "claude")
-	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
-	defer cancel()
-	argv := make([]string, 0, len(resume)+2)
-	for _, arg := range resume {
-		argv = append(argv, strings.ReplaceAll(arg, "{session}", id))
-	}
-	argv = append(argv, "-p", integrationRecall)
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Dir = repo
-	cmd.Stderr = os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("%v: %v", cmd.Args, err)
-	}
-	if !strings.Contains(strings.ToLower(string(out)), integrationKept) {
-		t.Errorf("%v answered %q, and the session was given %q", cmd.Args, strings.TrimSpace(string(out)), integrationKept)
-	}
+	resumeAndRecall(t, "claude", repo, id, "-p")
 }
 
 // TestCodexTakesASessionFromStartToLoad asks codex for the same session that
@@ -244,4 +253,14 @@ func TestOpenCodeTakesASessionFromStartToLoad(t *testing.T) {
 	_, _, events := driveASession(t, "opencode")
 	asked := permissions(events)
 	t.Logf("opencode asked delegator to answer %d permissions: %v", len(asked), asked)
+}
+
+// TestGitHubCopilotTakesASessionFromStartToTheTerminal verifies GitHub
+// Copilot CLI 1.0.85 against a real authenticated ACP session, prompt, ACP
+// session load, and its non-interactive terminal resume command.
+func TestGitHubCopilotTakesASessionFromStartToTheTerminal(t *testing.T) {
+	repo, id, events := driveASession(t, "github-copilot")
+	t.Logf("github-copilot asked delegator to answer %d permissions: %v", len(permissions(events)), permissions(events))
+
+	resumeAndRecall(t, "github-copilot", repo, id, "--allow-all-tools", "-p")
 }

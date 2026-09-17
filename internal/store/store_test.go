@@ -464,6 +464,19 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if goose.InstallHint == "" {
 		t.Error("goose has no installation hint")
 	}
+	copilot, err := s.Agent("github-copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"copilot", "--acp"}; !slices.Equal(copilot.Argv, want) {
+		t.Errorf("github-copilot argv = %v, want %v", copilot.Argv, want)
+	}
+	if want := []string{"copilot", "--resume={session}"}; !slices.Equal(copilot.Resume, want) {
+		t.Errorf("github-copilot resume argv = %v, want %v", copilot.Resume, want)
+	}
+	if copilot.InstallHint == "" {
+		t.Error("github-copilot has no installation hint")
+	}
 }
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {

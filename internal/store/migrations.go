@@ -38,6 +38,7 @@ var migrations = []string{
 	addAgentsTable,
 	addAgentRegistry,
 	verifyGooseACP,
+	verifyGitHubCopilotACP,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -270,6 +271,17 @@ UPDATE agents SET
   resume_argv = '["goose","session","--resume","--session-id","{session}"]',
   install_hint = 'Install Goose 1.50.1 or later'
 WHERE name = 'goose';
+`
+
+// verifyGitHubCopilotACP records the commands verified with GitHub Copilot
+// CLI 1.0.85. The same executable serves ACP over stdio and resumes its saved
+// session in the terminal.
+const verifyGitHubCopilotACP = `
+UPDATE agents SET
+  argv = '["copilot","--acp"]',
+  resume_argv = '["copilot","--resume={session}"]',
+  install_hint = 'Install GitHub Copilot CLI 1.0.85 or later'
+WHERE name = 'github-copilot';
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then
