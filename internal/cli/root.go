@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -48,11 +49,9 @@ func dataDir(goos string) (string, error) {
 // a person who wrote a title that dg refused does not want each command again.
 func Root(dataDir, workDir string) *cobra.Command {
 	mode := colourAuto
-	// cfg is what the hook below read. The inbox needs the window of DONE and
-	// the reconcile of each command needs the timeout, and a second Load in a
-	// RunE could read a file that the person edited in between and give one
-	// command two configs. Each command takes the address, because the hook
-	// runs after this function has built the tree.
+	// cfg is the snapshot the hook below read. The inbox needs the window of
+	// DONE and reconciliation needs the timeout. Each command takes the
+	// address because the hook runs after this function has built the tree.
 	var cfg config.Config
 	root := &cobra.Command{
 		Use:           "dg",
@@ -61,21 +60,22 @@ func Root(dataDir, workDir string) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
-		// Each command starts by loading the config, so the first command
-		// a person runs leaves a file to open, and a file that Load refuses
-		// stops the command with the key it names. cobra runs this before
-		// the root and before each subcommand, as none has a hook of its
-		// own.
-		PersistentPreRunE: func(*cobra.Command, []string) error {
-			if err := config.Init(); err != nil {
-				return err
+		// Each command reads one settings snapshot before it does any work.
+		// Reconciliation and the command then use the same values even when
+		// another process changes a setting while the command is running.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// version does not use instance state, and rpc loads settings for
+			// the command inside each request rather than for the transport.
+			if cmd.Name() == "version" || cmd.Name() == "rpc" {
+				return nil
 			}
-			loaded, err := config.Load()
-			if err != nil {
+			return store.With(dataDir, func(s *store.Store) error {
+				loaded, err := s.Settings()
+				if err == nil {
+					cfg = loaded
+				}
 				return err
-			}
-			cfg = loaded
-			return nil
+			})
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			box, err := showInbox(dataDir, &cfg)
@@ -105,6 +105,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 	root.AddCommand(runCommand(dataDir, &cfg))
 	root.AddCommand(pauseCommand(dataDir, &cfg))
 	root.AddCommand(startCommand(dataDir, &cfg))
+	root.AddCommand(configCommand(dataDir, &cfg))
 	root.AddCommand(versionCommand())
 	root.AddCommand(rpcCommand(dataDir, workDir))
 	return root

@@ -294,16 +294,6 @@ func XDGDataDir(t *testing.T) string {
 	return filepath.Join(xdg, "delegator")
 }
 
-// XDGConfigDir points XDG_CONFIG_HOME at a fresh directory for one test and
-// returns the config directory dg will use below it, so that a test of the
-// config file reads and writes its own file and not the person's.
-func XDGConfigDir(t *testing.T) string {
-	t.Helper()
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	return filepath.Join(xdg, "delegator")
-}
-
 // Script writes the lines of a fake agent script to a file and returns its
 // path.
 func Script(t *testing.T, lines ...string) string {
@@ -402,11 +392,6 @@ var FakeAgentPath string
 // calls dg finish. It is called from TestMain and returns the code to exit with:
 // os.Exit runs no deferred call, so the cleanup lives here and not there.
 //
-// It also points XDG_CONFIG_HOME below its directory for the whole package.
-// Each command of dg writes config.toml when the file is not there, so every
-// test that runs a command would otherwise write below ~/.config of the
-// person. A test of the config file sets its own directory with XDGConfigDir.
-//
 // Go has no setup that spans packages. Each package's tests are their own
 // process, so each builds its own copy; this only stops the builds drifting.
 // The directory is unique because go test runs packages side by side.
@@ -417,8 +402,6 @@ func RunTests(m *testing.M, withDG bool) int {
 		return 1
 	}
 	defer os.RemoveAll(dir)
-	os.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
-
 	FakeAgentPath = filepath.Join(dir, "dg-fake-agent")
 	if err := build(FakeAgentPath, "github.com/alcubie/delegator/cmd/dg-fake-agent"); err != nil {
 		fmt.Fprintln(os.Stderr, err)

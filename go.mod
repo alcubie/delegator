@@ -3,7 +3,6 @@ module github.com/alcubie/delegator
 go 1.26
 
 require (
-	github.com/BurntSushi/toml v1.6.0
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/gosimple/slug v1.15.0
 	github.com/mattn/go-isatty v0.0.24

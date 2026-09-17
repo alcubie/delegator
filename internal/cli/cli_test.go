@@ -20,21 +20,6 @@ const repoBranch = "trunk"
 // that this one name does not.
 var testNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
-// writeConfig writes config.toml for one test, in a config directory of its
-// own, and returns the path of the file.
-func writeConfig(t *testing.T, text string) string {
-	t.Helper()
-	dir := testfix.XDGConfigDir(t)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 // ticketIn makes one ticket in a data directory, with a store the test opens,
 // as dg ticket makes it with the store of the command.
 func ticketIn(t *testing.T, dataDir, workDir, title, body string) (int64, error) {
