@@ -40,6 +40,7 @@ var migrations = []string{
 	verifyGooseACP,
 	verifyGitHubCopilotACP,
 	addConfigurationSettings,
+	verifyCursorACP,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -275,6 +276,18 @@ UPDATE agents SET
   resume_argv = '["goose","session","--resume","--session-id","{session}"]',
   install_hint = 'Install Goose 1.50.1 or later'
 WHERE name = 'goose';
+`
+
+// verifyCursorACP records the commands verified with Cursor Agent
+// 2026.09.15-d2fe57e. Cursor serves ACP over stdio with "agent acp". Its
+// terminal client does not resume an ACP session id, so there is no resume
+// command to advertise.
+const verifyCursorACP = `
+UPDATE agents SET
+  argv = '["agent","acp"]',
+  resume_argv = '[]',
+  install_hint = 'Install Cursor Agent 2026.09.15-d2fe57e or later'
+WHERE name = 'cursor';
 `
 
 // verifyGitHubCopilotACP records the commands verified with GitHub Copilot

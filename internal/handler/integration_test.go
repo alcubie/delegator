@@ -245,6 +245,16 @@ func TestGooseTakesASessionFromStartToLoad(t *testing.T) {
 	t.Logf("goose asked delegator to answer %d permissions: %v", len(asked), asked)
 }
 
+// TestCursorTakesASessionFromStartToLoad verifies Cursor Agent's ACP server
+// against a real authenticated session, prompt, and session load. Cursor
+// Agent 2026.09.15-d2fe57e is launched as "agent acp". Its terminal client
+// does not accept an ACP session id, so the registry has no resume command.
+func TestCursorTakesASessionFromStartToLoad(t *testing.T) {
+	_, _, events := driveASession(t, "cursor")
+	asked := permissions(events)
+	t.Logf("cursor asked delegator to answer %d permissions: %v", len(asked), asked)
+}
+
 // TestOpenCodeTakesASessionFromStartToLoad drives OpenCode's built-in ACP
 // server through a new session, a prompt, and a load of that same session.
 // It skips when OpenCode is not installed; a signed-in OpenCode is required
