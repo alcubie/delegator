@@ -3,6 +3,7 @@ package run
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -90,6 +91,106 @@ func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	}
 	if !run.ExitCode.Valid || run.ExitCode.V != 0 {
 		t.Errorf("exit code = %+v, want 0", run.ExitCode)
+	}
+}
+
+func runUsageInt(n int) *int { return &n }
+
+func TestTheACPRunnerStoresTheAggregateUsageTheAgentReported(t *testing.T) {
+	tests := []struct {
+		name    string
+		report  string
+		present bool
+		want    store.AggregateUsage
+	}{
+		{
+			name:    "every category",
+			report:  `{"inputTokens":11,"cachedWriteTokens":2,"cachedReadTokens":3,"outputTokens":5,"thoughtTokens":4,"totalTokens":21}`,
+			present: true,
+			want: store.AggregateUsage{
+				InputTokens:       runUsageInt(11),
+				CachedWriteTokens: runUsageInt(2),
+				CachedReadTokens:  runUsageInt(3),
+				OutputTokens:      runUsageInt(5),
+				ThoughtTokens:     runUsageInt(4),
+				TotalTokens:       runUsageInt(21),
+			},
+		},
+		{
+			name:    "cache write omitted",
+			report:  `{"inputTokens":11,"cachedReadTokens":3,"outputTokens":5,"thoughtTokens":4,"totalTokens":19}`,
+			present: true,
+			want: store.AggregateUsage{
+				InputTokens:      runUsageInt(11),
+				CachedReadTokens: runUsageInt(3),
+				OutputTokens:     runUsageInt(5),
+				ThoughtTokens:    runUsageInt(4),
+				TotalTokens:      runUsageInt(19),
+			},
+		},
+		{
+			name:    "cache read omitted",
+			report:  `{"inputTokens":11,"cachedWriteTokens":2,"outputTokens":5,"thoughtTokens":4,"totalTokens":18}`,
+			present: true,
+			want: store.AggregateUsage{
+				InputTokens:       runUsageInt(11),
+				CachedWriteTokens: runUsageInt(2),
+				OutputTokens:      runUsageInt(5),
+				ThoughtTokens:     runUsageInt(4),
+				TotalTokens:       runUsageInt(18),
+			},
+		},
+		{
+			name:    "thought omitted",
+			report:  `{"inputTokens":11,"cachedWriteTokens":2,"cachedReadTokens":3,"outputTokens":5,"totalTokens":21}`,
+			present: true,
+			want: store.AggregateUsage{
+				InputTokens:       runUsageInt(11),
+				CachedWriteTokens: runUsageInt(2),
+				CachedReadTokens:  runUsageInt(3),
+				OutputTokens:      runUsageInt(5),
+				TotalTokens:       runUsageInt(21),
+			},
+		},
+		{
+			name:    "reported zeroes",
+			report:  `{"inputTokens":0,"cachedWriteTokens":0,"cachedReadTokens":0,"outputTokens":0,"thoughtTokens":0,"totalTokens":0}`,
+			present: true,
+			want: store.AggregateUsage{
+				InputTokens:       runUsageInt(0),
+				CachedWriteTokens: runUsageInt(0),
+				CachedReadTokens:  runUsageInt(0),
+				OutputTokens:      runUsageInt(0),
+				ThoughtTokens:     runUsageInt(0),
+				TotalTokens:       runUsageInt(0),
+			},
+		},
+		{name: "no usage object"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir, id := queuedTicket(t, "Add the thing")
+			lines := []string{"stop end_turn"}
+			if test.report != "" {
+				lines = append([]string{"usage " + test.report}, lines...)
+			}
+			if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, dataDir, lines...)); err != nil {
+				t.Fatal(err)
+			}
+			s := testfix.OpenStore(t, dataDir)
+			run, err := s.Run(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, present, err := s.RunUsage(run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if present != test.present || !reflect.DeepEqual(got, test.want) {
+				t.Errorf("usage = (%+v, %t), want (%+v, %t)", got, present, test.want, test.present)
+			}
+		})
 	}
 }
 

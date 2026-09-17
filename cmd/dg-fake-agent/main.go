@@ -14,6 +14,7 @@
 //	permission <title> <kind>   ask to run a tool and record the answer
 //	write <path> <content>    write the file through the client
 //	wait <duration>           wait that long, or until the client cancels
+//	usage <json>              return that standard ACP Usage object
 //	stop <reason>             end the turn with that reason
 //
 // A wait that the client cancels ends the turn with the cancelled reason and

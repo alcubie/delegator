@@ -60,8 +60,9 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 		return err
 	}
 
-	last, err := stream(session.Prompt(ctx, prompt(id)), log)
-	if err != nil {
+	last, streamErr := stream(session.Prompt(ctx, prompt(id)), log)
+	usageErr := recordUsage(s, runID, session.Usage())
+	if err := errors.Join(streamErr, usageErr); err != nil {
 		return err
 	}
 	if last.Status != handler.StopEndTurn {
@@ -69,6 +70,25 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 	}
 	code = 0
 	return nil
+}
+
+// recordUsage writes only a response that carried ACP usage. The session sets
+// it when the response ends the prompt stream, so its counts reach the
+// database only after the prompt has answered. An agent that omits Usage
+// leaves no row. Required fields are pointers here so a reported zero remains
+// different from NULL.
+func recordUsage(s *store.Store, runID int64, u *handler.Usage) error {
+	if u == nil {
+		return nil
+	}
+	return s.AddRunUsage(runID, store.AggregateUsage{
+		InputTokens:       &u.InputTokens,
+		CachedWriteTokens: u.CachedWriteTokens,
+		CachedReadTokens:  u.CachedReadTokens,
+		OutputTokens:      &u.OutputTokens,
+		ThoughtTokens:     u.ThoughtTokens,
+		TotalTokens:       &u.TotalTokens,
+	})
 }
 
 // stream writes each event of a turn to the log as one line and gives back the

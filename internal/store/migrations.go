@@ -41,6 +41,7 @@ var migrations = []string{
 	verifyGitHubCopilotACP,
 	addConfigurationSettings,
 	verifyCursorACP,
+	addRunUsageTable,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -288,6 +289,22 @@ UPDATE agents SET
   resume_argv = '[]',
   install_hint = 'Install Cursor Agent 2026.09.15-d2fe57e or later'
 WHERE name = 'cursor';
+`
+
+// addRunUsageTable keeps the aggregate token counts the ACP response reports
+// for a prompt. There is one row at most for a run. Every count is nullable:
+// no row distinguishes an agent that reports no usage from reported zero,
+// and NULL keeps an optional category that was omitted distinct from zero.
+const addRunUsageTable = `
+CREATE TABLE run_usage (
+  run_id              INTEGER PRIMARY KEY REFERENCES runs(id),
+  input_tokens        INTEGER,
+  cached_write_tokens INTEGER,
+  cached_read_tokens  INTEGER,
+  output_tokens       INTEGER,
+  thought_tokens      INTEGER,
+  total_tokens        INTEGER
+) STRICT;
 `
 
 // verifyGitHubCopilotACP records the commands verified with GitHub Copilot

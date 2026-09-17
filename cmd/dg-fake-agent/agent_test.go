@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -151,6 +152,31 @@ func TestTheAgentDoesEveryActionOfAScript(t *testing.T) {
 	agent, _, _, want := everyAction(t)
 	same(t, turn(t, startFake(t, t.TempDir(), agent), "do the work"), want)
 }
+
+func TestTheAgentReturnsStandardPromptUsageFromAScript(t *testing.T) {
+	agent, _ := fakeLaunch(t,
+		`usage {"inputTokens":11,"cachedWriteTokens":2,"cachedReadTokens":3,"outputTokens":5,"thoughtTokens":4,"totalTokens":21}`,
+		"stop end_turn",
+	)
+	s := startFake(t, t.TempDir(), agent)
+	got := turn(t, s, "do the work")
+	if len(got) != 1 || got[0].Type != handler.TypeResult {
+		t.Fatalf("the turn gave %+v, want one result", got)
+	}
+	want := &handler.Usage{
+		InputTokens:       11,
+		CachedWriteTokens: intPointer(2),
+		CachedReadTokens:  intPointer(3),
+		OutputTokens:      5,
+		ThoughtTokens:     intPointer(4),
+		TotalTokens:       21,
+	}
+	if usage := s.Usage(); !reflect.DeepEqual(usage, want) {
+		t.Errorf("usage = %+v, want %+v", usage, want)
+	}
+}
+
+func intPointer(n int) *int { return &n }
 
 func TestTheWriteActionGoesThroughTheClient(t *testing.T) {
 	agent, _, written, _ := everyAction(t)
