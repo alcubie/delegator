@@ -225,3 +225,13 @@ func TestCodexTakesASessionFromStartToLoad(t *testing.T) {
 	asked := permissions(events)
 	t.Logf("codex asked delegator to answer %d permissions: %v", len(asked), asked)
 }
+
+// TestGooseTakesASessionFromStartToLoad verifies Goose's stdio ACP server
+// against a real authenticated session, prompt, and session load. Goose
+// 1.50.1 is launched as "goose acp"; its terminal resume command is recorded
+// separately in the registry because it is interactive.
+func TestGooseTakesASessionFromStartToLoad(t *testing.T) {
+	_, _, events := driveASession(t, "goose")
+	asked := permissions(events)
+	t.Logf("goose asked delegator to answer %d permissions: %v", len(asked), asked)
+}
