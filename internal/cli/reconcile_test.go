@@ -76,13 +76,15 @@ func TestTheReconcileIsBeforeTheWorkOfTheCommand(t *testing.T) {
 }
 
 // How long a run may take is the person's to set, so the reconcile takes the
-// timeout from the config file. The supervisor of this run is the test, which
+// timeout from the settings row. The supervisor of this run is the test, which
 // is alive, and the timeout is the one rule that answers for a run whose
 // process id says nothing.
 func TestTheReconcileTakesTheTimeoutFromTheConfig(t *testing.T) {
-	writeConfig(t, "timeout_minutes = 1\n")
 	dataDir := t.TempDir()
 	_, stale, repo, _ := runningTicket(t, dataDir)
+	if err := testfix.OpenStore(t, dataDir).SetSetting("timeout_minutes", "1"); err != nil {
+		t.Fatal(err)
+	}
 	testfix.AgeRun(t, dataDir, stale, 2*time.Minute)
 
 	if _, err := runIn(t, dataDir, repo); err != nil {

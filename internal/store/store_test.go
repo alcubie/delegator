@@ -445,6 +445,9 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if want := []string{"opencode", "acp"}; !slices.Equal(opencode.Argv, want) {
 		t.Errorf("opencode argv = %v, want %v", opencode.Argv, want)
 	}
+	if want := []string{"opencode", "--session", "{session}"}; !slices.Equal(opencode.Resume, want) {
+		t.Errorf("opencode resume argv = %v, want %v", opencode.Resume, want)
+	}
 	if opencode.InstallHint == "" {
 		t.Error("opencode has no installation hint")
 	}
@@ -474,12 +477,25 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if cursor.InstallHint == "" {
 		t.Error("cursor has no installation hint")
 	}
+	copilot, err := s.Agent("github-copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"copilot", "--acp"}; !slices.Equal(copilot.Argv, want) {
+		t.Errorf("github-copilot argv = %v, want %v", copilot.Argv, want)
+	}
+	if want := []string{"copilot", "--resume={session}"}; !slices.Equal(copilot.Resume, want) {
+		t.Errorf("github-copilot resume argv = %v, want %v", copilot.Resume, want)
+	}
+	if copilot.InstallHint == "" {
+		t.Error("github-copilot has no installation hint")
+	}
 }
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {
 	s, _ := emptyStore(t)
-	if got, err := s.DefaultAgent(); err != nil || got != "codex" {
-		t.Fatalf("default agent = %q, %v; want codex", got, err)
+	if got, err := s.DefaultAgent(); err != nil || got != "" {
+		t.Fatalf("default agent = %q, %v; want no selection", got, err)
 	}
 	want := Agent{Name: "local", Argv: []string{"local-acp", "--stdio"}, Resume: []string{"local", "{session}"}, InstallHint: "install local"}
 	if err := s.SaveAgent(want); err != nil {

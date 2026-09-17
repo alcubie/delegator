@@ -38,6 +38,8 @@ var migrations = []string{
 	addAgentsTable,
 	addAgentRegistry,
 	verifyGooseACP,
+	verifyGitHubCopilotACP,
+	addConfigurationSettings,
 	verifyCursorACP,
 }
 
@@ -256,10 +258,13 @@ INSERT INTO agents (name, argv, resume_argv, install_hint) VALUES
   ('pi', '["pi","--acp"]', '[]', 'Install Pi');
 
 CREATE TABLE settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-INSERT INTO settings (key, value) VALUES ('default_agent', 'codex');
+  id                   INTEGER PRIMARY KEY CHECK (id = 1),
+  runs                 INTEGER NOT NULL CHECK (runs >= 1),
+  timeout_minutes      INTEGER NOT NULL CHECK (timeout_minutes >= 1),
+  done_hours           INTEGER NOT NULL CHECK (done_hours >= 0),
+  max_runs_per_project INTEGER NOT NULL CHECK (max_runs_per_project >= 0),
+  default_agent_id     INTEGER REFERENCES agents(id)
+) STRICT;
 `
 
 // verifyGooseACP records the commands verified with Goose 1.50.1. Goose
@@ -283,6 +288,25 @@ UPDATE agents SET
   resume_argv = '[]',
   install_hint = 'Install Cursor Agent 2026.09.15-d2fe57e or later'
 WHERE name = 'cursor';
+`
+
+// verifyGitHubCopilotACP records the commands verified with GitHub Copilot
+// CLI 1.0.85. The same executable serves ACP over stdio and resumes its saved
+// session in the terminal.
+const verifyGitHubCopilotACP = `
+UPDATE agents SET
+  argv = '["copilot","--acp"]',
+  resume_argv = '["copilot","--resume={session}"]',
+  install_hint = 'Install GitHub Copilot CLI 1.0.85 or later'
+WHERE name = 'github-copilot';
+`
+
+// addConfigurationSettings seeds the one instance-settings row with the
+// defaults used before SQLite became their authority.
+const addConfigurationSettings = `
+INSERT INTO settings
+  (id, runs, timeout_minutes, done_hours, max_runs_per_project)
+VALUES (1, 2, 60, 24, 0);
 `
 
 // migrate applies each step above the number in PRAGMA user_version, and then
