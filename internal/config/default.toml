@@ -1,5 +1,5 @@
 # runs is the number of tickets that can be Running or Ready at a time.
-runs = 1
+runs = 2
 
 # timeout_minutes is the time in minutes that a run can take before delegator
 # stops it.

@@ -465,8 +465,8 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {
 	s, _ := emptyStore(t)
-	if got, err := s.DefaultAgent(); err != nil || got != "codex" {
-		t.Fatalf("default agent = %q, %v; want codex", got, err)
+	if got, err := s.DefaultAgent(); err != nil || got != "" {
+		t.Fatalf("default agent = %q, %v; want no selection", got, err)
 	}
 	want := Agent{Name: "local", Argv: []string{"local-acp", "--stdio"}, Resume: []string{"local", "{session}"}, InstallHint: "install local"}
 	if err := s.SaveAgent(want); err != nil {
