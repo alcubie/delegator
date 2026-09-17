@@ -445,6 +445,9 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if want := []string{"opencode", "acp"}; !slices.Equal(opencode.Argv, want) {
 		t.Errorf("opencode argv = %v, want %v", opencode.Argv, want)
 	}
+	if want := []string{"opencode", "--session", "{session}"}; !slices.Equal(opencode.Resume, want) {
+		t.Errorf("opencode resume argv = %v, want %v", opencode.Resume, want)
+	}
 	if opencode.InstallHint == "" {
 		t.Error("opencode has no installation hint")
 	}

@@ -78,12 +78,14 @@ codex does not install it. The CLI is what a person resumes a session in, and
 ```
 npm install -g @agentclientprotocol/claude-agent-acp   # claude-agent-acp
 npm install -g @agentclientprotocol/codex-acp          # codex-acp
+npm install -g @opencode/cli                           # opencode (including ACP)
 ```
 
 | Test | Needs |
 | --- | --- |
 | `internal/handler` claude | `claude-agent-acp` and `claude` |
 | `internal/handler` codex | `codex-acp` and `codex` |
+| `internal/handler` opencode | `opencode`, signed in with `opencode auth login` |
 | `internal/cli` | `claude-agent-acp`, which the run under test starts |
 
 Run them with `make integration`, or `make release` for those and everything
