@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -580,20 +579,14 @@ func TestRunShowsAFailedTicketInFailed(t *testing.T) {
 	}
 }
 
-// done_hours in the config file says how far back DONE reaches. At 0 the group
+// done_hours in the settings row says how far back DONE reaches. At 0 the group
 // is empty, and a ticket accepted a moment ago is already out of the window.
 func TestRunTakesTheWindowOfDoneFromTheConfig(t *testing.T) {
-	configDir := testfix.XDGConfigDir(t)
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"),
-		[]byte("done_hours = 0\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	dataDir := t.TempDir()
-	_, id, repo := readyTicket(t, dataDir)
+	s, id, repo := readyTicket(t, dataDir)
+	if err := s.SetSetting("done_hours", "0"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runIn(t, dataDir, repo, "accept", strconv.FormatInt(id, 10)); err != nil {
 		t.Fatal(err)
 	}
@@ -609,19 +602,13 @@ func TestRunTakesTheWindowOfDoneFromTheConfig(t *testing.T) {
 
 // The window in the heading of DONE is the one the person set. done_hours is 6
 // and not the 24 of a person who set nothing, so the number in the heading can
-// only have come from the file.
+// only have come from the database.
 func TestRunSaysTheWindowOfDoneFromTheConfig(t *testing.T) {
-	configDir := testfix.XDGConfigDir(t)
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"),
-		[]byte("done_hours = 6\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	dataDir := t.TempDir()
-	_, _, repo := readyTicket(t, dataDir)
+	s, _, repo := readyTicket(t, dataDir)
+	if err := s.SetSetting("done_hours", "6"); err != nil {
+		t.Fatal(err)
+	}
 
 	out, err := runIn(t, dataDir, repo)
 	if err != nil {

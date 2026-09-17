@@ -289,7 +289,7 @@ WHERE name = 'github-copilot';
 `
 
 // addConfigurationSettings seeds the one instance-settings row with the
-// defaults that config.toml supplied before SQLite became their authority.
+// defaults used before SQLite became their authority.
 const addConfigurationSettings = `
 INSERT INTO settings
   (id, runs, timeout_minutes, done_hours, max_runs_per_project)

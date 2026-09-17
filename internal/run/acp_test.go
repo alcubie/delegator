@@ -19,7 +19,7 @@ import (
 func acpConfig(t *testing.T, dataDir string, lines ...string) config.Config {
 	t.Helper()
 	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
-	return config.Default
+	return config.Config{Runs: 2, TimeoutMinutes: 60, DoneHours: 24, DefaultAgent: "fake"}
 }
 
 // shortTimeout puts a limit on a run that a test can wait for, and gives the
@@ -90,6 +90,24 @@ func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	}
 	if !run.ExitCode.Valid || run.ExitCode.V != 0 {
 		t.Errorf("exit code = %+v, want 0", run.ExitCode)
+	}
+}
+
+// The command gives the supervisor one settings snapshot. A later change to
+// the database must not change which agent this run starts.
+func TestTheACPRunnerUsesTheDefaultAgentFromItsSnapshot(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SetDefaultAgent("codex"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Start(s, id, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != "fake-1" {
+		t.Errorf("session = %q, want the fake agent from the snapshot", got)
 	}
 }
 

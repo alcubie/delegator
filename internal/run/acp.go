@@ -36,11 +36,7 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 	code := noExitCode
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
 
-	name, err := s.DefaultAgent()
-	if err != nil {
-		return err
-	}
-	entry, err := s.Agent(name)
+	entry, err := s.Agent(cfg.DefaultAgent)
 	if err != nil {
 		return err
 	}

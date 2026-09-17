@@ -1,88 +1,91 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// A person who wants to change a value needs a file to open, and a misspelt
-// key is refused, so the first command writes the file with each key at its
-// default. Load reads that file, so the file and the defaults cannot come
-// apart; the test asks Load rather than comparing text.
-func TestACommandWritesTheConfigWhenItIsNotThere(t *testing.T) {
-	configDir := testfix.XDGConfigDir(t)
-
-	if _, err := runIn(t, t.TempDir(), t.TempDir(), "pause"); err != nil {
+func TestConfigShowsDatabaseSettingsAndDescriptions(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SetSetting("runs", "3"); err != nil {
 		t.Fatal(err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(configDir, "config.toml"))
+	out, err := runIn(t, dataDir, t.TempDir(), "config")
 	if err != nil {
-		t.Fatalf("the command did not write config.toml: %v", err)
+		t.Fatal(err)
 	}
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("Load refuses the file the command wrote: %v\n%s", err, data)
-	}
-	if !reflect.DeepEqual(cfg, config.Default) {
-		t.Errorf("Load gives %+v from the file the command wrote, want the default %+v", cfg, config.Default)
-	}
-
-	// One comment for each key, so the person reads what a key does where
-	// they change it. Each line that sets a key has a comment on the line
-	// above it.
-	lines := strings.Split(string(data), "\n")
-	keys := 0
-	for i, line := range lines {
-		if !strings.Contains(line, "=") {
-			continue
+	for _, want := range []string{"runs = 3", "timeout_minutes = 60", "# runs is the number"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dg config does not hold %q:\n%s", want, out)
 		}
-		keys++
-		if i == 0 || !strings.HasPrefix(lines[i-1], "#") {
-			t.Errorf("the key on line %d has no comment above it:\n%s", i+1, data)
-		}
-	}
-	if keys == 0 {
-		t.Errorf("the file sets no key:\n%s", data)
 	}
 }
 
-// A file the person edited is the one copy, and a file that Load refuses is
-// for the person to correct, not for delegator to replace. The refused file
-// also stops the command, naming the key, because a person cannot correct a
-// fault that nothing reports.
-func TestACommandLeavesAConfigThatIsThereAsItIs(t *testing.T) {
+func TestConfigGetShowsOneDatabaseSetting(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SetSetting("done_hours", "6"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "get", "done_hours")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "6\n" {
+		t.Errorf("dg config get wrote %q, want %q", out, "6\\n")
+	}
+}
+
+func TestConfigSetPersistsOneSetting(t *testing.T) {
+	dataDir := t.TempDir()
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "runs", "4"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "get", "runs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "4\n" {
+		t.Errorf("stored runs = %q, want 4", strings.TrimSpace(out))
+	}
+}
+
+func TestConfigSetSelectsARegisteredDefaultAgent(t *testing.T) {
+	dataDir := t.TempDir()
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "codex\n" {
+		t.Errorf("stored default_agent = %q, want codex", strings.TrimSpace(out))
+	}
+}
+
+func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
+	dataDir := t.TempDir()
 	for _, tc := range []struct {
-		name, text string
-		refused    bool
+		args []string
+		want string
 	}{
-		{name: "a file that loads", text: "runs = 3\n"},
-		{name: "a file that Load refuses", text: "run = 3\n", refused: true},
+		{[]string{"config", "get", "run"}, `unknown setting "run"`},
+		{[]string{"config", "set", "run", "3"}, `unknown setting "run"`},
+		{[]string{"config", "set", "runs", "many"}, "setting runs must be an integer"},
+		{[]string{"config", "set", "runs", "0"}, "CHECK constraint failed: runs >= 1"},
+		{[]string{"config", "set", "default_agent", "missing"}, "invalid agent: missing"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := writeConfig(t, tc.text)
-
-			_, err := runIn(t, t.TempDir(), t.TempDir(), "pause")
-			if !tc.refused && err != nil {
-				t.Errorf("the command refused a file that loads: %v", err)
-			}
-			if tc.refused && (err == nil || !strings.Contains(err.Error(), "run")) {
-				t.Errorf("the command did not refuse the file naming the key run: %v", err)
-			}
-
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(data) != tc.text {
-				t.Errorf("the command changed the file to %q, want %q as it was", data, tc.text)
-			}
-		})
+		_, err := runIn(t, dataDir, t.TempDir(), tc.args...)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("dg %v error = %v, want it to contain %q", tc.args, err, tc.want)
+		}
 	}
 }

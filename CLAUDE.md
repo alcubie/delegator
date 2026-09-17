@@ -21,8 +21,7 @@ derive the shape of the repository by reading it.
 - `internal/project` is the only package that starts git.
 - `internal/inbox` decides which ticket is in which group and in what order,
   and writes no text.
-- `internal/config` reads `config.toml`. State a command changes is not config
-  and belongs in the database.
+- `internal/config` describes the instance settings stored in SQLite.
 - `internal/testfix` holds the fixtures that more than one package's tests need.
 
 `make check` runs the formatter, vet, staticcheck and the coverage floor, and
