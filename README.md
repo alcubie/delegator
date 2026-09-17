@@ -84,6 +84,7 @@ npm install -g @agentclientprotocol/codex-acp          # codex-acp
 | --- | --- |
 | `internal/handler` claude | `claude-agent-acp` and `claude` |
 | `internal/handler` codex | `codex-acp` and `codex` |
+| `internal/handler` GitHub Copilot | `copilot` 1.0.85 or later |
 | `internal/cli` | `claude-agent-acp`, which the run under test starts |
 
 Run them with `make integration`, or `make release` for those and everything

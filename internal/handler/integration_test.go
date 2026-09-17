@@ -235,3 +235,30 @@ func TestGooseTakesASessionFromStartToLoad(t *testing.T) {
 	asked := permissions(events)
 	t.Logf("goose asked delegator to answer %d permissions: %v", len(asked), asked)
 }
+
+// TestGitHubCopilotTakesASessionFromStartToTheTerminal verifies GitHub
+// Copilot CLI 1.0.85 against a real authenticated ACP session, prompt, ACP
+// session load, and its non-interactive terminal resume command.
+func TestGitHubCopilotTakesASessionFromStartToTheTerminal(t *testing.T) {
+	repo, id, events := driveASession(t, "github-copilot")
+	t.Logf("github-copilot asked delegator to answer %d permissions: %v", len(permissions(events)), permissions(events))
+
+	_, _, resume := agentOnThePath(t, "github-copilot")
+	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
+	defer cancel()
+	argv := make([]string, 0, len(resume)+3)
+	for _, arg := range resume {
+		argv = append(argv, strings.ReplaceAll(arg, "{session}", id))
+	}
+	argv = append(argv, "--allow-all-tools", "-p", integrationRecall)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = repo
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%v: %v", cmd.Args, err)
+	}
+	if !strings.Contains(strings.ToLower(string(out)), integrationKept) {
+		t.Errorf("%v answered %q, and the session was given %q", cmd.Args, strings.TrimSpace(string(out)), integrationKept)
+	}
+}
