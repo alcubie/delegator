@@ -201,7 +201,7 @@ func resumeAndRecall(t *testing.T, name, repo, id string, extra ...string) {
 	}
 }
 
-// TestClaudeTakesASessionFromStartToTheTerminal drives the real claude
+// TestIntegrationClaudeTakesASessionFromStartToTheTerminal drives the real claude
 // through everything delegator asks of an agent: a new session that writes a
 // file and commits it under AllowAll, the same session loaded by its id, and
 // the command of the agent table that opens that session in a terminal. It
@@ -210,7 +210,7 @@ func resumeAndRecall(t *testing.T, name, repo, id string, extra ...string) {
 // The terminal step asks for the word that is in the session and in no file,
 // so the answer cannot come from reading the repository. -p makes the command
 // answer once and exit, where a person would get a terminal.
-func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
+func TestIntegrationClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 	repo, id, events := driveASession(t, "claude")
 	if !allowed(events) {
 		t.Errorf("the turn allowed no permission, and the policy allows every tool: %v", permissions(events))
@@ -219,7 +219,7 @@ func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 	resumeAndRecall(t, "claude", repo, id, "-p")
 }
 
-// TestCodexTakesASessionFromStartToLoad asks codex for the same session that
+// TestIntegrationCodexTakesASessionFromStartToLoad asks codex for the same session that
 // claude takes, up to the terminal: codex resumes into a terminal of its own
 // and has no batch form here, so the last step of claude's test is claude's
 // alone. It skips when codex-acp is not installed.
@@ -229,46 +229,46 @@ func TestClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 // own approvals, and on 2026-09-15 it wrote the file and made the commit
 // without asking delegator for anything. What it did ask for goes to the log,
 // so a run says what the policy was given to answer.
-func TestCodexTakesASessionFromStartToLoad(t *testing.T) {
+func TestIntegrationCodexTakesASessionFromStartToLoad(t *testing.T) {
 	_, _, events := driveASession(t, "codex")
 	asked := permissions(events)
 	t.Logf("codex asked delegator to answer %d permissions: %v", len(asked), asked)
 }
 
-// TestGooseTakesASessionFromStartToLoad verifies Goose's stdio ACP server
+// TestIntegrationGooseTakesASessionFromStartToLoad verifies Goose's stdio ACP server
 // against a real authenticated session, prompt, and session load. Goose
 // 1.50.1 is launched as "goose acp"; its terminal resume command is recorded
 // separately in the registry because it is interactive.
-func TestGooseTakesASessionFromStartToLoad(t *testing.T) {
+func TestIntegrationGooseTakesASessionFromStartToLoad(t *testing.T) {
 	_, _, events := driveASession(t, "goose")
 	asked := permissions(events)
 	t.Logf("goose asked delegator to answer %d permissions: %v", len(asked), asked)
 }
 
-// TestCursorTakesASessionFromStartToLoad verifies Cursor Agent's ACP server
+// TestIntegrationCursorTakesASessionFromStartToLoad verifies Cursor Agent's ACP server
 // against a real authenticated session, prompt, and session load. Cursor
 // Agent 2026.09.15-d2fe57e is launched as "agent acp". Its terminal client
 // does not accept an ACP session id, so the registry has no resume command.
-func TestCursorTakesASessionFromStartToLoad(t *testing.T) {
+func TestIntegrationCursorTakesASessionFromStartToLoad(t *testing.T) {
 	_, _, events := driveASession(t, "cursor")
 	asked := permissions(events)
 	t.Logf("cursor asked delegator to answer %d permissions: %v", len(asked), asked)
 }
 
-// TestOpenCodeTakesASessionFromStartToLoad drives OpenCode's built-in ACP
+// TestIntegrationOpenCodeTakesASessionFromStartToLoad drives OpenCode's built-in ACP
 // server through a new session, a prompt, and a load of that same session.
 // It skips when OpenCode is not installed; a signed-in OpenCode is required
 // when make integration runs it.
-func TestOpenCodeTakesASessionFromStartToLoad(t *testing.T) {
+func TestIntegrationOpenCodeTakesASessionFromStartToLoad(t *testing.T) {
 	_, _, events := driveASession(t, "opencode")
 	asked := permissions(events)
 	t.Logf("opencode asked delegator to answer %d permissions: %v", len(asked), asked)
 }
 
-// TestGitHubCopilotTakesASessionFromStartToTheTerminal verifies GitHub
+// TestIntegrationGitHubCopilotTakesASessionFromStartToTheTerminal verifies GitHub
 // Copilot CLI 1.0.85 against a real authenticated ACP session, prompt, ACP
 // session load, and its non-interactive terminal resume command.
-func TestGitHubCopilotTakesASessionFromStartToTheTerminal(t *testing.T) {
+func TestIntegrationGitHubCopilotTakesASessionFromStartToTheTerminal(t *testing.T) {
 	repo, id, events := driveASession(t, "github-copilot")
 	t.Logf("github-copilot asked delegator to answer %d permissions: %v", len(permissions(events)), permissions(events))
 
