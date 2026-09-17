@@ -16,7 +16,7 @@ import (
 // The worktree stays. A run that a person stopped may hold work they want to
 // read before it goes, and only dg accept removes a worktree, for work that is
 // complete. Section 6.3 of TECHNICAL_DESIGN.md settles this.
-func cancelCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cancel <id>",
 		Short: "Stop the work on a ticket and close it.",
@@ -26,7 +26,7 @@ func cancelCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				return cancelTicket(s, cfg, id)
 			})
 		},
@@ -70,5 +70,5 @@ func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 	}
 	// The supervisor this stopped is the program that would have started the
 	// next run as its own ended, so the command starts it in its place.
-	return run.Next(s, *cfg, launch)
+	return run.Next(s, *cfg, launchFrom(s.DataDir(), launch))
 }

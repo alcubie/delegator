@@ -21,14 +21,14 @@ import (
 const listShort = "List every ticket, whatever its status"
 
 // listCommand writes every ticket. --project narrows the list to one project.
-func listCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: listShort,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tickets, err := listTickets(dataDir, workDir, cfg, projectDir)
+			tickets, err := listTickets(*dataDir, workDir, cfg, projectDir)
 			if err != nil {
 				return err
 			}

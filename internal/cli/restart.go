@@ -19,7 +19,7 @@ import (
 // It keeps its branch, its session and its worktree, so the run continues the
 // work of the run that failed. The command writes nothing, because the person
 // named the ticket.
-func restartCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart <id>",
 		Short: "Start a failed ticket again.",
@@ -29,7 +29,7 @@ func restartCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				ticket, err := s.Ticket(id)
 				if err != nil {
 					return err
@@ -38,7 +38,7 @@ func restartCommand(dataDir string, cfg *config.Config) *cobra.Command {
 					return fmt.Errorf("%w: the ticket is %s, and only a failed ticket restarts",
 						store.ErrInvalidTicketStateChange, ticket.Status)
 				}
-				return run.Detach(restartLaunch(id))
+				return run.Detach(launchIn(*dataDir, restartLaunch(id)))
 			})
 		},
 	}

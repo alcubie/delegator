@@ -83,6 +83,105 @@ func TestDataDirTakesXDGDataHome(t *testing.T) {
 	}
 }
 
+// DELEGATOR_DATA_DIR was briefly an instance selector. The command-line flag
+// replaces it so an ambient environment cannot silently move an invocation to
+// another database.
+func TestDataDirIgnoresDelegatorDataDir(t *testing.T) {
+	t.Setenv("DELEGATOR_DATA_DIR", "/somewhere/old-override")
+	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
+
+	got, err := DataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("/somewhere/data", "delegator"); got != want {
+		t.Errorf("DataDir = %q, want %q", got, want)
+	}
+}
+
+func TestSelectedDataDirMustBeAbsoluteAndIsCleaned(t *testing.T) {
+	if _, err := selectedDataDir("relative"); err == nil || !strings.Contains(err.Error(), "--data-dir") {
+		t.Errorf("selectedDataDir(relative) error = %v, want an error naming --data-dir", err)
+	}
+
+	dir := filepath.Join(t.TempDir(), "first", "..", "selected")
+	got, err := selectedDataDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Clean(dir); got != want {
+		t.Errorf("selectedDataDir(%q) = %q, want %q", dir, got, want)
+	}
+}
+
+func TestDataDirFlagBeforeAndAfterCommandsSelectsIsolatedInstances(t *testing.T) {
+	defaultDir := t.TempDir()
+	first := filepath.Join(t.TempDir(), "first", "..", "selected-first")
+	second := filepath.Join(t.TempDir(), "selected-second")
+	repo := testfix.Repo(t, repoBranch)
+
+	if _, err := runIn(t, defaultDir, repo,
+		"--data-dir", first, "ticket", "In the first instance", "--no-body"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, defaultDir, repo,
+		"ticket", "In the second instance", "--no-body", "--data-dir", second); err != nil {
+		t.Fatal(err)
+	}
+
+	first = filepath.Clean(first)
+	for _, instance := range []struct {
+		dir   string
+		title string
+	}{
+		{first, "In the first instance"},
+		{second, "In the second instance"},
+	} {
+		for _, name := range []string{"delegator.db", "tickets", "runs", "worktrees"} {
+			if _, err := os.Stat(filepath.Join(instance.dir, name)); err != nil {
+				t.Errorf("selected instance %q has no %s: %v", instance.dir, name, err)
+			}
+		}
+		queue, err := testfix.OpenStore(t, instance.dir).ListQueue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(queue) != 1 || queue[0].Title != instance.title {
+			t.Errorf("queue in %q = %+v, want only %q", instance.dir, queue, instance.title)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(defaultDir, "delegator.db")); !os.IsNotExist(err) {
+		t.Errorf("default data directory was opened despite --data-dir: %v", err)
+	}
+}
+
+func TestDataDirFlagIsValidatedBeforeTheDefaultStoreOpens(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	repo := testfix.Repo(t, repoBranch)
+
+	_, err := runIn(t, "", repo, "ticket", "Never added", "--no-body", "--data-dir", "relative")
+	if err == nil || !strings.Contains(err.Error(), "--data-dir") {
+		t.Fatalf("relative --data-dir error = %v, want an error naming --data-dir", err)
+	}
+	if _, err := os.Stat(filepath.Join(xdg, "delegator")); !os.IsNotExist(err) {
+		t.Errorf("the default store was opened before validation: %v", err)
+	}
+}
+
+func TestAbsentDataDirFlagUsesTheDefaultAfterParsing(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	repo := testfix.Repo(t, repoBranch)
+
+	if _, err := runIn(t, "", repo, "ticket", "Uses the default", "--no-body"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(xdg, "delegator", "delegator.db")); err != nil {
+		t.Errorf("the XDG default has no database: %v", err)
+	}
+}
+
 // Windows has no XDG rule, and a person there keeps the data of a program
 // below LOCALAPPDATA. make check runs on Linux, so the system is a parameter
 // of the unexported dataDir and the test names it.

@@ -16,7 +16,7 @@ import (
 // as dg move does: the inbox says what a queued ticket depends on, and a
 // command that reads back what the person just typed adds a line to every
 // script that uses it.
-func dependCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var after []int64
 	var remove bool
 	cmd := &cobra.Command{
@@ -29,7 +29,7 @@ func dependCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				if remove {
 					return s.RemoveDependencies(id, after...)
 				}

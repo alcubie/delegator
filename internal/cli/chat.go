@@ -52,7 +52,7 @@ func chatCmd(argv []string, dir string) *exec.Cmd {
 // With no id it continues the head of READY, as dg show and dg accept act on
 // it: the ticket a person reads next is the ticket they have something to say
 // to.
-func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "chat [id]",
@@ -61,12 +61,12 @@ func chatCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var argv []string
 			var worktree string
-			err := withStore(dataDir, cfg, func(s *store.Store) error {
+			err := withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err
 				}
-				argv, worktree, err = resumeOf(s, dataDir, id)
+				argv, worktree, err = resumeOf(s, *dataDir, id)
 				return err
 			})
 			if err != nil {

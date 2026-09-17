@@ -21,14 +21,14 @@ const searchShort = "Find tickets by their text"
 
 // searchCommand finds pattern in a title or in the Markdown prose. --project
 // takes the same directory as it does on dg show and dg list.
-func searchCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "search <pattern>",
 		Short: searchShort,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			found, err := searchTickets(dataDir, workDir, cfg, projectDir, args[0])
+			found, err := searchTickets(*dataDir, workDir, cfg, projectDir, args[0])
 			if err != nil {
 				return err
 			}

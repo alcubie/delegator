@@ -31,7 +31,7 @@ func directionNames() []string {
 }
 
 // moveCommand returns the command dg move.
-func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func moveCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use: "move <id> <where>",
 		Short: "Move one ticket inside the queue, or inside READY. <where> is " +
@@ -42,7 +42,7 @@ func moveCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 
 				if move, there := directions[args[1]]; there {
 					return s.MoveTicket(id, move)

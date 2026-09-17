@@ -25,13 +25,11 @@ func main() {
 }
 
 func run() error {
-	dataDir, err := cli.DataDir()
-	if err != nil {
-		return err
-	}
 	workDir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	return cli.Root(dataDir, workDir).Execute()
+	// An empty data directory asks the command tree to choose the platform
+	// default after Cobra has parsed a possible --data-dir override.
+	return cli.Root("", workDir).Execute()
 }

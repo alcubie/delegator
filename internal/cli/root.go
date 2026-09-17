@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,6 +42,16 @@ func dataDir(goos string) (string, error) {
 	return filepath.Join(home, ".local", "share", "delegator"), nil
 }
 
+// selectedDataDir validates and normalizes the directory named explicitly on
+// the command line. A relative directory would make the same instance mean a
+// different place to a detached supervisor running from another directory.
+func selectedDataDir(dir string) (string, error) {
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("--data-dir must be an absolute path")
+	}
+	return filepath.Clean(dir), nil
+}
+
 // Root returns the command tree of dg. The program cmd/dg takes the directories
 // and runs it, so each command has a test that needs no terminal.
 //
@@ -49,6 +60,7 @@ func dataDir(goos string) (string, error) {
 // a person who wrote a title that dg refused does not want each command again.
 func Root(dataDir, workDir string) *cobra.Command {
 	mode := colourAuto
+	selectedDir := dataDir
 	// cfg is the snapshot the hook below read. The inbox needs the window of
 	// DONE and reconciliation needs the timeout. Each command takes the
 	// address because the hook runs after this function has built the tree.
@@ -64,12 +76,21 @@ func Root(dataDir, workDir string) *cobra.Command {
 		// Reconciliation and the command then use the same values even when
 		// another process changes a setting while the command is running.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			var err error
+			if cmd.Flags().Changed("data-dir") {
+				selectedDir, err = selectedDataDir(selectedDir)
+			} else if selectedDir == "" {
+				selectedDir, err = DataDir()
+			}
+			if err != nil {
+				return err
+			}
 			// version does not use instance state, and rpc loads settings for
 			// the command inside each request rather than for the transport.
 			if cmd.Name() == "version" || cmd.Name() == "rpc" {
 				return nil
 			}
-			return store.With(dataDir, func(s *store.Store) error {
+			return store.With(selectedDir, func(s *store.Store) error {
 				loaded, err := s.Settings()
 				if err == nil {
 					cfg = loaded
@@ -78,7 +99,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 			})
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			box, err := showInbox(dataDir, &cfg)
+			box, err := showInbox(selectedDir, &cfg)
 			if err != nil {
 				return err
 			}
@@ -89,24 +110,26 @@ func Root(dataDir, workDir string) *cobra.Command {
 	}
 	root.PersistentFlags().Var(&mode, "color",
 		"colour the status: always, never or auto (a terminal only)")
-	root.AddCommand(ticketCommand(dataDir, workDir, &cfg))
-	root.AddCommand(listCommand(dataDir, workDir, &cfg))
-	root.AddCommand(searchCommand(dataDir, workDir, &cfg))
-	root.AddCommand(showCommand(dataDir, workDir, &cfg))
-	root.AddCommand(mapCommand(dataDir, workDir, &cfg))
-	root.AddCommand(editCommand(dataDir, &cfg))
-	root.AddCommand(moveCommand(dataDir, &cfg))
-	root.AddCommand(dependCommand(dataDir, &cfg))
-	root.AddCommand(finishCommand(dataDir, &cfg))
-	root.AddCommand(acceptCommand(dataDir, workDir, &cfg))
-	root.AddCommand(cancelCommand(dataDir, &cfg))
-	root.AddCommand(restartCommand(dataDir, &cfg))
-	root.AddCommand(chatCommand(dataDir, workDir, &cfg))
-	root.AddCommand(runCommand(dataDir, &cfg))
-	root.AddCommand(pauseCommand(dataDir, &cfg))
-	root.AddCommand(startCommand(dataDir, &cfg))
-	root.AddCommand(configCommand(dataDir, &cfg))
+	root.PersistentFlags().StringVar(&selectedDir, "data-dir", dataDir,
+		"store all Delegator data in this absolute directory")
+	root.AddCommand(ticketCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(listCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(searchCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(showCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(mapCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(editCommand(&selectedDir, &cfg))
+	root.AddCommand(moveCommand(&selectedDir, &cfg))
+	root.AddCommand(dependCommand(&selectedDir, &cfg))
+	root.AddCommand(finishCommand(&selectedDir, &cfg))
+	root.AddCommand(acceptCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(cancelCommand(&selectedDir, &cfg))
+	root.AddCommand(restartCommand(&selectedDir, &cfg))
+	root.AddCommand(chatCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(runCommand(&selectedDir, &cfg))
+	root.AddCommand(pauseCommand(&selectedDir, &cfg))
+	root.AddCommand(startCommand(&selectedDir, &cfg))
+	root.AddCommand(configCommand(&selectedDir, &cfg))
 	root.AddCommand(versionCommand())
-	root.AddCommand(rpcCommand(dataDir, workDir))
+	root.AddCommand(rpcCommand(&selectedDir, workDir))
 	return root
 }

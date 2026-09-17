@@ -45,11 +45,23 @@ func dgRunArgs(args ...string) *exec.Cmd {
 	return exec.Command(exe, append([]string{"run"}, args...)...)
 }
 
+// launchIn passes the selected instance to a detached supervisor. Flags after
+// a subcommand are accepted by Cobra, and keeping the option in argv avoids an
+// environment override that would silently affect unrelated invocations.
+func launchIn(dataDir string, cmd *exec.Cmd) *exec.Cmd {
+	cmd.Args = append(cmd.Args, "--data-dir", dataDir)
+	return cmd
+}
+
+func launchFrom(dataDir string, next func() *exec.Cmd) func() *exec.Cmd {
+	return func() *exec.Cmd { return launchIn(dataDir, next()) }
+}
+
 // runCommand returns the command dg run. It is hidden from dg help because
 // delegator starts it and a person does not: a supervisor launches one for the
 // next ticket, and this is the program it launches. Typing it still works,
 // which is how a run is driven by hand.
-func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var restart bool
 	cmd := &cobra.Command{
 		Use:    "run [id]",
@@ -81,7 +93,7 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			// is as the trigger that started this one found it, and a
 			// supervisor that launched another for the same queue would make
 			// a chain that does not end.
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				claimed, err := start(s)
 				if err != nil {
 					return err
@@ -89,7 +101,7 @@ func runCommand(dataDir string, cfg *config.Config) *cobra.Command {
 				if !claimed {
 					return nil
 				}
-				return run.Next(s, *cfg, launch)
+				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
 			})
 		},
 	}

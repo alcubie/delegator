@@ -18,7 +18,7 @@ import (
 // The worktree is removed inside the transaction that closes the ticket, so a
 // worktree git refuses leaves the ticket ready and a person sees it again.
 // --force closes the ticket anyway and takes the changes with the worktree.
-func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var force bool
 	cmd := &cobra.Command{
@@ -26,7 +26,7 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		Short: "Close a ready ticket. Defaults to the first Ready ticket for the project.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err
@@ -37,7 +37,7 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 				err = s.ChangeStatusWith(id, store.Done, func() error {
-					return run.RemoveWorktree(dataDir, ticket, force)
+					return run.RemoveWorktree(*dataDir, ticket, force)
 				})
 				if err != nil {
 					return err
@@ -49,7 +49,7 @@ func acceptCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				}); err != nil {
 					return err
 				}
-				return run.Next(s, *cfg, launch)
+				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
 			})
 		},
 	}
