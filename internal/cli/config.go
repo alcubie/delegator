@@ -67,6 +67,15 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
+				if args[0] == "default_agent" {
+					agent, err := s.Agent(args[1])
+					if err != nil {
+						return err
+					}
+					if _, err := agentExecutable(agent); err != nil {
+						return fmt.Errorf("agent %q command %q is not executable: %w", agent.Name, agent.Argv[0], err)
+					}
+				}
 				return s.SetSetting(args[0], args[1])
 			})
 		},

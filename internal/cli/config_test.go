@@ -127,9 +127,13 @@ func TestConfigSetPersistsOneSetting(t *testing.T) {
 	}
 }
 
-func TestConfigSetSelectsARegisteredDefaultAgent(t *testing.T) {
+func TestConfigSetSelectsAnAvailableCustomDefaultAgent(t *testing.T) {
 	dataDir := t.TempDir()
-	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "codex"); err != nil {
+	command := executable(t, t.TempDir(), "mine-acp")
+	if _, err := runIn(t, dataDir, t.TempDir(), "agents", "add", "mine", "--command", command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "mine"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,8 +141,33 @@ func TestConfigSetSelectsARegisteredDefaultAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "codex\n" {
-		t.Errorf("stored default_agent = %q, want codex", strings.TrimSpace(out))
+	if out != "mine\n" {
+		t.Errorf("stored default_agent = %q, want mine", strings.TrimSpace(out))
+	}
+}
+
+func TestConfigSetRefusesAMissingAgentExecutableAndKeepsTheDefault(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	command := executable(t, t.TempDir(), "mine-acp")
+	if _, err := runIn(t, dataDir, t.TempDir(), "agents", "add", "mine", "--command", command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "mine"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "codex")
+	if err == nil || !strings.Contains(err.Error(), "codex-acp") {
+		t.Fatalf("error = %v, want it to name the missing codex-acp executable", err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "mine\n" {
+		t.Errorf("default_agent after failed change = %q, want mine", strings.TrimSpace(out))
 	}
 }
 
