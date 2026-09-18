@@ -31,12 +31,12 @@ install:
 test:
 	go test ./...
 
-# integration runs the tests behind the build tag "integration": each one
-# drives a real agent and costs money and time, so check compiles them and
-# release runs them. The tag adds files to the build rather than filtering
-# tests, so the ordinary tests run here too; go caches the ones it already ran.
+# integration runs only the TestIntegration tests behind the build tag
+# "integration": each one drives a real agent and costs money and time, so
+# check compiles them and release runs them. The tag adds their files to the
+# build, and -run keeps the ordinary tests out of this target.
 integration:
-	go test -tags integration -timeout 15m -v ./...
+	go test -tags integration -timeout 15m -run '^TestIntegration' -v ./...
 
 # release is the gate before a release: everything check does, and then the
 # integration tests. It will grow the goreleaser build and the installer; for

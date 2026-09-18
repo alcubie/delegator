@@ -36,7 +36,7 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 	return store.Ticket{}
 }
 
-// TestClaudeRunsOneTicket runs one real ticket through claude, end to end:
+// TestIntegrationClaudeRunsOneTicket runs one real ticket through claude, end to end:
 // dg ticket, the run that dg ticket starts, and the dg finish that claude
 // itself calls. It costs money and takes minutes, so it is behind the build
 // tag "integration" and runs with make integration or make release, not with
@@ -44,7 +44,7 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 //
 // The agent's own dg calls must reach this test's database and this test's
 // build of dg, so XDG_DATA_HOME and PATH are set for the run.
-func TestClaudeRunsOneTicket(t *testing.T) {
+func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	useLaunch(t, func() *exec.Cmd {
 		return exec.Command("dg", "run")
