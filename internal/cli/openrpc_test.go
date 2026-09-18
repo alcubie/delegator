@@ -81,7 +81,7 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 			t.Errorf("method %q has no result descriptor: %#v", method.Name, method.Result)
 		}
 	}
-	root := Root(t.TempDir(), t.TempDir())
+	root := Root(t.TempDir())
 	if !names["inbox"] || !names["rpc.discover"] {
 		t.Errorf("method names = %v, want inbox and rpc.discover", names)
 	}

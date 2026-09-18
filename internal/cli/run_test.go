@@ -130,7 +130,7 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 // A person does not start a run; delegator does. The command stays out of
 // dg help so the help lists what a person types, and typing it still works.
 func TestRunIsHiddenFromTheHelp(t *testing.T) {
-	for _, c := range Root(t.TempDir(), t.TempDir()).Commands() {
+	for _, c := range Root(t.TempDir()).Commands() {
 		if c.Name() == "run" {
 			if !c.Hidden {
 				t.Error("dg run is in the help")

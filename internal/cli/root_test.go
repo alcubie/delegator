@@ -23,7 +23,7 @@ func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error
 func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	root := Root(dataDir, workDir)
+	root := Root(workDir)
 	root.SetOut(&out)
 	root.SetErr(&errOut)
 	root.SetIn(strings.NewReader(stdin))
@@ -31,6 +31,9 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 	// test, so the arguments are always a slice that is there.
 	if args == nil {
 		args = []string{}
+	}
+	if dataDir != "" {
+		args = append([]string{"--data-dir", dataDir}, args...)
 	}
 	root.SetArgs(args)
 
@@ -64,7 +67,7 @@ func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 // arrives in that help with nothing beside it. The line is ours to write, so
 // this reads the tree and not the help that cobra makes from it.
 func TestEachCommandSaysWhatItDoes(t *testing.T) {
-	for _, c := range Root(t.TempDir(), t.TempDir()).Commands() {
+	for _, c := range Root(t.TempDir()).Commands() {
 		if c.Short == "" {
 			t.Errorf("the command %q has no Short, so the help says nothing about it", c.Name())
 		}
@@ -99,16 +102,18 @@ func TestSelectedDataDirMustBeAbsoluteAndIsCleaned(t *testing.T) {
 }
 
 func TestDataDirFlagBeforeAndAfterCommandsSelectsIsolatedInstances(t *testing.T) {
-	defaultDir := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	defaultDir := filepath.Join(xdg, "delegator")
 	first := filepath.Join(t.TempDir(), "first", "..", "selected-first")
 	second := filepath.Join(t.TempDir(), "selected-second")
 	repo := testfix.Repo(t, repoBranch)
 
-	if _, err := runIn(t, defaultDir, repo,
+	if _, err := runIn(t, "", repo,
 		"--data-dir", first, "ticket", "In the first instance", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runIn(t, defaultDir, repo,
+	if _, err := runIn(t, "", repo,
 		"ticket", "In the second instance", "--no-body", "--data-dir", second); err != nil {
 		t.Fatal(err)
 	}

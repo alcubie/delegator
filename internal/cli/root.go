@@ -52,15 +52,15 @@ func selectedDataDir(dir string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
-// Root returns the command tree of dg. The program cmd/dg takes the directories
-// and runs it, so each command has a test that needs no terminal.
+// Root returns the command tree of dg. The program cmd/dg takes the working
+// directory and runs it, so each command has a test that needs no terminal.
 //
 // cobra says nothing itself about an error: cmd/dg writes each one, with the
 // name of the program in front of it. cobra also keeps the usage back, because
 // a person who wrote a title that dg refused does not want each command again.
-func Root(dataDir, workDir string) *cobra.Command {
+func Root(workDir string) *cobra.Command {
 	mode := colourAuto
-	selectedDir := dataDir
+	selectedDir := ""
 	// cfg is the snapshot the hook below read. The inbox needs the window of
 	// DONE and reconciliation needs the timeout. Each command takes the
 	// address because the hook runs after this function has built the tree.
@@ -110,7 +110,7 @@ func Root(dataDir, workDir string) *cobra.Command {
 	}
 	root.PersistentFlags().Var(&mode, "color",
 		"colour the status: always, never or auto (a terminal only)")
-	root.PersistentFlags().StringVar(&selectedDir, "data-dir", dataDir,
+	root.PersistentFlags().StringVar(&selectedDir, "data-dir", "",
 		"store all Delegator data in this absolute directory")
 	root.AddCommand(ticketCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(listCommand(&selectedDir, workDir, &cfg))

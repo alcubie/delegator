@@ -29,7 +29,5 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// An empty data directory asks the command tree to choose the platform
-	// default after Cobra has parsed a possible --data-dir override.
-	return cli.Root("", workDir).Execute()
+	return cli.Root(workDir).Execute()
 }

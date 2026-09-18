@@ -156,7 +156,7 @@ func TestRPCRunsTheNonEditorFormsOfEdit(t *testing.T) {
 func TestRPCRefusesBodyFileFromStandardInputForEveryMethod(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	root := Root(dataDir, repo)
+	root := Root(repo)
 
 	for _, command := range root.Commands() {
 		if command.Name() == "chat" || command.Name() == "rpc" {
@@ -180,7 +180,7 @@ func TestRPCRefusesBodyFileFromStandardInputForEveryMethod(t *testing.T) {
 }
 
 func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
-	root := Root(t.TempDir(), t.TempDir())
+	root := Root(t.TempDir())
 	if _, err := rpcTarget(root, "inbox"); err != nil {
 		t.Errorf("the root inbox is not callable through RPC: %v", err)
 	}
