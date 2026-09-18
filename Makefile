@@ -15,7 +15,7 @@ LDFLAGS := -X $(PKG)/internal/cli.Version=$(VERSION)
 COVER_MIN  := 75
 COVER_PKGS := ./internal/...
 
-.PHONY: build install test integration release vet lint fmt fmtcheck check clean watch cover coverhtml covercheck
+.PHONY: build install test integration release vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -103,6 +103,18 @@ covercheck:
 			printf "covercheck: coverage is %.1f%%\n", got \
 		}'
 
+# archivecheck makes the source archive from the tracked working-tree files,
+# then checks the licensing material that every distribution must carry.
+archivecheck:
+	@archive=$$(mktemp); \
+	trap 'rm -f "$$archive"' EXIT HUP INT TERM; \
+	git ls-files | tar -T - -cf "$$archive"; \
+	for file in LICENSE THIRD_PARTY_NOTICES.md; do \
+		if ! tar -tf "$$archive" "$$file" >/dev/null 2>&1; then \
+			echo "archivecheck: source archive has no $$file"; exit 1; \
+		fi; \
+	done
+
 # cover shows how much of each function the tests run. It does not show how much
 # of it the tests examine: a test with no assertion gives the same number as a
 # test with one. Use it to find code that no test touches, and not as a target.
@@ -116,7 +128,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: fmtcheck vet lint covercheck
+check: archivecheck fmtcheck vet lint covercheck
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html
