@@ -80,13 +80,23 @@ npm install -g @agentclientprotocol/claude-agent-acp   # claude-agent-acp
 npm install -g @agentclientprotocol/codex-acp          # codex-acp
 ```
 
-| Test | Needs |
-| --- | --- |
-| `internal/handler` claude | `claude-agent-acp` and `claude` |
-| `internal/handler` codex | `codex-acp` and `codex` |
-| `internal/handler` opencode | `opencode`, signed in with `opencode auth login` |
-| `internal/handler` GitHub Copilot | `copilot` 1.0.85 or later |
-| `internal/cli` | `claude-agent-acp`, which the run under test starts |
+These are the exact commands and versions exercised by the real-agent tests:
+
+| Agent | ACP launch argv | Terminal resume argv | Verified versions |
+| --- | --- | --- | --- |
+| Claude | `[claude-agent-acp]` | `[claude --resume {session}]` | claude-agent-acp 0.77.0; Claude Code 2.1.273 |
+| Codex | `[codex-acp]` | `[codex resume {session}]` | codex-acp 1.11.0; Codex CLI 0.155.0 |
+| Goose | `[goose acp]` | `[goose session --resume --session-id {session}]` | Goose 1.50.1 |
+| OpenCode | `[opencode acp]` | `[opencode --session {session}]` | OpenCode 1.18.31 |
+| GitHub Copilot | `[copilot --acp]` | `[copilot --resume={session}]` | GitHub Copilot CLI 1.0.86 |
+| Cursor | `[agent acp]` | none: its terminal client does not accept an ACP session id | Cursor Agent 2026.09.15-d2fe57e |
+
+Claude, OpenCode, and GitHub Copilot add their supported one-shot flags to
+the recorded resume argv. Codex and Goose have interactive-only resume
+commands, so their terminal-resume subtests use a pseudo-terminal. Each
+terminal assertion asks the real ACP-created session to recall text that was
+never written to its repository. The `internal/cli` integration additionally
+needs `claude-agent-acp`, which the run under test starts.
 
 Run them with `make integration`, or `make release` for those and everything
 `make check` does.
