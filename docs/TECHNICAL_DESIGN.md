@@ -299,6 +299,15 @@ the default branch of the repository. Delegator removes the worktree at closure,
 never removes the branch. The person can therefore open the branch later. The prototype
 confirmed this behaviour.
 
+`dg accept` first asks Git whether the ticket branch is an ancestor of `HEAD` in the
+stored project checkout. If it is not, Delegator compares the stable patch of the complete
+branch change with each non-merge commit in `HEAD` after the common base. An equal patch
+accepts a squash merge. A partial change, or the ticket change in a commit that also holds
+other work, is not equal and the ticket stays ready. The named error tells the person that
+`--force` is available. An explicit ticket id can belong to a different project, so this
+check never uses `HEAD` from the directory of the caller. `--force` bypasses this check and
+also permits removal of a worktree with uncommitted changes.
+
 ### 6.6 The seam for other agents
 
 The package `adapters/` holds one interface, and one implementation for claude. The
@@ -559,7 +568,7 @@ Each change of state is in the table below.
 | `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
 | `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
-| `ready` | `done` | `dg accept`. Delegator removes the worktree and keeps the branch. |
+| `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD. Delegator removes the worktree and keeps the branch. |
 | `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its commit goes away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
 
@@ -759,7 +768,7 @@ installer.
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |
-| `dg accept <id>` | Close a ticket, and remove its worktree. Git refuses a worktree holding changes that are not committed, and the ticket stays ready; `--force` removes it anyway and the changes go with it. |
+| `dg accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
 | `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |

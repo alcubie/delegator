@@ -31,6 +31,7 @@ const (
 	codeNotARepository
 	codeUnknownCommit
 	codeCommitNotOnBranch
+	codeBranchNotMerged
 )
 
 const (
@@ -65,6 +66,7 @@ var errorCodes = map[error]int{
 	project.ErrNoCommit:               codeNoCommit,
 	project.ErrUnknownCommit:          codeUnknownCommit,
 	project.ErrCommitNotOnBranch:      codeCommitNotOnBranch,
+	project.ErrBranchNotMerged:        codeBranchNotMerged,
 	project.ErrNotARepository:         codeNotARepository,
 	store.ErrNewerDatabase:            codeNewerDatabase,
 	store.ErrSelfDependency:           codeSelfDependency,

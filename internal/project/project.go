@@ -7,6 +7,7 @@
 package project
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +30,10 @@ var ErrUnknownCommit = errors.New("git does not know the commit")
 
 // ErrCommitNotOnBranch shows that a branch does not contain the commit.
 var ErrCommitNotOnBranch = errors.New("the ticket branch does not hold the commit")
+
+// ErrBranchNotMerged shows that HEAD does not contain the ticket branch or an
+// equivalent squash of all its changes.
+var ErrBranchNotMerged = errors.New("the ticket branch is not merged into HEAD")
 
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
@@ -91,24 +96,31 @@ func Root(path string) (string, error) {
 	return filepath.Dir(strings.TrimSuffix(string(gitDir), "\n")), nil
 }
 
-// gitOutput runs one git command in root and returns its output with no final
-// newline. An error means that git said no, and each caller decides what that
-// answer means.
-//
 // The text of an exec.ExitError is the exit status alone, so a failure would
 // reach the person as a number and the sentence git wrote would be lost. The
-// error carries the stderr of git, and gitOutput puts it in front of the
+// error carries the stderr of git, and commandOutput puts it in front of the
 // status. The exec.ExitError stays underneath, because callers match on the
 // type.
-func gitOutput(root string, args ...string) (string, error) {
-	out, err := Command(root, args...).Output()
+func commandOutput(cmd *exec.Cmd) ([]byte, error) {
+	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			if stderr := strings.TrimRight(string(exitErr.Stderr), "\n"); stderr != "" {
-				return "", fmt.Errorf("%s: %w", stderr, err)
+				return nil, fmt.Errorf("%s: %w", stderr, err)
 			}
 		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// gitOutput runs one git command in root and returns its output with no final
+// newline. An error means that git said no, and each caller decides what that
+// answer means.
+func gitOutput(root string, args ...string) (string, error) {
+	out, err := commandOutput(Command(root, args...))
+	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -236,6 +248,115 @@ func CommitOnBranch(root, revision, branch string) (string, error) {
 		return "", fmt.Errorf("%w: %s is not on %s", ErrCommitNotOnBranch, full, branch)
 	}
 	return "", err
+}
+
+// RequireBranchMerged returns nil when HEAD contains branch, either through an
+// ordinary merge or through one commit whose stable patch is the complete
+// change of branch. The second form recognizes a squash merge without
+// accepting one part of the branch or a commit that bundles other work with
+// it.
+//
+// The caller gives the primary checkout of the project. HEAD is deliberately
+// resolved there rather than in the directory from which a command happened
+// to run.
+func RequireBranchMerged(root, branch string) error {
+	ref := "refs/heads/" + branch
+	merged, err := isAncestor(root, ref, "HEAD")
+	if err != nil {
+		return err
+	}
+	if merged {
+		return nil
+	}
+
+	equivalent, err := hasEquivalentSquash(root, ref)
+	if err != nil {
+		return err
+	}
+	if equivalent {
+		return nil
+	}
+	return fmt.Errorf("%w: %s; use dg accept --force to accept it anyway", ErrBranchNotMerged, branch)
+}
+
+// isAncestor gives exit status 1 its documented meaning and preserves every
+// other failure from Git.
+func isAncestor(root, ancestor, descendant string) (bool, error) {
+	_, err := gitOutput(root, "merge-base", "--is-ancestor", ancestor, descendant)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return false, ErrGitNotOnPath
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}
+
+// hasEquivalentSquash compares one patch for the complete branch change with
+// one patch for each commit added to HEAD since the histories separated. A
+// match is therefore a squash of all the work, not only a matching commit from
+// a branch that holds additional changes.
+func hasEquivalentSquash(root, branch string) (bool, error) {
+	base, err := gitOutput(root, "merge-base", branch, "HEAD")
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, err
+	}
+	want, err := stablePatchID(root, "diff", base, branch)
+	if err != nil || want == "" {
+		return false, err
+	}
+
+	commits, err := gitOutput(root, "rev-list", "--no-merges", base+"..HEAD")
+	if err != nil {
+		return false, err
+	}
+	if commits == "" {
+		return false, nil
+	}
+	for _, commit := range strings.Split(commits, "\n") {
+		got, err := stablePatchID(root, "show", commit)
+		if err != nil {
+			return false, err
+		}
+		if got == want {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// stablePatchID returns Git's stable identity for a tree-to-tree diff or one
+// commit. Rename detection and external diff drivers are disabled so the same
+// repository content gives the same patch in both forms.
+func stablePatchID(root, form string, revisions ...string) (string, error) {
+	args := []string{form, "--no-ext-diff", "--no-textconv", "--binary", "--full-index", "--no-renames"}
+	if form == "show" {
+		args = append(args, "--root", "--format=")
+	}
+	patch, err := commandOutput(Command(root, append(args, revisions...)...))
+	if err != nil {
+		return "", err
+	}
+
+	cmd := Command(root, "patch-id", "--stable")
+	cmd.Stdin = bytes.NewReader(patch)
+	out, err := commandOutput(cmd)
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return "", nil
+	}
+	return fields[0], nil
 }
 
 // RemoveWorktree removes the worktree at path and the record git keeps of it.

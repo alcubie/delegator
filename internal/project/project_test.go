@@ -331,3 +331,108 @@ func TestGitOutputKeepsTheExitError(t *testing.T) {
 		t.Errorf("exit code = %d, want 128", exitErr.ExitCode())
 	}
 }
+
+// commitFile writes and commits one file on the branch that is checked out.
+func commitFile(t *testing.T, dir, name, content, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", name)
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "-q", "-m", message)
+}
+
+// mergedBranch makes a branch with one content change and leaves trunk checked
+// out. A test can then choose how, or whether, to put that change into HEAD.
+func mergedBranch(t *testing.T) (string, string) {
+	t.Helper()
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	gitIn(t, dir, "checkout", "-q", "-b", "ticket")
+	commitFile(t, dir, "ticket.txt", "the complete ticket\n", "ticket work")
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	return dir, "ticket"
+}
+
+func TestRequireBranchMergedAcceptsAnOrdinaryMerge(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", branch)
+
+	if err := RequireBranchMerged(dir, branch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequireBranchMergedRefusesAnUnmergedBranch(t *testing.T) {
+	dir, branch := mergedBranch(t)
+
+	err := RequireBranchMerged(dir, branch)
+	if !errors.Is(err, ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("err = %q, want the force override", err)
+	}
+}
+
+func TestRequireBranchMergedAcceptsAnEquivalentSquash(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "checkout", "-q", branch)
+	commitFile(t, dir, "second.txt", "the other part\n", "more ticket work")
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	gitIn(t, dir, "merge", "-q", "--squash", "--ff", branch)
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "-q", "-m", "squash ticket")
+
+	if err := RequireBranchMerged(dir, branch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequireBranchMergedRefusesOnlyPartOfTheChange(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "checkout", "-q", branch)
+	commitFile(t, dir, "second.txt", "the other part\n", "more ticket work")
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	commitFile(t, dir, "ticket.txt", "the complete ticket\n", "only one part")
+
+	if err := RequireBranchMerged(dir, branch); !errors.Is(err, ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+	}
+}
+
+func TestRequireBranchMergedRefusesTheChangeBundledWithOtherWork(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	if err := os.WriteFile(filepath.Join(dir, "ticket.txt"), []byte("the complete ticket\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("unrelated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "ticket.txt", "other.txt")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "-q", "-m", "ticket and other work")
+
+	if err := RequireBranchMerged(dir, branch); !errors.Is(err, ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+	}
+}
+
+// Exit status 1 from --is-ancestor means only that the branch is not an
+// ancestor. Every other Git failure must stay distinguishable from that normal
+// negative answer.
+func TestRequireBranchMergedPreservesOtherGitFailures(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+
+	err := RequireBranchMerged(dir, "missing")
+	if errors.Is(err, ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want the Git failure", err)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 128 {
+		t.Fatalf("err = %v, want Git exit status 128", err)
+	}
+}
