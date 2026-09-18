@@ -200,9 +200,10 @@ func prompt(id int64, dataDir, cacheDir string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
 
-A project-scoped cache directory is writable at %[3]q if useful for build
-caches or other reusable temporary artifacts. Its contents are disposable
-and are not removed with this worktree.
+A project-scoped cache directory shared by concurrent tickets is writable at
+%[3]q. If useful, use it only for caches that support concurrent access; keep
+ticket-specific temporary artifacts in this worktree. Its contents are
+disposable and are not removed with this worktree.
 
 1. Run dg show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.

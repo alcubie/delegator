@@ -244,10 +244,17 @@ func TestPromptSaysHowToRead(t *testing.T) {
 	}
 }
 
-func TestPromptNamesTheDisposableProjectCache(t *testing.T) {
+func TestPromptExplainsTheSharedDisposableProjectCache(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
 	got := prompt(42, t.TempDir(), cacheDir)
-	for _, want := range []string{cacheDir, "project-scoped cache", "disposable", "not removed with this worktree"} {
+	for _, want := range []string{
+		cacheDir,
+		"shared by concurrent tickets",
+		"caches that support concurrent access",
+		"ticket-specific temporary artifacts in this worktree",
+		"disposable",
+		"not removed with this worktree",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}
