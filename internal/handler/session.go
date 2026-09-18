@@ -20,6 +20,14 @@ type Policy struct {
 	Allow func(kind acp.ToolKind, title string) bool
 }
 
+// SessionOptions are the parts of an agent session that are outside its
+// working directory. AdditionalDirectories become ACP workspace roots, and
+// Environment is added to the environment inherited by the agent process.
+type SessionOptions struct {
+	AdditionalDirectories []string
+	Environment           []string
+}
+
 // AllowAll allows every tool. It is delegator's policy: a run of a ticket has
 // a worktree of its own, and a person who reads the run after it is over is
 // not there to answer a question while it goes.
@@ -83,12 +91,13 @@ const eventRoom = 64
 // The process is ended before open gives an error, so a failed start leaves
 // nothing running. What it gives back has no session yet: the caller asks the
 // agent for the one it wants.
-func open(ctx context.Context, name string, argv []string, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
+func open(ctx context.Context, name string, argv []string, policy Policy, cwd string, options SessionOptions, stderr io.Writer) (*Session, error) {
 	if len(argv) == 0 {
 		return nil, fmt.Errorf("agent %q has no command", name)
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
+	cmd.Env = append(cmd.Environ(), options.Environment...)
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -123,12 +132,16 @@ func open(ctx context.Context, name string, argv []string, policy Policy, cwd st
 //
 // The process is ended before Start gives an error, so a failed start leaves
 // nothing running.
-func Start(ctx context.Context, name string, argv []string, policy Policy, cwd string, stderr io.Writer) (*Session, error) {
-	s, err := open(ctx, name, argv, policy, cwd, stderr)
+func Start(ctx context.Context, name string, argv []string, policy Policy, cwd string, options SessionOptions, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, name, argv, policy, cwd, options, stderr)
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
+	r, err := s.conn.NewSession(ctx, acp.NewSessionRequest{
+		Cwd:                   cwd,
+		McpServers:            []acp.McpServer{},
+		AdditionalDirectories: options.AdditionalDirectories,
+	})
 	if err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("open a session of agent %q in %s: %w", name, cwd, err)
@@ -149,8 +162,8 @@ func Start(ctx context.Context, name string, argv []string, policy Policy, cwd s
 // An agent whose capabilities say it cannot load a session is refused before
 // the session is asked for, and an id the agent does not know is an error
 // that names it. Either way the process is ended before Load gives the error.
-func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, id string, stderr io.Writer) (*Session, error) {
-	s, err := open(ctx, name, argv, policy, cwd, stderr)
+func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, id string, options SessionOptions, stderr io.Writer) (*Session, error) {
+	s, err := open(ctx, name, argv, policy, cwd, options, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +173,10 @@ func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, i
 	}
 	replay, err := s.collect(func() error {
 		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
-			Cwd:        cwd,
-			McpServers: []acp.McpServer{},
-			SessionId:  acp.SessionId(id),
+			Cwd:                   cwd,
+			McpServers:            []acp.McpServer{},
+			SessionId:             acp.SessionId(id),
+			AdditionalDirectories: options.AdditionalDirectories,
 		})
 		return err
 	})

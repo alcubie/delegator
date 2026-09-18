@@ -223,20 +223,31 @@ func logOf(t *testing.T, dataDir string, id int64) string {
 
 func TestPromptNamesBothCommands(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "selected instance")
-	got := prompt(42, dataDir)
+	cacheDir := filepath.Join(dataDir, "cache", "projects", "7")
+	got := prompt(42, dataDir, cacheDir)
 	for _, want := range []string{"dg show 42", "dg finish 42"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}
 	}
 	if got, want := strings.Count(got, "--data-dir "+strconv.Quote(dataDir)), 2; got != want {
-		t.Errorf("the prompt names the selected data directory %d times, want %d:\n%s", got, want, prompt(42, dataDir))
+		t.Errorf("the prompt names the selected data directory %d times, want %d:\n%s", got, want, prompt(42, dataDir, cacheDir))
 	}
 }
 
 func TestPromptSaysHowToRead(t *testing.T) {
-	got := prompt(42, t.TempDir())
+	got := prompt(42, t.TempDir(), t.TempDir())
 	for _, want := range []string{"grep", "200 lines", "100 lines"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestPromptNamesTheDisposableProjectCache(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
+	got := prompt(42, t.TempDir(), cacheDir)
+	for _, want := range []string{cacheDir, "project-scoped cache", "disposable", "not removed with this worktree"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}

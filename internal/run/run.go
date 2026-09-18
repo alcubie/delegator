@@ -16,6 +16,10 @@ import (
 // branchPrefix is the prefix attached to all branch names
 const branchPrefix = "delegator"
 
+// ProjectCacheEnvironment names the project cache in an agent process. It is
+// deliberately neutral: an agent can choose which tools, if any, use it.
+const ProjectCacheEnvironment = "DELEGATOR_PROJECT_CACHE_DIR"
+
 // maxSlug is the max length of the branch slug that can be returned
 const maxSlug = 40
 
@@ -38,6 +42,23 @@ func branch(id int64, title string) string {
 // leaves every worktree where it was.
 func WorktreePath(dataDir string, id int64) string {
 	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+}
+
+// ProjectCachePath returns the stable cache directory of one project. The
+// cache subtree is disposable data, unlike tickets, logs, and the database;
+// it is outside worktrees so accepting a ticket does not remove it.
+func ProjectCachePath(dataDir string, projectID int64) string {
+	return filepath.Join(dataDir, "cache", "projects", strconv.FormatInt(projectID, 10))
+}
+
+// ProjectCache makes the private cache directory of one project and returns
+// its path. MkdirAll also makes each cache parent private when it is new.
+func ProjectCache(dataDir string, projectID int64) (string, error) {
+	path := ProjectCachePath(dataDir, projectID)
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // Worktree creates the worktree for one run at <dataDir>/worktrees/<id>, on a

@@ -2,7 +2,9 @@ package run
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/store"
@@ -47,6 +49,93 @@ func TestBranchNoAsciiTitle(t *testing.T) {
 	want := "delegator/1"
 	if got != want {
 		t.Errorf("got = %s, want = %s", got, want)
+	}
+}
+
+func TestProjectCachePathUsesTheDataDirectoryAndProjectID(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "selected data")
+	want := filepath.Join(dataDir, "cache", "projects", "17")
+	if got := ProjectCachePath(dataDir, 17); got != want {
+		t.Errorf("ProjectCachePath = %q, want %q", got, want)
+	}
+}
+
+func TestProjectCacheCreatesAPrivateDirectory(t *testing.T) {
+	path, err := ProjectCache(t.TempDir(), 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Errorf("cache permission = %o, want 700", info.Mode().Perm())
+	}
+}
+
+func TestProjectCacheIsSharedByTicketsAndIsolatedByProject(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+	firstProject, err := s.ProjectID(filepath.Join(t.TempDir(), "first"), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondProject, err := s.ProjectID(filepath.Join(t.TempDir(), "second"), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstTicket, err := s.AddTicket(firstProject, "the first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondTicket, err := s.AddTicket(firstProject, "the second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTicket, err := s.AddTicket(secondProject, "the other")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := ProjectCachePath(dataDir, testfix.ReadTicket(t, dataDir, firstTicket).Project.ID)
+	second := ProjectCachePath(dataDir, testfix.ReadTicket(t, dataDir, secondTicket).Project.ID)
+	other := ProjectCachePath(dataDir, testfix.ReadTicket(t, dataDir, otherTicket).Project.ID)
+	if first != second {
+		t.Errorf("tickets of one project got %q and %q", first, second)
+	}
+	if first == other {
+		t.Errorf("different projects both got %q", first)
+	}
+}
+
+func TestProjectCacheSurvivesWorktreeRemoval(t *testing.T) {
+	dataDir := t.TempDir()
+	ticket := store.Ticket{
+		ID:      7,
+		Project: store.Project{ID: 17, Path: repoOnMain(t), DefaultBranch: "main"},
+		Title:   "Add the thing",
+	}
+	worktree, err := Worktree(dataDir, ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheDir, err := ProjectCache(dataDir, ticket.Project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(cacheDir, "reusable artifact")
+	if err := os.WriteFile(marker, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveWorktree(dataDir, ticket, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Errorf("removed worktree stat = %v, want not exist", err)
+	}
+	if got, err := os.ReadFile(marker); err != nil || string(got) != "kept" {
+		t.Errorf("cache marker after worktree removal = %q, %v", got, err)
 	}
 }
 

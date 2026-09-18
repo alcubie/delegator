@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,10 @@ import (
 // the path of the file the agent records into, so a test that expects the
 // load to be refused sees that the agent was never asked.
 func loadSession(t *testing.T, id, loading string) (*Session, string, error) {
+	return loadSessionConfigured(t, id, loading, SessionOptions{})
+}
+
+func loadSessionConfigured(t *testing.T, id, loading string, options SessionOptions) (*Session, string, error) {
 	t.Helper()
 	name, argv, record := stubLaunch(t, stubFullOptions, stubTurnUpdates, loading)
 	// A load that never returns is the failure this bounds: the history can be
@@ -22,11 +28,30 @@ func loadSession(t *testing.T, id, loading string) (*Session, string, error) {
 	// drains that channel until the first prompt.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	s, err := Load(ctx, name, argv, AllowAll(), t.TempDir(), id, io.Discard)
+	s, err := Load(ctx, name, argv, AllowAll(), t.TempDir(), id, options, io.Discard)
 	if s != nil {
 		t.Cleanup(func() { _ = s.Close() })
 	}
 	return s, record, err
+}
+
+func TestLoadPassesAdditionalDirectoriesAndEnvironment(t *testing.T) {
+	directories := []string{filepath.Join(t.TempDir(), "project cache")}
+	t.Setenv(stubEnvironmentName, "the inherited value")
+	_, record, err := loadSessionConfigured(t, stubSessionID, stubLoads, SessionOptions{
+		AdditionalDirectories: directories,
+		Environment:           []string{stubEnvironmentName + "=the session value"},
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	r := readRecord(t, record)
+	if !slices.Equal(r.AdditionalDirectories, directories) {
+		t.Errorf("additional directories = %v, want %v", r.AdditionalDirectories, directories)
+	}
+	if r.Environment != "the session value" {
+		t.Errorf("environment = %q, want the session value", r.Environment)
+	}
 }
 
 func TestLoadOpensTheSessionTheCallerNamed(t *testing.T) {

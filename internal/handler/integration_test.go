@@ -113,7 +113,7 @@ func writeAndCommit(t *testing.T, name string, argv []string, repo string) (stri
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
-	s, err := Start(ctx, name, argv, AllowAll(), repo, os.Stderr)
+	s, err := Start(ctx, name, argv, AllowAll(), repo, SessionOptions{}, os.Stderr)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -142,7 +142,7 @@ func loadAndAsk(t *testing.T, name string, argv []string, repo, id, question str
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
 	defer cancel()
-	s, err := Load(ctx, name, argv, AllowAll(), repo, id, os.Stderr)
+	s, err := Load(ctx, name, argv, AllowAll(), repo, id, SessionOptions{}, os.Stderr)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,10 +24,16 @@ func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
 // startPolicy opens a session on the stub agent that answers by the policy,
 // offers one of the sets of permission options and takes one of the turns.
 func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *bytes.Buffer) {
+	return startConfigured(t, cwd, policy, options, turn, SessionOptions{})
+}
+
+// startConfigured is startPolicy with the workspace roots and process
+// environment the client gives the session.
+func startConfigured(t *testing.T, cwd string, policy Policy, options, turn string, sessionOptions SessionOptions) (*Session, string, *bytes.Buffer) {
 	t.Helper()
 	name, argv, record := stubLaunch(t, options, turn, stubLoads)
 	var stderr bytes.Buffer
-	s, err := Start(t.Context(), name, argv, policy, cwd, &stderr)
+	s, err := Start(t.Context(), name, argv, policy, cwd, sessionOptions, &stderr)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -91,6 +98,22 @@ func TestStartOpensTheSessionInTheDirectory(t *testing.T) {
 	}
 }
 
+func TestStartPassesAdditionalDirectoriesAndEnvironment(t *testing.T) {
+	directories := []string{filepath.Join(t.TempDir(), "project cache")}
+	t.Setenv(stubEnvironmentName, "the inherited value")
+	_, record, _ := startConfigured(t, t.TempDir(), Policy{}, stubFullOptions, stubTurnPermissions, SessionOptions{
+		AdditionalDirectories: directories,
+		Environment:           []string{stubEnvironmentName + "=the session value"},
+	})
+	r := readRecord(t, record)
+	if !slices.Equal(r.AdditionalDirectories, directories) {
+		t.Errorf("additional directories = %v, want %v", r.AdditionalDirectories, directories)
+	}
+	if r.Environment != "the session value" {
+		t.Errorf("environment = %q, want the session value", r.Environment)
+	}
+}
+
 func TestCloseEndsTheAgent(t *testing.T) {
 	s, _, stderr := start(t, t.TempDir())
 	if err := s.Close(); err != nil {
@@ -106,7 +129,7 @@ func TestCloseEndsTheAgent(t *testing.T) {
 
 func TestStartNamesACommandThatIsNotThere(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "no-such-agent")
-	_, err := Start(t.Context(), "stub", []string{missing}, Policy{}, t.TempDir(), io.Discard)
+	_, err := Start(t.Context(), "stub", []string{missing}, Policy{}, t.TempDir(), SessionOptions{}, io.Discard)
 	if err == nil {
 		t.Fatal("Start found an agent that is not there")
 	}
@@ -116,7 +139,7 @@ func TestStartNamesACommandThatIsNotThere(t *testing.T) {
 }
 
 func TestStartRefusesAnAgentWithNoCommand(t *testing.T) {
-	_, err := Start(t.Context(), "empty", nil, Policy{}, t.TempDir(), io.Discard)
+	_, err := Start(t.Context(), "empty", nil, Policy{}, t.TempDir(), SessionOptions{}, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Errorf("Start of an agent with no command gave %v, and the error should name the agent", err)
 	}

@@ -72,7 +72,7 @@ func fakeLaunch(t *testing.T, lines ...string) (agentLaunch, string) {
 // ends.
 func startFake(t *testing.T, cwd string, agent agentLaunch) *handler.Session {
 	t.Helper()
-	s, err := handler.Start(t.Context(), agent.name, agent.argv, handler.AllowAll(), cwd, io.Discard)
+	s, err := handler.Start(t.Context(), agent.name, agent.argv, handler.AllowAll(), cwd, handler.SessionOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestTheHistorySectionIsReplayedOnLoad(t *testing.T) {
 		"text "+fakeSaid,
 		"thought "+fakeMeant,
 	)
-	s, err := handler.Load(t.Context(), agent.name, agent.argv, handler.AllowAll(), dir, "fake-1", io.Discard)
+	s, err := handler.Load(t.Context(), agent.name, agent.argv, handler.AllowAll(), dir, "fake-1", handler.SessionOptions{}, io.Discard)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

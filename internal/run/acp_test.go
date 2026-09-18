@@ -68,6 +68,18 @@ func statusOf(t *testing.T, dataDir string, id int64) store.TicketStatus {
 
 const acpSaid = "the work is done"
 
+func TestSessionOptionsGiveOnlyTheProjectCacheToTheAgent(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
+	options := sessionOptions(cacheDir)
+	if !slices.Equal(options.AdditionalDirectories, []string{cacheDir}) {
+		t.Errorf("additional directories = %v, want only %q", options.AdditionalDirectories, cacheDir)
+	}
+	wantEnvironment := []string{ProjectCacheEnvironment + "=" + cacheDir}
+	if !slices.Equal(options.Environment, wantEnvironment) {
+		t.Errorf("environment = %v, want %v", options.Environment, wantEnvironment)
+	}
+}
+
 // A turn that the agent ran to its end is a run that succeeded: exit code 0,
 // no error, and every event of the turn in the log, one to the line.
 func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {

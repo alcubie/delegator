@@ -152,6 +152,10 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	if err != nil {
 		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(runID, noExitCode))
 	}
+	cacheDir, err := ProjectCache(dataDir, ticket.Project.ID)
+	if err != nil {
+		return err
+	}
 
 	log, err := openLog(dataDir, id)
 	if err != nil {
@@ -159,7 +163,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(ctx, s, cfg, id, runID, worktree, log)
+	return superviseACP(ctx, s, cfg, id, runID, worktree, cacheDir, log)
 }
 
 // logTime is the layout of a log's name. It is RFC 3339 with the colons
@@ -192,9 +196,13 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 // stays in the context and is sent again with each later call of the run. The
 // rules name the reading to avoid rather than the principle behind it, because
 // an agent that is told to read with care still cats the file.
-func prompt(id int64, dataDir string) string {
+func prompt(id int64, dataDir, cacheDir string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
+
+A project-scoped cache directory is writable at %[3]q if useful for build
+caches or other reusable temporary artifacts. Its contents are disposable
+and are not removed with this worktree.
 
 1. Run dg show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.
@@ -212,5 +220,5 @@ How to read the repository:
   over 100 lines whole. Read the part you came for.
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
-`, id, dataDir)
+`, id, dataDir, cacheDir)
 }
