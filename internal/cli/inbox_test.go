@@ -215,6 +215,8 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 // than to a fixed-width table. A wide pseudo-terminal stands in for a resized
 // terminal, and both kinds of noted row take every column it offers.
 func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
+	// A real terminal wins over a COLUMNS inherited from an outer terminal.
+	t.Setenv("COLUMNS", "80")
 	output, terminal, err := pty.Open()
 	if err != nil {
 		t.Skipf("no pseudo-terminal to test with: %v", err)
@@ -260,6 +262,38 @@ func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
 		if !found[note] {
 			t.Errorf("the terminal output holds no row ending in %q", note)
 		}
+	}
+}
+
+// watch gives dg a pipe for stdout, so the ioctl cannot see the terminal, but
+// it exports the width as COLUMNS. Values outside the positive 16-bit range of
+// a terminal size are not widths and leave redirected output at its stable
+// default instead.
+func TestOutputWidthReadsColumnsForWatch(t *testing.T) {
+	output, pipe, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	defer pipe.Close()
+
+	for name, test := range map[string]struct {
+		columns string
+		want    int
+	}{
+		"watch width":  {"100", 100},
+		"unset":        {"", defaultRowWidth},
+		"not a number": {"wide", defaultRowWidth},
+		"zero":         {"0", defaultRowWidth},
+		"negative":     {"-1", defaultRowWidth},
+		"too large":    {"65536", defaultRowWidth},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("COLUMNS", test.columns)
+			if got := outputWidth(pipe); got != test.want {
+				t.Errorf("outputWidth with COLUMNS=%q = %d, want %d", test.columns, got, test.want)
+			}
+		})
 	}
 }
 

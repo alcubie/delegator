@@ -19,26 +19,31 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// defaultRowWidth is the width of a row when its output is not a terminal, or
-// the terminal does not report its size. It is the width of the rule of dg
-// show, so redirected output keeps the shape it had before rows followed the
-// width of a terminal.
+// defaultRowWidth is the width of a row when its output does not report a
+// terminal size. It is the width of the rule of dg show, so redirected output
+// without COLUMNS keeps the shape it had before rows followed the width of a
+// terminal.
 const defaultRowWidth = ruleWidth
 
 // outputWidth returns the width available to rows on out. The notes belong at
-// the right edge of a terminal, whatever size the person gave it. A pipe, a
-// file, a test buffer and a terminal that cannot report its size keep the
-// stable default width instead.
+// the right edge of a terminal, whatever size the person gave it. watch reads
+// output through a pipe, so it gives the child the terminal width in COLUMNS;
+// other pipes, files and terminals that report neither keep the stable default
+// width instead.
 func outputWidth(out io.Writer) int {
 	f, ok := out.(*os.File)
 	if !ok {
 		return defaultRowWidth
 	}
 	_, columns, err := pty.Getsize(f)
-	if err != nil || columns <= 0 {
-		return defaultRowWidth
+	if err == nil && columns > 0 {
+		return columns
 	}
-	return columns
+	fromEnvironment, err := strconv.ParseUint(os.Getenv("COLUMNS"), 10, 16)
+	if err == nil && fromEnvironment > 0 {
+		return int(fromEnvironment)
+	}
+	return defaultRowWidth
 }
 
 // timeGap is the space between the title of a row and the note at the right.
