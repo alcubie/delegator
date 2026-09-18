@@ -158,8 +158,11 @@ func TestConfigSetRefusesAMissingAgentExecutableAndKeepsTheDefault(t *testing.T)
 	}
 
 	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "codex")
-	if err == nil || !strings.Contains(err.Error(), "codex-acp") {
-		t.Fatalf("error = %v, want it to name the missing codex-acp executable", err)
+	want := "agent \"codex\" uses executable \"codex-acp\", but it was not found on PATH.\n" +
+		"Install it or configure its executable with:\n" +
+		"    dg agents add codex --path /path/to/codex-acp"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 
 	out, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_agent")
@@ -168,6 +171,16 @@ func TestConfigSetRefusesAMissingAgentExecutableAndKeepsTheDefault(t *testing.T)
 	}
 	if out != "mine\n" {
 		t.Errorf("default_agent after failed change = %q, want mine", strings.TrimSpace(out))
+	}
+}
+
+func TestConfigSetUnknownDefaultAgentSuggestsHowToAddIt(t *testing.T) {
+	_, err := runIn(t, t.TempDir(), t.TempDir(), "config", "set", "default_agent", "missing")
+	want := "agent \"missing\" is not registered.\n" +
+		"Add it with:\n" +
+		"    dg agents add missing --command /path/to/executable"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
 	}
 }
 
@@ -181,7 +194,6 @@ func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
 		{[]string{"config", "set", "run", "3"}, `unknown setting "run"`},
 		{[]string{"config", "set", "runs", "many"}, "setting runs must be an integer"},
 		{[]string{"config", "set", "runs", "0"}, "CHECK constraint failed: runs >= 1"},
-		{[]string{"config", "set", "default_agent", "missing"}, "invalid agent: missing"},
 	} {
 		_, err := runIn(t, dataDir, t.TempDir(), tc.args...)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
