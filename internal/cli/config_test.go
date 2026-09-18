@@ -57,7 +57,7 @@ func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
 		"timeout_minutes = 45  # the time in minutes that a run can take before delegator stops it.\n\n" +
 		"done_hours = 6  # the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty.\n\n" +
 		"max_runs_per_project = 2  # the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit.\n\n" +
-		"default_agent = codex  # The registered agent used for new runs.\n"
+		"default_agent = codex  # the registered agent used for new runs.\n"
 	if listed != want {
 		t.Errorf("dg config list output = %q, want %q", listed, want)
 	}
@@ -68,7 +68,7 @@ func TestConfigListShowsAnEmptyDefaultAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(out, "default_agent =   # The registered agent used for new runs.\n") {
+	if !strings.HasSuffix(out, "default_agent =   # the registered agent used for new runs.\n") {
 		t.Errorf("dg config list with no default agent ends with %q, want an empty default_agent", out)
 	}
 }
