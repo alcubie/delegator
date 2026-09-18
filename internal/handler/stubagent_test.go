@@ -19,8 +19,9 @@ import (
 // the client told it into a file the test reads, because a pipe the client
 // owns is not a channel the test can wait on.
 const (
-	stubSessionID = "sess-stub"
-	stubHello     = "stub agent started"
+	stubSessionID       = "sess-stub"
+	stubHello           = "stub agent started"
+	stubEnvironmentName = "DELEGATOR_HANDLER_TEST_ENV"
 )
 
 // The two sets of permission options the stub agent offers, named by an
@@ -101,10 +102,12 @@ const (
 // the directory of the session, and the option the client selected for each
 // permission it asked for, in the order it asked.
 type stubRecord struct {
-	Fs        acp.FileSystemCapabilities `json:"fs"`
-	Terminal  bool                       `json:"terminal"`
-	Cwd       string                     `json:"cwd"`
-	Decisions []string                   `json:"decisions"`
+	Fs                    acp.FileSystemCapabilities `json:"fs"`
+	Terminal              bool                       `json:"terminal"`
+	Cwd                   string                     `json:"cwd"`
+	AdditionalDirectories []string                   `json:"additionalDirectories"`
+	Environment           string                     `json:"environment"`
+	Decisions             []string                   `json:"decisions"`
 }
 
 // stubLaunch gives the name and command that start the stub agent offering one
@@ -152,15 +155,16 @@ func TestStubAgent(t *testing.T) {
 }
 
 type stubAgent struct {
-	record    string
-	options   string
-	turn      string
-	loading   string
-	conn      *acp.AgentSideConnection
-	fs        acp.FileSystemCapabilities
-	term      bool
-	cwd       string
-	decisions []string
+	record      string
+	options     string
+	turn        string
+	loading     string
+	conn        *acp.AgentSideConnection
+	fs          acp.FileSystemCapabilities
+	term        bool
+	cwd         string
+	directories []string
+	decisions   []string
 }
 
 var (
@@ -177,7 +181,7 @@ func (a *stubAgent) Initialize(_ context.Context, p acp.InitializeRequest) (acp.
 }
 
 func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.NewSessionResponse, error) {
-	a.cwd = p.Cwd
+	a.cwd, a.directories = p.Cwd, p.AdditionalDirectories
 	if err := a.write(); err != nil {
 		return acp.NewSessionResponse{}, err
 	}
@@ -189,7 +193,7 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 // never issued. It records the directory first, so a test that expects the
 // load to be refused before it is sent sees that nothing was recorded.
 func (a *stubAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
-	a.cwd = p.Cwd
+	a.cwd, a.directories = p.Cwd, p.AdditionalDirectories
 	if err := a.write(); err != nil {
 		return acp.LoadSessionResponse{}, err
 	}
@@ -335,7 +339,14 @@ func (a *stubAgent) permissionOptions() []acp.PermissionOption {
 
 // write puts everything the stub agent has seen into its record file.
 func (a *stubAgent) write() error {
-	b, err := json.Marshal(stubRecord{Fs: a.fs, Terminal: a.term, Cwd: a.cwd, Decisions: a.decisions})
+	b, err := json.Marshal(stubRecord{
+		Fs:                    a.fs,
+		Terminal:              a.term,
+		Cwd:                   a.cwd,
+		AdditionalDirectories: a.directories,
+		Environment:           os.Getenv(stubEnvironmentName),
+		Decisions:             a.decisions,
+	})
 	if err != nil {
 		return err
 	}

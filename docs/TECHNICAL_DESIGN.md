@@ -390,6 +390,9 @@ $XDG_DATA_HOME/delegator/
     4.md                             the prose. The person writes this file.
   worktrees/
     4/
+  cache/                              disposable data that agents may reuse
+    projects/
+      2/                              private cache shared by project 2's tickets
   runs/
     4/
       2026-08-17T09-30-00.log        the raw output of the agent
@@ -415,6 +418,10 @@ is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg sh
 therefore not ambiguous, and the inbox can show all projects together. No name on the disk
 contains a project, so the name of each file below `tickets/`, `worktrees/` and `runs/` is
 the id alone.
+
+The cache below `cache/projects/<project-id>` is the exception to ticket-named data. It
+survives removal of a ticket worktree so later tickets of the project can reuse artifacts,
+but all of `cache/` is disposable and may be removed without losing delegator state.
 
 The id has no zero in front of it. A name with a zero in front sorts correctly with `ls`,
 but `ls -v` and `sort -V` read the number and give the same sequence from the id alone.
@@ -856,7 +863,7 @@ the date and the symptom. Do this before the correction goes in.
   of the person, outside each git repository, so a commit cannot send them away.
 - Delegator writes each file with the permission 0600, and each directory with the
   permission 0700. Only the person who made the data can read it. This applies to each file
-  in §7: `delegator.db`, the prose of each ticket, and each log.
+  in §7: `delegator.db`, the prose of each ticket, each project cache, and each log.
 
 ## 12. Repository, tools and installation
 

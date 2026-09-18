@@ -133,7 +133,8 @@ type Store struct {
 }
 
 // DataDir returns the directory the store was opened in. The database, the
-// worktrees, the runs, and the ticket prose all live below it.
+// worktrees, the project caches, the runs, and the ticket prose all live below
+// it.
 func (s *Store) DataDir() string {
 	return s.dir
 }

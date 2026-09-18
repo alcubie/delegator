@@ -28,7 +28,7 @@ import (
 // The supervisor owns the context. Its timeout cancels the turn as it stops
 // the process group, while a run with no limit keeps the context until its
 // ordinary end.
-func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, runID int64, worktree string, log io.Writer) (err error) {
+func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
 	// The caller claimed the ticket and this run holds it, so the row of the
 	// run is ended whatever way the function below is left. The code is the
 	// one of a run with no process of its own to give one until a turn ends
@@ -47,7 +47,7 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 	if err := s.SetRunAgent(runID, agentID); err != nil {
 		return err
 	}
-	session, err := handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, log)
+	session, err := handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, sessionOptions(cacheDir), log)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 		return err
 	}
 
-	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir())), log)
+	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir)), log)
 	usageErr := recordUsage(s, runID, session.Usage())
 	if err := errors.Join(streamErr, usageErr); err != nil {
 		return err
@@ -70,6 +70,15 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 	}
 	code = 0
 	return nil
+}
+
+// sessionOptions gives an agent access to only this project's cache and names
+// it without choosing a cache convention for any particular ecosystem.
+func sessionOptions(cacheDir string) handler.SessionOptions {
+	return handler.SessionOptions{
+		AdditionalDirectories: []string{cacheDir},
+		Environment:           []string{ProjectCacheEnvironment + "=" + cacheDir},
+	}
 }
 
 // recordUsage writes only a response that carried ACP usage. The session sets
