@@ -3177,6 +3177,46 @@ func TestFinishTicketOnARunningTicket(t *testing.T) {
 	}
 }
 
+// Work that failed under the supervisor can be completed by continuing its
+// session with dg chat. Finishing that work records the commit, appends the
+// ticket to READY, and records the direct failed-to-ready change in history.
+func TestFinishTicketOnAFailedTicket(t *testing.T) {
+	s, _ := threeReady(t)
+	fourth, err := s.AddTicket(mustProject(t, s), "fourth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(fourth, "delegator/4-fourth"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(fourth, Failed); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.FinishTicket(fourth, "abc1234"); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(fourth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Ready {
+		t.Errorf("status = %s, want ready", ticket.Status)
+	}
+	if ticket.Commit != "abc1234" {
+		t.Errorf("commit_id = %q, want abc1234", ticket.Commit)
+	}
+	wantReady := []string{"first", "second", "third", "fourth"}
+	if got := readyTitles(t, s); !slices.Equal(got, wantReady) {
+		t.Errorf("READY is %v, want %v", got, wantReady)
+	}
+	wantSteps := []string{"new to queued", "queued to running", "running to failed", "failed to ready"}
+	if got := steps(t, s, fourth); !slices.Equal(got, wantSteps) {
+		t.Errorf("the history is\n%v\nwant\n%v", got, wantSteps)
+	}
+}
+
 // A commit that was amended or rebased after the finish has a new hash, and a
 // second finish writes it. The ticket is ready already, so nothing else about
 // it moves: it keeps its place in READY, which decides the turn dg accept
@@ -3215,10 +3255,10 @@ func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 	}
 }
 
-// A ticket that is closed is past the point of taking a commit, and a finish on
-// one writes nothing and names the change it refused.
-func TestFinishTicketOnAClosedTicket(t *testing.T) {
-	for _, status := range []TicketStatus{Done, Cancelled} {
+// A queued or closed ticket is outside the states that can report completed
+// work. A finish writes nothing and names the change it refused.
+func TestFinishTicketFromAnInvalidState(t *testing.T) {
+	for _, status := range []TicketStatus{Queued, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
 			s, ids := threeReady(t)
 			if err := s.ChangeStatus(ids[1], status); err != nil {

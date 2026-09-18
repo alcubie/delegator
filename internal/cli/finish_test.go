@@ -71,6 +71,75 @@ func TestFinishReadyTicket(t *testing.T) {
 	}
 }
 
+func TestFinishFailedTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	if err := s.ChangeStatus(ticketID, store.Failed); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Ready {
+		t.Errorf("status = %s, want ready", ticket.Status)
+	}
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
+	}
+}
+
+func TestFinishRefusesQueuedDoneAndCancelledTicketsBeforeConsultingGit(t *testing.T) {
+	for _, status := range []store.TicketStatus{store.Queued, store.Done, store.Cancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			var s *store.Store
+			var ticketID int64
+			var repo string
+			if status == store.Queued {
+				s, ticketID, repo = queuedTicket(t, dataDir)
+			} else {
+				var commit string
+				s, ticketID, repo, commit = runningTicket(t, dataDir)
+				if status == store.Done {
+					if err := s.FinishTicket(ticketID, commit); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := s.ChangeStatus(ticketID, status); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := s.Ticket(ticketID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			unknown := strings.Repeat("0", 40)
+			_, err = runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), unknown)
+			if !errors.Is(err, store.ErrInvalidTicketStateChange) {
+				t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
+			}
+
+			after, err := s.Ticket(ticketID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Status != status {
+				t.Errorf("status = %s, want %s", after.Status, status)
+			}
+			if after.Commit != before.Commit {
+				t.Errorf("commit_id = %q, want unchanged %q", after.Commit, before.Commit)
+			}
+		})
+	}
+}
+
 func TestFinishRefusesACommitGitDoesNotKnow(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)

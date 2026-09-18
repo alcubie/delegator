@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -60,18 +59,25 @@ func TestEachCommandDoesTheReconcile(t *testing.T) {
 	}
 }
 
-// The reconcile is before the work of the command and not after it, so the
-// command works on the state the reconcile wrote. dg finish on a ticket whose
-// supervisor is gone is refused, because by the time it looks the ticket has
-// failed.
-func TestTheReconcileIsBeforeTheWorkOfTheCommand(t *testing.T) {
+// The reconcile is before the work of the command and not after it, so dg
+// finish can complete a ticket that the reconcile has just marked failed.
+func TestFinishCanCompleteTheTicketTheReconcileJustFailed(t *testing.T) {
 	dataDir := t.TempDir()
 	repo, stale, _ := staleTicket(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	ticket, err := s.Ticket(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := testfix.GitOut(t, repo, "rev-parse", ticket.Branch)
 
-	_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(stale), "abc123")
+	_, err = runIn(t, dataDir, repo, "finish", fmt.Sprint(stale), commit)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
-		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
+	if got := testfix.ReadTicket(t, dataDir, stale); got.Status != store.Ready {
+		t.Errorf("ticket %d is %q, want %q", stale, got.Status, store.Ready)
 	}
 }
 

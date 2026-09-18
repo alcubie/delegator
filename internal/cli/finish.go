@@ -27,7 +27,7 @@ func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				}
 				// Report the state before consulting Git, without passing an
 				// unvalidated commit to a ticket that cannot be finished.
-				if ticket.Status != store.Running && ticket.Status != store.Ready {
+				if ticket.Status != store.Running && ticket.Status != store.Failed && ticket.Status != store.Ready {
 					return fmt.Errorf("%w: %s to %s",
 						store.ErrInvalidTicketStateChange, ticket.Status, store.Ready)
 				}

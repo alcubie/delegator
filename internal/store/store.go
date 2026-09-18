@@ -148,7 +148,8 @@ type TicketStatus string
 //	queued                 -> running    no command. A supervisor takes the first ticket.
 //	running                -> ready      dg finish, from the agent
 //	running                -> failed     the timeout, an error, or the end before dg finish
-//	failed                 -> queued     dg restart, with the same session and worktree
+//	failed                 -> running    dg restart, with the same session and worktree
+//	failed                 -> ready      dg finish, after the agent is continued with dg chat
 //	ready                  -> done       dg accept, which removes the worktree
 //	ready                  -> queued     dg revise, at the end of the queue again
 //	any non-terminal state -> cancelled  dg cancel
@@ -172,7 +173,7 @@ var nextStates = map[TicketStatus][]TicketStatus{
 	Queued:    {Running, Cancelled},
 	Running:   {Ready, Failed, Cancelled},
 	Ready:     {Done, Queued, Cancelled},
-	Failed:    {Running, Cancelled},
+	Failed:    {Running, Ready, Cancelled},
 	Done:      nil,
 	Cancelled: nil,
 }
@@ -1538,9 +1539,10 @@ func (s *Store) Cancel(id, runID int64) error {
 	return tx.Commit()
 }
 
-// FinishTicket records the commit of the work on a ticket. A Running ticket
-// becomes Ready, and the change into ready holds the time that the run stopped,
-// which DONE is ordered by and dg show writes.
+// FinishTicket records the commit of the work on a ticket. A Running or Failed
+// ticket becomes Ready, and the change into ready holds the time that the work
+// finished, which DONE is ordered by and dg show writes. A Failed ticket can be
+// finished after its session is continued interactively with dg chat.
 //
 // A ticket that is already Ready keeps its status, and the commit alone is
 // written, so a commit that was amended or rebased after the finish can still
@@ -1548,8 +1550,8 @@ func (s *Store) Cancel(id, runID int64) error {
 // appends the ticket to READY, which decides the turn dg accept takes, and
 // writes a row of history, which the age dg show prints comes from.
 //
-// From every other status it returns ErrInvalidTicketStateChange, so a ticket
-// that is closed takes no commit.
+// From every other status it returns ErrInvalidTicketStateChange, so a queued
+// or closed ticket takes no commit.
 func (s *Store) FinishTicket(id int64, commit string) error {
 	tx, err := s.db.Begin()
 	if err != nil {

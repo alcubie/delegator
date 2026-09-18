@@ -129,6 +129,71 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
+// A failed supervisor leaves both the session and its worktree available. The
+// agent can finish the work in dg chat and report its commit without dg chat
+// creating a supervisor or another run.
+func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	setChatAgent(t, s, ticketID, "claude")
+	const session = "session-of-the-failed-run"
+	if err := s.SetSession(ticketID, session); err != nil {
+		t.Fatal(err)
+	}
+	held, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(ticketID, store.Failed); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EndRun(held.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	worktree := run.WorktreePath(dataDir, ticketID)
+	if err := os.MkdirAll(worktree, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	var record started
+	saved := chat
+	chat = func(argv []string, dir string) *exec.Cmd {
+		record = started{argv: argv, dir: dir}
+		cmd := exec.Command("dg", "finish", fmt.Sprint(ticketID), commit, "--data-dir", dataDir)
+		cmd.Dir = dir
+		return cmd
+	}
+	t.Cleanup(func() { chat = saved })
+
+	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := resumeArgv(session); !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+	if record.dir != worktree {
+		t.Errorf("directory = %q, want %q", record.dir, worktree)
+	}
+	afterRun, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRun.ID != held.ID {
+		t.Errorf("latest run = %d, want the existing run %d", afterRun.ID, held.ID)
+	}
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != store.Ready {
+		t.Errorf("status = %s, want ready", ticket.Status)
+	}
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %q, want %q", ticket.Commit, commit)
+	}
+}
+
 // Chat uses the agent that opened the session even after the default changes.
 func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
 	dataDir := t.TempDir()
