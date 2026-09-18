@@ -81,6 +81,33 @@ func TestRestartStartsTheRun(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
+// A restart is detached just like a new run, but it names the failed ticket
+// directly. The new dg process must receive the selected instance as well as
+// that id instead of looking in the platform default database.
+func TestRestartSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
+	defaultDir := testfix.XDGDataDir(t)
+	dataDir := filepath.Join(t.TempDir(), "selected")
+	s, ticketID, repo := failedTicket(t, dataDir)
+	useFakeAgent(t, dataDir, "stop end_turn")
+	before, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved := restartLaunch
+	restartLaunch = func(id int64) *exec.Cmd {
+		return exec.Command("dg", "run", "--restart", fmt.Sprint(id))
+	}
+	t.Cleanup(func() { restartLaunch = saved })
+
+	restartIn(t, dataDir, repo, ticketID)
+	waitForCompletedRun(t, s, ticketID, before.ID)
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Failed {
+		t.Errorf("status = %q, want %q", got, store.Failed)
+	}
+	assertDefaultDataDirUnused(t, defaultDir)
+}
+
 // The run that follows a restart works in the worktree of the run that
 // failed, so the agent keeps the files that run left there and no commit
 // holds.

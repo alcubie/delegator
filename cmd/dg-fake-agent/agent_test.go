@@ -190,6 +190,19 @@ func TestTheWriteActionGoesThroughTheClient(t *testing.T) {
 	}
 }
 
+func TestThePromptActionRecordsThePrompt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt")
+	agent, _ := fakeLaunch(t, "prompt "+path, "stop end_turn")
+	turn(t, startFake(t, t.TempDir(), agent), "do the work")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the agent recorded no prompt: %v", err)
+	}
+	if string(got) != "do the work" {
+		t.Errorf("the prompt record holds %q, want %q", got, "do the work")
+	}
+}
+
 func TestThePermissionActionRecordsTheAnswer(t *testing.T) {
 	agent, record, _, _ := everyAction(t)
 	turn(t, startFake(t, t.TempDir(), agent), "do the work")

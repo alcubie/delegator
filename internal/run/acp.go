@@ -60,7 +60,7 @@ func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, ru
 		return err
 	}
 
-	last, streamErr := stream(session.Prompt(ctx, prompt(id)), log)
+	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir())), log)
 	usageErr := recordUsage(s, runID, session.Usage())
 	if err := errors.Join(streamErr, usageErr); err != nil {
 		return err

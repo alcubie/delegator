@@ -64,14 +64,18 @@ func (a *fakeAgent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewS
 // the id was another one and this one holds no record of it, so an id it
 // refused would be every id a test could load.
 func (a *fakeAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
-	_, _, err := a.take(ctx, p.SessionId, a.script.history)
+	_, _, err := a.take(ctx, p.SessionId, a.script.history, "")
 	return acp.LoadSessionResponse{}, err
 }
 
 // Prompt runs the turn of the script. Every prompt runs it again, so a test
 // that takes two turns writes the turn once.
 func (a *fakeAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
-	stop, usage, err := a.take(ctx, p.SessionId, a.script.turn)
+	text := ""
+	if len(p.Prompt) > 0 && p.Prompt[0].Text != nil {
+		text = p.Prompt[0].Text.Text
+	}
+	stop, usage, err := a.take(ctx, p.SessionId, a.script.turn, text)
 	if err != nil {
 		return acp.PromptResponse{}, err
 	}
@@ -82,7 +86,7 @@ func (a *fakeAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.Prompt
 // usage the turn reports. A usage action is the JSON object ACP puts in
 // PromptResponse. A run of actions that names no reason ends the turn, which
 // is what an agent that has run out of things to do reports.
-func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string) (acp.StopReason, *acp.Usage, error) {
+func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string, prompt string) (acp.StopReason, *acp.Usage, error) {
 	var usage *acp.Usage
 	for _, action := range actions {
 		verb, rest, _ := strings.Cut(action, " ")
@@ -102,6 +106,8 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 		case "write":
 			path, content, _ := strings.Cut(rest, " ")
 			_, err = a.conn.WriteTextFile(ctx, acp.WriteTextFileRequest{SessionId: id, Path: path, Content: content})
+		case "prompt":
+			err = os.WriteFile(rest, []byte(prompt), recordPerm)
 		case "wait":
 			cancelled, bad := wait(ctx, rest)
 			if cancelled {
