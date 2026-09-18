@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/creack/pty"
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
@@ -174,7 +177,7 @@ func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 		"RUNNING",
 		"  none",
 		"QUEUED",
-		"  9 web-api  Move to a new version of Go           depends on #4 #7",
+		"  9 web-api  Move to a new version of Go                      #4 #7",
 		" 14 web-api  Add a limit on the rate",
 	})
 }
@@ -204,8 +207,94 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 		"RUNNING",
 		"  9 web-api  Move to a new version of Go                   00:14:07",
 		"QUEUED",
-		" 14 web-api  Add a limit on the rate                  depends on #9",
+		" 14 web-api  Add a limit on the rate                             #9",
 	})
+}
+
+// The notes at the right of rows belong to the edge of the terminal rather
+// than to a fixed-width table. A wide pseudo-terminal stands in for a resized
+// terminal, and both kinds of noted row take every column it offers.
+func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
+	// A real terminal wins over a COLUMNS inherited from an outer terminal.
+	t.Setenv("COLUMNS", "80")
+	output, terminal, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pseudo-terminal to test with: %v", err)
+	}
+	defer output.Close()
+	defer terminal.Close()
+
+	const columns = 100
+	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 24, Cols: columns}); err != nil {
+		t.Skipf("cannot size the pseudo-terminal: %v", err)
+	}
+	box := inbox.Inbox{
+		Running: []store.OpenTicket{{
+			ID: 9, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Running, Started: testNow.Add(-time.Minute),
+		}},
+		Queued: []store.OpenTicket{{
+			ID: 14, Project: "/projects/web-api", Title: "Add a limit on the rate",
+			Status: store.Queued, DependsOn: []int64{4, 7},
+		}},
+	}
+	writeInbox(terminal, box, colourNever, testNow, testDone)
+
+	reader := bufio.NewReader(output)
+	found := make(map[string]bool)
+	for range 9 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		line = strings.TrimRight(line, "\r\n")
+		for _, note := range []string{"00:01:00", "#4 #7"} {
+			if !strings.HasSuffix(line, note) {
+				continue
+			}
+			found[note] = true
+			if got := utf8.RuneCountInString(line); got != columns {
+				t.Errorf("the row is %d columns wide, want terminal width %d: %q", got, columns, line)
+			}
+		}
+	}
+	for _, note := range []string{"00:01:00", "#4 #7"} {
+		if !found[note] {
+			t.Errorf("the terminal output holds no row ending in %q", note)
+		}
+	}
+}
+
+// watch gives dg a pipe for stdout, so the ioctl cannot see the terminal, but
+// it exports the width as COLUMNS. Values outside the positive 16-bit range of
+// a terminal size are not widths and leave redirected output at its stable
+// default instead.
+func TestOutputWidthReadsColumnsForWatch(t *testing.T) {
+	output, pipe, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	defer pipe.Close()
+
+	for name, test := range map[string]struct {
+		columns string
+		want    int
+	}{
+		"watch width":  {"100", 100},
+		"unset":        {"", defaultRowWidth},
+		"not a number": {"wide", defaultRowWidth},
+		"zero":         {"0", defaultRowWidth},
+		"negative":     {"-1", defaultRowWidth},
+		"too large":    {"65536", defaultRowWidth},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("COLUMNS", test.columns)
+			if got := outputWidth(pipe); got != test.want {
+				t.Errorf("outputWidth with COLUMNS=%q = %d, want %d", test.columns, got, test.want)
+			}
+		})
+	}
 }
 
 // A ticket of READY can hold a link to a ticket that is not accepted, and its
@@ -284,8 +373,8 @@ func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
 			}}}
 
 			row := rows(t, render(t, box), "RUNNING")[0]
-			if got := utf8.RuneCountInString(row); got != rowWidth {
-				t.Errorf("the row is %d characters wide, want %d: %q", got, rowWidth, row)
+			if got := utf8.RuneCountInString(row); got != defaultRowWidth {
+				t.Errorf("the row is %d characters wide, want %d: %q", got, defaultRowWidth, row)
 			}
 		}
 	}

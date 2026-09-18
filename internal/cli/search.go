@@ -72,7 +72,8 @@ func writeSearch(out io.Writer, found []store.OpenTicket) {
 		return
 	}
 	idWidth, projectWidth := ticketWidths(found)
+	rowWidth := outputWidth(out)
 	for _, ticket := range found {
-		fmt.Fprintln(out, ticketRow(ticket, idWidth, projectWidth, string(ticket.Status)))
+		fmt.Fprintln(out, ticketRow(ticket, idWidth, projectWidth, rowWidth, string(ticket.Status)))
 	}
 }

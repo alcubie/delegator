@@ -79,7 +79,8 @@ func listTickets(dataDir, workDir string, cfg *config.Config, projectDir string)
 // line of prose in it is a line that whatever reads the list has to know.
 func writeList(out io.Writer, tickets []store.OpenTicket) {
 	idWidth, projectWidth := ticketWidths(tickets)
+	rowWidth := outputWidth(out)
 	for _, t := range tickets {
-		fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, string(t.Status)))
+		fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowWidth, string(t.Status)))
 	}
 }
