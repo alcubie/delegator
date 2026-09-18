@@ -131,6 +131,7 @@ func Root(workDir string) *cobra.Command {
 	root.AddCommand(pauseCommand(&selectedDir, &cfg))
 	root.AddCommand(startCommand(&selectedDir, &cfg))
 	root.AddCommand(configCommand(&selectedDir, &cfg))
+	root.AddCommand(agentsCommand(&selectedDir, &cfg))
 	root.AddCommand(versionCommand())
 	root.AddCommand(rpcCommand(&selectedDir, workDir))
 	return root

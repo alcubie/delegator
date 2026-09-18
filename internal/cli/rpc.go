@@ -20,8 +20,8 @@ const (
 
 // rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat needs the
 // terminal a person is at, rpc already owns stdin, and the RPC method scheme
-// cannot address the nested get and set commands by an unambiguous name.
-var rpcRefusedMethods = map[string]bool{"chat": true, "rpc": true, "get": true, "set": true}
+// cannot address nested commands by an unambiguous unqualified name.
+var rpcRefusedMethods = map[string]bool{"add": true, "chat": true, "rpc": true, "get": true, "set": true}
 
 type rpcProjectRequiredError struct{}
 
