@@ -7,26 +7,47 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/creack/pty"
+
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// rowWidth is the width of a row that carries a note. It is the width of the
-// rule of dg show, so the inbox and one ticket in full make the same shape on
-// the screen.
-const rowWidth = ruleWidth
+// defaultRowWidth is the width of a row when its output is not a terminal, or
+// the terminal does not report its size. It is the width of the rule of dg
+// show, so redirected output keeps the shape it had before rows followed the
+// width of a terminal.
+const defaultRowWidth = ruleWidth
+
+// outputWidth returns the width available to rows on out. The notes belong at
+// the right edge of a terminal, whatever size the person gave it. A pipe, a
+// file, a test buffer and a terminal that cannot report its size keep the
+// stable default width instead.
+func outputWidth(out io.Writer) int {
+	f, ok := out.(*os.File)
+	if !ok {
+		return defaultRowWidth
+	}
+	_, columns, err := pty.Getsize(f)
+	if err != nil || columns <= 0 {
+		return defaultRowWidth
+	}
+	return columns
+}
 
 // timeGap is the space between the title of a row and the note at the right.
 const timeGap = 2
 
 // minTitleWidth is the least of a title that a row shows. A project with a
 // name long enough to push the title below it makes the row wider than
-// rowWidth instead, because a title cut to three characters names no ticket
-// and the person can still read the note.
+// the requested width instead, because a title cut to three characters names
+// no ticket and the person can still read the note.
 const minTitleWidth = 8
 
 // ellipsis ends a title that a row cut.
@@ -67,20 +88,20 @@ func ticketWidths(tickets []store.OpenTicket) (id, project int) {
 	return id, project
 }
 
-// ticketRow returns the row of one ticket: the id, the name of the project and
+// ticketRow returns a row of width columns: the id, the name of the project and
 // the title, with note at the right of it. A row whose note is empty ends at
 // its title.
-func ticketRow(t store.OpenTicket, idWidth, projectWidth int, note string) string {
+func ticketRow(t store.OpenTicket, idWidth, projectWidth, width int, note string) string {
 	left := fmt.Sprintf(" %*d %-*s  ",
 		idWidth, t.ID, projectWidth, filepath.Base(t.Project))
 	if note == "" {
 		return left + t.Title
 	}
 
-	// The note ends the row at rowWidth, so the notes of two rows are in one
+	// The note ends the row at width, so the notes of two rows are in one
 	// column. The title takes what is left, and it is the field that gives way
 	// because it is the only one with no width of its own.
-	width := max(minTitleWidth,
-		rowWidth-utf8.RuneCountInString(left)-timeGap-utf8.RuneCountInString(note))
-	return fmt.Sprintf("%s%s%*s%s", left, fit(t.Title, width), timeGap, "", note)
+	titleWidth := max(minTitleWidth,
+		width-utf8.RuneCountInString(left)-timeGap-utf8.RuneCountInString(note))
+	return fmt.Sprintf("%s%s%*s%s", left, fit(t.Title, titleWidth), timeGap, "", note)
 }

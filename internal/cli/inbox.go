@@ -130,13 +130,15 @@ func rowNote(t store.OpenTicket, now time.Time) string {
 	return ""
 }
 
-// dependsOnText names the tickets that one ticket depends on. A ticket that
-// depends on none gives the empty string, and its row ends at the title.
+// dependsOnText names the tickets that one ticket depends on. The QUEUED
+// heading already says why the ids hold it back, so the note needs only the
+// ticket numbers. A ticket that depends on none gives the empty string, and
+// its row ends at the title.
 func dependsOnText(ids []int64) string {
 	if len(ids) == 0 {
 		return ""
 	}
-	return "depends on " + ticketNames(ids)
+	return ticketNames(ids)
 }
 
 // writeInbox writes the inbox as of now. The time comes in rather than from
@@ -152,6 +154,7 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 	}
 
 	idWidth, projectWidth := widths(gs)
+	rowWidth := outputWidth(out)
 	for _, g := range gs {
 		fmt.Fprintln(out, g.heading)
 		if len(g.tickets) == 0 {
@@ -159,7 +162,7 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 			continue
 		}
 		for _, t := range g.tickets {
-			fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowNote(t, now)))
+			fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowWidth, rowNote(t, now)))
 		}
 	}
 }
