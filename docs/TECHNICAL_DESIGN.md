@@ -561,6 +561,7 @@ stateDiagram-v2
     running --> ready: dg finish
     running --> failed: timeout, error, or no dg finish
     failed --> running: dg restart
+    failed --> ready: dg finish after dg chat
     ready --> done: dg accept
     ready --> queued: dg revise
     done --> [*]
@@ -575,6 +576,7 @@ Each change of state is in the table below.
 | `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
 | `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
+| `failed` | `ready` | `dg finish`, after the agent completes the work interactively through `dg chat`. |
 | `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD. Delegator removes the worktree and keeps the branch. |
 | `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its commit goes away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
