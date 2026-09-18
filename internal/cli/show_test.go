@@ -41,6 +41,14 @@ func queuedIn(t *testing.T, s *store.Store, repo, title string) int64 {
 func finishIn(t *testing.T, s *store.Store, id int64) string {
 	t.Helper()
 	branch := fmt.Sprintf("delegator/%d-a-title", id)
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := project.Command(ticket.Project.Path, "rev-parse", "--verify", "HEAD").Run(); err != nil {
+		testfix.CommitIn(t, ticket.Project.Path, "first")
+	}
+	testfix.GitIn(t, ticket.Project.Path, "branch", branch)
 	if _, err := s.Claim(id, branch); err != nil {
 		t.Fatal(err)
 	}

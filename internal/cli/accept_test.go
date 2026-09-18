@@ -33,6 +33,29 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	return s, ticketID, repo
 }
 
+// commitReadyWork advances the branch of a ready ticket and records that
+// commit as its report. The primary checkout stays on trunk, as it does while
+// a person reviews the worktree of a real run.
+func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int64) store.Ticket {
+	t.Helper()
+	worktree := run.WorktreePath(dataDir, ticketID)
+	name := "ticket-work.txt"
+	if err := os.WriteFile(filepath.Join(worktree, name), []byte("the ticket change\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testfix.GitIn(t, worktree, "add", name)
+	testfix.CommitIn(t, worktree, "ticket work")
+	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
+	if err := s.FinishTicket(ticketID, commit); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ticket
+}
+
 func TestAcceptClosesAReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
@@ -51,6 +74,63 @@ func TestAcceptClosesAReadyTicket(t *testing.T) {
 	}
 	if ticket.Status != store.Done {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Done)
+	}
+}
+
+func TestAcceptClosesATicketAfterItsBranchIsMerged(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+	ticket := commitReadyWork(t, s, dataDir, ticketID)
+	testfix.GitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", ticket.Branch)
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+		t.Errorf("status = %q, want %q", got, store.Done)
+	}
+}
+
+// A ready report is not enough for closure: the person must first put the
+// branch into the project's HEAD. A refusal leaves both durable state and the
+// worktree available for the next review.
+func TestAcceptRefusesAnUnmergedBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+	before := commitReadyWork(t, s, dataDir, ticketID)
+
+	_, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID))
+	if !errors.Is(err, project.ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("err = %q, want the force override", err)
+	}
+	after := testfix.ReadTicket(t, dataDir, ticketID)
+	if after.Status != store.Ready {
+		t.Errorf("status = %q, want %q", after.Status, store.Ready)
+	}
+	if after.Position != before.Position {
+		t.Errorf("position = %d, want unchanged position %d", after.Position, before.Position)
+	}
+	if _, err := os.Stat(run.WorktreePath(dataDir, ticketID)); err != nil {
+		t.Errorf("the worktree of the refused ticket is gone: %v", err)
+	}
+}
+
+func TestAcceptClosesATicketAfterAnEquivalentSquash(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+	ticket := commitReadyWork(t, s, dataDir, ticketID)
+	testfix.GitIn(t, repo, "merge", "-q", "--squash", "--ff", ticket.Branch)
+	testfix.CommitIn(t, repo, "squash ticket")
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+		t.Errorf("status = %q, want %q", got, store.Done)
 	}
 }
 
@@ -139,6 +219,7 @@ func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
 func TestAcceptWithForceRemovesAWorktreeGitRefuses(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
+	commitReadyWork(t, s, dataDir, ticketID)
 
 	worktree := run.WorktreePath(dataDir, ticketID)
 	stray := filepath.Join(worktree, "not-committed.txt")
@@ -162,6 +243,31 @@ func TestAcceptWithForceRemovesAWorktreeGitRefuses(t *testing.T) {
 	}
 	if out := testfix.GitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
 		t.Errorf("git still lists the worktree:\n%s", out)
+	}
+}
+
+// RPC is the boundary used by programs and the GUI. It receives the stable
+// code of the named condition, not the catch-all code for an unknown error.
+func TestRPCAcceptReportsTheCodeOfAnUnmergedBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+	commitReadyWork(t, s, dataDir, ticketID)
+
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"accept","params":{"args":[%d]},"id":1}`, ticketID)
+	out, err := rpcIn(t, dataDir, repo, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	errorObject, ok := response["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("response = %#v, want an error", response)
+	}
+	if got := errorObject["code"]; got != float64(codeBranchNotMerged) {
+		t.Errorf("error code = %#v, want %d", got, codeBranchNotMerged)
+	}
+	if got := fmt.Sprint(errorObject["message"]); !strings.Contains(got, "--force") {
+		t.Errorf("error message = %q, want the force override", got)
 	}
 }
 
@@ -331,7 +437,8 @@ func TestAcceptWithNoIDOutsideAProject(t *testing.T) {
 }
 
 // An id is still an id, and it names a ticket of any project: the id comes off
-// the inbox, which is one list for every project.
+// the inbox, which is one list for every project. Its branch exists only in the
+// other checkout, so the merge check must resolve HEAD there too.
 func TestAcceptWithAnIDClosesATicketOfAnotherProject(t *testing.T) {
 	dataDir, mine, _, mineID, otherID := twoProjects(t)
 

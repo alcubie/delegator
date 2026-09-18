@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -15,9 +16,10 @@ import (
 // READY, which is the ticket the person has just reviewed, and writes the id of
 // the ticket it closed. A person who typed an id already knows which one went.
 //
-// The worktree is removed inside the transaction that closes the ticket, so a
-// worktree git refuses leaves the ticket ready and a person sees it again.
-// --force closes the ticket anyway and takes the changes with the worktree.
+// The merge check and the removal of the worktree happen inside the transaction
+// that closes the ticket, so either refusal leaves the ticket ready and a
+// person sees it again. --force skips the check and takes the worktree even
+// when it holds uncommitted changes.
 func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var force bool
@@ -37,6 +39,11 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 					return err
 				}
 				err = s.ChangeStatusWith(id, store.Done, func() error {
+					if !force {
+						if err := project.RequireBranchMerged(ticket.Project.Path, ticket.Branch); err != nil {
+							return err
+						}
+					}
 					return run.RemoveWorktree(*dataDir, ticket, force)
 				})
 				if err != nil {
@@ -56,6 +63,6 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"the directory of the project whose first ready ticket to close.  Defaults to current working directory.")
 	cmd.Flags().BoolVar(&force, "force", false,
-		"remove the worktree even when it holds changes that are not committed.  The changes are lost.")
+		"accept work that is not merged and remove a dirty worktree.  Uncommitted changes are lost.")
 	return cmd
 }
