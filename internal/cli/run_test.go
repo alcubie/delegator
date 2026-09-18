@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/run"
@@ -42,6 +43,14 @@ func useLaunch(t *testing.T, l func() *exec.Cmd) {
 		launch = saved
 		restartLaunch = savedRestart
 	})
+}
+
+func TestSupervisorLaunchCarriesTheSelectedDataDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "selected")
+	cmd := launchIn(dir, dgRun())
+	if got, want := cmd.Args[len(cmd.Args)-2:], []string{"--data-dir", dir}; !slices.Equal(got, want) {
+		t.Errorf("supervisor arguments end in %v, want %v", got, want)
+	}
 }
 
 // useFakeAgent makes the ACP fake the default registry agent for one test.
@@ -121,7 +130,7 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 // A person does not start a run; delegator does. The command stays out of
 // dg help so the help lists what a person types, and typing it still works.
 func TestRunIsHiddenFromTheHelp(t *testing.T) {
-	for _, c := range Root(t.TempDir(), t.TempDir()).Commands() {
+	for _, c := range Root(t.TempDir()).Commands() {
 		if c.Name() == "run" {
 			if !c.Hidden {
 				t.Error("dg run is in the help")

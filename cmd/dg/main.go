@@ -25,13 +25,9 @@ func main() {
 }
 
 func run() error {
-	dataDir, err := cli.DataDir()
-	if err != nil {
-		return err
-	}
 	workDir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	return cli.Root(dataDir, workDir).Execute()
+	return cli.Root(workDir).Execute()
 }

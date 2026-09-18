@@ -27,7 +27,7 @@ type mappedTicket struct {
 
 // mapCommand writes the component that contains one ticket. With no id it
 // starts at the head of READY, as dg show does.
-func mapCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var mermaid bool
 	cmd := &cobra.Command{
@@ -35,7 +35,7 @@ func mapCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		Short: mapShort,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err

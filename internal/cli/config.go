@@ -18,13 +18,13 @@ type setting struct {
 
 // configCommand returns the commands that inspect and change the settings in
 // the instance database. Reads use the snapshot loaded by the root hook.
-func configCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or change instance settings.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return withStore(dataDir, cfg, func(*store.Store) error {
+			return withStore(*dataDir, cfg, func(*store.Store) error {
 				settings := make([]setting, 0, len(config.Definitions))
 				for _, definition := range config.Definitions {
 					settings = append(settings, setting{
@@ -47,7 +47,7 @@ func configCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if !knownSetting(args[0]) {
 				return fmt.Errorf("unknown setting %q", args[0])
 			}
-			return withStore(dataDir, cfg, func(*store.Store) error {
+			return withStore(*dataDir, cfg, func(*store.Store) error {
 				return writeValue(cmd.OutOrStdout(), settingValue(*cfg, args[0]), false, func(out io.Writer) {
 					fmt.Fprintln(out, settingValue(*cfg, args[0]))
 				})
@@ -59,7 +59,7 @@ func configCommand(dataDir string, cfg *config.Config) *cobra.Command {
 		Short: "Change one instance setting.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				return s.SetSetting(args[0], args[1])
 			})
 		},

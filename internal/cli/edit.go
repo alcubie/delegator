@@ -33,7 +33,7 @@ var errEditorAndText = errors.New("dg edit --editor takes the title and the pros
 var errEditNoForm = errors.New("dg edit takes --title, --body, --body-file or --editor, and got none")
 
 // editCommand returns the command dg edit.
-func editCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var title, body, bodyFile string
 	var useEditor bool
 	cmd := &cobra.Command{
@@ -64,7 +64,7 @@ func editCommand(dataDir string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				if useEditor {
 					return editFromEditor(s, id)
 				}

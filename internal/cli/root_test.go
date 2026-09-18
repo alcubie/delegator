@@ -23,7 +23,7 @@ func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error
 func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	root := Root(dataDir, workDir)
+	root := Root(workDir)
 	root.SetOut(&out)
 	root.SetErr(&errOut)
 	root.SetIn(strings.NewReader(stdin))
@@ -31,6 +31,9 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 	// test, so the arguments are always a slice that is there.
 	if args == nil {
 		args = []string{}
+	}
+	if dataDir != "" {
+		args = append([]string{"--data-dir", dataDir}, args...)
 	}
 	root.SetArgs(args)
 
@@ -64,7 +67,7 @@ func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 // arrives in that help with nothing beside it. The line is ours to write, so
 // this reads the tree and not the help that cobra makes from it.
 func TestEachCommandSaysWhatItDoes(t *testing.T) {
-	for _, c := range Root(t.TempDir(), t.TempDir()).Commands() {
+	for _, c := range Root(t.TempDir()).Commands() {
 		if c.Short == "" {
 			t.Errorf("the command %q has no Short, so the help says nothing about it", c.Name())
 		}
@@ -80,6 +83,91 @@ func TestDataDirTakesXDGDataHome(t *testing.T) {
 	}
 	if want := filepath.Join("/somewhere/data", "delegator"); got != want {
 		t.Errorf("DataDir = %q, want %q", got, want)
+	}
+}
+
+func TestSelectedDataDirMustBeAbsoluteAndIsCleaned(t *testing.T) {
+	if _, err := selectedDataDir("relative"); err == nil || !strings.Contains(err.Error(), "--data-dir") {
+		t.Errorf("selectedDataDir(relative) error = %v, want an error naming --data-dir", err)
+	}
+
+	dir := filepath.Join(t.TempDir(), "first", "..", "selected")
+	got, err := selectedDataDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Clean(dir); got != want {
+		t.Errorf("selectedDataDir(%q) = %q, want %q", dir, got, want)
+	}
+}
+
+func TestDataDirFlagBeforeAndAfterCommandsSelectsIsolatedInstances(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	defaultDir := filepath.Join(xdg, "delegator")
+	first := filepath.Join(t.TempDir(), "first", "..", "selected-first")
+	second := filepath.Join(t.TempDir(), "selected-second")
+	repo := testfix.Repo(t, repoBranch)
+
+	if _, err := runIn(t, "", repo,
+		"--data-dir", first, "ticket", "In the first instance", "--no-body"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, "", repo,
+		"ticket", "In the second instance", "--no-body", "--data-dir", second); err != nil {
+		t.Fatal(err)
+	}
+
+	first = filepath.Clean(first)
+	for _, instance := range []struct {
+		dir   string
+		title string
+	}{
+		{first, "In the first instance"},
+		{second, "In the second instance"},
+	} {
+		for _, name := range []string{"delegator.db", "tickets", "runs", "worktrees"} {
+			if _, err := os.Stat(filepath.Join(instance.dir, name)); err != nil {
+				t.Errorf("selected instance %q has no %s: %v", instance.dir, name, err)
+			}
+		}
+		queue, err := testfix.OpenStore(t, instance.dir).ListQueue()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(queue) != 1 || queue[0].Title != instance.title {
+			t.Errorf("queue in %q = %+v, want only %q", instance.dir, queue, instance.title)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(defaultDir, "delegator.db")); !os.IsNotExist(err) {
+		t.Errorf("default data directory was opened despite --data-dir: %v", err)
+	}
+}
+
+func TestDataDirFlagIsValidatedBeforeTheDefaultStoreOpens(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	repo := testfix.Repo(t, repoBranch)
+
+	_, err := runIn(t, "", repo, "ticket", "Never added", "--no-body", "--data-dir", "relative")
+	if err == nil || !strings.Contains(err.Error(), "--data-dir") {
+		t.Fatalf("relative --data-dir error = %v, want an error naming --data-dir", err)
+	}
+	if _, err := os.Stat(filepath.Join(xdg, "delegator")); !os.IsNotExist(err) {
+		t.Errorf("the default store was opened before validation: %v", err)
+	}
+}
+
+func TestAbsentDataDirFlagUsesTheDefaultAfterParsing(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	repo := testfix.Repo(t, repoBranch)
+
+	if _, err := runIn(t, "", repo, "ticket", "Uses the default", "--no-body"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(xdg, "delegator", "delegator.db")); err != nil {
+		t.Errorf("the XDG default has no database: %v", err)
 	}
 }
 

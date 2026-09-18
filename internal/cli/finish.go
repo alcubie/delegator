@@ -10,7 +10,7 @@ import (
 )
 
 // finishCommand returns the command dg finish
-func finishCommand(dataDir string, cfg *config.Config) *cobra.Command {
+func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "finish <id> <commit>",
 		Short: "Record the commit of a ticket and mark it Ready.",
@@ -20,7 +20,7 @@ func finishCommand(dataDir string, cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				ticket, err := s.Ticket(id)
 				if err != nil {
 					return err

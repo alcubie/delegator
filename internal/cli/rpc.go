@@ -58,7 +58,7 @@ type rpcResponse struct {
 // rpcCommand returns dg rpc.  The command reads exactly one JSON-RPC request
 // or batch from standard input and always writes its response on standard
 // output, including command and protocol errors.
-func rpcCommand(dataDir, workDir string) *cobra.Command {
+func rpcCommand(dataDir *string, workDir string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "rpc",
 		Short: "Run a dg command from a JSON-RPC request on standard input.",
@@ -68,7 +68,7 @@ func rpcCommand(dataDir, workDir string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			response := rpcResponses(dataDir, workDir, data)
+			response := rpcResponses(*dataDir, workDir, data)
 			return writeRPC(cmd.OutOrStdout(), response)
 		},
 	}
@@ -133,7 +133,7 @@ func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 		return rpcErrorResponse(nil, rpcInvalidRequest, "Invalid Request")
 	}
 
-	root := Root(dataDir, workDir)
+	root := Root(workDir)
 	if request.Method == "rpc.discover" {
 		if !rpcHasNoParams(request.Params) {
 			return rpcErrorResponse(request.ID, rpcInvalidParams, "Invalid params")
@@ -159,7 +159,7 @@ func rpcResponseFor(dataDir, workDir string, raw json.RawMessage) rpcResponse {
 	// ticket carries its prose in args rather than asking the command to read
 	// the request stream as --body-file -.
 	root.SetIn(strings.NewReader(""))
-	root.SetArgs(argv)
+	root.SetArgs(append([]string{"--data-dir", dataDir}, argv...))
 	if err := root.Execute(); err != nil {
 		return rpcErrorResponse(request.ID, ErrorCode(err), err.Error())
 	}

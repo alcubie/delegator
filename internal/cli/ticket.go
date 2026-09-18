@@ -47,7 +47,7 @@ type ticketID struct {
 // editor of the person, with one it takes the title, and with two it takes the
 // title and the prose. The flag --body-file takes the prose from a file
 // instead, and --no-body says that the ticket has none.
-func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var bodyFile string
 	var noBody bool
@@ -83,7 +83,7 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 			if len(args) > 0 {
 				title = args[0]
 			}
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				var id int64
 				var err error
 				switch {
@@ -106,7 +106,7 @@ func ticketCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 				}); err != nil {
 					return err
 				}
-				return run.Next(s, *cfg, launch)
+				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
 			})
 		},
 	}

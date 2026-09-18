@@ -427,7 +427,7 @@ var onlyFlags = []struct {
 
 // showCommand returns the command dg show. With no id it shows the head of
 // READY, because that is the ticket the person is nearly always reading.
-func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
+func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
 	var projectDir string
 	cmd := &cobra.Command{
@@ -435,7 +435,7 @@ func showCommand(dataDir, workDir string, cfg *config.Config) *cobra.Command {
 		Short: "Show the details of a ticket. Defaults to the first Ready ticket for the project.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return withStore(dataDir, cfg, func(s *store.Store) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err
