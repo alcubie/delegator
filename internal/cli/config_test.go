@@ -25,6 +25,77 @@ func TestConfigShowsDatabaseSettingsAndDescriptions(t *testing.T) {
 	}
 }
 
+func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
+	dataDir := t.TempDir()
+	s := testfix.OpenStore(t, dataDir)
+	for name, value := range map[string]string{
+		"runs":                 "5",
+		"timeout_minutes":      "45",
+		"done_hours":           "6",
+		"max_runs_per_project": "2",
+		"default_agent":        "codex",
+	} {
+		if err := s.SetSetting(name, value); err != nil {
+			t.Fatalf("set %s: %v", name, err)
+		}
+	}
+
+	bare, err := runIn(t, dataDir, t.TempDir(), "config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := runIn(t, dataDir, t.TempDir(), "config", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed != bare {
+		t.Errorf("dg config list output differs from dg config:\nlist:\n%s\nbare:\n%s", listed, bare)
+	}
+
+	var values []string
+	for _, line := range strings.Split(listed, "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			values = append(values, line)
+		}
+	}
+	want := []string{
+		"runs = 5",
+		"timeout_minutes = 45",
+		"done_hours = 6",
+		"max_runs_per_project = 2",
+		"default_agent = codex",
+	}
+	if strings.Join(values, "\n") != strings.Join(want, "\n") {
+		t.Errorf("dg config list values in order = %q, want %q", values, want)
+	}
+}
+
+func TestConfigListShowsAnEmptyDefaultAgent(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "config", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(out, "default_agent = \n") {
+		t.Errorf("dg config list with no default agent ends with %q, want an empty default_agent", out)
+	}
+}
+
+func TestConfigHelpNamesList(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "config", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "list" {
+			if !strings.Contains(line, "every supported instance setting") {
+				t.Errorf("the help line of dg config list is %q", line)
+			}
+			return
+		}
+	}
+	t.Errorf("dg config help names no list command:\n%s", out)
+}
+
 func TestConfigGetShowsOneDatabaseSetting(t *testing.T) {
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
