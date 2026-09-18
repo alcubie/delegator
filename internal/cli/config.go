@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -70,6 +72,21 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
+				if args[0] == "default_agent" {
+					agent, err := s.Agent(args[1])
+					if err != nil {
+						if errors.Is(err, store.ErrInvalidAgent) {
+							add := commandText([]string{"dg", "agents", "add", args[1], "--command", "/path/to/executable"})
+							return fmt.Errorf("agent %q is not registered.\nAdd it with:\n    %s", args[1], add)
+						}
+						return err
+					}
+					if _, err := agentExecutable(agent); err != nil {
+						path := "/path/to/" + filepath.Base(agent.Argv[0])
+						configure := commandText([]string{"dg", "agents", "add", agent.Name, "--path", path})
+						return fmt.Errorf("agent %q uses executable %q, but it was not found on PATH.\nInstall it or configure its executable with:\n    %s", agent.Name, agent.Argv[0], configure)
+					}
+				}
 				return s.SetSetting(args[0], args[1])
 			})
 		},

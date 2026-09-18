@@ -45,7 +45,7 @@ func writeAgents(out io.Writer, agents []store.Agent, defaultName string, all bo
 	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tCOMMAND\tPATH\tRESUME\tDEFAULT")
 	for _, agent := range agents {
-		path, err := exec.LookPath(agent.Argv[0])
+		path, err := agentExecutable(agent)
 		if err != nil && !all {
 			continue
 		}
@@ -68,6 +68,13 @@ func writeAgents(out io.Writer, agents []store.Agent, defaultName string, all bo
 	}
 	_ = w.Flush()
 	fmt.Fprintln(out, "PATH lookup confirms only that the command exists; it does not prove the agent works.")
+}
+
+// agentExecutable is the CLI's definition of an available registry entry.
+// Keep the environment-dependent PATH lookup here rather than in the store,
+// whose validation is limited to the registry data itself.
+func agentExecutable(agent store.Agent) (string, error) {
+	return exec.LookPath(agent.Argv[0])
 }
 
 func commandText(argv []string) string {
@@ -112,7 +119,7 @@ func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				if path != "" && cmd.Flags().Changed("arg") {
 					agent.Argv = append([]string{path}, arguments...)
 				}
-				if _, err := exec.LookPath(agent.Argv[0]); err != nil {
+				if _, err := agentExecutable(agent); err != nil {
 					return fmt.Errorf("agent command %q is not executable: %w", agent.Argv[0], err)
 				}
 				agent.InstallHint = ""
