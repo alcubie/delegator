@@ -522,6 +522,19 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if copilot.InstallHint == "" {
 		t.Error("github-copilot has no installation hint")
 	}
+	pi, err := s.Agent("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"pi-acp"}; !slices.Equal(pi.Argv, want) {
+		t.Errorf("pi argv = %v, want %v", pi.Argv, want)
+	}
+	if want := []string{"pi", "--session", "{session}"}; !slices.Equal(pi.Resume, want) {
+		t.Errorf("pi resume argv = %v, want %v", pi.Resume, want)
+	}
+	if pi.InstallHint == "" {
+		t.Error("pi has no installation hint")
+	}
 }
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {
