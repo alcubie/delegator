@@ -19,9 +19,8 @@ const (
 )
 
 // rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat needs the
-// terminal a person is at, rpc already owns stdin, and the RPC method scheme
-// cannot address nested commands by an unambiguous unqualified name.
-var rpcRefusedMethods = map[string]bool{"add": true, "chat": true, "rpc": true, "get": true, "set": true}
+// terminal a person is at, and rpc already owns stdin.
+var rpcRefusedMethods = map[string]bool{"chat": true, "rpc": true}
 
 type rpcProjectRequiredError struct{}
 
@@ -212,12 +211,42 @@ func rpcTarget(root *cobra.Command, method string) (*cobra.Command, error) {
 	if method == "inbox" {
 		return root, nil
 	}
-	for _, command := range root.Commands() {
-		if command.Name() == method {
-			return command, nil
+	var target *cobra.Command
+	rpcVisitCommands(root, func(name string, command *cobra.Command) {
+		if name == method {
+			target = command
 		}
+	})
+	if target != nil {
+		return target, nil
 	}
 	return nil, fmt.Errorf("method %q was not found", method)
+}
+
+// rpcVisitCommands walks the Cobra tree and gives each command its method
+// name. Top-level commands keep their command name, while descendants use a
+// root-relative dotted path so equal leaf names remain distinct.
+func rpcVisitCommands(parent *cobra.Command, visit func(string, *cobra.Command)) {
+	for _, command := range parent.Commands() {
+		visit(rpcMethodName(command), command)
+		rpcVisitCommands(command, visit)
+	}
+}
+
+func rpcMethodName(command *cobra.Command) string {
+	return strings.Join(rpcCommandPath(command), ".")
+}
+
+func rpcCommandPath(command *cobra.Command) []string {
+	var reversed []string
+	for current := command; current.Parent() != nil; current = current.Parent() {
+		reversed = append(reversed, current.Name())
+	}
+	path := make([]string, len(reversed))
+	for i, name := range reversed {
+		path[len(reversed)-1-i] = name
+	}
+	return path
 }
 
 // rpcArgv translates the parameter object to the ordinary command line that
@@ -256,7 +285,10 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 		}
 	}
 
-	argv := []string{}
+	var argv []string
+	if command != command.Root() {
+		argv = rpcCommandPath(command)
+	}
 	if rawArgs, found := params["args"]; found {
 		var args []json.RawMessage
 		if err := json.Unmarshal(rawArgs, &args); err != nil {
@@ -303,10 +335,7 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 		argv = append(argv, "--"+name, value)
 	}
 
-	if command == command.Root() {
-		return argv, nil
-	}
-	return append([]string{command.Name()}, argv...), nil
+	return argv, nil
 }
 
 func rpcHasFlag(command *cobra.Command, name string) bool {
