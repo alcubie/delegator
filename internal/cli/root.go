@@ -60,6 +60,8 @@ func selectedDataDir(dir string) (string, error) {
 // a person who wrote a title that dg refused does not want each command again.
 func Root(workDir string) *cobra.Command {
 	mode := colourAuto
+	// Unlike colour, the platform default can fail to resolve. Leave it empty
+	// until after parsing so an explicit --data-dir can bypass that lookup.
 	selectedDir := ""
 	// cfg is the snapshot the hook below read. The inbox needs the window of
 	// DONE and reconciliation needs the timeout. Each command takes the
