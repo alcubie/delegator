@@ -182,6 +182,60 @@ func TestClaimNextTakesATicketOnceItsLinksAreDone(t *testing.T) {
 	}
 }
 
+// A dependency crosses project and repository boundaries. Put the dependent
+// ticket first in the queue so ClaimNext can only pass it over by reading the
+// link, then leave a global slot free while the other ticket runs and waits in
+// READY. Done, and no earlier state, releases the dependent ticket.
+func TestClaimNextHonorsADependencyFromAnotherProject(t *testing.T) {
+	s, projectX := emptyStore(t)
+	projectY, err := s.AddProject("/projects/y", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := mustAddTicket(t, s, projectY, "ticket B")
+	a := mustAddTicket(t, s, projectX, "ticket A")
+	if err := s.AddDependencies(b, a); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Runs: 2}
+
+	claimed, _, err := s.ClaimNext(cfg, claimBranch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != a {
+		t.Errorf("claimed ticket %d, want ticket A %d after passing over earlier ticket B %d",
+			claimed.ID, a, b)
+	}
+
+	for _, status := range []TicketStatus{Running, Ready} {
+		if status == Ready {
+			if err := s.ChangeStatus(a, Ready); err != nil {
+				t.Fatal(err)
+			}
+		}
+		claimed, _, err := s.ClaimNext(cfg, claimBranch)
+		if !errors.Is(err, ErrNoRoom) {
+			t.Errorf("with ticket A in %s: err = %v, want ErrNoRoom", status, err)
+		}
+		if claimed.ID != 0 {
+			t.Errorf("with ticket A in %s: claimed ticket %d, want ticket B %d to wait",
+				status, claimed.ID, b)
+		}
+	}
+
+	if err := s.ChangeStatus(a, Done); err != nil {
+		t.Fatal(err)
+	}
+	claimed, _, err = s.ClaimNext(cfg, claimBranch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != b {
+		t.Errorf("claimed ticket %d, want ticket B %d once ticket A is done", claimed.ID, b)
+	}
+}
+
 // A cancelled ticket is work that was thrown away, so a link to it is never
 // satisfied and the ticket that depends on it keeps its place in the queue
 // until the person takes the link away.
