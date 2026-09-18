@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -413,6 +414,37 @@ func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
 	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id"}
 	if got := columnsOf(t, s.db, "runs"); !slices.Equal(got, want) {
 		t.Errorf("the columns of runs = %v, want %v", got, want)
+	}
+}
+
+func TestOpenMakesTheRunUsageTableWithNullableTokenCategories(t *testing.T) {
+	s, _ := emptyStore(t)
+	want := []string{
+		"run_id", "input_tokens", "cached_write_tokens", "cached_read_tokens",
+		"output_tokens", "thought_tokens", "total_tokens",
+	}
+	if got := columnsOf(t, s.db, "run_usage"); !slices.Equal(got, want) {
+		t.Errorf("the columns of run_usage = %v, want %v", got, want)
+	}
+
+	rows, err := s.db.Query("PRAGMA table_info(run_usage)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, primary int
+		var name, kind string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primary); err != nil {
+			t.Fatal(err)
+		}
+		if name != "run_id" && notNull != 0 {
+			t.Errorf("%s is NOT NULL, want an omitted category to remain NULL", name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -2305,6 +2337,119 @@ func TestRunAgentMustReferToAnAgent(t *testing.T) {
 
 	if err := s.SetRunAgent(runID, 404); err == nil {
 		t.Fatal("SetRunAgent accepted an id that no agent has")
+	}
+}
+
+func usageInt(n int) *int { return &n }
+
+func TestRunUsageKeepsEveryReportedCategoryIncludingZero(t *testing.T) {
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := AggregateUsage{
+		InputTokens:       usageInt(12),
+		CachedWriteTokens: usageInt(0),
+		CachedReadTokens:  usageInt(3),
+		OutputTokens:      usageInt(4),
+		ThoughtTokens:     usageInt(2),
+		TotalTokens:       usageInt(17),
+	}
+	if err := s.AddRunUsage(runID, want); err != nil {
+		t.Fatal(err)
+	}
+
+	got, present, err := s.RunUsage(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !present {
+		t.Fatal("the run has no usage row")
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("usage = %+v, want %+v", got, want)
+	}
+}
+
+func TestRunWithNoReportedUsageHasNoUsageRow(t *testing.T) {
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, present, err := s.RunUsage(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if present {
+		t.Errorf("usage = %+v, want no usage row", got)
+	}
+}
+
+func TestRunUsageRefusesARunThatDoesNotExist(t *testing.T) {
+	s, _ := oneTicket(t)
+	usage := AggregateUsage{InputTokens: usageInt(1), OutputTokens: usageInt(2), TotalTokens: usageInt(3)}
+	if err := s.AddRunUsage(404, usage); !errors.Is(err, ErrNoRun) {
+		t.Errorf("err = %v, want ErrNoRun", err)
+	}
+}
+
+// A run normally has one prompt, but aggregation does not turn an optional
+// category omitted by either of two prompts into a partial count. Required
+// categories and independently complete optional categories are summed.
+func TestRunUsageAggregatesPromptsWithoutFillingMissingCategories(t *testing.T) {
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := AggregateUsage{
+		InputTokens:       usageInt(10),
+		CachedWriteTokens: usageInt(2),
+		CachedReadTokens:  nil,
+		OutputTokens:      usageInt(5),
+		ThoughtTokens:     usageInt(3),
+		TotalTokens:       usageInt(17),
+	}
+	second := AggregateUsage{
+		InputTokens:       usageInt(20),
+		CachedWriteTokens: nil,
+		CachedReadTokens:  usageInt(7),
+		OutputTokens:      usageInt(11),
+		ThoughtTokens:     usageInt(4),
+		TotalTokens:       usageInt(38),
+	}
+	if err := s.AddRunUsage(runID, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddRunUsage(runID, second); err != nil {
+		t.Fatal(err)
+	}
+
+	got, present, err := s.RunUsage(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := AggregateUsage{
+		InputTokens:       usageInt(30),
+		CachedWriteTokens: nil,
+		CachedReadTokens:  nil,
+		OutputTokens:      usageInt(16),
+		ThoughtTokens:     usageInt(7),
+		TotalTokens:       usageInt(55),
+	}
+	if !present || !reflect.DeepEqual(got, want) {
+		t.Errorf("usage = (%+v, %t), want (%+v, true)", got, present, want)
+	}
+
+	var rows int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM run_usage WHERE run_id = ?", runID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Errorf("the run has %d usage rows after two prompts, want 1", rows)
 	}
 }
 

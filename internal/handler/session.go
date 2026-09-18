@@ -57,14 +57,16 @@ type Session struct {
 	loaded bool
 	replay []Event
 	events chan Event
+	usage  *Usage
 	turn   sync.Mutex
 }
 
 // An outcome is how a turn ended: the reason the agent gave for stopping, or
 // the error that stopped it.
 type outcome struct {
-	stop acp.StopReason
-	err  error
+	stop  acp.StopReason
+	usage *Usage
+	err   error
 }
 
 // eventRoom is how many events the client can keep before the drain has to
@@ -252,7 +254,7 @@ func (s *Session) Prompt(ctx context.Context, text string) iter.Seq2[Event, erro
 				SessionId: s.id,
 				Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 			})
-			done <- outcome{stop: r.StopReason, err: err}
+			done <- outcome{stop: r.StopReason, usage: promptUsage(r.Usage), err: err}
 		}()
 		stopping := ctx.Done()
 		for {
@@ -267,6 +269,7 @@ func (s *Session) Prompt(ctx context.Context, text string) iter.Seq2[Event, erro
 				stopping = nil // the turn is stopped once, and stays stopped
 				s.stop(request)
 			case out := <-done:
+				s.usage = out.usage
 				s.end(out, yield)
 				return
 			}
@@ -326,6 +329,19 @@ func (s *Session) last() []Event {
 // ID is the id the agent gave the session. Claude's is the id of the Claude
 // session, so a ticket keeps it and a person resumes the session by it.
 func (s *Session) ID() string { return string(s.id) }
+
+// Usage returns a copy of the aggregate token usage from the prompt that just
+// ended. Nil means the agent returned no Usage object.
+func (s *Session) Usage() *Usage {
+	if s.usage == nil {
+		return nil
+	}
+	result := *s.usage
+	result.CachedWriteTokens = copyInt(result.CachedWriteTokens)
+	result.CachedReadTokens = copyInt(result.CachedReadTokens)
+	result.ThoughtTokens = copyInt(result.ThoughtTokens)
+	return &result
+}
 
 // Close kills the agent and waits for it. The kill is what ends it, so the
 // status it dies of is not a failure of the session and is not reported.

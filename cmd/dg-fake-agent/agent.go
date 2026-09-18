@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,7 +64,7 @@ func (a *fakeAgent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewS
 // the id was another one and this one holds no record of it, so an id it
 // refused would be every id a test could load.
 func (a *fakeAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
-	_, err := a.take(ctx, p.SessionId, a.script.history, "")
+	_, _, err := a.take(ctx, p.SessionId, a.script.history, "")
 	return acp.LoadSessionResponse{}, err
 }
 
@@ -74,17 +75,19 @@ func (a *fakeAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.Prompt
 	if len(p.Prompt) > 0 && p.Prompt[0].Text != nil {
 		text = p.Prompt[0].Text.Text
 	}
-	stop, err := a.take(ctx, p.SessionId, a.script.turn, text)
+	stop, usage, err := a.take(ctx, p.SessionId, a.script.turn, text)
 	if err != nil {
 		return acp.PromptResponse{}, err
 	}
-	return acp.PromptResponse{StopReason: stop}, nil
+	return acp.PromptResponse{StopReason: stop, Usage: usage}, nil
 }
 
-// take does the actions in order and gives the reason the turn stopped. A run
-// of actions that names no reason ends the turn, which is what an agent that
-// has run out of things to do reports.
-func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string, prompt string) (acp.StopReason, error) {
+// take does the actions in order and gives the reason and standard aggregate
+// usage the turn reports. A usage action is the JSON object ACP puts in
+// PromptResponse. A run of actions that names no reason ends the turn, which
+// is what an agent that has run out of things to do reports.
+func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string, prompt string) (acp.StopReason, *acp.Usage, error) {
+	var usage *acp.Usage
 	for _, action := range actions {
 		verb, rest, _ := strings.Cut(action, " ")
 		rest = strings.TrimSpace(rest)
@@ -108,21 +111,26 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 		case "wait":
 			cancelled, bad := wait(ctx, rest)
 			if cancelled {
-				return acp.StopReasonCancelled, nil
+				return acp.StopReasonCancelled, usage, nil
 			}
 			err = bad
 		case "continue":
 			err = continueFor(rest)
+		case "usage":
+			var reported acp.Usage
+			if err = json.Unmarshal([]byte(rest), &reported); err == nil {
+				usage = &reported
+			}
 		case "stop":
-			return acp.StopReason(rest), nil
+			return acp.StopReason(rest), usage, nil
 		default:
 			err = fmt.Errorf("the script has no action %q", verb)
 		}
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
-	return acp.StopReasonEndTurn, nil
+	return acp.StopReasonEndTurn, usage, nil
 }
 
 // continueFor waits without consulting the turn's context. It represents an
