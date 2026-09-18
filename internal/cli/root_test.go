@@ -74,6 +74,53 @@ func TestEachCommandSaysWhatItDoes(t *testing.T) {
 	}
 }
 
+// Help and completion describe the command tree, which exists before an
+// instance does. They therefore neither make an absent data directory nor try
+// to open one that cannot contain Delegator's files.
+func TestHelpAndCompletionDoNotOpenTheInstance(t *testing.T) {
+	commands := []struct {
+		name string
+		args []string
+	}{
+		{"root help", []string{"--help"}},
+		{"command help", []string{"ticket", "--help"}},
+		{"help command", []string{"help", "ticket"}},
+		{"completion", []string{"completion", "bash"}},
+	}
+
+	for _, command := range commands {
+		t.Run(command.name, func(t *testing.T) {
+			t.Run("absent", func(t *testing.T) {
+				dataDir := filepath.Join(t.TempDir(), "delegator")
+				out, err := runIn(t, dataDir, t.TempDir(), command.args...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if out == "" {
+					t.Error("command wrote no help or completion")
+				}
+				if _, err := os.Stat(dataDir); !os.IsNotExist(err) {
+					t.Errorf("static command created the data directory: %v", err)
+				}
+			})
+
+			t.Run("unusable", func(t *testing.T) {
+				dataDir := filepath.Join(t.TempDir(), "not-a-directory")
+				if err := os.WriteFile(dataDir, []byte("not a directory"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				out, err := runIn(t, dataDir, t.TempDir(), command.args...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if out == "" {
+					t.Error("command wrote no help or completion")
+				}
+			})
+		})
+	}
+}
+
 func TestDataDirTakesXDGDataHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
 
