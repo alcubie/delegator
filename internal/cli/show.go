@@ -432,8 +432,13 @@ func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "show [id]",
-		Short: "Show the details of a ticket. Defaults to the first Ready ticket for the project.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Show the details of a ticket.",
+		Long: "Show a ticket's status, project, worktree, branch, session, commit, dependency links, " +
+			"run history, and prose. With no ID, show the first ready ticket for the selected project.",
+		Example: `  dg show 42
+  dg show
+  dg show 42 --worktree-only`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
@@ -455,10 +460,10 @@ func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project whose first ready ticket to show.  Defaults to current working directory.")
+		"select the project whose first ready ticket to show when ID is omitted (default: current working directory)")
 	for _, flag := range onlyFlags {
 		name := string(flag.field) + "-only"
-		usage := fmt.Sprintf("write %s and nothing else", flag.what)
+		usage := fmt.Sprintf("write only %s instead of the full ticket", flag.what)
 		cmd.Flags().Var(onlyFlag{field: &only, asks: flag.field}, name, usage)
 		// The flag takes no value, as a flag of cobra's own bool does.
 		cmd.Flags().Lookup(name).NoOptDefVal = "true"

@@ -17,7 +17,10 @@ func startCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start a paused queue.",
-		Args:  cobra.NoArgs,
+		Long: "Resume a paused queue and start queued tickets until the configured run " +
+			"limits are filled.",
+		Example: `  dg start`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				err := s.ResumeQueue()

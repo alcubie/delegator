@@ -61,7 +61,11 @@ func rpcCommand(dataDir *string, workDir string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "rpc",
 		Short: "Run a dg command from a JSON-RPC request on standard input.",
-		Args:  cobra.NoArgs,
+		Long: "Read one JSON-RPC 2.0 request or batch from standard input, run the named dg " +
+			"method, and write a JSON-RPC response to standard output.",
+		Example: `  printf '%s\n' '{"jsonrpc":"2.0","method":"version","id":1}' | dg rpc
+  printf '%s\n' '{"jsonrpc":"2.0","method":"show","params":{"args":[42]},"id":1}' | dg rpc`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			data, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {

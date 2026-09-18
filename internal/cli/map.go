@@ -33,7 +33,12 @@ func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Comm
 	cmd := &cobra.Command{
 		Use:   "map [id]",
 		Short: mapShort,
-		Args:  cobra.MaximumNArgs(1),
+		Long: "Show the connected dependency graph containing a ticket. With no ID, start " +
+			"from the first ready ticket for the selected project.",
+		Example: `  dg map 42
+  dg map
+  dg map 42 --mermaid`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
@@ -54,8 +59,9 @@ func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Comm
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project whose first ready ticket to map.  Defaults to current working directory.")
-	cmd.Flags().BoolVar(&mermaid, "mermaid", false, "write the graph as a Mermaid flowchart")
+		"select the project whose first ready ticket to map when ID is omitted (default: current working directory)")
+	cmd.Flags().BoolVar(&mermaid, "mermaid", false,
+		"write a Mermaid flowchart instead of the default text tree")
 	return cmd
 }
 

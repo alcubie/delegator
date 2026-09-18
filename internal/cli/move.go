@@ -33,9 +33,13 @@ func directionNames() []string {
 // moveCommand returns the command dg move.
 func moveCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
-		Use: "move <id> <where>",
-		Short: "Move one ticket inside the queue, or inside READY. <where> is " +
-			strings.Join(directionNames(), ", ") + ", or the id of another ticket of the same list.",
+		Use:   "move <id> <where>",
+		Short: "Reorder a ticket in its queue or ready list.",
+		Long: "Move a ticket within QUEUED or READY. The destination may be " +
+			strings.Join(directionNames(), ", ") + ", or the ID of another ticket in the same list, which places the ticket immediately before it.",
+		Example: `  dg move 42 top
+  dg move 42 down
+  dg move 42 57`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])

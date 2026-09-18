@@ -26,7 +26,11 @@ func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd := &cobra.Command{
 		Use:   "search <pattern>",
 		Short: searchShort,
-		Args:  cobra.ExactArgs(1),
+		Long: "Search ticket titles and prose for a case-insensitive text pattern. By default " +
+			"the search covers tickets in every project and every status.",
+		Example: `  dg search "rate limit"
+  dg search timeout --project ../api`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			found, err := searchTickets(*dataDir, workDir, cfg, projectDir, args[0])
 			if err != nil {
@@ -37,7 +41,7 @@ func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project.  Defaults to every project.")
+		"search only the project in this directory (default: every project)")
 	return cmd
 }
 

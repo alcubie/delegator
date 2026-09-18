@@ -20,7 +20,10 @@ func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cancel <id>",
 		Short: "Stop the work on a ticket and close it.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Stop a ticket's running agent when necessary and mark the ticket cancelled. " +
+			"The ticket's worktree is kept so uncommitted work can still be inspected.",
+		Example: `  dg cancel 42`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
 			if err != nil {

@@ -39,7 +39,12 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
 		Short: "Change the title and the prose of a queued ticket.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Change the title or prose of a queued ticket. Supply one or more text flags, " +
+			"or use --editor to edit both fields in $EDITOR.",
+		Example: `  dg edit 42 --title "Handle expired sessions"
+  dg edit 42 --body-file revised-plan.md
+  dg edit 42 --editor`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
 			if err != nil {
@@ -73,13 +78,13 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "",
-		"the new title of the ticket.")
+		"replace the ticket title with this value")
 	cmd.Flags().StringVar(&body, "body", "",
-		"the new prose of the ticket.")
+		"replace the ticket prose with this value")
 	cmd.Flags().StringVar(&bodyFile, "body-file", "",
-		"the file that holds the new prose of the ticket.  - is the standard input.")
+		"read the replacement prose from this file, or from standard input when the value is -")
 	cmd.Flags().BoolVar(&useEditor, "editor", false,
-		"open $EDITOR on the title and the prose of the ticket.")
+		"open $EDITOR to replace the title and prose instead of taking text flags")
 	return cmd
 }
 

@@ -25,8 +25,13 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "accept [id]",
-		Short: "Close a ready ticket. Defaults to the first Ready ticket for the project.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Close a ready ticket.",
+		Long: "Accept a ready ticket after its branch has been merged, mark it done, remove its " +
+			"worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project.",
+		Example: `  dg accept 42
+  dg accept
+  dg accept 42 --force`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
@@ -61,8 +66,8 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project whose first ready ticket to close.  Defaults to current working directory.")
+		"select the project whose first ready ticket to accept when ID is omitted (default: current working directory)")
 	cmd.Flags().BoolVar(&force, "force", false,
-		"accept work that is not merged and remove a dirty worktree.  Uncommitted changes are lost.")
+		"skip the merge and clean-worktree checks; removing a dirty worktree loses its uncommitted changes")
 	return cmd
 }

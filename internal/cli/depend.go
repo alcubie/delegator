@@ -20,9 +20,13 @@ func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var after []int64
 	var remove bool
 	cmd := &cobra.Command{
-		Use: "depend <id> --after <other>",
-		Short: "Make a queued ticket depend on another. It does not start until " +
-			"the other ticket is done.",
+		Use:   "depend <id>",
+		Short: "Add or remove dependencies of a queued ticket.",
+		Long: "Make a queued ticket wait for one or more other tickets to be done. Use " +
+			"--remove to remove the named dependency links instead.",
+		Example: `  dg depend 42 --after 17
+  dg depend 42 --after 17 --after 23
+  dg depend 42 --after 17 --remove`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
@@ -38,9 +42,9 @@ func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
-		"the ticket ID this ticket depends on.  Can be repeated.")
+		"the ticket ID to add or remove as a dependency (required; may be repeated or comma-separated)")
 	cmd.Flags().BoolVar(&remove, "remove", false,
-		"remove the dependency link.")
+		"remove the named dependency links instead of adding them")
 	// The error of MarkFlagRequired is a flag that the command does not have,
 	// and the line above gave it that one.
 	_ = cmd.MarkFlagRequired("after")

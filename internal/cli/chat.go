@@ -56,8 +56,13 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	var projectDir string
 	cmd := &cobra.Command{
 		Use:   "chat [id]",
-		Short: "Continue the session of a ticket in this terminal. Defaults to the first Ready ticket for the project.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Continue a ticket's agent session.",
+		Long: "Continue a ticket's existing agent session in its worktree and wait for the " +
+			"interactive command. With no ID, continue the first ready ticket for the selected project.",
+		Example: `  dg chat 42
+  dg chat
+  dg chat --project ../api`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var argv []string
 			var worktree string
@@ -79,7 +84,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project whose first ready ticket to continue.  Defaults to current working directory.")
+		"select the project whose first ready ticket to continue when ID is omitted (default: current working directory)")
 	return cmd
 }
 
