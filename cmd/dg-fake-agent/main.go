@@ -13,6 +13,7 @@
 //	update <status>           report that status of the tool it started last
 //	permission <title> <kind>   ask to run a tool and record the answer
 //	write <path> <content>    write the file through the client
+//	prompt <path>             write the prompt to a file
 //	wait <duration>           wait that long, or until the client cancels
 //	stop <reason>             end the turn with that reason
 //

@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
@@ -51,6 +54,70 @@ func TestSupervisorLaunchCarriesTheSelectedDataDirectory(t *testing.T) {
 	if got, want := cmd.Args[len(cmd.Args)-2:], []string{"--data-dir", dir}; !slices.Equal(got, want) {
 		t.Errorf("supervisor arguments end in %v, want %v", got, want)
 	}
+}
+
+// waitForCompletedRun waits for a detached supervisor to add and end a run.
+// after is the id of an earlier run when the test is waiting for a restart.
+func waitForCompletedRun(t *testing.T, s *store.Store, id, after int64) store.Run {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		held, err := s.Run(id)
+		if err == nil && held.ID > after && !held.EndedAt.IsZero() {
+			return held
+		}
+		if err != nil && !errors.Is(err, store.ErrNoRun) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	ticket, err := s.Ticket(id)
+	t.Fatalf("the detached run after %d did not end; ticket = %+v, err = %v", after, ticket, err)
+	return store.Run{}
+}
+
+func assertDefaultDataDirUnused(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the default data directory was used: %v", err)
+	}
+}
+
+// The command a person types returns after detaching its supervisor. The
+// supervisor is a new dg process, so this covers the argv boundary at which an
+// explicit instance used to be lost to the platform default.
+func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
+	defaultDir := testfix.XDGDataDir(t)
+	dataDir := filepath.Join(t.TempDir(), "selected")
+	repo := testfix.Repo(t, repoBranch)
+	testfix.CommitIn(t, repo, "first")
+	promptPath := filepath.Join(t.TempDir(), "prompt")
+	useFakeAgent(t, dataDir, "prompt "+promptPath, "stop end_turn")
+	useLaunch(t, func() *exec.Cmd { return exec.Command("dg", "run") })
+
+	out, err := runIn(t, dataDir, repo, "ticket", "Run in the selected instance", "--no-body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := idOf(t, out)
+	s := testfix.OpenStore(t, dataDir)
+	waitForCompletedRun(t, s, id, 0)
+	if got := testfix.ReadTicket(t, dataDir, id).Status; got != store.Failed {
+		t.Errorf("status = %q, want %q", got, store.Failed)
+	}
+	prompt, err := os.ReadFile(promptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("dg show %d --data-dir %q", id, dataDir),
+		fmt.Sprintf("dg finish %d <hash> --data-dir %q", id, dataDir),
+	} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("the agent prompt does not hold %q:\n%s", want, prompt)
+		}
+	}
+	assertDefaultDataDirUnused(t, defaultDir)
 }
 
 // useFakeAgent makes the ACP fake the default registry agent for one test.
@@ -186,6 +253,27 @@ func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
 	}
 
 	testfix.WaitForStarts(t, marker, 1)
+}
+
+// The next supervisor starts after the first one has finished, in a process
+// with no in-memory selection to inherit. Its argv must name the same instance
+// even when the platform default points elsewhere.
+func TestNextSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
+	defaultDir := testfix.XDGDataDir(t)
+	dataDir := filepath.Join(t.TempDir(), "selected")
+	s, _, repo := queuedTicket(t, dataDir)
+	second := testfix.SecondTicket(t, dataDir)
+	useFakeAgent(t, dataDir, "stop end_turn")
+	useLaunch(t, func() *exec.Cmd { return exec.Command("dg", "run") })
+
+	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCompletedRun(t, s, second, 0)
+	if got := testfix.ReadTicket(t, dataDir, second).Status; got != store.Failed {
+		t.Errorf("status = %q, want %q", got, store.Failed)
+	}
+	assertDefaultDataDirUnused(t, defaultDir)
 }
 
 // A run that could not start leaves the queue where it is. What stopped it is
