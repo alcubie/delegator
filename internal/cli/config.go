@@ -19,26 +19,33 @@ type setting struct {
 // configCommand returns the commands that inspect and change the settings in
 // the instance database. Reads use the snapshot loaded by the root hook.
 func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+	list := func(cmd *cobra.Command, _ []string) error {
+		return withStore(*dataDir, cfg, func(*store.Store) error {
+			settings := make([]setting, 0, len(config.Definitions))
+			for _, definition := range config.Definitions {
+				settings = append(settings, setting{
+					Name: definition.Name, Value: settingValue(*cfg, definition.Name), Description: definition.Description,
+				})
+			}
+			return writeValue(cmd.OutOrStdout(), settings, false, func(out io.Writer) {
+				for _, setting := range settings {
+					fmt.Fprintf(out, "# %s\n%s = %s\n", setting.Description, setting.Name, setting.Value)
+				}
+			})
+		})
+	}
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or change instance settings.",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return withStore(*dataDir, cfg, func(*store.Store) error {
-				settings := make([]setting, 0, len(config.Definitions))
-				for _, definition := range config.Definitions {
-					settings = append(settings, setting{
-						Name: definition.Name, Value: settingValue(*cfg, definition.Name), Description: definition.Description,
-					})
-				}
-				return writeValue(cmd.OutOrStdout(), settings, false, func(out io.Writer) {
-					for _, setting := range settings {
-						fmt.Fprintf(out, "# %s\n%s = %s\n", setting.Description, setting.Name, setting.Value)
-					}
-				})
-			})
-		},
+		RunE:  list,
 	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "Show every supported instance setting.",
+		Args:  cobra.NoArgs,
+		RunE:  list,
+	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
