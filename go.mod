@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/coder/acp-go-sdk v0.13.5
+	github.com/creack/pty v1.1.24
 	github.com/gosimple/slug v1.15.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
