@@ -28,8 +28,11 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				})
 			}
 			return writeValue(cmd.OutOrStdout(), settings, false, func(out io.Writer) {
-				for _, setting := range settings {
-					fmt.Fprintf(out, "# %s\n%s = %s\n", setting.Description, setting.Name, setting.Value)
+				for i, setting := range settings {
+					if i > 0 {
+						fmt.Fprintln(out)
+					}
+					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, setting.Value, setting.Description)
 				}
 			})
 		})
