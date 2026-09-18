@@ -43,12 +43,11 @@ type openRPCContentDescriptor struct {
 func rpcOpenRPC(root *cobra.Command) openRPCDocument {
 	methods := []openRPCMethod{rpcDiscoveryMethod()}
 	methods = append(methods, rpcOpenRPCMethod("inbox", root))
-	for _, command := range root.Commands() {
-		if rpcRefusedMethods[command.Name()] {
-			continue
+	rpcVisitCommands(root, func(name string, command *cobra.Command) {
+		if !rpcRefusedMethods[name] {
+			methods = append(methods, rpcOpenRPCMethod(name, command))
 		}
-		methods = append(methods, rpcOpenRPCMethod(command.Name(), command))
-	}
+	})
 	sort.Slice(methods, func(i, j int) bool { return methods[i].Name < methods[j].Name })
 	return openRPCDocument{
 		OpenRPC: openRPCVersion,
@@ -85,6 +84,10 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 
 	minimum, maximum := rpcArgumentBounds(command.Use)
 	if maximum > 0 {
+		use := command.CommandPath()
+		if arguments := strings.TrimSpace(strings.TrimPrefix(command.Use, command.Name())); arguments != "" {
+			use += " " + arguments
+		}
 		schema := map[string]any{
 			"type": "array",
 			"items": map[string]any{
@@ -95,7 +98,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		}
 		method.Params = append(method.Params, openRPCContentDescriptor{
 			Name:        "args",
-			Description: "The command arguments in the order shown by `dg " + command.Use + "`.",
+			Description: "The command arguments in the order shown by `" + use + "`.",
 			Schema:      schema,
 			Required:    minimum > 0,
 		})

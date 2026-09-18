@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/testfix"
+	"github.com/spf13/cobra"
 )
 
 func rpcDiscover(t *testing.T) openRPCDocument {
@@ -85,14 +86,19 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	if !names["inbox"] || !names["rpc.discover"] {
 		t.Errorf("method names = %v, want inbox and rpc.discover", names)
 	}
-	for _, command := range root.Commands() {
-		if got, want := names[command.Name()], !rpcRefusedMethods[command.Name()]; got != want {
-			t.Errorf("method %q advertised = %t, want %t", command.Name(), got, want)
+	rpcVisitCommands(root, func(name string, _ *cobra.Command) {
+		if got, want := names[name], !rpcRefusedMethods[name]; got != want {
+			t.Errorf("method %q advertised = %t, want %t", name, got, want)
 		}
-	}
+	})
 	for refused := range rpcRefusedMethods {
 		if names[refused] {
 			t.Errorf("refused method %q is advertised", refused)
+		}
+	}
+	for _, nested := range []string{"agents.add", "config.get", "config.list", "config.set"} {
+		if !names[nested] {
+			t.Errorf("nested method %q is not advertised", nested)
 		}
 	}
 }
@@ -118,6 +124,14 @@ func TestRPCDiscoverDescribesArgumentsAndFlags(t *testing.T) {
 	color := openRPCParamNamed(t, depend, "color")
 	if color.Schema["type"] != "string" {
 		t.Errorf("depend color = %#v, want an inherited string flag", color)
+	}
+	configGet := openRPCMethodNamed(t, document, "config.get")
+	configArgs := openRPCParamNamed(t, configGet, "args")
+	if !configArgs.Required || configArgs.Schema["minItems"] != float64(1) || configArgs.Schema["maxItems"] != float64(1) {
+		t.Errorf("config.get args = %#v, want one required item", configArgs)
+	}
+	if configArgs.Description != "The command arguments in the order shown by `dg config get <name>`." {
+		t.Errorf("config.get args description = %q, want the qualified command use", configArgs.Description)
 	}
 
 	ticketArgs := openRPCParamNamed(t, openRPCMethodNamed(t, document, "ticket"), "args")

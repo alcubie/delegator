@@ -188,18 +188,75 @@ func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
 	var walk func(*cobra.Command)
 	walk = func(parent *cobra.Command) {
 		for _, command := range parent.Commands() {
-			_, err := rpcTarget(root, command.Name())
-			if rpcRefusedMethods[command.Name()] {
+			method := rpcMethodName(command)
+			target, err := rpcTarget(root, method)
+			if rpcRefusedMethods[method] {
 				if err == nil {
 					t.Errorf("refused command %q is callable through RPC", command.CommandPath())
 				}
 			} else if err != nil {
 				t.Errorf("command %q is neither callable through RPC nor refused: %v", command.CommandPath(), err)
+			} else if target != command {
+				t.Errorf("method %q resolves to %q, want %q", method, target.CommandPath(), command.CommandPath())
 			}
 			walk(command)
 		}
 	}
 	walk(root)
+}
+
+func TestRPCNestedMethodsUseQualifiedNamesForDispatchAndParameters(t *testing.T) {
+	dataDir := t.TempDir()
+	workDir := t.TempDir()
+
+	out, err := rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"config.set","params":{"args":["runs",4]},"id":"set"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	if result, present := response["result"]; !present || result != nil {
+		t.Fatalf("config.set response = %#v, want a null result", response)
+	}
+
+	out, err = rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"config.get","params":{"args":["runs"]},"id":"get"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = rpcObject(t, out)
+	if response["result"] != "4" || response["id"] != "get" {
+		t.Errorf("config.get response = %#v, want stored value 4", response)
+	}
+
+	out, err = rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"get","params":{"args":["runs"]},"id":"unqualified"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcMethodNotFound, "Method not found")
+}
+
+func TestRPCNestedMethodErrorsKeepProtocolAndCommandCodes(t *testing.T) {
+	dataDir := t.TempDir()
+	workDir := t.TempDir()
+
+	out, err := rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"config.get","params":{"unknown":true},"id":"params"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+
+	out, err = rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"config.get","params":{"args":["unknown"]},"id":"command"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcProtocolError(t, out, codeUnknown, `unknown setting "unknown"`)
+	if response["id"] != "command" {
+		t.Errorf("command error id = %#v, want command", response["id"])
+	}
 }
 
 func TestRPCShowRunsTheNamedCommandAndWritesOnlyItsResponse(t *testing.T) {
