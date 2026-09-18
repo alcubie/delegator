@@ -18,7 +18,7 @@ func TestConfigShowsDatabaseSettingsAndDescriptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"runs = 3", "timeout_minutes = 60", "# runs is the number"} {
+	for _, want := range []string{"runs = 3  # the number", "timeout_minutes = 60  # the time"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg config does not hold %q:\n%s", want, out)
 		}
@@ -52,21 +52,14 @@ func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
 		t.Errorf("dg config list output differs from dg config:\nlist:\n%s\nbare:\n%s", listed, bare)
 	}
 
-	var values []string
-	for _, line := range strings.Split(listed, "\n") {
-		if line != "" && !strings.HasPrefix(line, "#") {
-			values = append(values, line)
-		}
-	}
-	want := []string{
-		"runs = 5",
-		"timeout_minutes = 45",
-		"done_hours = 6",
-		"max_runs_per_project = 2",
-		"default_agent = codex",
-	}
-	if strings.Join(values, "\n") != strings.Join(want, "\n") {
-		t.Errorf("dg config list values in order = %q, want %q", values, want)
+	want := "" +
+		"runs = 5  # the number of tickets that can be Running or Ready at a time.\n\n" +
+		"timeout_minutes = 45  # the time in minutes that a run can take before delegator stops it.\n\n" +
+		"done_hours = 6  # the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty.\n\n" +
+		"max_runs_per_project = 2  # the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit.\n\n" +
+		"default_agent = codex  # the registered agent used for new runs.\n"
+	if listed != want {
+		t.Errorf("dg config list output = %q, want %q", listed, want)
 	}
 }
 
@@ -75,7 +68,7 @@ func TestConfigListShowsAnEmptyDefaultAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(out, "default_agent = \n") {
+	if !strings.HasSuffix(out, "default_agent =   # the registered agent used for new runs.\n") {
 		t.Errorf("dg config list with no default agent ends with %q, want an empty default_agent", out)
 	}
 }
