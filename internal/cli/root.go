@@ -52,6 +52,20 @@ func selectedDataDir(dir string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
+// staticDiscovery reports whether cmd only describes the command tree. Cobra
+// handles --help before the hooks run, but its help command and the shell
+// commands below completion do run the root's persistent hook. The hidden
+// completion request is what a generated script invokes later.
+func staticDiscovery(cmd *cobra.Command) bool {
+	for current := cmd; current != nil; current = current.Parent() {
+		switch current.Name() {
+		case "help", "completion", cobra.ShellCompRequestCmd:
+			return true
+		}
+	}
+	return false
+}
+
 // Root returns the command tree of dg. The program cmd/dg takes the working
 // directory and runs it, so each command has a test that needs no terminal.
 //
@@ -78,6 +92,9 @@ func Root(workDir string) *cobra.Command {
 		// Reconciliation and the command then use the same values even when
 		// another process changes a setting while the command is running.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if staticDiscovery(cmd) {
+				return nil
+			}
 			var err error
 			if cmd.Flags().Changed("data-dir") {
 				selectedDir, err = selectedDataDir(selectedDir)
