@@ -78,6 +78,7 @@ codex does not install it. The CLI is what a person resumes a session in, and
 ```
 npm install -g @agentclientprotocol/claude-agent-acp   # claude-agent-acp
 npm install -g @agentclientprotocol/codex-acp          # codex-acp
+npm install -g @earendil-works/pi-coding-agent pi-acp  # pi, pi-acp
 ```
 
 These are the exact commands and versions exercised by the real-agent tests:
@@ -90,8 +91,9 @@ These are the exact commands and versions exercised by the real-agent tests:
 | OpenCode | `[opencode acp]` | `[opencode --session {session}]` | OpenCode 1.18.31 |
 | GitHub Copilot | `[copilot --acp]` | `[copilot --resume={session}]` | GitHub Copilot CLI 1.0.86 |
 | Cursor | `[agent acp]` | none: its terminal client does not accept an ACP session id | Cursor Agent 2026.09.15-d2fe57e |
+| Pi | `[pi-acp]` | `[pi --session {session}]` | Pi 0.85.1; pi-acp 0.0.33 |
 
-Claude, OpenCode, and GitHub Copilot add their supported one-shot flags to
+Claude, OpenCode, GitHub Copilot, and Pi add their supported one-shot flags to
 the recorded resume argv. Codex and Goose have interactive-only resume
 commands, so their terminal-resume subtests use a pseudo-terminal. Each
 terminal assertion asks the real ACP-created session to recall text that was

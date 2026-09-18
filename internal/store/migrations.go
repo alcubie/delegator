@@ -42,6 +42,7 @@ var migrations = []string{
 	addConfigurationSettings,
 	verifyCursorACP,
 	addRunUsageTable,
+	verifyPiACP,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -305,6 +306,17 @@ CREATE TABLE run_usage (
   thought_tokens      INTEGER,
   total_tokens        INTEGER
 ) STRICT;
+`
+
+// verifyPiACP records the commands verified with Pi 0.85.1 and pi-acp
+// 0.0.33. The adapter serves ACP over stdio, while Pi resumes the underlying
+// session by the id returned through ACP.
+const verifyPiACP = `
+UPDATE agents SET
+  argv = '["pi-acp"]',
+  resume_argv = '["pi","--session","{session}"]',
+  install_hint = 'Install Pi 0.85.1 or later and pi-acp 0.0.33 or later'
+WHERE name = 'pi';
 `
 
 // verifyGitHubCopilotACP records the commands verified with GitHub Copilot

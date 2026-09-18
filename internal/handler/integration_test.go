@@ -483,3 +483,15 @@ func TestIntegrationGitHubCopilotTakesASessionFromStartToTheTerminal(t *testing.
 		resumeAndRecall(t, "github-copilot", repo, id, "--allow-all-tools", "-p")
 	})
 }
+
+// TestIntegrationPiTakesASessionFromStartToTheTerminal verifies Pi 0.85.1
+// through pi-acp 0.0.33 with [pi-acp], then extends the registry's
+// [pi --session {session}] command with Pi's non-interactive print flag.
+func TestIntegrationPiTakesASessionFromStartToTheTerminal(t *testing.T) {
+	verifyAgent(t, "pi", func(t *testing.T, events []Event) {
+		asked := permissions(events)
+		t.Logf("pi asked delegator to answer %d permissions: %v", len(asked), asked)
+	}, func(t *testing.T, repo, id string) {
+		resumeAndRecall(t, "pi", repo, id, "-p")
+	})
+}
