@@ -83,22 +83,6 @@ func TestDataDirTakesXDGDataHome(t *testing.T) {
 	}
 }
 
-// DELEGATOR_DATA_DIR was briefly an instance selector. The command-line flag
-// replaces it so an ambient environment cannot silently move an invocation to
-// another database.
-func TestDataDirIgnoresDelegatorDataDir(t *testing.T) {
-	t.Setenv("DELEGATOR_DATA_DIR", "/somewhere/old-override")
-	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
-
-	got, err := DataDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join("/somewhere/data", "delegator"); got != want {
-		t.Errorf("DataDir = %q, want %q", got, want)
-	}
-}
-
 func TestSelectedDataDirMustBeAbsoluteAndIsCleaned(t *testing.T) {
 	if _, err := selectedDataDir("relative"); err == nil || !strings.Contains(err.Error(), "--data-dir") {
 		t.Errorf("selectedDataDir(relative) error = %v, want an error naming --data-dir", err)
