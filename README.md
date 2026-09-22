@@ -8,6 +8,19 @@ select.
 
 Status: in development. Nothing here is released yet.
 
+## License
+
+Delegator is Fair Source (source available), not open source while a version is
+protected. It is licensed under [FSL-1.1-ALv2](LICENSE). Its Competing Use
+restriction prohibits making the software available to others in a commercial
+product or service that substitutes for Delegator, substitutes for another
+Alcubi offering that uses Delegator and exists when that version is made
+available, or offers the same or substantially similar functionality. Each
+version automatically becomes available under Apache 2.0 two years after Alcubi
+makes that version available. See the full license for the precise terms and
+[third-party notices](THIRD_PARTY_NOTICES.md) for separately licensed
+dependencies.
+
 ## Install
 
 ```
