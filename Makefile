@@ -1,5 +1,6 @@
 BIN := dg
 PKG := github.com/alcubie/delegator
+NOTICE_FILES := LICENSE PRIVACY.md TRADEMARKS.md THIRD_PARTY_NOTICES.md
 
 # VERSION is what dg version writes, and a program that starts dg reads it to
 # know which binary it found. git describe names the tag when the tree is one,
@@ -106,12 +107,13 @@ covercheck:
 		}'
 
 # archivecheck makes the source archive from the tracked working-tree files,
-# then checks the licensing material that every distribution must carry.
+# then checks the legal and privacy material that every source or binary
+# distribution must carry. A future binary packager must use NOTICE_FILES too.
 archivecheck:
 	@archive=$$(mktemp); \
 	trap 'rm -f "$$archive"' EXIT HUP INT TERM; \
 	git ls-files | tar -T - -cf "$$archive"; \
-	for file in LICENSE TRADEMARKS.md THIRD_PARTY_NOTICES.md; do \
+	for file in $(NOTICE_FILES); do \
 		if ! tar -tf "$$archive" "$$file" >/dev/null 2>&1; then \
 			echo "archivecheck: source archive has no $$file"; exit 1; \
 		fi; \

@@ -907,7 +907,9 @@ each library inside the binary. Go is also good at the control of programs that 
 the same time, which is the main work of the supervisor.
 
 **Installation.** goreleaser makes the binary for Linux and macOS, for x86-64 and for
-arm64. One command installs it:
+arm64. The [privacy notice](../PRIVACY.md) describes the network request made by the
+planned installer and the data handling of Delegator and its agents. One command installs
+it:
 
 ```
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
