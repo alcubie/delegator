@@ -14,8 +14,10 @@ LDFLAGS := -X $(PKG)/internal/cli.Version=$(VERSION)
 # command layer would stop each commit before it has its own tests.
 COVER_MIN  := 75
 COVER_PKGS := ./internal/...
+DOCS_REFERENCE := docs/public/reference
+MKDOCS ?= mkdocs
 
-.PHONY: build install test integration release vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck
+.PHONY: build install test integration release vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -115,6 +117,30 @@ archivecheck:
 		fi; \
 	done
 
+# docs regenerates the checked-in command reference from Cobra's command tree.
+# Removing the destination first also removes pages for commands that no longer
+# exist. dg-docs constructs cli.Root directly; it never runs dg or opens an
+# instance data directory.
+docs:
+	rm -rf $(DOCS_REFERENCE)
+	go run ./cmd/dg-docs --output-dir $(DOCS_REFERENCE)
+
+docs-build:
+	$(MKDOCS) build --strict --clean
+
+docs-serve:
+	$(MKDOCS) serve
+
+# docs-check uses temporary destinations so that CI neither changes the
+# working tree nor leaves a built site behind. diff catches added, removed and
+# changed pages before MkDocs checks navigation and links.
+docs-check:
+	@generated=$$(mktemp -d); site=$$(mktemp -d); \
+	trap 'rm -rf "$$generated" "$$site"' EXIT HUP INT TERM; \
+	go run ./cmd/dg-docs --output-dir "$$generated"; \
+	diff -ru $(DOCS_REFERENCE) "$$generated"; \
+	$(MKDOCS) build --strict --clean --site-dir "$$site"
+
 # cover shows how much of each function the tests run. It does not show how much
 # of it the tests examine: a test with no assertion gives the same number as a
 # test with one. Use it to find code that no test touches, and not as a target.
@@ -128,7 +154,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: archivecheck fmtcheck vet lint covercheck
+check: archivecheck fmtcheck vet lint covercheck docs-check
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html

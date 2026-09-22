@@ -29,6 +29,9 @@ func TestGenerateCommandReference(t *testing.T) {
 		if strings.Contains(contents, "Auto generated") {
 			t.Errorf("%s contains a volatile generation notice:\n%s", name, contents)
 		}
+		if strings.HasSuffix(contents, "\n\n") {
+			t.Errorf("%s ends with a blank line", name)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(first, "dg_run.md")); !os.IsNotExist(err) {
 		t.Errorf("hidden command page dg_run.md exists: %v", err)
