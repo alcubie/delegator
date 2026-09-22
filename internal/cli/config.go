@@ -42,19 +42,29 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or change instance settings.",
-		Args:  cobra.NoArgs,
-		RunE:  list,
+		Long: "Show all settings for the selected Delegator instance. Use the get and set " +
+			"subcommands to inspect or change one setting.",
+		Example: `  dg config
+  dg config get runs
+  dg config set runs 2`,
+		Args: cobra.NoArgs,
+		RunE: list,
 	}
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "Show every supported instance setting.",
-		Args:  cobra.NoArgs,
-		RunE:  list,
+		Use:     "list",
+		Short:   "Show every supported instance setting.",
+		Long:    "Show the name, current value, and description of every supported instance setting.",
+		Example: `  dg config list`,
+		Args:    cobra.NoArgs,
+		RunE:    list,
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Write the current value of one supported instance setting.",
+		Example: `  dg config get done_hours
+  dg config get default_agent`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !knownSetting(args[0]) {
 				return fmt.Errorf("unknown setting %q", args[0])
@@ -69,7 +79,11 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "set <name> <value>",
 		Short: "Change one instance setting.",
-		Args:  cobra.ExactArgs(2),
+		Long: "Validate and store a new value for one instance setting. The change applies " +
+			"to subsequent commands and agent runs.",
+		Example: `  dg config set runs 2
+  dg config set default_agent codex`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				if args[0] == "default_agent" {

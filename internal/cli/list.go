@@ -26,7 +26,11 @@ func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: listShort,
-		Args:  cobra.NoArgs,
+		Long: "List tickets in every status and every project. Use --project to limit the " +
+			"list to the repository at a particular directory.",
+		Example: `  dg list
+  dg list --project ../api`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tickets, err := listTickets(*dataDir, workDir, cfg, projectDir)
 			if err != nil {
@@ -38,7 +42,7 @@ func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project.  Defaults to every project.")
+		"list only the project in this directory (default: every project)")
 	return cmd
 }
 

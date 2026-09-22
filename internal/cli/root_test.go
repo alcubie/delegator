@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/testfix"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // runIn runs one command and returns what it wrote to the output. cobra writes
@@ -63,13 +65,68 @@ func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	}
 }
 
-// cobra makes the help from the tree of commands, and a command with no Short
-// arrives in that help with nothing beside it. The line is ours to write, so
-// this reads the tree and not the help that cobra makes from it.
-func TestEachCommandSaysWhatItDoes(t *testing.T) {
-	for _, c := range Root(t.TempDir()).Commands() {
-		if c.Short == "" {
-			t.Errorf("the command %q has no Short, so the help says nothing about it", c.Name())
+// Cobra makes the command reference from this metadata. Walk the whole visible
+// tree so a new top-level or nested command cannot silently ship incomplete
+// help. Hidden implementation commands are not part of that reference.
+func TestEachVisibleCommandHasCompleteHelp(t *testing.T) {
+	var walk func(*cobra.Command)
+	walk = func(command *cobra.Command) {
+		if command.Hidden {
+			return
+		}
+		for field, value := range map[string]string{
+			"Short":   command.Short,
+			"Long":    command.Long,
+			"Example": command.Example,
+		} {
+			if strings.TrimSpace(value) == "" {
+				t.Errorf("the command %q has no %s help", command.CommandPath(), field)
+			}
+		}
+		command.NonInheritedFlags().VisitAll(func(flag *pflag.Flag) {
+			if !flag.Hidden && strings.TrimSpace(flag.Usage) == "" {
+				t.Errorf("the visible flag --%s of %q has no description", flag.Name, command.CommandPath())
+			}
+		})
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(Root(t.TempDir()))
+}
+
+func TestRootHelpExplainsTheDefaultInboxAndGlobalFlags(t *testing.T) {
+	out, err := runIn(t, filepath.Join(t.TempDir(), "absent"), t.TempDir(), "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Run dg without a command to see the inbox",
+		`dg ticket "Add request tracing" --no-body`,
+		"auto (terminals only) (default auto)",
+		"default: the platform data directory",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dg help does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDependHelpSeparatesArgumentsFromFlags(t *testing.T) {
+	out, err := runIn(t, filepath.Join(t.TempDir(), "absent"), t.TempDir(), "depend", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Usage:\n  dg depend <id> [flags]") {
+		t.Errorf("dg depend help has the wrong usage:\n%s", out)
+	}
+	for _, want := range []string{
+		"dg depend 42 --after 17",
+		"dg depend 42 --after 17 --remove",
+		"--after int64Slice",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dg depend help does not contain %q:\n%s", want, out)
 		}
 	}
 }

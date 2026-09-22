@@ -54,8 +54,13 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	var after []int64
 	cmd := &cobra.Command{
 		Use:   "ticket [title] [body]",
-		Short: "Add a ticket. With no arguments, it opens $EDITOR.",
-		Args:  cobra.MaximumNArgs(2),
+		Short: "Add a ticket to a project queue.",
+		Long: "Add a ticket to a project's queue. Supply a title and prose, read the prose " +
+			"from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR.",
+		Example: `  dg ticket "Remove the legacy endpoint" "Delete the handler and its tests."
+  dg ticket "Investigate the flaky test" --no-body
+  dg ticket "Implement the approved design" --body-file plan.md --after 41`,
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bodyFile != "" && len(args) > 1 {
 				return errTwoBodies
@@ -111,13 +116,13 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"the directory of the project.  Defaults to current working directory.")
+		"add the ticket to the project in this directory (default: current working directory)")
 	cmd.Flags().StringVar(&bodyFile, "body-file", "",
-		"the file that holds the prose of the ticket.  - is the standard input.")
+		"read the ticket prose from this file, or from standard input when the value is -")
 	cmd.Flags().BoolVar(&noBody, "no-body", false,
-		"add the ticket with no prose.")
+		"add the ticket with no prose instead of requiring a body")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
-		"the ticket ID this ticket depends on.  Can be repeated.")
+		"make the new ticket depend on this ticket ID (may be repeated or comma-separated)")
 	return cmd
 }
 

@@ -23,7 +23,10 @@ func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart <id>",
 		Short: "Start a failed ticket again.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Return a failed ticket to execution, reusing its branch, worktree, and agent " +
+			"session so work can continue where the failed run stopped.",
+		Example: `  dg restart 42`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
 			if err != nil {

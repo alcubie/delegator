@@ -34,9 +34,11 @@ type versionJSON struct {
 // versionCommand returns the command for dg version.
 func versionCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Show the version of dg.",
-		Args:  cobra.NoArgs,
+		Use:     "version",
+		Short:   "Show the version of dg.",
+		Long:    "Show the dg build version without opening or changing a Delegator instance.",
+		Example: `  dg version`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return writeValue(cmd.OutOrStdout(), versionJSON{Version: Version, Schema: jsonSchema}, false, func(out io.Writer) {
 				fmt.Fprintln(out, "dg", Version)

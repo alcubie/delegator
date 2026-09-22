@@ -14,7 +14,10 @@ func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "finish <id> <commit>",
 		Short: "Record the commit of a ticket and mark it Ready.",
-		Args:  cobra.ExactArgs(2),
+		Long: "Record the ticket branch commit that contains the completed work and mark the " +
+			"ticket ready for review. The commit must belong to the ticket's branch.",
+		Example: `  dg finish 42 4f3c2b1`,
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])
 			if err != nil {

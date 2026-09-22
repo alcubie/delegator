@@ -82,9 +82,13 @@ func Root(workDir string) *cobra.Command {
 	// address because the hook runs after this function has built the tree.
 	var cfg config.Config
 	root := &cobra.Command{
-		Use:           "dg",
-		Short:         "Delegate tasks to an agent",
-		Long:          "Delegate tasks to an agent to help you avoid overload from context switching.",
+		Use:   "dg",
+		Short: "Delegate tasks to coding agents",
+		Long: "Delegator queues work for coding agents and keeps each task in its own Git " +
+			"worktree. Run dg without a command to see the inbox and the state of the queue.",
+		Example: `  dg
+  dg ticket "Add request tracing" --no-body
+  dg show 42`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
@@ -128,9 +132,9 @@ func Root(workDir string) *cobra.Command {
 		},
 	}
 	root.PersistentFlags().Var(&mode, "color",
-		"colour the status: always, never or auto (a terminal only)")
+		"when to colour status values: always, never, or auto (terminals only)")
 	root.PersistentFlags().StringVar(&selectedDir, "data-dir", "",
-		"store all Delegator data in this absolute directory")
+		"store all Delegator data in this absolute directory (default: the platform data directory)")
 	root.AddCommand(ticketCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(listCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(searchCommand(&selectedDir, workDir, &cfg))

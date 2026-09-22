@@ -19,7 +19,10 @@ func pauseCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "pause",
 		Short: "Pause the queue.",
-		Args:  cobra.NoArgs,
+		Long: "Pause the queue so no new agent runs start. Runs already in progress are " +
+			"allowed to finish.",
+		Example: `  dg pause`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				err := s.PauseQueue()

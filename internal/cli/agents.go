@@ -22,7 +22,11 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
 		Short: "List available ACP agents",
-		Args:  cobra.NoArgs,
+		Long: "List registered agent commands that are available on PATH, including their " +
+			"resolved executable, resume support, and which one is the default.",
+		Example: `  dg agents
+  dg agents --all`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var agents []store.Agent
 			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
@@ -36,7 +40,8 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&all, "all", false, "include known agents whose command is not on PATH")
+	cmd.Flags().BoolVar(&all, "all", false,
+		"include registered agents whose executable is missing (default: show available agents only)")
 	cmd.AddCommand(addAgentCommand(dataDir, cfg))
 	return cmd
 }
@@ -95,7 +100,11 @@ func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add or update an ACP agent command",
-		Args:  cobra.ExactArgs(1),
+		Long: "Register a custom agent command, or set the executable path of a known agent. " +
+			"Repeated --arg values define the arguments passed to a custom command.",
+		Example: `  dg agents add codex --path /opt/bin/codex-acp
+  dg agents add local --command /opt/bin/local-agent --arg serve --arg=--acp`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path != "" && command != "" {
 				return errors.New("--path and --command cannot be used together")
@@ -127,8 +136,11 @@ func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", "", "executable path for a known agent")
-	cmd.Flags().StringVar(&command, "command", "", "executable for a custom agent command")
-	cmd.Flags().StringArrayVar(&arguments, "arg", nil, "command argument (may be repeated)")
+	cmd.Flags().StringVar(&path, "path", "",
+		"set this executable path for a known agent (mutually exclusive with --command)")
+	cmd.Flags().StringVar(&command, "command", "",
+		"register this executable as a custom agent command (mutually exclusive with --path)")
+	cmd.Flags().StringArrayVar(&arguments, "arg", nil,
+		"append this argument to the custom command in order (may be repeated)")
 	return cmd
 }
