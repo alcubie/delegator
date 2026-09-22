@@ -1,6 +1,6 @@
 BIN := dg
 PKG := github.com/alcubie/delegator
-NOTICE_FILES := LICENSE PRIVACY.md TRADEMARKS.md THIRD_PARTY_NOTICES.md
+NOTICE_FILES := LICENSE PRIVACY.md SECURITY.md TRADEMARKS.md THIRD_PARTY_NOTICES.md
 
 # VERSION is what dg version writes, and a program that starts dg reads it to
 # know which binary it found. git describe names the tag when the tree is one,
@@ -107,7 +107,7 @@ covercheck:
 		}'
 
 # archivecheck makes the source archive from the tracked working-tree files,
-# then checks the legal and privacy material that every source or binary
+# then checks the project-policy material that every source or binary
 # distribution must carry. A future binary packager must use NOTICE_FILES too.
 archivecheck:
 	@archive=$$(mktemp); \

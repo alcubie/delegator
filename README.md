@@ -40,6 +40,14 @@ third-party agents.
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 ```
 
+## Security
+
+Report suspected vulnerabilities privately to
+[support@alcubi.ai](mailto:support@alcubi.ai). Do not put a vulnerability,
+credential, or private data in a public issue. See the
+[security policy](SECURITY.md) for supported versions, scope, and the response
+process.
+
 ## Questions
 
 ### A run costs more tokens than I expected. What can I do?
@@ -136,6 +144,7 @@ Run them with `make integration`, or `make release` for those and everything
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)
 - [Privacy notice](PRIVACY.md)
+- [Security policy](SECURITY.md)
 - [Trademark policy](TRADEMARKS.md)
 
 Alcubi Delegator is software published by Matthew McCormick. Code at
