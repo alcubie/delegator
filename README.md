@@ -25,6 +25,10 @@ official product; see the separate [trademark policy](TRADEMARKS.md).
 
 ## Install
 
+No release exists yet. Before using a future installer, read the
+[privacy notice](PRIVACY.md), including its account of installer requests and
+third-party agents.
+
 ```
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 ```
@@ -122,6 +126,7 @@ Run them with `make integration`, or `make release` for those and everything
 
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)
+- [Privacy notice](PRIVACY.md)
 - [Trademark policy](TRADEMARKS.md)
 
 Alcubi Delegator is software published by Matthew McCormick. Code at
