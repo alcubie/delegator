@@ -168,6 +168,8 @@ be read before or without installation.
 ## Email and support
 
 Email to the privacy contact is voluntary and is the current support channel.
+Suspected vulnerabilities should follow the [security policy](SECURITY.md),
+which uses the same private mailbox and explains what not to send publicly.
 Matthew McCormick receives the sender and recipient addresses, display names,
 date and time, subject, message body, attachments, message identifiers, and
 routing and delivery headers supplied by the email systems. These data are
