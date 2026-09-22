@@ -17,8 +17,12 @@ COVER_MIN  := 75
 COVER_PKGS := ./internal/...
 DOCS_REFERENCE := docs/public/reference
 MKDOCS ?= mkdocs
+GORELEASER_VERSION := v2.17.1
+GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
+SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
+VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install test integration release vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install test integration release release-check release-snapshot release-validate vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -41,10 +45,21 @@ test:
 integration:
 	go test -tags integration -timeout 15m -run '^TestIntegration' -v ./...
 
-# release is the gate before a release: everything check does, and then the
-# integration tests. It will grow the goreleaser build and the installer; for
-# now it is the one command that runs every test the repository has.
-release: check integration
+# release is the gate before a release: every ordinary and integration test,
+# followed by the same publish-free artifact build that a release uses.
+release: check integration release-validate
+
+# The pinned tool is invoked through the Go module cache. Both builds use
+# --snapshot, which disables every publisher and requires no credentials.
+release-check:
+	$(GORELEASER) check
+
+release-snapshot: release-check
+	RELEASE_VERSION=$(SNAPSHOT_VERSION) $(GORELEASER) release --snapshot --clean
+
+release-validate: release-check
+	RELEASE_VERSION=$(VALIDATION_VERSION) $(GORELEASER) release --snapshot --clean
+	go run ./cmd/dg-release-check -dist dist -version $(VALIDATION_VERSION)
 
 watch:
 	gotestsum --watch ./...
