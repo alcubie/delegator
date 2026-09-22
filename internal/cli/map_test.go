@@ -85,8 +85,50 @@ func TestMapPrintsSharedBlockerOnce(t *testing.T) {
 	if got := strings.Count(out, "#1 "); got != 1 {
 		t.Errorf("shared blocker appears %d times:\n%s", got, out)
 	}
-	if !strings.Contains(out, "#4 Release (waits on #3)") {
+	if !strings.Contains(out, "#4 Release (waits on #2)") {
 		t.Errorf("the other blocker is not named:\n%s", out)
+	}
+}
+
+func TestMapMovesTicketUpAfterRemovingItsCurrentParent(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	root, branch := twoTickets(t, dataDir, repo)
+	branchChild, err := ticketIn(t, dataDir, repo, "Finish branch", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling, err := ticketIn(t, dataDir, repo, "Sibling", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dependent, err := ticketIn(t, dataDir, repo, "Later work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(branch, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(branchChild, branch); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(sibling, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(dependent, root, branch, sibling); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "depend", fmt.Sprint(dependent),
+		"--after", fmt.Sprint(sibling), "--remove"); err != nil {
+		t.Fatal(err)
+	}
+
+	out := mapIn(t, dataDir, repo, dependent)
+	want := fmt.Sprintf("\n  ○ #%d Later work (waits on #%d)\n", dependent, branch)
+	if !strings.Contains(out, want) {
+		t.Errorf("ticket did not move back under its open parent after removal:\n%s\nwant line:%s", out, want)
 	}
 }
 

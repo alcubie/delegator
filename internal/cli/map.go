@@ -161,8 +161,10 @@ func mapMark(status store.TicketStatus) string {
 }
 
 // writeMap writes a component once. A ticket with more than one blocker is
-// under its deepest blocker in topological order; the other blockers remain on
-// its row, so a shared blocker neither disappears nor makes a second row.
+// under its deepest blocker that is still an ancestor of the preceding row;
+// the other blockers remain on its row. Restricting the parent to that open
+// branch keeps indentation from making the ticket look like a child of an
+// unrelated row printed since one of its blockers.
 func writeMap(out io.Writer, tickets []mappedTicket) {
 	done := 0
 	for _, ticket := range tickets {
@@ -172,16 +174,23 @@ func writeMap(out io.Writer, tickets []mappedTicket) {
 	}
 	fmt.Fprintf(out, "%d of %d done\n", done, len(tickets))
 
-	depth := make(map[int64]int, len(tickets))
+	var ancestors []int64
 	for _, ticket := range tickets {
 		parentDepth := -1
 		parent := int64(0)
-		for _, dependency := range ticket.DependsOn {
-			if d, found := depth[dependency]; found && d > parentDepth {
-				parent, parentDepth = dependency, d
+		for d := len(ancestors) - 1; d >= 0; d-- {
+			for _, dependency := range ticket.DependsOn {
+				if dependency == ancestors[d] {
+					parent, parentDepth = dependency, d
+					break
+				}
+			}
+			if parentDepth >= 0 {
+				break
 			}
 		}
-		depth[ticket.ID] = parentDepth + 1
+		depth := parentDepth + 1
+		ancestors = append(ancestors[:depth], ticket.ID)
 
 		var others []int64
 		for _, dependency := range ticket.DependsOn {
@@ -189,7 +198,7 @@ func writeMap(out io.Writer, tickets []mappedTicket) {
 				others = append(others, dependency)
 			}
 		}
-		line := fmt.Sprintf("%s%s #%d %s", strings.Repeat("  ", depth[ticket.ID]), mapMark(ticket.Status), ticket.ID, ticket.Title)
+		line := fmt.Sprintf("%s%s #%d %s", strings.Repeat("  ", depth), mapMark(ticket.Status), ticket.ID, ticket.Title)
 		if len(others) > 0 {
 			line += " (waits on " + ticketNames(others) + ")"
 		}
