@@ -7,16 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/alcubie/delegator/internal/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
-)
-
-const (
-	markdownFormat = "markdown"
-	manFormat      = "man"
 )
 
 func main() {
@@ -33,7 +27,7 @@ func run(args []string) error {
 }
 
 func docsCommand() *cobra.Command {
-	var outputDir, format string
+	var outputDir string
 	command := &cobra.Command{
 		Use:           "dg-docs",
 		Short:         "Generate the dg command reference",
@@ -41,26 +35,16 @@ func docsCommand() *cobra.Command {
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return generate(outputDir, format)
+			return generate(outputDir)
 		},
 	}
 	command.Flags().StringVar(&outputDir, "output-dir", "", "directory in which to write generated files")
-	command.Flags().StringVar(&format, "format", "", `output format: "markdown" or "man"`)
 	return command
 }
 
-func generate(outputDir, format string) error {
-	if outputDir == "" && format == "" {
-		return errors.New("--output-dir and --format are required")
-	}
+func generate(outputDir string) error {
 	if outputDir == "" {
 		return errors.New("--output-dir is required")
-	}
-	if format == "" {
-		return errors.New("--format is required")
-	}
-	if format != markdownFormat && format != manFormat {
-		return fmt.Errorf("unsupported --format %q: use %q or %q", format, markdownFormat, manFormat)
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("make output directory %q: %w", outputDir, err)
@@ -68,24 +52,10 @@ func generate(outputDir, format string) error {
 
 	root := cli.Root("")
 	disableAutoGenTags(root)
-	switch format {
-	case markdownFormat:
-		if err := doc.GenMarkdownTreeCustom(root, outputDir, markdownTitle, func(link string) string {
-			return link
-		}); err != nil {
-			return fmt.Errorf("generate Markdown in %q: %w", outputDir, err)
-		}
-	case manFormat:
-		date := time.Unix(0, 0).UTC()
-		header := &doc.GenManHeader{
-			Section: "1",
-			Date:    &date,
-			Source:  "Alcubi Delegator",
-			Manual:  "Alcubi Delegator Manual",
-		}
-		if err := doc.GenManTree(root, header, outputDir); err != nil {
-			return fmt.Errorf("generate man pages in %q: %w", outputDir, err)
-		}
+	if err := doc.GenMarkdownTreeCustom(root, outputDir, markdownTitle, func(link string) string {
+		return link
+	}); err != nil {
+		return fmt.Errorf("generate Markdown in %q: %w", outputDir, err)
 	}
 	return nil
 }
