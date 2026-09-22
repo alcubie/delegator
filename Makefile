@@ -109,7 +109,7 @@ archivecheck:
 	@archive=$$(mktemp); \
 	trap 'rm -f "$$archive"' EXIT HUP INT TERM; \
 	git ls-files | tar -T - -cf "$$archive"; \
-	for file in LICENSE THIRD_PARTY_NOTICES.md; do \
+	for file in LICENSE TRADEMARKS.md THIRD_PARTY_NOTICES.md; do \
 		if ! tar -tf "$$archive" "$$file" >/dev/null 2>&1; then \
 			echo "archivecheck: source archive has no $$file"; exit 1; \
 		fi; \

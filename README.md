@@ -19,7 +19,8 @@ available, or offers the same or substantially similar functionality. Each
 version automatically becomes available under Apache 2.0 two years after Alcubi
 makes that version available. See the full license for the precise terms and
 [third-party notices](THIRD_PARTY_NOTICES.md) for separately licensed
-dependencies.
+dependencies. The code license does not grant permission to brand a fork as an
+official product; see the separate [trademark policy](TRADEMARKS.md).
 
 ## Install
 
@@ -120,5 +121,6 @@ Run them with `make integration`, or `make release` for those and everything
 
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)
+- [Trademark policy](TRADEMARKS.md)
 
 An Alcubi product. Code at `github.com/alcubie/delegator`.

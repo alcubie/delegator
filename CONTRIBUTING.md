@@ -15,6 +15,13 @@ You must have the right to submit the contribution. A contribution must identify
 third-party material and its license; do not submit material whose terms are
 incompatible with Delegator's license or distribution.
 
+## Names and branding
+
+The software license does not grant trademark rights. Contributions may make
+accurate references to the project, but modified distributions and forks must
+follow the separate [trademark policy](TRADEMARKS.md), including its renaming
+requirements.
+
 Delegator does not currently require a contributor license agreement or a
 Developer Certificate of Origin. Before accepting external contributions,
 Alcubi must settle contributor governance if it wants to preserve the ability
