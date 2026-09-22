@@ -8,6 +8,9 @@ select.
 
 Status: in development. Nothing here is released yet.
 
+Read the searchable [Alcubi Delegator CLI Reference](https://alcubi-delegator.readthedocs.io/en/latest/)
+for the complete `dg` command syntax.
+
 ## License
 
 Delegator is Fair Source (source available), not open source while a version is
@@ -120,6 +123,8 @@ Run them with `make integration`, or `make release` for those and everything
 
 ## Documents
 
+- [CLI reference](https://alcubi-delegator.readthedocs.io/en/latest/)
+- [Documentation publishing guide](docs/READ_THE_DOCS.md)
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)
 - [Trademark policy](TRADEMARKS.md)

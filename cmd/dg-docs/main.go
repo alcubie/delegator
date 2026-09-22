@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -56,6 +57,31 @@ func generate(outputDir string) error {
 		return link
 	}); err != nil {
 		return fmt.Errorf("generate Markdown in %q: %w", outputDir, err)
+	}
+	if err := normalizeFinalNewlines(outputDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeFinalNewlines(outputDir string) error {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return fmt.Errorf("read generated Markdown directory %q: %w", outputDir, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		path := filepath.Join(outputDir, entry.Name())
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read generated Markdown %q: %w", path, err)
+		}
+		contents = append(bytes.TrimRight(contents, "\r\n"), '\n')
+		if err := os.WriteFile(path, contents, 0o644); err != nil {
+			return fmt.Errorf("normalize generated Markdown %q: %w", path, err)
+		}
 	}
 	return nil
 }

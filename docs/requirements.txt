@@ -1,0 +1,2 @@
+# Keep the hosted and local documentation builders on the same release.
+mkdocs==1.6.1

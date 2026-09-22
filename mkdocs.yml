@@ -1,0 +1,44 @@
+site_name: Alcubi Delegator CLI Reference
+site_description: Searchable reference for the dg command-line interface
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, "https://alcubi-delegator.readthedocs.io/en/latest/"]
+repo_url: https://github.com/alcubie/delegator
+repo_name: alcubie/delegator
+docs_dir: docs/public
+site_dir: site
+strict: true
+
+theme:
+  name: readthedocs
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Command reference:
+      - dg: reference/dg.md
+      - accept: reference/dg_accept.md
+      - agents:
+          - Overview: reference/dg_agents.md
+          - add: reference/dg_agents_add.md
+      - cancel: reference/dg_cancel.md
+      - chat: reference/dg_chat.md
+      - config:
+          - Overview: reference/dg_config.md
+          - get: reference/dg_config_get.md
+          - list: reference/dg_config_list.md
+          - set: reference/dg_config_set.md
+      - depend: reference/dg_depend.md
+      - edit: reference/dg_edit.md
+      - finish: reference/dg_finish.md
+      - list: reference/dg_list.md
+      - map: reference/dg_map.md
+      - move: reference/dg_move.md
+      - pause: reference/dg_pause.md
+      - restart: reference/dg_restart.md
+      - rpc: reference/dg_rpc.md
+      - search: reference/dg_search.md
+      - show: reference/dg_show.md
+      - start: reference/dg_start.md
+      - ticket: reference/dg_ticket.md
+      - version: reference/dg_version.md

@@ -4,4 +4,6 @@
 coverage.out
 __debug_bin*
 coverage.html
+/site/
+/.venv/
 .claude/
