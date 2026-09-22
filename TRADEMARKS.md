@@ -12,11 +12,11 @@ Nothing in this policy limits a use permitted by applicable law.
 
 ## Owner, names, and status
 
-The owner of the marks described here is **Matthew McCormick**, an individual.
-Alcubi is the selected house and trade brand, and Alcubi Delegator is the
-selected full product name. They are unregistered marks; this policy does not
-claim a federal registration, and the registered-trademark symbol must not be
-used with them.
+The owner of the marks described here is **Matthew McCormick**, an individual
+and the legal operator of the project. **Alcubi** is the trade name under which
+Matthew McCormick publishes **Alcubi Delegator**, the full product name. They
+are unregistered marks; this policy does not claim a federal registration, and
+the registered-trademark symbol must not be used with them.
 
 Delegator is shorthand for Alcubi Delegator when the context is clear. `dg` is
 the literal name of the command and binary. For example, documentation may say

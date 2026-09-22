@@ -8,20 +8,24 @@ select.
 
 Status: in development. Nothing here is released yet.
 
+Alcubi is the trade name under which Matthew McCormick, the individual legal
+operator, publishes Alcubi Delegator.
+
 Read the searchable [Alcubi Delegator CLI Reference](https://alcubi-delegator.readthedocs.io/en/latest/)
 for the complete `dg` command syntax.
 
 ## License
 
 Delegator is Fair Source (source available), not open source while a version is
-protected. It is licensed under [FSL-1.1-ALv2](LICENSE). Its Competing Use
-restriction prohibits making the software available to others in a commercial
-product or service that substitutes for Delegator, substitutes for another
-Alcubi offering that uses Delegator and exists when that version is made
-available, or offers the same or substantially similar functionality. Each
-version automatically becomes available under Apache 2.0 two years after
-Matthew McCormick makes that version available. See the full license for the
-precise terms and
+protected. Matthew McCormick licenses it under
+[FSL-1.1-ALv2](LICENSE). Its Competing Use restriction prohibits making the
+software available to others in a commercial product or service that
+substitutes for Delegator, substitutes for another product or service that
+Matthew McCormick offers under the Alcubi brand using Delegator and that exists
+when that version is made available, or offers the same or substantially
+similar functionality. Each version automatically becomes available under
+Apache 2.0 two years after Matthew McCormick makes that version available. See
+the full license for the precise terms and
 [third-party notices](THIRD_PARTY_NOTICES.md) for separately licensed
 dependencies. The code license does not grant permission to brand a fork as an
 official product; see the separate [trademark policy](TRADEMARKS.md).
@@ -127,6 +131,7 @@ Run them with `make integration`, or `make release` for those and everything
 - [Documentation publishing guide](docs/READ_THE_DOCS.md)
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)
+- [Contribution policy](CONTRIBUTING.md)
 - [Trademark policy](TRADEMARKS.md)
 
 Alcubi Delegator is software published by Matthew McCormick. Code at

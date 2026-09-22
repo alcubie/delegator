@@ -945,7 +945,9 @@ that you reported also contains its test.
 
 ## 15. Names
 
-The product is **delegator**, and its command is `dg`. The group is **Alcubi**.
+The full product name is **Alcubi Delegator**, its command is `dg`, and its trade
+brand is **Alcubi**. Delegator is shorthand for the product when the context is
+clear.
 
 | Item | Value |
 |---|---|
