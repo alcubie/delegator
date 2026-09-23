@@ -22,7 +22,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install install-test test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -35,7 +35,10 @@ install:
 	@command -v goenv >/dev/null && goenv rehash || true
 	@echo "dg is at $$(command -v dg || echo '(not on the PATH)')"
 
-test:
+install-test:
+	./scripts/test-install.sh
+
+test: install-test
 	go test ./...
 
 # integration runs only the TestIntegration tests behind the build tag
@@ -184,7 +187,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: archivecheck fmtcheck vet lint covercheck docs-check
+check: install-test archivecheck fmtcheck vet lint covercheck docs-check
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html

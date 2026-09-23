@@ -1,0 +1,228 @@
+#!/bin/sh
+
+# Install Alcubi Delegator's dg executable from a published GitHub release.
+# The downloaded binary is not extracted or installed until its SHA-256 digest
+# matches the canonical checksum file from the same release.
+set -eu
+
+umask 077
+
+release_api="https://api.github.com/repos/alcubie/delegator/releases/latest"
+release_root="https://github.com/alcubie/delegator/releases/download"
+requested_version=${DG_VERSION:-}
+install_dir=${DG_INSTALL_DIR:-}
+non_interactive=${DG_NON_INTERACTIVE:-0}
+work_dir=
+stage_file=
+
+usage() {
+	cat <<'EOF'
+Install Alcubi Delegator.
+
+Usage: install.sh [--version VERSION] [--install-dir DIRECTORY]
+                  [--non-interactive]
+
+Options:
+  --version VERSION       Install this release (the latest stable by default).
+  --install-dir DIRECTORY Install dg in this directory.
+  --non-interactive       Never prompt (the installer never uses sudo).
+  -h, --help              Show this help.
+
+The same settings can be supplied with DG_VERSION, DG_INSTALL_DIR, and
+DG_NON_INTERACTIVE=1. Command-line options take precedence.
+EOF
+}
+
+fail() {
+	printf '%s\n' "Alcubi Delegator installer: $*" >&2
+	exit 1
+}
+
+cleanup() {
+	if [ -n "$stage_file" ]; then
+		rm -f "$stage_file"
+	fi
+	if [ -n "$work_dir" ]; then
+		rm -rf "$work_dir"
+	fi
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+while [ "$#" -gt 0 ]; do
+	case $1 in
+		--version)
+			[ "$#" -ge 2 ] || fail "--version requires a value"
+			requested_version=$2
+			shift 2
+			;;
+		--version=*)
+			requested_version=${1#*=}
+			shift
+			;;
+		--install-dir)
+			[ "$#" -ge 2 ] || fail "--install-dir requires a value"
+			install_dir=$2
+			shift 2
+			;;
+		--install-dir=*)
+			install_dir=${1#*=}
+			shift
+			;;
+		--non-interactive)
+			non_interactive=1
+			shift
+			;;
+		-h|--help)
+			usage
+			exit 0
+			;;
+		--)
+			shift
+			break
+			;;
+		*) fail "unknown option: $1" ;;
+	esac
+done
+[ "$#" -eq 0 ] || fail "unexpected argument: $1"
+
+case $non_interactive in
+	0|false|no|'') ;;
+	1|true|yes) non_interactive=1 ;;
+	*) fail "DG_NON_INTERACTIVE must be 0 or 1" ;;
+esac
+
+for command_name in curl grep sed awk tar mktemp mkdir cp chmod mv uname; do
+	command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
+done
+
+case $(uname -s) in
+	Linux) os=linux ;;
+	Darwin) os=darwin ;;
+	*) fail "unsupported operating system: $(uname -s)" ;;
+esac
+
+case $(uname -m) in
+	x86_64|amd64) arch=amd64 ;;
+	aarch64|arm64) arch=arm64 ;;
+	*) fail "unsupported architecture: $(uname -m)" ;;
+esac
+
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/alcubi-delegator.XXXXXX") || \
+	fail "could not create a temporary directory"
+
+download() {
+	url=$1
+	output=$2
+	curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+		--header 'Accept: application/vnd.github+json' \
+		--user-agent 'alcubi-delegator-installer' \
+		--output "$output" "$url"
+}
+
+validate_version() {
+	printf '%s\n' "$1" | grep -Eq \
+		'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+}
+
+if [ -z "$requested_version" ]; then
+	metadata="$work_dir/latest.json"
+	if ! download "$release_api" "$metadata"; then
+		fail "could not determine the latest stable release"
+	fi
+	tag=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$metadata" | sed -n '1p')
+	[ -n "$tag" ] || fail "latest release metadata has no tag_name"
+	requested_version=${tag#v}
+	validate_version "$requested_version" || fail "latest release has an invalid version: $tag"
+	case ${requested_version%%+*} in
+		*-*) fail "latest release is not stable: $tag" ;;
+	esac
+else
+	requested_version=${requested_version#v}
+	validate_version "$requested_version" || fail "invalid version: $requested_version"
+fi
+
+version=$requested_version
+tag=v$version
+archive="alcubi-delegator_${version}_${os}_${arch}.tar.gz"
+checksums="alcubi-delegator_${version}_checksums.txt"
+base="$release_root/$tag"
+archive_path="$work_dir/$archive"
+checksums_path="$work_dir/$checksums"
+
+if ! download "$base/$checksums" "$checksums_path"; then
+	fail "release $tag is unavailable or has no canonical checksum file"
+fi
+if ! download "$base/$archive" "$archive_path"; then
+	fail "release $tag has no archive for $os/$arch"
+fi
+
+if ! expected=$(awk -v name="$archive" '
+	NF == 2 && $2 == name && length($1) == 64 && $1 ~ /^[0-9a-f]+$/ {
+		print $1
+		matches++
+	}
+	END { if (matches != 1) exit 1 }
+' "$checksums_path"); then
+	fail "canonical checksum file has no unique valid entry for $archive"
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+	actual=$(sha256sum "$archive_path" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+	actual=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+else
+	fail "required SHA-256 command not found (sha256sum or shasum)"
+fi
+[ "$actual" = "$expected" ] || fail "checksum verification failed for $archive"
+
+extract_dir="$work_dir/extract"
+mkdir "$extract_dir" || fail "could not prepare the extraction directory"
+tar -xzf "$archive_path" -C "$extract_dir" dg || fail "could not extract dg from $archive"
+[ -f "$extract_dir/dg" ] && [ -x "$extract_dir/dg" ] || \
+	fail "release archive does not contain an executable dg"
+
+reported_version=$("$extract_dir/dg" version) || fail "downloaded dg could not report its version"
+[ "$reported_version" = "dg v$version" ] || \
+	fail "downloaded dg reported '$reported_version', expected 'dg v$version'"
+
+if [ -n "$install_dir" ]; then
+	mkdir -p "$install_dir" || fail "could not create install directory: $install_dir"
+	[ -d "$install_dir" ] && [ -w "$install_dir" ] && [ -x "$install_dir" ] || \
+		fail "install directory is not writable: $install_dir"
+else
+	selected=
+	if [ -n "${HOME:-}" ]; then
+		for candidate in "$HOME/.local/bin" "$HOME/bin"; do
+			if [ -d "$candidate" ] && [ -w "$candidate" ] && [ -x "$candidate" ]; then
+				selected=$candidate
+				break
+			fi
+		done
+	fi
+	if [ -z "$selected" ] && [ -d /usr/local/bin ] && [ -w /usr/local/bin ] && [ -x /usr/local/bin ]; then
+		selected=/usr/local/bin
+	fi
+	if [ -z "$selected" ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ] && [ -w "$HOME" ]; then
+		candidate="$HOME/.local/bin"
+		if mkdir -p "$candidate" && [ -w "$candidate" ] && [ -x "$candidate" ]; then
+			selected=$candidate
+		fi
+	fi
+	[ -n "$selected" ] || fail "no writable standard install directory; use --install-dir"
+	install_dir=$selected
+fi
+
+install_dir=$(cd "$install_dir" && pwd -P) || fail "could not resolve install directory"
+destination="$install_dir/dg"
+stage_file=$(mktemp "$install_dir/.dg.XXXXXX") || \
+	fail "could not create a staging file in $install_dir"
+cp "$extract_dir/dg" "$stage_file" || fail "could not stage dg in $install_dir"
+chmod 0755 "$stage_file" || fail "could not make the staged dg executable"
+mv -f "$stage_file" "$destination" || fail "could not install dg at $destination"
+stage_file=
+
+printf '%s\n' "Installed Alcubi Delegator ($reported_version) at $destination"
