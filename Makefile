@@ -22,7 +22,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install test integration release release-check release-snapshot release-validate vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -48,6 +48,19 @@ integration:
 # release is the gate before a release: every ordinary and integration test,
 # followed by the same publish-free artifact build that a release uses.
 release: check integration release-validate
+
+# Run before tagging. Review and commit changes yourself; never modify a tag's
+# source tree in the publication workflow.
+release-prepare: docs
+	git status --short -- $(DOCS_REFERENCE)
+	git diff -- $(DOCS_REFERENCE)
+	@test -z "$$(git status --porcelain -- $(DOCS_REFERENCE))" || \
+		{ echo 'Review and commit the generated reference before creating a tag.'; exit 1; }
+
+# Build an exact tag without giving the builder publication credentials.
+release-build: release-check
+	$(GORELEASER) release --clean --skip=publish
+	go run ./cmd/dg-release-check -dist dist -version "$${RELEASE_TAG#v}"
 
 # The pinned tool is invoked through the Go module cache. Both builds use
 # --snapshot, which disables every publisher and requires no credentials.
@@ -152,7 +165,7 @@ docs-serve:
 # working tree nor leaves a built site behind. diff catches added, removed and
 # changed pages before MkDocs checks navigation and links.
 docs-check:
-	@generated=$$(mktemp -d); site=$$(mktemp -d); \
+	@set -eu; generated=$$(mktemp -d); site=$$(mktemp -d); \
 	trap 'rm -rf "$$generated" "$$site"' EXIT HUP INT TERM; \
 	go run ./cmd/dg-docs --output-dir "$$generated"; \
 	diff -ru $(DOCS_REFERENCE) "$$generated"; \
