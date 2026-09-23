@@ -140,6 +140,7 @@ Run them with `make integration`, or `make release` for those and everything
 ## Documents
 
 - [CLI reference](https://alcubi-delegator.readthedocs.io/en/latest/)
+- [Release artifacts and procedure](docs/RELEASES.md)
 - [Documentation publishing guide](docs/READ_THE_DOCS.md)
 - [Technical document](docs/TECHNICAL_DESIGN.md)
 - [Features that wait](docs/FEATURES.md)

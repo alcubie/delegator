@@ -1,0 +1,71 @@
+version: 2
+
+project_name: alcubi-delegator
+
+builds:
+  - id: dg
+    main: ./cmd/dg
+    binary: dg
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -buildid=
+      - -X github.com/alcubie/delegator/internal/cli.Version=v{{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: binaries
+    ids:
+      - dg
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "alcubi-delegator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: TRADEMARKS.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+
+source:
+  enabled: true
+  name_template: "alcubi-delegator_{{ .Version }}_source"
+  format: tar.gz
+  prefix_template: "alcubi-delegator_{{ .Version }}/"
+
+checksum:
+  name_template: "alcubi-delegator_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: '{{ if index .Env "RELEASE_VERSION" }}{{ .Env.RELEASE_VERSION }}{{ else }}0.0.0-snapshot-{{ .ShortCommit }}{{ end }}'
+
+release:
+  github:
+    owner: alcubie
+    name: delegator
+  name_template: "Alcubi Delegator v{{ .Version }}"
