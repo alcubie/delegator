@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.6'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Validate release tag
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT" == push ]]; then
+            python3 scripts/check-release-tag.py "$RELEASE_TAG"
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install check tools
+        run: |
+          go install golang.org/x/tools/cmd/goimports@v0.49.0
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          python -m pip install --requirement docs/requirements.txt
+      - name: Normal checks, committed CLI reference, and documentation site
+        run: |
+          python3 scripts/test-release.py
+          make check
+      - name: Build and validate all release targets
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [[ "$EVENT" == push ]]; then
+            make release-build
+          else
+            make release-validate VALIDATION_VERSION=0.0.0-rc.${{ github.run_number }}
+          fi
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Keep the validated archives and canonical checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*_checksums.txt
+
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: assets
+      - name: Upload, verify, then publish the complete draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd assets
+          checksum="alcubi-delegator_${RELEASE_TAG#v}_checksums.txt"
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 8
+          test "$(wc -l < "$checksum")" -eq 7
+          sha256sum --check "$checksum"
+          # Existing releases, including partial drafts, require explicit recovery.
+          # create also fails closed if a release already exists or the API fails.
+          prerelease=false
+          version_without_metadata=${RELEASE_TAG%%+*}
+          if [[ "$version_without_metadata" == *-* ]]; then prerelease=true; fi
+          cat > ../notes.md <<EOF
+          Alcubi Delegator $RELEASE_TAG
+
+          See the generated change list below for this release. Verify downloads
+          using the attached SHA-256 checksum file.
+
+          [FSL-1.1-ALv2 license](https://github.com/$GH_REPO/blob/$RELEASE_TAG/LICENSE)
+          · [Trademark policy](https://github.com/$GH_REPO/blob/$RELEASE_TAG/TRADEMARKS.md)
+          EOF
+          gh release create "$RELEASE_TAG" ./* --verify-tag --draft \
+            --title "Alcubi Delegator $RELEASE_TAG" --prerelease="$prerelease" \
+            --generate-notes --notes-file ../notes.md
+          mkdir ../downloaded
+          gh release download "$RELEASE_TAG" --dir ../downloaded
+          cd ../downloaded
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 8
+          cmp "$checksum" "../assets/$checksum"
+          sha256sum --check "$checksum"
+          gh release edit "$RELEASE_TAG" --verify-tag --draft=false \
+            --prerelease="$prerelease" --latest=false
