@@ -95,7 +95,7 @@ func TestRPCRefusesTerminalAndPersonOnlyMethods(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	for _, method := range []string{"chat", "rpc"} {
+	for _, method := range []string{"chat", "init", "rpc"} {
 		t.Run(method, func(t *testing.T) {
 			out, err := rpcIn(t, dataDir, repo, fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"id":1}`, method))
 			if err != nil {
@@ -159,7 +159,7 @@ func TestRPCRefusesBodyFileFromStandardInputForEveryMethod(t *testing.T) {
 	root := Root(repo)
 
 	for _, command := range root.Commands() {
-		if command.Name() == "chat" || command.Name() == "rpc" {
+		if rpcRefusedMethods[command.Name()] {
 			continue
 		}
 		t.Run(command.Name(), func(t *testing.T) {

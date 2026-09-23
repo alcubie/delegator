@@ -535,6 +535,15 @@ func TestOpenSeedsTheBuiltInAgents(t *testing.T) {
 	if pi.InstallHint == "" {
 		t.Error("pi has no installation hint")
 	}
+	for _, name := range []string{"claude", "codex", "gemini"} {
+		agent, err := s.Agent(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if agent.InstallHint == "" {
+			t.Errorf("%s has no installation hint", name)
+		}
+	}
 }
 
 func TestAgentRegistryRoundTripsAndControlsTheDefault(t *testing.T) {

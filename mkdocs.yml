@@ -31,6 +31,7 @@ nav:
       - depend: reference/dg_depend.md
       - edit: reference/dg_edit.md
       - finish: reference/dg_finish.md
+      - init: reference/dg_init.md
       - list: reference/dg_list.md
       - map: reference/dg_map.md
       - move: reference/dg_move.md
