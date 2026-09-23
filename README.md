@@ -40,6 +40,25 @@ third-party agents.
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 ```
 
+The installer detects supported Linux and macOS systems, selects the latest
+stable GitHub release, verifies its canonical SHA-256 checksum, and installs
+`dg` in a writable standard binary directory. It never uses `sudo`, changes
+shell startup files, or changes Delegator data and settings. To pin a version
+or destination in an unattended installation, set the documented installer
+environment variables:
+
+```sh
+curl -fsSL https://alcubi.ai/delegator/install.sh | \
+  DG_VERSION=1.4.0 DG_INSTALL_DIR="$HOME/.local/bin" DG_NON_INTERACTIVE=1 sh
+```
+
+The equivalent flags are available when passing arguments to the piped shell:
+
+```sh
+curl -fsSL https://alcubi.ai/delegator/install.sh | \
+  sh -s -- --version 1.4.0 --install-dir "$HOME/.local/bin" --non-interactive
+```
+
 ## Security
 
 Report suspected vulnerabilities privately to
