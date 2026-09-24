@@ -294,8 +294,8 @@ exit 0
 EOF
 	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	run_piped_installer terminal $'y\n\n'
-	assert_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now? [y/N]'
+	run_piped_installer terminal $'\n'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now?'
 	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
 	assert_contains "$CASE_DIR/terminal-output" 'Default agent: Goose'
@@ -305,24 +305,33 @@ EOF
 	[[ $selected == goose ]] || fail "default agent is $selected, want goose"
 }
 
-test_piped_interactive_decline_only_installs() {
+test_piped_interactive_decline_leaves_setup_incomplete() {
 	setup_case interactive-decline
 	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	run_piped_installer terminal $'n\n'
-	assert_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now? [y/N]'
-	assert_contains "$CASE_DIR/terminal-output" 'To set up Alcubi Delegator later, run:'
-	assert_contains "$CASE_DIR/terminal-output" '    dg init'
-	assert_not_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
-	[[ ! -e $CASE_DIR/data-home/delegator/delegator.db ]] || \
-		fail 'declining onboarding created Delegator data'
+	run_piped_installer terminal $'q\n'
+	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
+	assert_contains "$CASE_DIR/terminal-output" 'Choose your default agent:'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'Setup is incomplete until a default agent is selected.'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	local selected
+	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" config get default_agent)
+	[[ -z $selected ]] || fail "declined onboarding selected $selected"
+	assert_no_tickets
 }
 
 test_piped_onboarding_reports_a_missing_agent() {
 	setup_case missing-agent
 	make_onboarding_release
 
-	run_piped_installer terminal $'y\n'
+	run_piped_installer terminal ''
 	assert_contains "$CASE_DIR/terminal-output" \
 		'No supported Agent Client Protocol (ACP) command was found.'
 	assert_contains "$CASE_DIR/terminal-output" \
@@ -340,29 +349,32 @@ exit 0
 EOF
 	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	# Control-D closes terminal input after accepting setup and selecting Goose.
-	# The installer's yes belongs only to dg init, never to ticket creation.
-	run_piped_installer terminal $'y\n\n\004'
+	# Control-D closes terminal input after selecting Goose. Choosing an agent
+	# during dg init is never consent to create or run a ticket.
+	run_piped_installer terminal $'\n\004'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
 	assert_no_tickets
 }
 
-test_empty_or_closed_terminal_input_declines_onboarding() {
-	local answer name
-	for name in empty closed; do
-		setup_case "terminal-$name"
-		make_onboarding_release
-		if [[ $name == empty ]]; then
-			answer=$'\n'
-		else
-			answer=$'\004'
-		fi
-		run_piped_installer terminal "$answer"
-		assert_contains "$CASE_DIR/terminal-output" 'To set up Alcubi Delegator later, run:'
-		assert_not_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
-		[[ ! -e $CASE_DIR/data-home/delegator/delegator.db ]] || \
-			fail "$name terminal input was treated as onboarding consent"
-	done
+test_closed_terminal_input_does_not_select_an_agent() {
+	setup_case terminal-closed
+	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
+
+	run_piped_installer terminal $'\004'
+	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'Setup is incomplete until a default agent is selected.'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	local selected
+	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" config get default_agent)
+	[[ -z $selected ]] || fail "closed terminal input selected $selected"
+	assert_no_tickets
 }
 
 test_piped_install_without_a_terminal_prints_init_command() {
@@ -387,10 +399,10 @@ tests=(
 	test_unavailable_release_leaves_no_binary
 	test_no_writable_destination
 	test_piped_interactive_acceptance_runs_onboarding
-	test_piped_interactive_decline_only_installs
+	test_piped_interactive_decline_leaves_setup_incomplete
 	test_piped_onboarding_reports_a_missing_agent
 	test_onboarding_consent_is_not_first_ticket_consent
-	test_empty_or_closed_terminal_input_declines_onboarding
+	test_closed_terminal_input_does_not_select_an_agent
 	test_piped_install_without_a_terminal_prints_init_command
 )
 

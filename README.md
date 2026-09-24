@@ -43,11 +43,11 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 The installer detects supported Linux and macOS systems, selects the latest
 stable GitHub release, verifies its canonical SHA-256 checksum, and installs
 `dg` in a writable standard binary directory. When a terminal is available,
-it offers to start the guided `dg init` setup on that terminal. Declining the
-offer only installs `dg`; the installer never creates a first ticket from that
-answer. It never uses `sudo` or changes shell startup files.
+it starts the guided `dg init` workflow on that terminal. Starting onboarding
+is not consent to create or run a first ticket. The installer never uses `sudo`
+or changes shell startup files.
 
-To skip the onboarding offer, or to pin a version or destination in an
+To skip onboarding, or to pin a version or destination in an
 unattended installation, set the documented installer environment variables:
 
 ```sh

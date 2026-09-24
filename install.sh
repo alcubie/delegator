@@ -232,9 +232,9 @@ show_init_command() {
 }
 
 # stdin contains this script in the documented curl-to-sh invocation. Open the
-# controlling terminal separately so that a person's answer, and every stream
-# used by dg init, still belong to that terminal. Failure to open /dev/tty is
-# the normal unattended case; it must never turn EOF on stdin into consent.
+# controlling terminal separately so that every stream used by dg init still
+# belongs to that terminal. Failure to open /dev/tty is the normal unattended
+# case, which installs the command without starting onboarding.
 if [ "$non_interactive" = 1 ]; then
 	show_init_command
 	exit 0
@@ -245,15 +245,5 @@ if ! ( : <>/dev/tty ) 2>/dev/null; then
 fi
 exec 3<>/dev/tty
 
-printf '\nSet up Alcubi Delegator now? [y/N] ' >&3
-answer=
-if IFS= read -r answer <&3; then
-	case $answer in
-		y|Y|yes|YES|Yes|yES|yeS|YEs|YeS|yEs)
-			"$destination" init <&3 >&3 2>&3
-			exit $?
-			;;
-	esac
-fi
-
-show_init_command >&3
+printf '\n' >&3
+"$destination" init <&3 >&3 2>&3
