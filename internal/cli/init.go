@@ -201,10 +201,21 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		return writeCompletedInit(out, cfg.DefaultAgent)
 	}
 
-	if len(choices) == 0 && selector == nil {
+	if len(choices) == 0 {
 		fmt.Fprintln(out, "\nNo supported ACP agent command was found.")
-		fmt.Fprintln(out, "Run dg init in a terminal to configure an agent command, or use dg agents add.")
-		return writeIncompleteInit(out)
+		if selector == nil {
+			fmt.Fprintln(out, "Run dg init in a terminal to configure an agent command, or use dg agents add.")
+			return writeIncompleteInit(out)
+		}
+		name, configured, err := configureAgent(cmd, s)
+		if err != nil {
+			return err
+		}
+		if !configured {
+			return writeIncompleteInit(out)
+		}
+		cfg.DefaultAgent = name
+		return writeCompletedInit(out, cfg.DefaultAgent)
 	}
 
 	if selector == nil {
@@ -219,9 +230,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		return writeIncompleteInit(out)
 	}
 
-	if len(choices) == 0 {
-		fmt.Fprintln(out, "\nNo supported ACP agent command was found.")
-	}
 	labels, current := choiceLabels(choices, cfg.DefaultAgent)
 	labels = append(labels, "Configure another agent…")
 	selected, chose, err := selector(cmd.InOrStdin(), out, labels, current)
@@ -319,12 +327,17 @@ func configureAgent(cmd *cobra.Command, s *store.Store) (string, bool, error) {
 	out := cmd.OutOrStdout()
 	prompt := newInitPrompter(cmd.InOrStdin(), out)
 	fmt.Fprintln(out, "\nConfigure an ACP agent command.")
-	name, read, err := prompt.line("Agent name [custom]: ")
-	if err != nil || !read {
-		return "", false, err
-	}
-	if name == "" {
-		name = "custom"
+	var name string
+	for name == "" {
+		var read bool
+		var err error
+		name, read, err = prompt.line("Agent name: ")
+		if err != nil || !read {
+			return "", false, err
+		}
+		if name == "" {
+			fmt.Fprintln(out, "Agent name is required.")
+		}
 	}
 
 	for {

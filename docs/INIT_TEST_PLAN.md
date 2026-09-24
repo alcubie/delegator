@@ -64,9 +64,9 @@ printf 'Use this path at the prompt: %s\n' "$case_dir/path/my-acp"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: no known agent is detected. Press Enter on the sole `Configure
-another agent…` choice, then enter `mine` for the name and the printed absolute
-path ending in `my-acp` for the executable. Confirm storage with:
+Expected: Delegator reports that no supported agent was found and goes directly
+to `Agent name:` without showing the agent chooser. Enter `mine`, then enter the
+printed absolute path ending in `my-acp`. Confirm storage with:
 
 ```bash
 PATH="$case_dir/path" "$DG_TEST_DG" config get default_agent --data-dir "$case_dir/data"

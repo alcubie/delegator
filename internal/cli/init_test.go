@@ -130,13 +130,18 @@ func TestInitConfiguresACommandWhenNoKnownAgentIsFound(t *testing.T) {
 	command := executable(t, bin, "mine-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\rmine\n"+command+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "mine\n"+command+"\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"No supported ACP agent command was found", "Saved mine", "Setup complete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"Choose your default agent", "Configure another agent…", "[custom]"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("dg init output contains %q when no agents were found:\n%s", unwanted, out)
 		}
 	}
 	s := testfix.OpenStore(t, dataDir)
@@ -153,6 +158,27 @@ func TestInitConfiguresACommandWhenNoKnownAgentIsFound(t *testing.T) {
 	}
 	if cfg.DefaultAgent != "mine" {
 		t.Errorf("default agent = %q, want mine", cfg.DefaultAgent)
+	}
+}
+
+func TestInitRequiresAnExplicitCustomAgentName(t *testing.T) {
+	dataDir := t.TempDir()
+	bin := t.TempDir()
+	command := executable(t, bin, "mine-acp")
+	t.Setenv("PATH", bin)
+
+	out, err := runInteractiveInit(t, dataDir, "\nmine\n"+command+"\n", initOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Agent name: Agent name is required.\nAgent name: ") {
+		t.Errorf("dg init did not require an explicit agent name:\n%s", out)
+	}
+	if strings.Contains(out, "[custom]") {
+		t.Errorf("dg init advertised an implicit custom name:\n%s", out)
+	}
+	if got, err := testfix.OpenStore(t, dataDir).DefaultAgent(); err != nil || got != "mine" {
+		t.Errorf("default agent = %q, %v; want mine", got, err)
 	}
 }
 
@@ -309,7 +335,7 @@ func TestInitRetriesAnInvalidCustomCommand(t *testing.T) {
 	t.Setenv("PATH", bin)
 	missing := filepath.Join(t.TempDir(), "missing")
 
-	out, err := runInteractiveInit(t, dataDir, "\rmine\n"+missing+"\n"+command+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "mine\n"+missing+"\n"+command+"\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
