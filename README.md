@@ -34,7 +34,7 @@ official product; see the separate [trademark policy](TRADEMARKS.md).
 
 No release exists yet. Before using a future installer, read the
 [privacy notice](PRIVACY.md), including its account of installer requests and
-third-party agents.
+third-party agents. The verified one-line command for that future release is:
 
 ```
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh
@@ -42,10 +42,13 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 
 The installer detects supported Linux and macOS systems, selects the latest
 stable GitHub release, verifies its canonical SHA-256 checksum, and installs
-`dg` in a writable standard binary directory. It never uses `sudo`, changes
-shell startup files, or changes Delegator data and settings. To pin a version
-or destination in an unattended installation, set the documented installer
-environment variables:
+`dg` in a writable standard binary directory. When a terminal is available,
+it offers to start the guided `dg init` setup on that terminal. Declining the
+offer only installs `dg`; the installer never creates a first ticket from that
+answer. It never uses `sudo` or changes shell startup files.
+
+To skip the onboarding offer, or to pin a version or destination in an
+unattended installation, set the documented installer environment variables:
 
 ```sh
 curl -fsSL https://alcubi.ai/delegator/install.sh | \
@@ -58,6 +61,10 @@ The equivalent flags are available when passing arguments to the piped shell:
 curl -fsSL https://alcubi.ai/delegator/install.sh | \
   sh -s -- --version 1.4.0 --install-dir "$HOME/.local/bin" --non-interactive
 ```
+
+With `DG_NON_INTERACTIVE=1`, `--non-interactive`, or no controlling terminal,
+the installer changes no Delegator data or settings and prints the exact
+`dg init` command to run later.
 
 ## Security
 
