@@ -135,6 +135,7 @@ func Root(workDir string) *cobra.Command {
 		"when to colour status values: always, never, or auto (terminals only)")
 	root.PersistentFlags().StringVar(&selectedDir, "data-dir", "",
 		"store all Delegator data in this absolute directory (default: the platform data directory)")
+	root.AddCommand(initCommand(&selectedDir, &cfg))
 	root.AddCommand(ticketCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(listCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(searchCommand(&selectedDir, workDir, &cfg))

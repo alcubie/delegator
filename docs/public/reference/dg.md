@@ -31,13 +31,14 @@ dg [flags]
 ### SEE ALSO
 
 * [dg accept](dg_accept.md)	 - Close a ready ticket.
-* [dg agents](dg_agents.md)	 - List available ACP agents
+* [dg agents](dg_agents.md)	 - List available Agent Client Protocol (ACP) commands
 * [dg cancel](dg_cancel.md)	 - Stop the work on a ticket and close it.
 * [dg chat](dg_chat.md)	 - Continue a ticket's agent session.
 * [dg config](dg_config.md)	 - Show or change instance settings.
 * [dg depend](dg_depend.md)	 - Add or remove dependencies of a queued ticket.
 * [dg edit](dg_edit.md)	 - Change the title and the prose of a queued ticket.
 * [dg finish](dg_finish.md)	 - Record the commit of a ticket and mark it Ready.
+* [dg init](dg_init.md)	 - Set up Alcubi Delegator for a first run.
 * [dg list](dg_list.md)	 - List every ticket, whatever its status
 * [dg map](dg_map.md)	 - Show the dependency graph of a ticket
 * [dg move](dg_move.md)	 - Reorder a ticket in its queue or ready list.

@@ -43,6 +43,7 @@ var migrations = []string{
 	verifyCursorACP,
 	addRunUsageTable,
 	verifyPiACP,
+	addOnboardingInstallHints,
 }
 
 // tables makes the two tables and the index of the queue. The ids of tickets
@@ -317,6 +318,19 @@ UPDATE agents SET
   resume_argv = '["pi","--session","{session}"]',
   install_hint = 'Install Pi 0.85.1 or later and pi-acp 0.0.33 or later'
 WHERE name = 'pi';
+`
+
+// addOnboardingInstallHints fills the entries that predate registry hints, so
+// dg init can give a useful next action even when no agent command is on PATH.
+const addOnboardingInstallHints = `
+UPDATE agents SET install_hint = 'Install with: npm install -g @agentclientprotocol/claude-agent-acp'
+WHERE name = 'claude' AND COALESCE(install_hint, '') = '';
+
+UPDATE agents SET install_hint = 'Install with: npm install -g @agentclientprotocol/codex-acp'
+WHERE name = 'codex' AND COALESCE(install_hint, '') = '';
+
+UPDATE agents SET install_hint = 'Install Gemini CLI so "gemini --experimental-acp" is available on PATH'
+WHERE name = 'gemini' AND COALESCE(install_hint, '') = '';
 `
 
 // verifyGitHubCopilotACP records the commands verified with GitHub Copilot

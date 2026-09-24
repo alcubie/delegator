@@ -18,9 +18,9 @@ const (
 	rpcInvalidParams  = -32602
 )
 
-// rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat needs the
-// terminal a person is at, and rpc already owns stdin.
-var rpcRefusedMethods = map[string]bool{"chat": true, "rpc": true}
+// rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat and init
+// need the terminal a person is at, and rpc already owns stdin.
+var rpcRefusedMethods = map[string]bool{"chat": true, "init": true, "rpc": true}
 
 type rpcProjectRequiredError struct{}
 
