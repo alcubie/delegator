@@ -2,60 +2,60 @@
 %% Without --agent, both input and output must be attached to a terminal.
 %% Incomplete paths do not print permissions, token usage, or next steps.
 flowchart TD
-    START["dg init"] --> FLAG{"--agent supplied?"}
+    START["01. dg init"] --> FLAG{"02. --agent supplied?"}
 
-    FLAG -->|Yes| DISCOVER_SCRIPTED["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
-    DISCOVER_SCRIPTED --> FLAG_ADAPTER{"Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
+    FLAG -->|Yes| DISCOVER_SCRIPTED["03. Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
+    DISCOVER_SCRIPTED --> FLAG_ADAPTER{"04. Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
     FLAG_ADAPTER -->|Yes| ADAPTER_START
-    FLAG_ADAPTER -->|No| SET_DEFAULT["Validate agent command<br/>Save as default"]
+    FLAG_ADAPTER -->|No| SET_DEFAULT["05. Validate agent command<br/>Save as default"]
 
-    FLAG -->|No| REQUIRE_TERMINAL["Require an interactive terminal<br/>otherwise return guidance to use --agent"]
-    REQUIRE_TERMINAL --> DISCOVER_GUIDED["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
-    DISCOVER_GUIDED --> FOUND{"Any supported agents found?"}
+    FLAG -->|No| REQUIRE_TERMINAL["06. Require an interactive terminal<br/>otherwise return guidance to use --agent"]
+    REQUIRE_TERMINAL --> DISCOVER_GUIDED["07. Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
+    DISCOVER_GUIDED --> FOUND{"08. Any supported agents found?"}
     FOUND -->|No| CUSTOM_START
-    FOUND -->|Yes| CHOOSER["Choose your default agent by number<br/>Detected agents plus<br/>Configure another agent…"]
-    CHOOSER -->|Cancel| KEEP_CURRENT{"Current default is among<br/>the ready choices?"}
+    FOUND -->|Yes| CHOOSER["09. Choose your default agent by number<br/>Detected agents plus<br/>Configure another agent…"]
+    CHOOSER -->|Cancel| KEEP_CURRENT{"10. Current default is among<br/>the ready choices?"}
     KEEP_CURRENT -->|Yes| COMPLETE
     KEEP_CURRENT -->|No| INCOMPLETE
     CHOOSER -->|Configure another agent…| CUSTOM_START
-    CHOOSER -->|Detected agent| CHOICE_ADAPTER{"ACP adapter missing?"}
+    CHOOSER -->|Detected agent| CHOICE_ADAPTER{"11. ACP adapter missing?"}
     CHOICE_ADAPTER -->|No| SET_DEFAULT
     CHOICE_ADAPTER -->|Yes| ADAPTER_START
 
     subgraph CUSTOM["Custom agent configuration"]
-        CUSTOM_START["Report that no agent was found,<br/>or enter from the chooser"] --> NAME["Prompt: Agent name"]
-        NAME --> NAME_OK{"Name input?"}
+        CUSTOM_START["12. Report that no agent was found,<br/>or enter from the chooser"] --> NAME["13. Prompt: Agent name"]
+        NAME --> NAME_OK{"14. Name input?"}
         NAME_OK -->|Empty| NAME
         NAME_OK -->|End of input| CUSTOM_CANCEL
-        NAME_OK -->|Non-empty| COMMAND["Prompt: ACP executable<br/>command or absolute path"]
-        COMMAND --> COMMAND_GIVEN{"Command supplied?"}
-        COMMAND_GIVEN -->|No| CUSTOM_CANCEL["Cancel custom configuration"]
-        COMMAND_GIVEN -->|Yes| COMMAND_VALID{"Executable found?"}
+        NAME_OK -->|Non-empty| COMMAND["15. Prompt: ACP executable<br/>command or absolute path"]
+        COMMAND --> COMMAND_GIVEN{"16. Command supplied?"}
+        COMMAND_GIVEN -->|No| CUSTOM_CANCEL["17. Cancel custom configuration"]
+        COMMAND_GIVEN -->|Yes| COMMAND_VALID{"18. Executable found?"}
         COMMAND_VALID -->|No| COMMAND
-        COMMAND_VALID -->|Yes| SAVE_CUSTOM["Save registry entry<br/>Save as default"]
+        COMMAND_VALID -->|Yes| SAVE_CUSTOM["19. Save registry entry<br/>Save as default"]
     end
-    CUSTOM_CANCEL --> INCOMPLETE["Setup incomplete"]
+    CUSTOM_CANCEL --> INCOMPLETE["20. Setup incomplete"]
     SAVE_CUSTOM --> COMPLETE
 
     subgraph ADAPTER["Missing ACP adapter"]
-        ADAPTER_START["Explain missing adapter<br/>Offer npm install"] --> INSTALL{"Install?"}
-        INSTALL -->|Yes| RUN_INSTALL["Run fixed npm package install"]
-        RUN_INSTALL --> INSTALL_OK{"Install command succeeded?"}
-        INSTALL_OK -->|No| ERROR["Return error"]
-        INSTALL_OK -->|Yes| ON_PATH{"Adapter now on PATH?"}
-        ON_PATH -->|Yes| ADAPTER_READY["Adapter ready"]
-        ON_PATH -->|No| MANUAL_PATH["Prompt for adapter command<br/>or absolute path"]
+        ADAPTER_START["21. Explain missing adapter<br/>Offer npm install"] --> INSTALL{"22. Install?"}
+        INSTALL -->|Yes| RUN_INSTALL["23. Run fixed npm package install"]
+        RUN_INSTALL --> INSTALL_OK{"24. Install command succeeded?"}
+        INSTALL_OK -->|No| ERROR["25. Return error"]
+        INSTALL_OK -->|Yes| ON_PATH{"26. Adapter now on PATH?"}
+        ON_PATH -->|Yes| ADAPTER_READY["27. Adapter ready"]
+        ON_PATH -->|No| MANUAL_PATH["28. Prompt for adapter command<br/>or absolute path"]
         INSTALL -->|No| MANUAL_PATH
-        MANUAL_PATH --> PATH_GIVEN{"Path supplied?"}
-        PATH_GIVEN -->|No| ADAPTER_CANCEL["Adapter not configured"]
-        PATH_GIVEN -->|Yes| PATH_VALID{"Executable found?"}
+        MANUAL_PATH --> PATH_GIVEN{"29. Path supplied?"}
+        PATH_GIVEN -->|No| ADAPTER_CANCEL["30. Adapter not configured"]
+        PATH_GIVEN -->|Yes| PATH_VALID{"31. Executable found?"}
         PATH_VALID -->|No| ERROR
-        PATH_VALID -->|Yes| SAVE_ADAPTER["Save adapter command"]
+        PATH_VALID -->|Yes| SAVE_ADAPTER["32. Save adapter command"]
         SAVE_ADAPTER --> ADAPTER_READY
     end
     ADAPTER_CANCEL --> INCOMPLETE
     ADAPTER_READY --> SET_DEFAULT
 
-    SET_DEFAULT --> SET_OK{"Agent is registered<br/>and executable?"}
+    SET_DEFAULT --> SET_OK{"33. Agent is registered<br/>and executable?"}
     SET_OK -->|No| ERROR
-    SET_OK -->|Yes| COMPLETE["Setup complete<br/>Show default agent<br/>Show usage and next steps"]
+    SET_OK -->|Yes| COMPLETE["34. Setup complete<br/>Show default agent<br/>Show usage and next steps"]
