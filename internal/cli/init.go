@@ -147,9 +147,6 @@ func choiceLabels(choices []initAgentChoice, current string) ([]string, int) {
 	selected := 0
 	for i, choice := range choices {
 		label := displayAgentName(choice.Agent.Name)
-		if choice.NeedsAdapter {
-			label += " — Agent Client Protocol (ACP) command not installed"
-		}
 		if choice.Agent.Name == current {
 			label += " (current)"
 			selected = i
@@ -246,8 +243,9 @@ func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice,
 	out := cmd.OutOrStdout()
 	prompt := newInitPrompter(cmd.InOrStdin(), out)
 	installArgv := []string{"npm", "install", "-g", choice.Adapter.Package}
-	fmt.Fprintf(out, "\n%s is installed, but its Agent Client Protocol (ACP) command %s is not available.\n",
-		displayAgentName(choice.Agent.Name), choice.Adapter.Executable)
+	fmt.Fprintf(out, "\nDelegator uses Agent Client Protocol (ACP) to communicate with %s while it runs ticket tasks.\n",
+		displayAgentName(choice.Agent.Name))
+	fmt.Fprintf(out, "The required ACP command %s is not available.\n", choice.Adapter.Executable)
 	wantInstall, err := prompt.confirm("Install it now with " + commandText(installArgv) + "?")
 	if err != nil {
 		return false, err

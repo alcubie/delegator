@@ -105,10 +105,11 @@ from the network:
 Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
-  1. Codex — Agent Client Protocol (ACP) command not installed
+  1. Codex
 Selection [1] (q to cancel): 1
 
-Codex is installed, but its Agent Client Protocol (ACP) command codex-acp is not available.
+Delegator uses Agent Client Protocol (ACP) to communicate with Codex while it runs ticket tasks.
+The required ACP command codex-acp is not available.
 Install it now with npm install -g @agentclientprotocol/codex-acp? [y/N] y
 Running npm install -g @agentclientprotocol/codex-acp
 
@@ -143,10 +144,11 @@ Expected screen:
 Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
-  1. Claude — Agent Client Protocol (ACP) command not installed
+  1. Claude
 Selection [1] (q to cancel): 1
 
-Claude is installed, but its Agent Client Protocol (ACP) command claude-agent-acp is not available.
+Delegator uses Agent Client Protocol (ACP) to communicate with Claude while it runs ticket tasks.
+The required ACP command claude-agent-acp is not available.
 Install it now with npm install -g @agentclientprotocol/claude-agent-acp? [y/N] n
 ACP command or absolute path (leave blank to cancel): /tmp/dg-init/claude/manual/claude-acp
 

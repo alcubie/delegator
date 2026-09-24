@@ -172,10 +172,13 @@ func TestInitPromptsToInstallAMissingCodexAdapter(t *testing.T) {
 	if !installed {
 		t.Fatal("dg init did not install the selected adapter")
 	}
-	for _, want := range []string{"Codex — Agent Client Protocol (ACP) command not installed", "Agent Client Protocol (ACP) command codex-acp is not available", "npm install -g @agentclientprotocol/codex-acp", "Setup complete"} {
+	for _, want := range []string{"1. Codex\nSelection", "Delegator uses Agent Client Protocol (ACP) to communicate with Codex while it runs ticket tasks", "The required ACP command codex-acp is not available", "npm install -g @agentclientprotocol/codex-acp", "Setup complete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "1. Codex —") {
+		t.Errorf("dg init describes the missing ACP command before Codex is selected:\n%s", out)
 	}
 	if got, err := testfix.OpenStore(t, dataDir).DefaultAgent(); err != nil || got != "codex" {
 		t.Errorf("default agent = %q, %v; want codex", got, err)

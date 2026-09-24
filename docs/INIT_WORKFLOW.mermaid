@@ -23,11 +23,11 @@ flowchart TD
     CHOICE_ADAPTER -->|Yes| ADAPTER_START
 
     subgraph ADAPTER["Missing ACP command"]
-        ADAPTER_START["14. Explain missing ACP command<br/>Offer npm install"] --> INSTALL{"15. Install?"}
+        ADAPTER_START["14. Explain why ACP is required<br/>Report missing command<br/>Offer npm install"] --> INSTALL{"15. Install?"}
         INSTALL -->|Yes| RUN_INSTALL["16. Run fixed npm package install"]
         RUN_INSTALL --> INSTALL_OK{"17. Install command succeeded?"}
         INSTALL_OK -->|No| ERROR["18. Return error"]
-        INSTALL_OK -->|Yes| ON_PATH{"19. Adapter now on PATH?"}
+        INSTALL_OK -->|Yes| ON_PATH{"19. ACP command now on PATH?"}
         ON_PATH -->|Yes| ADAPTER_READY["20. ACP command ready"]
         ON_PATH -->|No| MANUAL_PATH["21. Prompt for ACP command<br/>or absolute path"]
         INSTALL -->|No| MANUAL_PATH
