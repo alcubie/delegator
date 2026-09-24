@@ -31,7 +31,7 @@ dg [flags]
 ### SEE ALSO
 
 * [dg accept](dg_accept.md)	 - Close a ready ticket.
-* [dg agents](dg_agents.md)	 - List available ACP agents
+* [dg agents](dg_agents.md)	 - List available Agent Client Protocol (ACP) commands
 * [dg cancel](dg_cancel.md)	 - Stop the work on a ticket and close it.
 * [dg chat](dg_chat.md)	 - Continue a ticket's agent session.
 * [dg config](dg_config.md)	 - Show or change instance settings.

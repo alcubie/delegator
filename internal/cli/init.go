@@ -148,7 +148,7 @@ func choiceLabels(choices []initAgentChoice, current string) ([]string, int) {
 	for i, choice := range choices {
 		label := displayAgentName(choice.Agent.Name)
 		if choice.NeedsAdapter {
-			label += " — ACP adapter not installed"
+			label += " — Agent Client Protocol (ACP) command not installed"
 		}
 		if choice.Agent.Name == current {
 			label += " (current)"
@@ -206,7 +206,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 	}
 
 	if len(choices) == 0 {
-		fmt.Fprintln(out, "\nNo supported ACP agent command was found.")
+		fmt.Fprintln(out, "\nNo supported Agent Client Protocol (ACP) command was found.")
 		fmt.Fprintln(out, "Register one with:")
 		fmt.Fprintln(out, "    dg agents add NAME --command /path/to/executable")
 		return writeIncompleteInit(out)
@@ -246,7 +246,7 @@ func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice,
 	out := cmd.OutOrStdout()
 	prompt := newInitPrompter(cmd.InOrStdin(), out)
 	installArgv := []string{"npm", "install", "-g", choice.Adapter.Package}
-	fmt.Fprintf(out, "\n%s is installed, but its ACP adapter %s is not.\n",
+	fmt.Fprintf(out, "\n%s is installed, but its Agent Client Protocol (ACP) command %s is not available.\n",
 		displayAgentName(choice.Agent.Name), choice.Adapter.Executable)
 	wantInstall, err := prompt.confirm("Install it now with " + commandText(installArgv) + "?")
 	if err != nil {
@@ -263,7 +263,7 @@ func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice,
 		fmt.Fprintf(out, "%s was installed but is not on PATH.\n", choice.Adapter.Executable)
 	}
 
-	command, read, err := prompt.line("ACP adapter command or absolute path (leave blank to cancel): ")
+	command, read, err := prompt.line("ACP command or absolute path (leave blank to cancel): ")
 	if err != nil || !read || command == "" {
 		return false, err
 	}

@@ -5,7 +5,7 @@ flowchart TD
     START["01. dg init"] --> FLAG{"02. --agent supplied?"}
 
     FLAG -->|Yes| DISCOVER_SCRIPTED["03. Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
-    DISCOVER_SCRIPTED --> FLAG_ADAPTER{"04. Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
+    DISCOVER_SCRIPTED --> FLAG_ADAPTER{"04. Selected discovered agent needs an<br/>Agent Client Protocol (ACP) command<br/>and init is interactive?"}
     FLAG_ADAPTER -->|Yes| ADAPTER_START
     FLAG_ADAPTER -->|No| SET_DEFAULT["05. Validate agent command<br/>Save as default"]
 
@@ -18,24 +18,24 @@ flowchart TD
     CHOOSER -->|Cancel| KEEP_CURRENT{"12. Current default is among<br/>the ready choices?"}
     KEEP_CURRENT -->|Yes| COMPLETE
     KEEP_CURRENT -->|No| INCOMPLETE
-    CHOOSER -->|Detected agent| CHOICE_ADAPTER{"13. ACP adapter missing?"}
+    CHOOSER -->|Detected agent| CHOICE_ADAPTER{"13. Agent Client Protocol (ACP)<br/>command missing?"}
     CHOICE_ADAPTER -->|No| SET_DEFAULT
     CHOICE_ADAPTER -->|Yes| ADAPTER_START
 
-    subgraph ADAPTER["Missing ACP adapter"]
-        ADAPTER_START["14. Explain missing adapter<br/>Offer npm install"] --> INSTALL{"15. Install?"}
+    subgraph ADAPTER["Missing ACP command"]
+        ADAPTER_START["14. Explain missing ACP command<br/>Offer npm install"] --> INSTALL{"15. Install?"}
         INSTALL -->|Yes| RUN_INSTALL["16. Run fixed npm package install"]
         RUN_INSTALL --> INSTALL_OK{"17. Install command succeeded?"}
         INSTALL_OK -->|No| ERROR["18. Return error"]
         INSTALL_OK -->|Yes| ON_PATH{"19. Adapter now on PATH?"}
-        ON_PATH -->|Yes| ADAPTER_READY["20. Adapter ready"]
-        ON_PATH -->|No| MANUAL_PATH["21. Prompt for adapter command<br/>or absolute path"]
+        ON_PATH -->|Yes| ADAPTER_READY["20. ACP command ready"]
+        ON_PATH -->|No| MANUAL_PATH["21. Prompt for ACP command<br/>or absolute path"]
         INSTALL -->|No| MANUAL_PATH
         MANUAL_PATH --> PATH_GIVEN{"22. Path supplied?"}
         PATH_GIVEN -->|No| ADAPTER_CANCEL["23. Adapter not configured"]
         PATH_GIVEN -->|Yes| PATH_VALID{"24. Executable found?"}
         PATH_VALID -->|No| ERROR
-        PATH_VALID -->|Yes| SAVE_ADAPTER["25. Save adapter command"]
+        PATH_VALID -->|Yes| SAVE_ADAPTER["25. Save ACP command"]
         SAVE_ADAPTER --> ADAPTER_READY
     end
     ADAPTER_CANCEL --> INCOMPLETE

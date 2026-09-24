@@ -160,3 +160,18 @@ func TestAgentsCommandsAreRegisteredAsParentAndChild(t *testing.T) {
 		t.Fatal("agents unexpectedly has a default subcommand")
 	}
 }
+
+func TestAgentsHelpSpellsOutAgentClientProtocol(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "agents", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"List registered Agent Client Protocol (ACP) commands",
+		"Add or update an Agent Client Protocol (ACP) command",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dg agents --help does not contain %q:\n%s", want, out)
+		}
+	}
+}

@@ -75,14 +75,14 @@ Expected screen—there is no chooser or custom-agent prompt:
 Welcome to Alcubi Delegator.
 Current default agent: none
 
-No supported ACP agent command was found.
+No supported Agent Client Protocol (ACP) command was found.
 Register one with:
     dg agents add NAME --command /path/to/executable
 
 Setup is incomplete until a default agent is selected.
 ```
 
-## 3. Accept the Codex ACP installation prompt safely
+## 3. Accept the Codex ACP command installation prompt safely
 
 ```bash
 case_dir="$DG_TEST_ROOT/codex"
@@ -105,10 +105,10 @@ from the network:
 Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
-  1. Codex — ACP adapter not installed
+  1. Codex — Agent Client Protocol (ACP) command not installed
 Selection [1] (q to cancel): 1
 
-Codex is installed, but its ACP adapter codex-acp is not.
+Codex is installed, but its Agent Client Protocol (ACP) command codex-acp is not available.
 Install it now with npm install -g @agentclientprotocol/codex-acp? [y/N] y
 Running npm install -g @agentclientprotocol/codex-acp
 
@@ -124,7 +124,7 @@ Next steps:
     dg ticket   create your first ticket
 ```
 
-## 4. Decline installation and supply a Claude adapter path
+## 4. Decline installation and supply a Claude ACP command path
 
 ```bash
 case_dir="$DG_TEST_ROOT/claude"
@@ -143,12 +143,12 @@ Expected screen:
 Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
-  1. Claude — ACP adapter not installed
+  1. Claude — Agent Client Protocol (ACP) command not installed
 Selection [1] (q to cancel): 1
 
-Claude is installed, but its ACP adapter claude-agent-acp is not.
+Claude is installed, but its Agent Client Protocol (ACP) command claude-agent-acp is not available.
 Install it now with npm install -g @agentclientprotocol/claude-agent-acp? [y/N] n
-ACP adapter command or absolute path (leave blank to cancel): /tmp/dg-init/claude/manual/claude-acp
+ACP command or absolute path (leave blank to cancel): /tmp/dg-init/claude/manual/claude-acp
 
 Setup complete.
 

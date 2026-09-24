@@ -135,7 +135,7 @@ func TestInitWithoutAKnownAgentExplainsHowToRegisterOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"No supported ACP agent command was found", "dg agents add NAME --command /path/to/executable", "Setup is incomplete"} {
+	for _, want := range []string{"No supported Agent Client Protocol (ACP) command was found", "dg agents add NAME --command /path/to/executable", "Setup is incomplete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
@@ -172,7 +172,7 @@ func TestInitPromptsToInstallAMissingCodexAdapter(t *testing.T) {
 	if !installed {
 		t.Fatal("dg init did not install the selected adapter")
 	}
-	for _, want := range []string{"Codex — ACP adapter not installed", "codex-acp is not", "npm install -g @agentclientprotocol/codex-acp", "Setup complete"} {
+	for _, want := range []string{"Codex — Agent Client Protocol (ACP) command not installed", "Agent Client Protocol (ACP) command codex-acp is not available", "npm install -g @agentclientprotocol/codex-acp", "Setup complete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
@@ -193,7 +193,7 @@ func TestInitAcceptsAManualPathForADeclinedAdapterInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "ACP adapter command or absolute path") || !strings.Contains(out, "Setup complete") {
+	if !strings.Contains(out, "ACP command or absolute path") || !strings.Contains(out, "Setup complete") {
 		t.Errorf("dg init did not accept the manual adapter path:\n%s", out)
 	}
 	agent, err := testfix.OpenStore(t, dataDir).Agent("claude")

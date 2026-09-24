@@ -2,11 +2,11 @@
 
 ## dg agents add
 
-Add or update an ACP agent command
+Add or update an Agent Client Protocol (ACP) command
 
 ### Synopsis
 
-Register a custom agent command, or set the executable path of a known agent. Repeated --arg values define the arguments passed to a custom command.
+Register a custom Agent Client Protocol (ACP) command, or set the executable path of a known agent. Repeated --arg values define the arguments passed to a custom command.
 
 ```
 dg agents add <name> [flags]
@@ -37,4 +37,4 @@ dg agents add <name> [flags]
 
 ### SEE ALSO
 
-* [dg agents](dg_agents.md)	 - List available ACP agents
+* [dg agents](dg_agents.md)	 - List available Agent Client Protocol (ACP) commands

@@ -21,8 +21,8 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
 		Use:   "agents",
-		Short: "List available ACP agents",
-		Long: "List registered agent commands that are available on PATH, including their " +
+		Short: "List available Agent Client Protocol (ACP) commands",
+		Long: "List registered Agent Client Protocol (ACP) commands that are available on PATH, including their " +
 			"resolved executable, resume support, and which one is the default.",
 		Example: `  dg agents
   dg agents --all`,
@@ -99,8 +99,8 @@ func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var arguments []string
 	cmd := &cobra.Command{
 		Use:   "add <name>",
-		Short: "Add or update an ACP agent command",
-		Long: "Register a custom agent command, or set the executable path of a known agent. " +
+		Short: "Add or update an Agent Client Protocol (ACP) command",
+		Long: "Register a custom Agent Client Protocol (ACP) command, or set the executable path of a known agent. " +
 			"Repeated --arg values define the arguments passed to a custom command.",
 		Example: `  dg agents add codex --path /opt/bin/codex-acp
   dg agents add local --command /opt/bin/local-agent --arg serve --arg=--acp`,

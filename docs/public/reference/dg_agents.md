@@ -2,11 +2,11 @@
 
 ## dg agents
 
-List available ACP agents
+List available Agent Client Protocol (ACP) commands
 
 ### Synopsis
 
-List registered agent commands that are available on PATH, including their resolved executable, resume support, and which one is the default.
+List registered Agent Client Protocol (ACP) commands that are available on PATH, including their resolved executable, resume support, and which one is the default.
 
 ```
 dg agents [flags]
@@ -36,4 +36,4 @@ dg agents [flags]
 ### SEE ALSO
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
-* [dg agents add](dg_agents_add.md)	 - Add or update an ACP agent command
+* [dg agents add](dg_agents_add.md)	 - Add or update an Agent Client Protocol (ACP) command
