@@ -169,6 +169,10 @@ func choiceNamed(choices []initAgentChoice, name string) (initAgentChoice, bool)
 }
 
 func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, selector agentSelector, install adapterInstaller) error {
+	if options.agent == "" && selector == nil {
+		return errors.New("dg init requires an interactive terminal; use dg init --agent NAME for scripted setup")
+	}
+
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
 	if cfg.DefaultAgent == "" {
@@ -203,10 +207,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 
 	if len(choices) == 0 {
 		fmt.Fprintln(out, "\nNo supported ACP agent command was found.")
-		if selector == nil {
-			fmt.Fprintln(out, "Run dg init in a terminal to configure an agent command, or use dg agents add.")
-			return writeIncompleteInit(out)
-		}
 		name, configured, err := configureAgent(cmd, s)
 		if err != nil {
 			return err
@@ -216,18 +216,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		}
 		cfg.DefaultAgent = name
 		return writeCompletedInit(out, cfg.DefaultAgent)
-	}
-
-	if selector == nil {
-		if choice, found := choiceNamed(choices, cfg.DefaultAgent); found && !choice.NeedsAdapter {
-			return writeCompletedInit(out, cfg.DefaultAgent)
-		}
-		fmt.Fprintln(out, "\nAvailable agents:")
-		for _, choice := range choices {
-			fmt.Fprintf(out, "  %s\n", displayAgentName(choice.Agent.Name))
-		}
-		fmt.Fprintln(out, "Run dg init in a terminal to choose one, or use dg init --agent NAME.")
-		return writeIncompleteInit(out)
 	}
 
 	labels, current := choiceLabels(choices, cfg.DefaultAgent)

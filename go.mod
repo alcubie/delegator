@@ -1,6 +1,6 @@
 module github.com/alcubie/delegator
 
-go 1.26.0
+go 1.26
 
 require (
 	github.com/coder/acp-go-sdk v0.13.5
@@ -9,8 +9,7 @@ require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
-	golang.org/x/sys v0.48.0
-	golang.org/x/term v0.46.0
+	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.57.0
 )
 

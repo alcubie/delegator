@@ -1,27 +1,19 @@
 %% dg init workflow
-%% Interactive means both input and output are attached to a terminal.
+%% Without --agent, both input and output must be attached to a terminal.
 %% Incomplete paths do not print permissions, token usage, or next steps.
 flowchart TD
-    START["dg init"] --> DISCOVER["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
-    DISCOVER --> FLAG{"--agent supplied?"}
+    START["dg init"] --> FLAG{"--agent supplied?"}
 
-    FLAG -->|Yes| FLAG_ADAPTER{"Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
+    FLAG -->|Yes| DISCOVER_SCRIPTED["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
+    DISCOVER_SCRIPTED --> FLAG_ADAPTER{"Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
     FLAG_ADAPTER -->|Yes| ADAPTER_START
     FLAG_ADAPTER -->|No| SET_DEFAULT["Validate agent command<br/>Save as default"]
 
-    FLAG -->|No| FOUND{"Any supported agents found?"}
-    FOUND -->|No| INTERACTIVE_EMPTY{"Interactive?"}
-    INTERACTIVE_EMPTY -->|No| EMPTY_HELP["Report no supported agent<br/>Show terminal/configuration guidance"]
-    EMPTY_HELP --> INCOMPLETE["Setup incomplete"]
-    INTERACTIVE_EMPTY -->|Yes| CUSTOM_START
-
-    FOUND -->|Yes| INTERACTIVE_FOUND{"Interactive?"}
-    INTERACTIVE_FOUND -->|No| CURRENT_READY{"Current default is among<br/>the ready choices?"}
-    CURRENT_READY -->|Yes| COMPLETE
-    CURRENT_READY -->|No| LIST_HELP["List available agent names<br/>Suggest interactive init or --agent"]
-    LIST_HELP --> INCOMPLETE
-
-    INTERACTIVE_FOUND -->|Yes| CHOOSER["Choose your default agent<br/>Detected agents plus<br/>Configure another agent…"]
+    FLAG -->|No| REQUIRE_TERMINAL["Require an interactive terminal<br/>otherwise return guidance to use --agent"]
+    REQUIRE_TERMINAL --> DISCOVER_GUIDED["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
+    DISCOVER_GUIDED --> FOUND{"Any supported agents found?"}
+    FOUND -->|No| CUSTOM_START
+    FOUND -->|Yes| CHOOSER["Choose your default agent by number<br/>Detected agents plus<br/>Configure another agent…"]
     CHOOSER -->|Cancel| KEEP_CURRENT{"Current default is among<br/>the ready choices?"}
     KEEP_CURRENT -->|Yes| COMPLETE
     KEEP_CURRENT -->|No| INCOMPLETE
@@ -42,7 +34,7 @@ flowchart TD
         COMMAND_VALID -->|No| COMMAND
         COMMAND_VALID -->|Yes| SAVE_CUSTOM["Save registry entry<br/>Save as default"]
     end
-    CUSTOM_CANCEL --> INCOMPLETE
+    CUSTOM_CANCEL --> INCOMPLETE["Setup incomplete"]
     SAVE_CUSTOM --> COMPLETE
 
     subgraph ADAPTER["Missing ACP adapter"]

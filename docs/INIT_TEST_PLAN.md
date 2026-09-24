@@ -30,10 +30,10 @@ make_fake "$case_dir/path/opencode"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: a short Goose/OpenCode menu ending in `Configure another agent…`, no
-PATH or COMMAND columns, Up/Down moves the marker, and Enter saves the
-highlighted agent. The closing text names `dg` for the inbox, `dg ticket` for
-the first ticket, and the token cost.
+Expected: a numbered Goose/OpenCode menu ending in `Configure another agent…`,
+with no PATH or COMMAND columns. Enter a number to save that agent; pressing
+Enter without a number accepts the bracketed default. The closing text names
+`dg` for the inbox, `dg ticket` for the first ticket, and the token cost.
 
 ## 2. Configure an agent that is not in the detected list
 
@@ -47,8 +47,8 @@ PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
 Expected: the menu contains Goose followed by `Configure another agent…`.
-Select the latter, enter `mine` for the name, and enter the printed `my-acp`
-path. Setup completes with `mine` as the default. Confirm storage with:
+Enter `2`, then enter `mine` for the name and the printed `my-acp` path. Setup
+completes with `mine` as the default. Confirm storage with:
 
 ```bash
 PATH="$case_dir/path" "$DG_TEST_DG" config get default_agent --data-dir "$case_dir/data"
@@ -86,7 +86,7 @@ chmod +x "$case_dir/path/npm"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: Codex appears as needing its ACP adapter. Select it and answer `y`.
+Expected: Codex appears as needing its ACP adapter. Enter `1`, then answer `y`.
 The fake `npm` creates `codex-acp`; no network or global installation occurs.
 Codex is then stored as the default.
 
@@ -101,15 +101,30 @@ printf 'Use this path at the prompt: %s\n' "$case_dir/manual/claude-acp"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: select Claude, answer `n` to installation, then enter the absolute
-path ending in `manual/claude-acp`. That path is saved and Claude becomes the
-default.
+Expected: enter `1` for Claude, answer `n` to installation, then enter the
+absolute path ending in `manual/claude-acp`. That path is saved and Claude
+becomes the default.
 
 ## 6. Rerun onboarding
 
 Run any completed case again with the same PATH and data directory. Expected:
-the current default is marked in the menu; Enter keeps it, while Up/Down and
-Enter explicitly replace it. No ticket or agent process is created by init.
+the current default is marked in the menu and its number is the bracketed
+default. Enter keeps it; entering another number replaces it. No ticket or
+agent process is created by init.
+
+## 7. Require a terminal unless an agent flag is supplied
+
+```bash
+case_dir="$DG_TEST_ROOT/non-interactive"
+mkdir -p "$case_dir/path" "$case_dir/data"
+make_fake "$case_dir/path/goose"
+PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data" </dev/null
+PATH="$case_dir/path" "$DG_TEST_DG" init --agent goose --data-dir "$case_dir/data" </dev/null
+```
+
+Expected: the first command fails with guidance to use `--agent NAME`; it does
+not list or select agents. The second command completes with Goose as the
+default without prompting.
 
 Remove all disposable state when finished:
 

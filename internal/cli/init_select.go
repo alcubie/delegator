@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 
-	"golang.org/x/term"
+	"github.com/mattn/go-isatty"
 )
 
 // agentSelector returns the chosen index and whether the person made a
@@ -15,33 +17,14 @@ type agentSelector func(io.Reader, io.Writer, []string, int) (int, bool, error)
 
 func agentSelectorFor(in io.Reader, out io.Writer) agentSelector {
 	input, inputOK := in.(*os.File)
-	output, outputOK := out.(*os.File)
-	if inputOK && outputOK && term.IsTerminal(int(input.Fd())) && term.IsTerminal(int(output.Fd())) {
-		return terminalAgentSelector
+	if inputOK && isatty.IsTerminal(input.Fd()) && isTerminal(out) {
+		return readAgentSelection
 	}
 	return nil
 }
 
-// terminalAgentSelector puts a terminal into raw mode while the chooser reads
-// arrow keys. Both streams must be terminals: redirecting the output must not
-// write cursor-control sequences into a file.
-func terminalAgentSelector(in io.Reader, out io.Writer, choices []string, current int) (int, bool, error) {
-	input, inputOK := in.(*os.File)
-	output, outputOK := out.(*os.File)
-	if !inputOK || !outputOK || !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
-		return 0, false, fmt.Errorf("agent selection requires a terminal")
-	}
-	state, err := term.MakeRaw(int(input.Fd()))
-	if err != nil {
-		return 0, false, err
-	}
-	defer term.Restore(int(input.Fd()), state)
-	return readAgentSelection(in, out, choices, current)
-}
-
-// readAgentSelection renders the chooser and reads one key at a time. It is
-// separate from raw-mode setup so tests can drive every key without taking
-// control of the terminal that runs the test.
+// readAgentSelection prints numbered choices and reads exactly one line without
+// buffering later answers needed by adapter or custom-agent prompts.
 func readAgentSelection(in io.Reader, out io.Writer, choices []string, current int) (int, bool, error) {
 	if len(choices) == 0 {
 		return 0, false, nil
@@ -50,60 +33,52 @@ func readAgentSelection(in io.Reader, out io.Writer, choices []string, current i
 		current = 0
 	}
 
-	const footerLines = 1
-	rendered := false
-	render := func() {
-		if rendered {
-			fmt.Fprintf(out, "\x1b[%dA", len(choices)+footerLines)
-		}
-		for i, choice := range choices {
-			marker := "  "
-			if i == current {
-				marker = "> "
-			}
-			fmt.Fprintf(out, "\r\x1b[2K%s%s\n", marker, choice)
-		}
-		fmt.Fprint(out, "\r\x1b[2K↑/↓ move • Enter select • q cancel\n")
-		rendered = true
-	}
-
 	fmt.Fprintln(out, "Choose your default agent:")
-	fmt.Fprint(out, "\x1b[?25l")
-	defer fmt.Fprint(out, "\x1b[?25h")
-	render()
-
-	var key [1]byte
+	for i, choice := range choices {
+		fmt.Fprintf(out, "  %d. %s\n", i+1, choice)
+	}
 	for {
-		if _, err := io.ReadFull(in, key[:]); err != nil {
+		fmt.Fprintf(out, "Selection [%d] (q to cancel): ", current+1)
+		answer, read, err := readAgentSelectionLine(in)
+		if err != nil {
 			return 0, false, err
 		}
-		switch key[0] {
-		case '\r', '\n':
-			return current, true, nil
-		case 'q', 'Q', 3: // q or Ctrl-C
+		if !read {
+			fmt.Fprintln(out)
 			return 0, false, nil
-		case 'j':
-			current = (current + 1) % len(choices)
-			render()
-		case 'k':
-			current = (current - 1 + len(choices)) % len(choices)
-			render()
-		case 0x1b:
-			var sequence [2]byte
-			if _, err := io.ReadFull(in, sequence[:]); err != nil {
-				return 0, false, err
-			}
-			if sequence[0] != '[' {
-				continue
-			}
-			switch sequence[1] {
-			case 'A':
-				current = (current - 1 + len(choices)) % len(choices)
-				render()
-			case 'B':
-				current = (current + 1) % len(choices)
-				render()
-			}
 		}
+		switch strings.ToLower(answer) {
+		case "":
+			return current, true, nil
+		case "q":
+			return 0, false, nil
+		default:
+			selected, err := strconv.Atoi(answer)
+			if err == nil && selected >= 1 && selected <= len(choices) {
+				return selected - 1, true, nil
+			}
+			fmt.Fprintf(out, "Enter a number from 1 to %d, or q to cancel.\n", len(choices))
+		}
+	}
+}
+
+func readAgentSelectionLine(in io.Reader) (string, bool, error) {
+	var answer strings.Builder
+	var next [1]byte
+	for {
+		_, err := io.ReadFull(in, next[:])
+		if err == io.EOF {
+			if answer.Len() == 0 {
+				return "", false, nil
+			}
+			return strings.TrimSpace(answer.String()), true, nil
+		}
+		if err != nil {
+			return "", false, err
+		}
+		if next[0] == '\n' {
+			return strings.TrimSpace(answer.String()), true, nil
+		}
+		answer.WriteByte(next[0])
 	}
 }

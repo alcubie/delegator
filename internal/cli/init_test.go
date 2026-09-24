@@ -47,18 +47,18 @@ func queueIn(t *testing.T, dataDir string) []store.QueuedTicket {
 	return queue
 }
 
-func TestInitShowsOnlyAgentNamesInTheSelector(t *testing.T) {
+func TestInitShowsNumberedAgentNamesInTheSelector(t *testing.T) {
 	dataDir := t.TempDir()
 	bin := t.TempDir()
 	executable(t, bin, "goose")
 	executable(t, bin, "opencode")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\r", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Choose your default agent", "Goose", "OpenCode", "Configure another agent…", "↑/↓ move", "tokens from your plan"} {
+	for _, want := range []string{"Choose your default agent", "1. Goose", "2. OpenCode", "3. Configure another agent…", "Selection [1]", "tokens from your plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
@@ -68,6 +68,9 @@ func TestInitShowsOnlyAgentNamesInTheSelector(t *testing.T) {
 			t.Errorf("dg init output contains diagnostic column %q:\n%s", unwanted, out)
 		}
 	}
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("numbered selector contains terminal control sequences:\n%s", out)
+	}
 }
 
 func TestInitSelectsAndPersistsAnAvailableAgent(t *testing.T) {
@@ -76,7 +79,7 @@ func TestInitSelectsAndPersistsAnAvailableAgent(t *testing.T) {
 	executable(t, bin, "codex-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\r", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +113,7 @@ func TestInitCancellationDoesNotDescribeARun(t *testing.T) {
 	executable(t, bin, "goose")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "q", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "q\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +192,7 @@ func TestInitCanConfigureAnUnlistedAgentWhenKnownAgentsExist(t *testing.T) {
 	command := executable(t, bin, "mine-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\x1b[B\rmine\n"+command+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "2\nmine\n"+command+"\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +229,7 @@ func TestInitPromptsToInstallAMissingCodexAdapter(t *testing.T) {
 		return nil
 	}
 
-	out, err := runInteractiveInit(t, dataDir, "\ry\n", initOptions{}, install)
+	out, err := runInteractiveInit(t, dataDir, "1\ny\n", initOptions{}, install)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +253,7 @@ func TestInitAcceptsAManualPathForADeclinedAdapterInstall(t *testing.T) {
 	adapter := executable(t, t.TempDir(), "my-claude-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\rn\n"+adapter+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "1\nn\n"+adapter+"\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +279,7 @@ func TestInitRerunStartsOnTheCurrentDefaultAndCanKeepIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runInteractiveInit(t, dataDir, "\r", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +291,7 @@ func TestInitRerunStartsOnTheCurrentDefaultAndCanKeepIt(t *testing.T) {
 	}
 }
 
-func TestInitOffATerminalUsesNamesWithoutDiagnosticColumns(t *testing.T) {
+func TestInitOffATerminalRequiresAnAgentFlag(t *testing.T) {
 	dataDir := t.TempDir()
 	bin := t.TempDir()
 	executable(t, bin, "goose")
@@ -296,17 +299,15 @@ func TestInitOffATerminalUsesNamesWithoutDiagnosticColumns(t *testing.T) {
 	t.Setenv("PATH", bin)
 
 	out, err := runIn(t, dataDir, t.TempDir(), "init")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatalf("dg init unexpectedly succeeded off a terminal:\n%s", out)
 	}
-	for _, want := range []string{"Available agents", "Goose", "OpenCode", "--agent NAME"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("non-terminal output does not contain %q:\n%s", want, out)
-		}
+	if want := "dg init requires an interactive terminal; use dg init --agent NAME for scripted setup"; !strings.Contains(err.Error(), want) {
+		t.Errorf("dg init error = %q, want %q", err, want)
 	}
-	for _, unwanted := range []string{"COMMAND", "PATH", "RESUME"} {
+	for _, unwanted := range []string{"Available agents", "Goose", "OpenCode", "Setup complete"} {
 		if strings.Contains(out, unwanted) {
-			t.Errorf("non-terminal output contains diagnostic column %q:\n%s", unwanted, out)
+			t.Errorf("non-terminal output contains %q:\n%s", unwanted, out)
 		}
 	}
 }
