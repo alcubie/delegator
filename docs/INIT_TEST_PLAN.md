@@ -35,7 +35,7 @@ make_fake "$case_dir/path/opencode"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 09 OpenCode → 11 No → 05 → 33 Yes → 34`.
+Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 11 OpenCode → 13 No → 05 → 26 Yes → 27`.
 
 Expected screen when selecting OpenCode with `2`:
 
@@ -45,7 +45,6 @@ Current default agent: none
 Choose your default agent:
   1. Goose
   2. OpenCode
-  3. Configure another agent…
 Selection [1] (q to cancel): 2
 
 Setup complete.
@@ -60,100 +59,30 @@ Next steps:
     dg ticket   create your first ticket
 ```
 
-## 2. Configure an agent that is not in the detected list
+## 2. Report that no supported agent was found
 
 ```bash
-case_dir="$DG_TEST_ROOT/unlisted"
+case_dir="$DG_TEST_ROOT/missing"
 mkdir -p "$case_dir/path" "$case_dir/data"
-make_fake "$case_dir/path/goose"
-make_fake "$case_dir/path/my-acp"
-printf 'Use this path at the prompt: %s\n' "$case_dir/path/my-acp"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 09 Configure another → 12 → 13 → 14 Non-empty → 15 → 16 Yes → 18 Yes → 19 → 34`.
+Diagram path: `01 → 02 No → 06 → 07 → 08 No → 09 → 10`.
 
-Expected screen:
-
-```text
-Welcome to Alcubi Delegator.
-Current default agent: none
-Choose your default agent:
-  1. Goose
-  2. Configure another agent…
-Selection [1] (q to cancel): 2
-
-Configure an ACP agent command.
-Agent name: mine
-ACP executable command or absolute path (leave blank to cancel): /tmp/dg-init/unlisted/path/my-acp
-Saved mine.
-
-Setup complete.
-
-Default agent: mine
-
-The default agent will be used to execute ticket tasks with your user permissions.
-Agent runs can use tokens from your plan.
-
-Next steps:
-    dg          view the inbox
-    dg ticket   create your first ticket
-```
-
-Confirm storage with:
-
-```bash
-PATH="$case_dir/path" "$DG_TEST_DG" config get default_agent --data-dir "$case_dir/data"
-```
-
-Expected confirmation output: `mine`.
-
-## 3. Configure an agent when none are detected
-
-```bash
-case_dir="$DG_TEST_ROOT/custom"
-mkdir -p "$case_dir/path" "$case_dir/data"
-make_fake "$case_dir/path/my-acp"
-printf 'Use this path at the prompt: %s\n' "$case_dir/path/my-acp"
-PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
-```
-
-Diagram path: `01 → 02 No → 06 → 07 → 08 No → 12 → 13 → 14 Non-empty → 15 → 16 Yes → 18 Yes → 19 → 34`.
-
-Expected screen—there is no numbered chooser:
+Expected screen—there is no chooser or custom-agent prompt:
 
 ```text
 Welcome to Alcubi Delegator.
 Current default agent: none
 
 No supported ACP agent command was found.
+Register one with:
+    dg agents add NAME --command /path/to/executable
 
-Configure an ACP agent command.
-Agent name: mine
-ACP executable command or absolute path (leave blank to cancel): /tmp/dg-init/custom/path/my-acp
-Saved mine.
-
-Setup complete.
-
-Default agent: mine
-
-The default agent will be used to execute ticket tasks with your user permissions.
-Agent runs can use tokens from your plan.
-
-Next steps:
-    dg          view the inbox
-    dg ticket   create your first ticket
+Setup is incomplete until a default agent is selected.
 ```
 
-Confirm storage with:
-
-```bash
-PATH="$case_dir/path" "$DG_TEST_DG" config get default_agent --data-dir "$case_dir/data"
-```
-
-Expected confirmation output: `mine`.
-
-## 4. Accept the Codex ACP installation prompt safely
+## 3. Accept the Codex ACP installation prompt safely
 
 ```bash
 case_dir="$DG_TEST_ROOT/codex"
@@ -167,7 +96,7 @@ chmod +x "$case_dir/path/npm"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 09 Codex → 11 Yes → 21 → 22 Yes → 23 → 24 Yes → 26 Yes → 27 → 05 → 33 Yes → 34`.
+Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 11 Codex → 13 Yes → 14 → 15 Yes → 16 → 17 Yes → 19 Yes → 20 → 05 → 26 Yes → 27`.
 
 Expected screen; the fake `npm` creates `codex-acp`, so nothing is installed
 from the network:
@@ -177,7 +106,6 @@ Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
   1. Codex — ACP adapter not installed
-  2. Configure another agent…
 Selection [1] (q to cancel): 1
 
 Codex is installed, but its ACP adapter codex-acp is not.
@@ -196,7 +124,7 @@ Next steps:
     dg ticket   create your first ticket
 ```
 
-## 5. Decline installation and supply a Claude adapter path
+## 4. Decline installation and supply a Claude adapter path
 
 ```bash
 case_dir="$DG_TEST_ROOT/claude"
@@ -207,7 +135,7 @@ printf 'Use this path at the prompt: %s\n' "$case_dir/manual/claude-acp"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 09 Claude → 11 Yes → 21 → 22 No → 28 → 29 Yes → 31 Yes → 32 → 27 → 05 → 33 Yes → 34`.
+Diagram path: `01 → 02 No → 06 → 07 → 08 Yes → 11 Claude → 13 Yes → 14 → 15 No → 21 → 22 Yes → 24 Yes → 25 → 20 → 05 → 26 Yes → 27`.
 
 Expected screen:
 
@@ -216,7 +144,6 @@ Welcome to Alcubi Delegator.
 Current default agent: none
 Choose your default agent:
   1. Claude — ACP adapter not installed
-  2. Configure another agent…
 Selection [1] (q to cancel): 1
 
 Claude is installed, but its ACP adapter claude-agent-acp is not.
@@ -235,11 +162,11 @@ Next steps:
     dg ticket   create your first ticket
 ```
 
-## 6. Rerun onboarding
+## 5. Rerun onboarding
 
 Run case 1 again with the same PATH and data directory.
 
-Diagram path: the same as case 1; node `09` defaults to the current agent.
+Diagram path: the same as case 1; node `11` defaults to the current agent.
 
 Expected screen when pressing Enter without a number:
 
@@ -249,7 +176,6 @@ Current default agent: OpenCode
 Choose your default agent:
   1. Goose
   2. OpenCode (current)
-  3. Configure another agent…
 Selection [2] (q to cancel): (press Enter)
 
 Setup complete.
@@ -265,10 +191,10 @@ Next steps:
 ```
 
 Run it once more and enter `1` to replace OpenCode with Goose. The screen is
-the same through node `09`; the completion screen names Goose. Neither run
+the same through node `11`; the completion screen names Goose. Neither run
 creates a ticket or starts an agent process.
 
-## 7. Require a terminal unless an agent flag is supplied
+## 6. Require a terminal unless an agent flag is supplied
 
 ```bash
 case_dir="$DG_TEST_ROOT/non-interactive"
@@ -286,7 +212,7 @@ First-command screen—there is no agent discovery or chooser output:
 delegator: dg init requires an interactive terminal; use dg init --agent NAME for scripted setup
 ```
 
-Second-command diagram path: `01 → 02 Yes → 03 → 04 No → 05 → 33 Yes → 34`.
+Second-command diagram path: `01 → 02 Yes → 03 → 04 No → 05 → 26 Yes → 27`.
 
 Second-command screen:
 

@@ -207,19 +207,12 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 
 	if len(choices) == 0 {
 		fmt.Fprintln(out, "\nNo supported ACP agent command was found.")
-		name, configured, err := configureAgent(cmd, s)
-		if err != nil {
-			return err
-		}
-		if !configured {
-			return writeIncompleteInit(out)
-		}
-		cfg.DefaultAgent = name
-		return writeCompletedInit(out, cfg.DefaultAgent)
+		fmt.Fprintln(out, "Register one with:")
+		fmt.Fprintln(out, "    dg agents add NAME --command /path/to/executable")
+		return writeIncompleteInit(out)
 	}
 
 	labels, current := choiceLabels(choices, cfg.DefaultAgent)
-	labels = append(labels, "Configure another agent…")
 	selected, chose, err := selector(cmd.InOrStdin(), out, labels, current)
 	if err != nil {
 		return err
@@ -230,18 +223,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 			return writeCompletedInit(out, cfg.DefaultAgent)
 		}
 		return writeIncompleteInit(out)
-	}
-
-	if selected == len(choices) {
-		name, configured, err := configureAgent(cmd, s)
-		if err != nil {
-			return err
-		}
-		if !configured {
-			return writeIncompleteInit(out)
-		}
-		cfg.DefaultAgent = name
-		return writeCompletedInit(out, cfg.DefaultAgent)
 	}
 
 	choice := choices[selected]
@@ -309,52 +290,6 @@ func runAdapterInstaller(cmd *cobra.Command, spec adapterSpec) error {
 		return fmt.Errorf("install %s: %w", spec.Executable, err)
 	}
 	return nil
-}
-
-func configureAgent(cmd *cobra.Command, s *store.Store) (string, bool, error) {
-	out := cmd.OutOrStdout()
-	prompt := newInitPrompter(cmd.InOrStdin(), out)
-	fmt.Fprintln(out, "\nConfigure an ACP agent command.")
-	var name string
-	for name == "" {
-		var read bool
-		var err error
-		name, read, err = prompt.line("Agent name: ")
-		if err != nil || !read {
-			return "", false, err
-		}
-		if name == "" {
-			fmt.Fprintln(out, "Agent name is required.")
-		}
-	}
-
-	for {
-		command, read, err := prompt.line("ACP executable command or absolute path (leave blank to cancel): ")
-		if err != nil || !read || command == "" {
-			return "", false, err
-		}
-		agent, err := s.Agent(name)
-		if errors.Is(err, store.ErrInvalidAgent) {
-			agent = store.Agent{Name: name, Argv: []string{command}}
-		} else if err != nil {
-			return "", false, err
-		} else {
-			agent.Argv[0] = command
-		}
-		if _, err := agentExecutable(agent); err != nil {
-			fmt.Fprintf(out, "%q is not an executable command or path. Try again.\n", command)
-			continue
-		}
-		agent.InstallHint = ""
-		if err := s.SaveAgent(agent); err != nil {
-			return "", false, err
-		}
-		if err := setSetting(s, "default_agent", name); err != nil {
-			return "", false, err
-		}
-		fmt.Fprintf(out, "Saved %s.\n", displayAgentName(name))
-		return name, true, nil
-	}
 }
 
 func writeIncompleteInit(out io.Writer) error {

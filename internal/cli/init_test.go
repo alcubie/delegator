@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -58,12 +57,12 @@ func TestInitShowsNumberedAgentNamesInTheSelector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Choose your default agent", "1. Goose", "2. OpenCode", "3. Configure another agent…", "Selection [1]", "tokens from your plan"} {
+	for _, want := range []string{"Choose your default agent", "1. Goose", "2. OpenCode", "Selection [1]", "tokens from your plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
 	}
-	for _, unwanted := range []string{"COMMAND", "PATH", "RESUME"} {
+	for _, unwanted := range []string{"COMMAND", "PATH", "RESUME", "Configure another agent"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("dg init output contains diagnostic column %q:\n%s", unwanted, out)
 		}
@@ -127,90 +126,27 @@ func TestInitCancellationDoesNotDescribeARun(t *testing.T) {
 	}
 }
 
-func TestInitConfiguresACommandWhenNoKnownAgentIsFound(t *testing.T) {
+func TestInitWithoutAKnownAgentExplainsHowToRegisterOne(t *testing.T) {
 	dataDir := t.TempDir()
 	bin := t.TempDir()
-	command := executable(t, bin, "mine-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "mine\n"+command+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"No supported ACP agent command was found", "Saved mine", "Setup complete"} {
+	for _, want := range []string{"No supported ACP agent command was found", "dg agents add NAME --command /path/to/executable", "Setup is incomplete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
 	}
-	for _, unwanted := range []string{"Choose your default agent", "Configure another agent…", "[custom]"} {
+	for _, unwanted := range []string{"Choose your default agent", "Configure another agent", "Agent name", "Setup complete", "tokens from your plan"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("dg init output contains %q when no agents were found:\n%s", unwanted, out)
 		}
 	}
-	s := testfix.OpenStore(t, dataDir)
-	agent, err := s.Agent("mine")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(agent.Argv) != 1 || agent.Argv[0] != command {
-		t.Errorf("saved agent command = %v, want %q", agent.Argv, command)
-	}
-	cfg, err := s.Settings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.DefaultAgent != "mine" {
-		t.Errorf("default agent = %q, want mine", cfg.DefaultAgent)
-	}
-}
-
-func TestInitRequiresAnExplicitCustomAgentName(t *testing.T) {
-	dataDir := t.TempDir()
-	bin := t.TempDir()
-	command := executable(t, bin, "mine-acp")
-	t.Setenv("PATH", bin)
-
-	out, err := runInteractiveInit(t, dataDir, "\nmine\n"+command+"\n", initOptions{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "Agent name: Agent name is required.\nAgent name: ") {
-		t.Errorf("dg init did not require an explicit agent name:\n%s", out)
-	}
-	if strings.Contains(out, "[custom]") {
-		t.Errorf("dg init advertised an implicit custom name:\n%s", out)
-	}
-	if got, err := testfix.OpenStore(t, dataDir).DefaultAgent(); err != nil || got != "mine" {
-		t.Errorf("default agent = %q, %v; want mine", got, err)
-	}
-}
-
-func TestInitCanConfigureAnUnlistedAgentWhenKnownAgentsExist(t *testing.T) {
-	dataDir := t.TempDir()
-	bin := t.TempDir()
-	executable(t, bin, "goose")
-	command := executable(t, bin, "mine-acp")
-	t.Setenv("PATH", bin)
-
-	out, err := runInteractiveInit(t, dataDir, "2\nmine\n"+command+"\n", initOptions{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"Goose", "Configure another agent…", "Saved mine", "Setup complete"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("dg init output does not contain %q:\n%s", want, out)
-		}
-	}
-	s := testfix.OpenStore(t, dataDir)
-	agent, err := s.Agent("mine")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(agent.Argv) != 1 || agent.Argv[0] != command {
-		t.Errorf("saved agent command = %v, want %q", agent.Argv, command)
-	}
-	if got, err := s.DefaultAgent(); err != nil || got != "mine" {
-		t.Errorf("default agent = %q, %v; want mine", got, err)
+	if got, err := testfix.OpenStore(t, dataDir).DefaultAgent(); err != nil || got != "" {
+		t.Errorf("default agent = %q, %v; want none", got, err)
 	}
 }
 
@@ -326,21 +262,5 @@ func TestInitOffATerminalSupportsScriptedAgentSelection(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("scripted setup output does not contain %q:\n%s", want, out)
 		}
-	}
-}
-
-func TestInitRetriesAnInvalidCustomCommand(t *testing.T) {
-	dataDir := t.TempDir()
-	bin := t.TempDir()
-	command := executable(t, bin, "mine-acp")
-	t.Setenv("PATH", bin)
-	missing := filepath.Join(t.TempDir(), "missing")
-
-	out, err := runInteractiveInit(t, dataDir, "mine\n"+missing+"\n"+command+"\n", initOptions{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "not an executable command or path. Try again") {
-		t.Errorf("dg init did not retry the invalid command:\n%s", out)
 	}
 }
