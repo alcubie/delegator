@@ -1,0 +1,69 @@
+%% dg init workflow
+%% Interactive means both input and output are attached to a terminal.
+%% Incomplete paths do not print permissions, token usage, or next steps.
+flowchart TD
+    START["dg init"] --> DISCOVER["Show current default<br/>Discover runnable registered agents<br/>and supported base CLIs"]
+    DISCOVER --> FLAG{"--agent supplied?"}
+
+    FLAG -->|Yes| FLAG_ADAPTER{"Selected discovered agent needs<br/>an ACP adapter and init is interactive?"}
+    FLAG_ADAPTER -->|Yes| ADAPTER_START
+    FLAG_ADAPTER -->|No| SET_DEFAULT["Validate agent command<br/>Save as default"]
+
+    FLAG -->|No| FOUND{"Any supported agents found?"}
+    FOUND -->|No| INTERACTIVE_EMPTY{"Interactive?"}
+    INTERACTIVE_EMPTY -->|No| EMPTY_HELP["Report no supported agent<br/>Show terminal/configuration guidance"]
+    EMPTY_HELP --> INCOMPLETE["Setup incomplete"]
+    INTERACTIVE_EMPTY -->|Yes| CUSTOM_START
+
+    FOUND -->|Yes| INTERACTIVE_FOUND{"Interactive?"}
+    INTERACTIVE_FOUND -->|No| CURRENT_READY{"Current default is among<br/>the ready choices?"}
+    CURRENT_READY -->|Yes| COMPLETE
+    CURRENT_READY -->|No| LIST_HELP["List available agent names<br/>Suggest interactive init or --agent"]
+    LIST_HELP --> INCOMPLETE
+
+    INTERACTIVE_FOUND -->|Yes| CHOOSER["Choose your default agent<br/>Detected agents plus<br/>Configure another agent…"]
+    CHOOSER -->|Cancel| KEEP_CURRENT{"Current default is among<br/>the ready choices?"}
+    KEEP_CURRENT -->|Yes| COMPLETE
+    KEEP_CURRENT -->|No| INCOMPLETE
+    CHOOSER -->|Configure another agent…| CUSTOM_START
+    CHOOSER -->|Detected agent| CHOICE_ADAPTER{"ACP adapter missing?"}
+    CHOICE_ADAPTER -->|No| SET_DEFAULT
+    CHOICE_ADAPTER -->|Yes| ADAPTER_START
+
+    subgraph CUSTOM["Custom agent configuration"]
+        CUSTOM_START["Report that no agent was found,<br/>or enter from the chooser"] --> NAME["Prompt: Agent name"]
+        NAME --> NAME_OK{"Name input?"}
+        NAME_OK -->|Empty| NAME
+        NAME_OK -->|End of input| CUSTOM_CANCEL
+        NAME_OK -->|Non-empty| COMMAND["Prompt: ACP executable<br/>command or absolute path"]
+        COMMAND --> COMMAND_GIVEN{"Command supplied?"}
+        COMMAND_GIVEN -->|No| CUSTOM_CANCEL["Cancel custom configuration"]
+        COMMAND_GIVEN -->|Yes| COMMAND_VALID{"Executable found?"}
+        COMMAND_VALID -->|No| COMMAND
+        COMMAND_VALID -->|Yes| SAVE_CUSTOM["Save registry entry<br/>Save as default"]
+    end
+    CUSTOM_CANCEL --> INCOMPLETE
+    SAVE_CUSTOM --> COMPLETE
+
+    subgraph ADAPTER["Missing ACP adapter"]
+        ADAPTER_START["Explain missing adapter<br/>Offer npm install"] --> INSTALL{"Install?"}
+        INSTALL -->|Yes| RUN_INSTALL["Run fixed npm package install"]
+        RUN_INSTALL --> INSTALL_OK{"Install command succeeded?"}
+        INSTALL_OK -->|No| ERROR["Return error"]
+        INSTALL_OK -->|Yes| ON_PATH{"Adapter now on PATH?"}
+        ON_PATH -->|Yes| ADAPTER_READY["Adapter ready"]
+        ON_PATH -->|No| MANUAL_PATH["Prompt for adapter command<br/>or absolute path"]
+        INSTALL -->|No| MANUAL_PATH
+        MANUAL_PATH --> PATH_GIVEN{"Path supplied?"}
+        PATH_GIVEN -->|No| ADAPTER_CANCEL["Adapter not configured"]
+        PATH_GIVEN -->|Yes| PATH_VALID{"Executable found?"}
+        PATH_VALID -->|No| ERROR
+        PATH_VALID -->|Yes| SAVE_ADAPTER["Save adapter command"]
+        SAVE_ADAPTER --> ADAPTER_READY
+    end
+    ADAPTER_CANCEL --> INCOMPLETE
+    ADAPTER_READY --> SET_DEFAULT
+
+    SET_DEFAULT --> SET_OK{"Agent is registered<br/>and executable?"}
+    SET_OK -->|No| ERROR
+    SET_OK -->|Yes| COMPLETE["Setup complete<br/>Show default agent<br/>Show usage and next steps"]
