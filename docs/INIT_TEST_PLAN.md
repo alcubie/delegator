@@ -30,9 +30,10 @@ make_fake "$case_dir/path/opencode"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: a short Goose/OpenCode menu, no PATH or COMMAND columns, Up/Down
-moves the marker, and Enter saves the highlighted agent. The closing text names
-`dg` for the inbox, `dg ticket` for the first ticket, and the token cost.
+Expected: a short Goose/OpenCode menu ending in `Configure another agent…`, no
+PATH or COMMAND columns, Up/Down moves the marker, and Enter saves the
+highlighted agent. The closing text names `dg` for the inbox, `dg ticket` for
+the first ticket, and the token cost.
 
 ## 2. Configure an unrecognized ACP command
 
@@ -44,8 +45,9 @@ printf 'Use this path at the prompt: %s\n' "$case_dir/path/my-acp"
 PATH="$case_dir/path" "$DG_TEST_DG" init --data-dir "$case_dir/data"
 ```
 
-Expected: no known agent is detected. Enter `mine` for the name and the printed
-absolute path ending in `my-acp` for the executable. Confirm storage with:
+Expected: no known agent is detected. Press Enter on the sole `Configure
+another agent…` choice, then enter `mine` for the name and the printed absolute
+path ending in `my-acp` for the executable. Confirm storage with:
 
 ```bash
 PATH="$case_dir/path" "$DG_TEST_DG" config get default_agent --data-dir "$case_dir/data"
