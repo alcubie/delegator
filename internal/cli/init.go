@@ -198,7 +198,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 			return err
 		}
 		cfg.DefaultAgent = options.agent
-		fmt.Fprintf(out, "Default agent set to %s.\n", displayAgentName(options.agent))
 		return writeCompletedInit(out, cfg.DefaultAgent)
 	}
 
@@ -263,7 +262,6 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		return err
 	}
 	cfg.DefaultAgent = choice.Agent.Name
-	fmt.Fprintf(out, "Default agent set to %s.\n", displayAgentName(choice.Agent.Name))
 	return writeCompletedInit(out, cfg.DefaultAgent)
 }
 
@@ -353,7 +351,7 @@ func configureAgent(cmd *cobra.Command, s *store.Store) (string, bool, error) {
 		if err := setSetting(s, "default_agent", name); err != nil {
 			return "", false, err
 		}
-		fmt.Fprintf(out, "Saved %s and selected it as the default agent.\n", displayAgentName(name))
+		fmt.Fprintf(out, "Saved %s.\n", displayAgentName(name))
 		return name, true, nil
 	}
 }
@@ -364,8 +362,9 @@ func writeIncompleteInit(out io.Writer) error {
 }
 
 func writeCompletedInit(out io.Writer, agent string) error {
-	fmt.Fprintf(out, "\nSetup complete. Default agent: %s\n", displayAgentName(agent))
-	fmt.Fprintln(out, "The default agent will be used to execute ticket tasks with your user permissions.")
+	fmt.Fprintln(out, "\nSetup complete.")
+	fmt.Fprintf(out, "\nDefault agent: %s\n", displayAgentName(agent))
+	fmt.Fprintln(out, "\nThe default agent will be used to execute ticket tasks with your user permissions.")
 	fmt.Fprintln(out, "Agent runs can use tokens from your plan.")
 	fmt.Fprintln(out, "\nNext steps:")
 	fmt.Fprintln(out, "    dg          view the inbox")

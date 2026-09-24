@@ -81,13 +81,16 @@ func TestInitSelectsAndPersistsAnAvailableAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Default agent set to Codex", "Setup complete. Default agent: Codex",
+		"Setup complete.\n\nDefault agent: Codex\n\nThe default agent",
 		"default agent will be used to execute ticket tasks", "tokens from your plan",
 		"dg          view the inbox", "dg ticket   create your first ticket",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}
+	}
+	if strings.Count(out, "Default agent: Codex") != 1 {
+		t.Errorf("dg init should name the selected default once:\n%s", out)
 	}
 	cfg, err := testfix.OpenStore(t, dataDir).Settings()
 	if err != nil {
@@ -251,7 +254,7 @@ func TestInitRerunStartsOnTheCurrentDefaultAndCanKeepIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Codex (current)") || !strings.Contains(out, "Default agent set to Codex") {
+	if !strings.Contains(out, "Codex (current)") || !strings.Contains(out, "Default agent: Codex") {
 		t.Errorf("rerun did not start on and keep the current default:\n%s", out)
 	}
 	if got, err := testfix.OpenStore(t, dataDir).DefaultAgent(); err != nil || got != "codex" {
@@ -292,7 +295,7 @@ func TestInitOffATerminalSupportsScriptedAgentSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Default agent set to Codex", "tokens from your plan", "dg ticket"} {
+	for _, want := range []string{"Default agent: Codex", "tokens from your plan", "dg ticket"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("scripted setup output does not contain %q:\n%s", want, out)
 		}
