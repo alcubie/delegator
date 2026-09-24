@@ -226,3 +226,24 @@ mv -f "$stage_file" "$destination" || fail "could not install dg at $destination
 stage_file=
 
 printf '%s\n' "Installed Alcubi Delegator ($reported_version) at $destination"
+
+show_init_command() {
+	printf '%s\n' "To set up Alcubi Delegator later, run:" "    dg init"
+}
+
+# stdin contains this script in the documented curl-to-sh invocation. Open the
+# controlling terminal separately so that every stream used by dg init still
+# belongs to that terminal. Failure to open /dev/tty is the normal unattended
+# case, which installs the command without starting onboarding.
+if [ "$non_interactive" = 1 ]; then
+	show_init_command
+	exit 0
+fi
+if ! ( : <>/dev/tty ) 2>/dev/null; then
+	show_init_command
+	exit 0
+fi
+exec 3<>/dev/tty
+
+printf '\n' >&3
+"$destination" init <&3 >&3 2>&3

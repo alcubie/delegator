@@ -6,6 +6,9 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_TMP=$(mktemp -d)
 ORIGINAL_PATH=$PATH
 REAL_UNAME=$(command -v uname)
+REAL_PYTHON=$(python3 -c 'import sys; print(sys.executable)')
+REAL_SH=$(command -v sh)
+TEST_DG=
 cleanup() {
 	status=$?
 	if ((status != 0)) && [[ -n ${CASE_DIR:-} ]]; then
@@ -13,6 +16,8 @@ cleanup() {
 		[[ ! -f $CASE_DIR/stdout ]] || sed -n '1,80p' "$CASE_DIR/stdout" >&2
 		printf '%s\n' '--- installer stderr ---' >&2
 		[[ ! -f $CASE_DIR/stderr ]] || sed -n '1,80p' "$CASE_DIR/stderr" >&2
+		printf '%s\n' '--- installer terminal ---' >&2
+		[[ ! -f $CASE_DIR/terminal-output ]] || sed -n '1,120p' "$CASE_DIR/terminal-output" >&2
 	fi
 	chmod -R u+w "$TEST_TMP" 2>/dev/null || true
 	rm -rf "$TEST_TMP"
@@ -20,7 +25,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-unset DG_VERSION DG_INSTALL_DIR DG_NON_INTERACTIVE
+unset DG_VERSION DG_INSTALL_DIR DG_NON_INTERACTIVE XDG_DATA_HOME
 
 fail() {
 	printf 'test-install: %s\n' "$*" >&2
@@ -29,6 +34,16 @@ fail() {
 
 assert_contains() {
 	grep -F "$2" "$1" >/dev/null || fail "$1 does not contain: $2"
+}
+
+assert_not_contains() {
+	if grep -F "$2" "$1" >/dev/null; then
+		fail "$1 unexpectedly contains: $2"
+	fi
+}
+
+assert_line() {
+	grep -Fx "$2" "$1" >/dev/null || fail "$1 has no exact line: $2"
 }
 
 assert_no_staging_file() {
@@ -105,15 +120,19 @@ sha256() {
 }
 
 make_release() {
-	local version=$1 os=${2:-linux} arch=${3:-amd64}
+	local version=$1 os=${2:-linux} arch=${3:-amd64} binary=${4:-}
 	local payload="$CASE_DIR/payload-$version-$os-$arch"
 	local archive="alcubi-delegator_${version}_${os}_${arch}.tar.gz"
 	mkdir -p "$payload"
-	cat > "$payload/dg" <<EOF
+	if [[ -n $binary ]]; then
+		cp "$binary" "$payload/dg"
+	else
+		cat > "$payload/dg" <<EOF
 #!/bin/sh
 [ "\${1:-}" = version ] || exit 2
 printf '%s\\n' 'dg v$version'
 EOF
+	fi
 	chmod +x "$payload/dg"
 	tar -czf "$CASE_DIR/releases/$archive" -C "$payload" dg
 	printf '%s  %s\n' "$(sha256 "$CASE_DIR/releases/$archive")" "$archive" \
@@ -121,10 +140,57 @@ EOF
 }
 
 run_installer() {
-	PATH="$CASE_DIR/fake-bin:$ORIGINAL_PATH" \
+	cat "$ROOT/install.sh" | PATH="$CASE_DIR/fake-bin:$ORIGINAL_PATH" \
 		HOME="$CASE_DIR/home" TMPDIR="$CASE_DIR/tmp" \
 		DG_INSTALL_DIR="$CASE_DIR/bin" DG_NON_INTERACTIVE=1 \
-		sh "$ROOT/install.sh" "$@" > "$CASE_DIR/stdout" 2> "$CASE_DIR/stderr"
+		sh -s -- "$@" > "$CASE_DIR/stdout" 2> "$CASE_DIR/stderr"
+}
+
+build_test_dg() {
+	if [[ -n $TEST_DG ]]; then
+		return
+	fi
+	TEST_DG="$TEST_TMP/dg-v1.2.3"
+	CGO_ENABLED=0 go -C "$ROOT" build \
+		-ldflags '-X github.com/alcubie/delegator/internal/cli.Version=v1.2.3' \
+		-o "$TEST_DG" ./cmd/dg
+}
+
+isolate_path() {
+	local name target
+	for name in awk bash cat chmod cp grep gzip mkdir mktemp mv rm sed sh tar; do
+		target=$(PATH="$ORIGINAL_PATH" command -v "$name") || fail "test command not found: $name"
+		ln -sf "$target" "$CASE_DIR/fake-bin/$name"
+	done
+	for name in sha256sum shasum; do
+		if target=$(PATH="$ORIGINAL_PATH" command -v "$name"); then
+			ln -sf "$target" "$CASE_DIR/fake-bin/$name"
+		fi
+	done
+}
+
+run_piped_installer() {
+	local mode=$1 answers=$2
+	printf '%s' "$answers" > "$CASE_DIR/answers"
+	PATH="$CASE_DIR/fake-bin" HOME="$CASE_DIR/home" TMPDIR="$CASE_DIR/tmp" \
+		XDG_DATA_HOME="$CASE_DIR/data-home" DG_INSTALL_DIR="$CASE_DIR/bin" \
+		DG_VERSION=1.2.3 DG_NON_INTERACTIVE=0 \
+		"$REAL_PYTHON" "$ROOT/scripts/test-install-pty.py" \
+		"$mode" "$CASE_DIR/answers" "$CASE_DIR/terminal-output" -- \
+		"$REAL_SH" -c 'cat "$1" | sh' installer-test "$ROOT/install.sh"
+}
+
+make_onboarding_release() {
+	build_test_dg
+	make_release 1.2.3 linux amd64 "$TEST_DG"
+	isolate_path
+}
+
+assert_no_tickets() {
+	local tickets
+	tickets=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" list) || fail "installed dg could not list tickets"
+	[[ -z $tickets ]] || fail "onboarding created a ticket without consent: $tickets"
 }
 
 expect_failure() {
@@ -219,6 +285,110 @@ test_no_writable_destination() {
 	[[ ! -e $CASE_DIR/bin/dg ]]
 }
 
+test_piped_interactive_acceptance_runs_onboarding() {
+	setup_case interactive-accept
+	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
+
+	run_piped_installer terminal $'\n'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now?'
+	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
+	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	assert_contains "$CASE_DIR/terminal-output" 'Default agent: Goose'
+	local selected
+	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" config get default_agent)
+	[[ $selected == goose ]] || fail "default agent is $selected, want goose"
+}
+
+test_piped_interactive_decline_leaves_setup_incomplete() {
+	setup_case interactive-decline
+	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
+
+	run_piped_installer terminal $'q\n'
+	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
+	assert_contains "$CASE_DIR/terminal-output" 'Choose your default agent:'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'Setup is incomplete until a default agent is selected.'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	local selected
+	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" config get default_agent)
+	[[ -z $selected ]] || fail "declined onboarding selected $selected"
+	assert_no_tickets
+}
+
+test_piped_onboarding_reports_a_missing_agent() {
+	setup_case missing-agent
+	make_onboarding_release
+
+	run_piped_installer terminal ''
+	assert_contains "$CASE_DIR/terminal-output" \
+		'No supported Agent Client Protocol (ACP) command was found.'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'dg agents add NAME --command /path/to/executable'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'Setup is incomplete until a default agent is selected.'
+}
+
+test_onboarding_consent_is_not_first_ticket_consent() {
+	setup_case first-ticket-consent
+	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
+
+	# Control-D closes terminal input after selecting Goose. Choosing an agent
+	# during dg init is never consent to create or run a ticket.
+	run_piped_installer terminal $'\n\004'
+	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	assert_no_tickets
+}
+
+test_closed_terminal_input_does_not_select_an_agent() {
+	setup_case terminal-closed
+	make_onboarding_release
+	cat > "$CASE_DIR/fake-bin/goose" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	chmod +x "$CASE_DIR/fake-bin/goose"
+
+	run_piped_installer terminal $'\004'
+	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
+	assert_contains "$CASE_DIR/terminal-output" \
+		'Setup is incomplete until a default agent is selected.'
+	assert_not_contains "$CASE_DIR/terminal-output" 'Setup complete.'
+	local selected
+	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
+		"$CASE_DIR/bin/dg" config get default_agent)
+	[[ -z $selected ]] || fail "closed terminal input selected $selected"
+	assert_no_tickets
+}
+
+test_piped_install_without_a_terminal_prints_init_command() {
+	setup_case no-terminal
+	make_onboarding_release
+
+	run_piped_installer no-terminal ''
+	assert_not_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now?'
+	assert_line "$CASE_DIR/terminal-output" 'To set up Alcubi Delegator later, run:'
+	assert_line "$CASE_DIR/terminal-output" '    dg init'
+	[[ ! -e $CASE_DIR/data-home/delegator/delegator.db ]] || \
+		fail 'an unattended installation created Delegator data'
+}
+
 tests=(
 	test_successful_latest_install
 	test_reinstall_same_and_newer
@@ -228,6 +398,12 @@ tests=(
 	test_interrupted_download_leaves_no_binary
 	test_unavailable_release_leaves_no_binary
 	test_no_writable_destination
+	test_piped_interactive_acceptance_runs_onboarding
+	test_piped_interactive_decline_leaves_setup_incomplete
+	test_piped_onboarding_reports_a_missing_agent
+	test_onboarding_consent_is_not_first_ticket_consent
+	test_closed_terminal_input_does_not_select_an_agent
+	test_piped_install_without_a_terminal_prints_init_command
 )
 
 for test_name in "${tests[@]}"; do
