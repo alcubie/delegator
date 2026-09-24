@@ -1,178 +1,263 @@
-# delegator
+# Alcubi Delegator
 
-Delegate long tasks to a coding agent, then come back to one ordered inbox.
+Alcubi Delegator gives coding-agent work an ordered queue, a separate Git
+worktree for each ticket, and one inbox for review.
 
-Delegator does one thing: it controls the queue and the isolation of the work. It does not
-write code, do a diff, or examine the work. Those tasks belong to programs that you
-select.
+## Release status and platforms
 
-Status: in development. Nothing here is released yet.
+**Status: development source only.** There is no published release, active
+installer, stable version, or production support. The installer in this
+repository is for a future release and cannot install Delegator until release
+artifacts exist. It is tested distribution code, not a command that new users
+can use today.
 
-Alcubi is the trade name under which Matthew McCormick, the individual legal
-operator, publishes Alcubi Delegator.
+The source has implementations and release targets for Linux, macOS, and
+Windows on `amd64` and `arm64`. The future shell installer targets Linux and
+macOS on those architectures. These are development targets, not a guarantee
+of support for a machine, agent, or agent version.
 
-Read the searchable [Alcubi Delegator CLI Reference](https://alcubi-delegator.readthedocs.io/en/latest/)
-for the complete `dg` command syntax.
+Alcubi is the house brand under which Matthew McCormick, an individual,
+publishes this software. Alcubi Delegator and Delegator are provisional names
+pending clearance. See the [trademark policy](TRADEMARKS.md).
 
-## License
+## What Delegator does
 
-Delegator is Fair Source (source available), not open source while a version is
-protected. Matthew McCormick licenses it under
-[FSL-1.1-ALv2](LICENSE). Its Competing Use restriction prohibits making the
-software available to others in a commercial product or service that
-substitutes for Delegator, substitutes for another product or service that
-Matthew McCormick offers under the Alcubi brand using Delegator and that exists
-when that version is made available, or offers the same or substantially
-similar functionality. Each version automatically becomes available under
-Apache 2.0 two years after Matthew McCormick makes that version available. See
-the full license for the precise terms and
-[third-party notices](THIRD_PARTY_NOTICES.md) for separately licensed
-dependencies. The code license does not grant permission to brand a fork as an
-official product; see the separate [trademark policy](TRADEMARKS.md).
+Delegator:
 
-## Install
+- keeps tickets from multiple Git repositories in one ordered queue;
+- starts a selected coding agent through the Agent Client Protocol (ACP);
+- creates one branch and Git worktree for each run;
+- records the agent session, result, commit, log, and reported token usage; and
+- keeps completed work in `READY` until a person reviews and accepts it.
 
-No release exists yet. Before using a future installer, read the
-[privacy notice](PRIVACY.md), including its account of installer requests and
-third-party agents. The verified one-line command for that future release is:
+Delegator does not write the change, judge the result, merge the branch, run a
+deployment, or provide a security boundary around the agent. Those actions
+belong to the agent, the user, and the repository's own tools.
 
-```
-curl -fsSL https://alcubi.ai/delegator/install.sh | sh
-```
+> **A Git worktree isolates files but is not a sandbox.** The agent runs with
+> your user permissions and can reach paths, credentials, processes, and
+> networks outside its worktree.
 
-The installer detects supported Linux and macOS systems, selects the latest
-stable GitHub release, verifies its canonical SHA-256 checksum, and installs
-`dg` in a writable standard binary directory. When a terminal is available,
-it starts the guided `dg init` workflow on that terminal. Starting onboarding
-is not consent to create or run a first ticket. The installer never uses `sudo`
-or changes shell startup files.
+## Prerequisites
 
-To skip onboarding, or to pin a version or destination in an
-unattended installation, set the documented installer environment variables:
+To use the current development source, you need:
+
+- Git on `PATH` and an existing Git repository with at least one commit;
+- Go 1.26 and Make to build `dg`; and
+- an installed and authenticated ACP agent command.
+
+The ACP command can be a separate adapter from the agent's normal terminal
+command. Guided setup can offer to install the Claude or Codex adapter with
+`npm`, so that path also needs Node.js and `npm`. Other agents have their own
+installation and account requirements.
+
+Python, MkDocs, `goimports`, `staticcheck`, GoReleaser, and authenticated test
+agents are maintainer dependencies. They are not user prerequisites.
+
+## Install and verify the development build
+
+Review and build a source commit. There is no release archive to install yet.
 
 ```sh
-curl -fsSL https://alcubi.ai/delegator/install.sh | \
-  DG_VERSION=1.4.0 DG_INSTALL_DIR="$HOME/.local/bin" DG_NON_INTERACTIVE=1 sh
+git clone https://github.com/alcubie/delegator.git
+cd delegator
+make install
+command -v dg
+dg version
+dg --help
 ```
 
-The equivalent flags are available when passing arguments to the piped shell:
+`make install` uses the Go installation directory. If `command -v dg` prints
+nothing, add the directory reported by `go env GOBIN`, or `$(go env
+GOPATH)/bin` when `GOBIN` is empty, to `PATH`.
+
+## Five-minute workflow
+
+First inspect the built-in agent registry. Entries marked as missing are known
+to Delegator but are not available on the current `PATH`.
 
 ```sh
-curl -fsSL https://alcubi.ai/delegator/install.sh | \
-  sh -s -- --version 1.4.0 --install-dir "$HOME/.local/bin" --non-interactive
+dg agents --all
+dg init
+dg config
 ```
 
-With `DG_NON_INTERACTIVE=1`, `--non-interactive`, or no controlling terminal,
-the installer changes no Delegator data or settings and prints the exact
-`dg init` command to run later.
+`dg init` discovers available agents and asks which one will run new tickets.
+For non-interactive setup, use a name shown by `dg agents`:
 
-## Security
-
-Report suspected vulnerabilities privately to
-[support@alcubi.ai](mailto:support@alcubi.ai). Do not put a vulnerability,
-credential, or private data in a public issue. See the
-[security policy](SECURITY.md) for supported versions, scope, and the response
-process.
-
-## Questions
-
-### A run costs more tokens than I expected. What can I do?
-
-Give the agent a map of the repository so that it does not have to build one
-by reading.
-
-Almost all of what a run spends is the conversation being read back. Every
-token that goes into the context is read again on every later call, so the
-cost of a run grows with the square of its length, and the tokens that go in
-early are the ones that are read the most times. An agent that opens a
-repository it has never seen puts a lot in early: it reads whole files to
-learn what is where, and then carries all of it to the end of the run.
-
-Across seven runs of delegator on 2026-09-04, the reading each run did before
-it changed a single line left between 17,000 and 91,000 tokens in the
-context, and carrying that for the rest of the run cost between 21 and 48
-percent of the whole run. The seven runs opened 75 different files between
-them and only 13 of those were opened by four or more runs, so the runs were
-not reading the same things: each was answering the same question, "what is
-in this repository and where", from scratch.
-
-Write the answer down once, in the file the agent already reads at the start
-of a run. For claude that is CLAUDE.md at the root of the repository. Give it:
-
-- one line per directory saying what belongs in it
-- the commands to build, test and lint
-- where the conventions of the project are written
-- the few files that a person new to the code would open first
-
-Keep it at the level of a directory rather than a file. A map that names files
-is wrong as soon as a file is added, and an agent that trusts a wrong map
-spends more than one with no map at all. A map at the level of a directory
-goes out of date only when the shape of the project changes, and the signal
-that it has is a run that goes looking in the wrong place.
-
-Two smaller things help as well. Tell the agent in the ticket which files the
-work touches, when you already know. And prefer a ticket that names one change
-over a ticket that asks the agent to go and find out what needs changing,
-because the second pays the cost of the search inside the run.
-
-## How a run drives its agent
-
-A run speaks the Agent Client Protocol to the database's default agent. The
-agent registry stores each launch command and, where available, the command
-that resumes one of its sessions.
-
-## The agents an integration test drives
-
-`make check` needs nothing but Go and the tools in the Makefile. The tests
-behind the `integration` build tag drive a real agent, so they need that agent
-installed and signed in, and they spend its tokens. The tests of
-`internal/handler` skip and say which command they wanted when it is not on the
-PATH; the test of `internal/cli` starts a run that has nowhere else to go, and
-fails.
-
-An agent is two commands. The ACP server is what delegator talks to, and it is
-a separate npm package from the CLI of the same name; installing claude or
-codex does not install it. The CLI is what a person resumes a session in, and
-`codex-acp` also starts `codex` itself.
-
-```
-npm install -g @agentclientprotocol/claude-agent-acp   # claude-agent-acp
-npm install -g @agentclientprotocol/codex-acp          # codex-acp
-npm install -g @earendil-works/pi-coding-agent pi-acp  # pi, pi-acp
+```sh
+dg init --agent codex
 ```
 
-These are the exact commands and versions exercised by the real-agent tests:
+Then enter an existing Git repository. The new ticket starts automatically
+when the queue has capacity.
 
-| Agent | ACP launch argv | Terminal resume argv | Verified versions |
-| --- | --- | --- | --- |
-| Claude | `[claude-agent-acp]` | `[claude --resume {session}]` | claude-agent-acp 0.77.0; Claude Code 2.1.273 |
-| Codex | `[codex-acp]` | `[codex resume {session}]` | codex-acp 1.11.0; Codex CLI 0.155.0 |
-| Goose | `[goose acp]` | `[goose session --resume --session-id {session}]` | Goose 1.50.1 |
-| OpenCode | `[opencode acp]` | `[opencode --session {session}]` | OpenCode 1.18.31 |
-| GitHub Copilot | `[copilot --acp]` | `[copilot --resume={session}]` | GitHub Copilot CLI 1.0.86 |
-| Cursor | `[agent acp]` | none: its terminal client does not accept an ACP session id | Cursor Agent 2026.09.15-d2fe57e |
-| Pi | `[pi-acp]` | `[pi --session {session}]` | Pi 0.85.1; pi-acp 0.0.33 |
+```sh
+cd /path/to/your/repository
+ticket_id=$(dg ticket "Add a health check" \
+  "Add a health-check endpoint and tests. Do not change authentication.")
+printf 'Created ticket %s\n' "$ticket_id"
+dg
+```
 
-Claude, OpenCode, GitHub Copilot, and Pi add their supported one-shot flags to
-the recorded resume argv. Codex and Goose have interactive-only resume
-commands, so their terminal-resume subtests use a pseudo-terminal. Each
-terminal assertion asks the real ACP-created session to recall text that was
-never written to its repository. The `internal/cli` integration additionally
-needs `claude-agent-acp`, which the run under test starts.
+Run `dg` again to read the inbox. When the ticket is `READY`, inspect its
+record, worktree, commit, and diff. Run the repository's tests before merging.
 
-Run them with `make integration`, or `make release` for those and everything
-`make check` does.
+```sh
+dg show "$ticket_id"
+worktree=$(dg show "$ticket_id" --worktree-only)
+branch=$(dg show "$ticket_id" --branch-only)
+git -C "$worktree" status --short
+git -C "$worktree" show --stat --oneline HEAD
+git diff HEAD..."$branch"
+```
 
-## Documents
+In the primary checkout, merge or squash the reviewed branch. `dg accept`
+checks that the work is in the current `HEAD`, marks the ticket `DONE`, removes
+its worktree, and starts more queued work when capacity is available.
 
-- [CLI reference](https://alcubi-delegator.readthedocs.io/en/latest/)
+```sh
+git merge "$branch"
+dg accept "$ticket_id"
+dg
+```
+
+Do not use `dg accept --force` as a normal review step. It skips the merge and
+clean-worktree checks and can discard uncommitted work.
+
+## Ticket state model
+
+The normal path is:
+
+```text
+QUEUED -> RUNNING -> READY -> DONE
+```
+
+| State | Meaning | How it changes |
+| --- | --- | --- |
+| `QUEUED` | The ticket waits for capacity and completed dependencies. | A supervisor claims it automatically. |
+| `RUNNING` | An agent works in the ticket worktree. | `dg finish` makes it `READY`; an error, timeout, or lost supervisor makes it `FAILED`. |
+| `READY` | The agent reported a commit and the ticket waits for review. | Merge the work, then use `dg accept` to make it `DONE`. |
+| `FAILED` | A run ended without a successful `dg finish`. | Use `dg restart`, or continue with `dg chat` and then record a commit with `dg finish`. |
+| `DONE` | A person accepted merged work. | Terminal state. |
+| `CANCELLED` | A person closed work with `dg cancel`. | Terminal state; its worktree is kept for inspection. |
+
+`RUNNING` and `READY` both use configured queue capacity. A dependency releases
+its dependent ticket only after it becomes `DONE`.
+
+## Configuration and local data
+
+Use `dg config` to inspect settings and `dg config set` to change one. Settings
+and the agent registry live in SQLite; there is no separate configuration
+file.
+
+| System | Default data directory |
+| --- | --- |
+| Linux and macOS | `$XDG_DATA_HOME/delegator`, or `~/.local/share/delegator` when `XDG_DATA_HOME` is empty |
+| Windows | `%XDG_DATA_HOME%\delegator`, or `%LOCALAPPDATA%\delegator` when `XDG_DATA_HOME` is empty |
+
+`--data-dir /absolute/path` selects another instance for one command. The data
+directory contains `delegator.db`, ticket prose under `tickets/`, agent logs
+under `runs/`, worktrees under `worktrees/`, and disposable per-project data
+under `cache/projects/`. Ticket records and logs do not expire automatically.
+
+## Registered and verified agents
+
+The built-in registry has entries for Claude, Codex, Gemini, Goose, OpenCode,
+GitHub Copilot, Cursor Agent, and Pi. A registry entry is configuration, not a
+support guarantee. `dg agents` confirms only that an executable is on `PATH`.
+
+Live integration tests in this repository record successful runs with these
+versions:
+
+| Agent | Last version recorded by its integration test |
+| --- | --- |
+| Claude | Claude Code 2.1.273 with `claude-agent-acp` 0.77.0 |
+| Codex | Codex CLI 0.155.0 with `codex-acp` 1.11.0 |
+| Goose | 1.50.1 |
+| OpenCode | 1.18.31 |
+| GitHub Copilot CLI | 1.0.86 |
+| Cursor Agent | 2026.09.15-d2fe57e; ACP session load only |
+| Pi | 0.85.1 with `pi-acp` 0.0.33 |
+
+Gemini has a built-in registry entry but no live-agent integration test in the
+repository. Newer versions, account settings, models, and provider changes can
+behave differently. Custom ACP commands can also be registered, but Delegator
+does not certify them. See [real-agent integration tests](docs/INTEGRATION_TESTS.md)
+for commands, scope, and costs.
+
+## Safety and limitations
+
+- **A worktree is not a sandbox.** Unattended runs approve ACP tool requests,
+  and the agent inherits the environment of `dg`.
+- A cloud-connected agent can send source, ticket text, paths, tool results,
+  and credentials to third parties. Read the [privacy notice](PRIVACY.md) and
+  the agent provider's current terms before use.
+- Agent runs can consume paid tokens. See [controlling token
+  costs](docs/TOKEN_COSTS.md).
+- Worktrees do not isolate ports, databases, credentials, caches, or other
+  resources outside the checkout. Use `max_runs_per_project` when concurrent
+  work in one repository can conflict.
+- Delegator does not fetch, pull, push, merge, test, or deploy work for you.
+- `dg cancel` keeps its worktree. Project caches, branches, commits, ticket
+  records, and logs also need deliberate retention and cleanup decisions.
+- Development builds have no stable compatibility or security-support promise.
+
+## Troubleshooting
+
+**No agent appears.** Run `dg agents --all`. Install the missing ACP command or
+register an executable with `dg agents add`, then rerun `dg init`. An installed
+agent CLI does not always include its ACP adapter.
+
+**A ticket stays queued.** Run `dg` and check whether the queue is paused. Use
+`dg start` to resume it. `RUNNING` and `READY` tickets hold capacity, and a
+ticket can also wait for dependencies. Use `dg show ID` and `dg config` to
+inspect them.
+
+**A run failed.** Use `dg show ID` to read its result and run history. Use
+`dg restart ID` to reuse its branch, worktree, and session. When terminal
+resume is available, `dg chat ID` can continue the session.
+
+**Acceptance is refused.** Merge or squash the recorded ticket commit into the
+current `HEAD`, and make sure the ticket worktree is clean. Inspect both with
+`dg show ID` before considering `--force`.
+
+**`dg` is not on `PATH`.** Read the path printed by `make install` and compare
+it with `go env GOBIN` and `go env GOPATH`.
+
+For complete syntax and flags, use `dg help`, `dg COMMAND --help`, or the
+[generated Alcubi Delegator CLI Reference](https://alcubi-delegator.readthedocs.io/en/latest/).
+
+## Project documents and terms
+
+- [Generated CLI reference source](docs/public/index.md)
+- [Technical design](docs/TECHNICAL_DESIGN.md)
 - [Release artifacts and procedure](docs/RELEASES.md)
-- [Documentation publishing guide](docs/READ_THE_DOCS.md)
-- [Technical document](docs/TECHNICAL_DESIGN.md)
-- [Features that wait](docs/FEATURES.md)
-- [Privacy notice](PRIVACY.md)
-- [Security policy](SECURITY.md)
-- [Trademark policy](TRADEMARKS.md)
+- [Token-cost guidance](docs/TOKEN_COSTS.md) and [token accounting design](docs/TOKEN_USAGE.md)
+- [Real-agent integration tests](docs/INTEGRATION_TESTS.md)
+- [Privacy notice](PRIVACY.md) and [security policy](SECURITY.md)
+- [FSL-1.1-ALv2 license](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md), and [trademark policy](TRADEMARKS.md)
 
-Alcubi Delegator is software published by Matthew McCormick. Code at
-`github.com/alcubie/delegator`.
+Matthew McCormick publishes the software under the Functional Source License,
+Version 1.1, ALv2 Future License (FSL-1.1-ALv2). Read the license for its exact
+terms and future-license date. The software license does not grant permission
+to present a modified product as official Alcubi software.
+
+## Contributor commands
+
+```sh
+make build          # build ./dg
+make test           # installer tests and ordinary Go tests
+make check          # formatting, vet, lint, coverage, archives, and docs
+make docs           # regenerate docs/public/reference from the Cobra tree
+make docs-build     # build the documentation site
+```
+
+Install the pinned MkDocs environment as described in the [documentation
+publishing guide](docs/READ_THE_DOCS.md). `make check` also needs `goimports`
+and `staticcheck` on `PATH`.
+
+`make integration` starts authenticated third-party agents and can consume
+tokens. `make release` includes those tests and a publication-free artifact
+build. Read the [integration-test setup](docs/INTEGRATION_TESTS.md) and
+[release procedure](docs/RELEASES.md) before either command.

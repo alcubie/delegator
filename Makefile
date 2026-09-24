@@ -22,7 +22,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install install-test test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install install-test test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check readme-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -174,6 +174,15 @@ docs-check:
 	diff -ru $(DOCS_REFERENCE) "$$generated"; \
 	$(MKDOCS) build --strict --clean --site-dir "$$site"
 
+# The README gives a short first workflow rather than a second command
+# reference. Check that each command path in that workflow exists in the built
+# CLI and that its local documentation targets remain present.
+readme-check:
+	@set -eu; built=$$(mktemp -d); \
+	trap 'rm -rf "$$built"' EXIT HUP INT TERM; \
+	go build -ldflags "$(LDFLAGS)" -o "$$built/dg" ./cmd/dg; \
+	./scripts/check-readme.sh "$$built/dg"
+
 # cover shows how much of each function the tests run. It does not show how much
 # of it the tests examine: a test with no assertion gives the same number as a
 # test with one. Use it to find code that no test touches, and not as a target.
@@ -187,7 +196,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: install-test archivecheck fmtcheck vet lint covercheck docs-check
+check: install-test archivecheck fmtcheck vet lint covercheck docs-check readme-check
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html
