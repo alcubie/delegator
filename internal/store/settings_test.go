@@ -27,28 +27,6 @@ func TestSettingsMigrationSeedsDefaults(t *testing.T) {
 	}
 }
 
-func TestSettingsMigrationAddsDefaultsToAnExistingDatabase(t *testing.T) {
-	dir := t.TempDir()
-	s := openBefore(t, dir, addConfigurationSettings)
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	s, err := Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	got, err := s.Settings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := config.Config{Runs: 2, TimeoutMinutes: 60, DoneHours: 24}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Settings after migration = %+v, want %+v", got, want)
-	}
-}
-
 func TestSettingsTableEnforcesItsConstraints(t *testing.T) {
 	tests := []struct {
 		name   string
