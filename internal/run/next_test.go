@@ -13,8 +13,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// queueOf returns a data directory whose queue holds n tickets, and the id of
-// each one in the order of the queue.
+// queueOf creates n queued tickets and returns their data directory and
+// ordered IDs.
 func queueOf(t *testing.T, n int) (string, []int64) {
 	t.Helper()
 	dataDir, first := queuedTicket(t, "the first")
@@ -25,9 +25,8 @@ func queueOf(t *testing.T, n int) (string, []int64) {
 	return dataDir, ids
 }
 
-// twoProjectQueue returns a data directory whose queue holds one ticket of each
-// of two projects. Next reads the store and starts programs, and nothing on the
-// way touches git, so the second project needs no repository of its own.
+// twoProjectQueue creates one ticket in each of two projects. Scheduling
+// touches no Git state, so the second project needs no repository.
 func twoProjectQueue(t *testing.T) string {
 	t.Helper()
 	dataDir, _ := queuedTicket(t, "the first")
@@ -42,9 +41,8 @@ func twoProjectQueue(t *testing.T) string {
 	return dataDir
 }
 
-// dependentQueue returns a data directory whose queue holds two tickets that
-// both depend on a ticket that is running. Nothing in the queue can be claimed
-// until the person accepts that work.
+// dependentQueue creates two queued tickets blocked by a running
+// prerequisite.
 func dependentQueue(t *testing.T) string {
 	t.Helper()
 	dataDir, first := queuedTicket(t, "the first")
@@ -64,7 +62,6 @@ func dependentQueue(t *testing.T) string {
 	return dataDir
 }
 
-// An empty queue starts nothing.
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
@@ -92,9 +89,8 @@ func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
-// The limit of the person is how many tickets run at one time, and a queue
-// with every slot free starts a supervisor for each of them. Each one claims a
-// ticket of its own, so what Next decides is the count and not the ticket.
+// Next decides the number of supervisors; each supervisor selects its own
+// ticket.
 func TestNextStartsASupervisorForEachFreeSlot(t *testing.T) {
 	dataDir, _ := queueOf(t, 3)
 	launch, marker := testfix.RecordingLaunch(t)
@@ -106,9 +102,7 @@ func TestNextStartsASupervisorForEachFreeSlot(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 3)
 }
 
-// A supervisor with no ticket to claim stops, so a queue shorter than the free
-// slots would start programs that do nothing. Next starts one for each ticket
-// it can see instead.
+// Do not launch more supervisors than there are eligible tickets.
 func TestNextStartsNoMoreSupervisorsThanTheQueueHasTickets(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
 	launch, marker := testfix.RecordingLaunch(t)
@@ -120,8 +114,6 @@ func TestNextStartsNoMoreSupervisorsThanTheQueueHasTickets(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 2)
 }
 
-// A run already active takes one of the slots, and the supervisors that start
-// are for the slots it leaves.
 func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
@@ -137,8 +129,7 @@ func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 2)
 }
 
-// A ticket in ready holds its slot at any limit. Two tickets a person has not
-// closed fill a limit of two, whatever the queue behind them holds.
+// Ready work still consumes capacity, regardless of queue length.
 func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
@@ -159,9 +150,7 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
-// A supervisor calls Next as it ends, and what it starts is what its end
-// freed. A run that failed leaves its ticket in no slot, so one supervisor
-// starts for it, and the runs beside it keep their own slots.
+// A failed run frees a slot without disturbing other active runs.
 func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	dataDir, ids := queueOf(t, 4)
 	s := testfix.OpenStore(t, dataDir)
@@ -182,10 +171,9 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The queue has slots free and the limit for each project holds every ticket
-// left in it. Each supervisor that started would find nothing to claim and call
-// Next again as it stopped, and a count above zero there is the loop that left
-// over 1,500 dg run processes alive at once.
+// Regression: counting global slots while every project was full once
+// launched over 1,500 supervisors that found no work and triggered
+// replacements.
 func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
@@ -201,8 +189,7 @@ func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
-// A link that is not done holds a ticket back the way the limit of its project
-// does, and a queue of nothing but tickets that wait starts nothing either.
+// A queue blocked entirely by dependencies must start no supervisors.
 func TestNextWithEveryTicketWaitingOnALinkStartsNothing(t *testing.T) {
 	dataDir := dependentQueue(t)
 	launch, marker := testfix.RecordingLaunch(t)
@@ -214,8 +201,8 @@ func TestNextWithEveryTicketWaitingOnALinkStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
-// Two tickets of one project with one place: the first claim fills the project,
-// so the second supervisor would find nothing. One starts.
+// Count one supervisor when only one project slot remains, even if two
+// tickets are individually eligible.
 func TestNextStartsOneSupervisorForAProjectWithOnePlace(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
 	launch, marker := testfix.RecordingLaunch(t)
@@ -227,8 +214,6 @@ func TestNextStartsOneSupervisorForAProjectWithOnePlace(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The limit for each project holds for each project on its own, so a queue of
-// two projects with a place each has work for two supervisors.
 func TestNextStartsOneSupervisorForEachProjectWithAPlace(t *testing.T) {
 	dataDir := twoProjectQueue(t)
 	launch, marker := testfix.RecordingLaunch(t)
@@ -240,10 +225,8 @@ func TestNextStartsOneSupervisorForEachProjectWithAPlace(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 2)
 }
 
-// A run started by a command must not die with that command's terminal. The
-// terminal's hangup and interrupt go to its session and its foreground process
-// group, so the child is placed in a session of its own, and the test reads
-// the group the child landed in from the child itself.
+// Read the child's session and group to verify isolation from the launching
+// terminal's signals.
 func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	marker := filepath.Join(t.TempDir(), "pgid")
@@ -260,9 +243,8 @@ func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 	}
 }
 
-// A child that keeps the standard streams of its parent holds them open: a
-// shell waiting on dg's output would wait for the whole run. The run writes
-// its own log, so the child gets no streams from the command that started it.
+// Inherited standard streams would keep shell pipelines open for the whole
+// run; detached supervisors must use their own logs.
 func TestNextGivesTheProgramNoneOfItsOwnStreams(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	var started *exec.Cmd

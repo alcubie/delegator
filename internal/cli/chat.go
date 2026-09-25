@@ -14,25 +14,19 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// ExitError carries the status of a program that dg started for the person and
-// waited for. dg chat gives the terminal to the agent, so the status of dg is
-// the status of the agent, and cmd/dg reads the code off this error. The
-// program has already written whatever it had to say to the terminal, so
-// nothing is written for it.
+// ExitError carries the exit status of an interactive agent. cmd/dg returns
+// that status without printing another error because the agent already wrote
+// to the terminal.
 type ExitError struct{ Code int }
 
 // Error names the status, for a caller that writes the error instead.
 func (e ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
 
-// chat returns the command that continues a session: the argv of the adapter,
-// in the worktree of the ticket, with the terminal of the person. It is a
-// variable so that a test can see what dg chat would start without starting a
-// program.
+// chat builds the session-resume command. Tests replace it to inspect
+// launches without starting an agent.
 var chat = chatCmd
 
-// chatCmd builds that command. The three streams are the terminal's, because
-// the conversation is between the person and the agent and dg is only the
-// program that started it.
+// chatCmd connects the resume command directly to the user's terminal.
 func chatCmd(argv []string, dir string) *exec.Cmd {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
@@ -42,16 +36,9 @@ func chatCmd(argv []string, dir string) *exec.Cmd {
 	return cmd
 }
 
-// chatCommand returns the command dg chat. The line that continues a session
-// is delegator's and not the person's: the table of agents knows which program
-// to start and with which arguments, and delegator knows the worktree the
-// conversation ran in and whether a run is on it now. A line typed by hand
-// from the wrong directory starts a new conversation under the id of the old
-// one, and the person cannot see that it did.
-//
-// With no id it continues the head of READY, as dg show and dg accept act on
-// it: the ticket a person reads next is the ticket they have something to say
-// to.
+// chatCommand resumes a ticket conversation using the registered agent
+// command and original worktree. With no ID, it selects the project's first
+// ready ticket, as show and accept do.
 func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	cmd := &cobra.Command{
@@ -77,9 +64,8 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			if err != nil {
 				return err
 			}
-			// The start is outside the store, because the person is in that
-			// conversation for as long as they want to be and no other
-			// command can write while it is open.
+			// Close the store before the interactive
+			// conversation, which may run indefinitely.
 			return waitForChat(chat(argv, worktree))
 		},
 	}
@@ -88,14 +74,10 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	return cmd
 }
 
-// resumeOf returns the argv that continues the session of one ticket and the
-// directory to start it in, and refuses each ticket that has no conversation
-// to continue.
-//
-// The reconcile of every command has already marked failed each run whose
-// supervisor is gone, so a ticket still in running here has an agent on that
-// session now, and a second writer on one conversation is the fault this
-// command exists to stop.
+// resumeOf returns resume arguments and the worktree path, rejecting tickets
+// without a resumable conversation. Running tickets are refused to avoid two
+// agents writing the same session; reconciliation has already identified
+// stale runs.
 func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
@@ -112,9 +94,8 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error
 	if ticket.Session == "" {
 		return nil, "", fmt.Errorf("ticket %d has no session: it has not run yet", id)
 	}
-	// The agent keeps the record of a conversation below the directory the
-	// conversation ran in, so a session with no worktree is a session the
-	// agent will not find, and it would make a new one under the old id.
+	// Require the original worktree: agents may locate session history by
+	// working directory.
 	worktree := run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(worktree); err != nil {
 		return nil, "", fmt.Errorf(
@@ -138,9 +119,7 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error
 	return argv, worktree, nil
 }
 
-// waitForChat waits for the conversation to end and gives its status to the
-// person: dg is the terminal of that program for as long as it runs, and a
-// status of its own would say nothing the program did not already say.
+// waitForChat waits for the interactive agent and propagates its exit status.
 func waitForChat(cmd *exec.Cmd) error {
 	err := cmd.Run()
 	var exitErr *exec.ExitError

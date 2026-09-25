@@ -1,7 +1,5 @@
-// The flag --color, and the decision it makes. The word of the status line is
-// coloured at a terminal and plain in a pipe, and the flag lets a person ask
-// for either, whatever the output is: `watch -c -n 1 dg --color=always` reads
-// dg through a pipe and wants the codes.
+// Terminal color selection supports --color overrides for piped consumers
+// such as watch -c.
 
 package cli
 
@@ -14,8 +12,8 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-// colourMode is the value of --color. It is a pflag.Value, so cobra refuses a
-// value that is not one of the three at the parse, before a command runs.
+// colourMode implements pflag.Value so invalid --color values fail during
+// argument parsing.
 type colourMode string
 
 const (
@@ -28,12 +26,11 @@ func (m colourMode) String() string { return string(m) }
 
 func (m *colourMode) Type() string { return "mode" }
 
-// colourModes is each value in the order that the help and the error name them.
+// colourModes defines the display order for help and errors.
 var colourModes = []colourMode{colourAlways, colourNever, colourAuto}
 
-// Set takes the value from the command line. cobra puts the value and the
-// name of the flag in front of the error, so the error itself names the three
-// that are allowed, and a person who wrote --color=yes sees what to write.
+// Set validates --color. Cobra prefixes errors with the flag and supplied
+// value.
 func (m *colourMode) Set(value string) error {
 	for _, allowed := range colourModes {
 		if colourMode(value) == allowed {
@@ -44,17 +41,15 @@ func (m *colourMode) Set(value string) error {
 	return fmt.Errorf("the value must be %s, %s or %s", colourModes[0], colourModes[1], colourModes[2])
 }
 
-// The colour of the word on the status line, for a person at a terminal:
-// green for a queue that will start work, yellow for one that will not.
+// Queue status colors: green for running, yellow for paused.
 const (
 	green  = "\x1b[32m"
 	yellow = "\x1b[33m"
 	plain  = "\x1b[0m"
 )
 
-// colour wraps the word after "Status: " in an ANSI colour for a terminal, and
-// returns the line unchanged for anything else. The label stays plain so the
-// eye lands on the word that changes.
+// colour colors the status word, leaving the label plain, when enabled for
+// out.
 func colour(tty bool, code, line string) string {
 	if !tty {
 		return line
@@ -63,10 +58,9 @@ func colour(tty bool, code, line string) string {
 	return label + " " + code + word + plain
 }
 
-// on reports whether the output gets the colour codes. always and never say so
-// themselves. auto reads the two variables that many programs honour: NO_COLOR
-// with any value turns the colour off, and CLICOLOR_FORCE turns it on for an
-// output that is not a terminal. With neither, auto colours a terminal only.
+// on applies explicit always/never modes first. In auto mode, NO_COLOR
+// disables color, CLICOLOR_FORCE can enable it for non-terminals, and
+// otherwise only terminals receive color.
 func (m colourMode) on(out io.Writer) bool {
 	switch m {
 	case colourAlways:
@@ -83,9 +77,8 @@ func (m colourMode) on(out io.Writer) bool {
 	return isTerminal(out)
 }
 
-// isTerminal reports whether out is a real terminal. It rejects a pipe, a
-// file, the buffer of a test, and /dev/null, which a check of the file's mode
-// alone would accept because it is a character device.
+// isTerminal checks terminal capability, not just character-device mode,
+// which would incorrectly accept /dev/null.
 func isTerminal(out io.Writer) bool {
 	f, ok := out.(*os.File)
 	return ok && isatty.IsTerminal(f.Fd())

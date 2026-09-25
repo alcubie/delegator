@@ -20,9 +20,7 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// testDone is the window of DONE that render writes, and doneGroup is the
-// heading that window makes. A test names the group by the heading, so it
-// holds the window as a person reads it and not as the word alone.
+// testDone supplies the rendering window; doneGroup is its expected heading.
 const (
 	testDone  = 24 * time.Hour
 	doneGroup = "DONE (last 24h)"
@@ -36,8 +34,8 @@ func render(t *testing.T, box inbox.Inbox) []string {
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
-// rows returns the lines below one heading of an inbox, so a test names the
-// group it examines rather than a line number that a new group would move.
+// rows selects a section by heading so added groups do not invalidate line-
+// number assumptions.
 func rows(t *testing.T, lines []string, heading string) []string {
 	t.Helper()
 	at := slices.Index(lines, heading)
@@ -67,10 +65,7 @@ func wantLines(t *testing.T, got, want []string) {
 	}
 }
 
-// The person watches the inbox with watch -n 1 dg, and the row of the run
-// tells them how long it has been going. A ticket in READY holds the start of
-// the run that made it ready, and its row shows no duration: that run stopped,
-// and a clock that counts up beside it would say that it had not.
+// Only active runs show elapsed time; ready tickets must not keep counting.
 func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -97,11 +92,8 @@ func TestWriteInboxShowsTheDurationOfTheRun(t *testing.T) {
 	})
 }
 
-// FAILED holds the ticket whose run stopped without a report, and its row
-// carries no note: the time of the failure is on dg show, and the heading
-// alone is what the inbox must give. The group is between RUNNING and QUEUED,
-// where it has always been, so a person who has seen it before finds it in the
-// place they remember.
+// FAILED appears between RUNNING and QUEUED without row notes; dg show
+// provides failure times.
 func TestWriteInboxShowsAFailedTicket(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -126,10 +118,7 @@ func TestWriteInboxShowsAFailedTicket(t *testing.T) {
 	})
 }
 
-// A run that went as it should leaves FAILED empty, and then the inbox has no
-// FAILED in it at all: a heading with none below it on nearly every run is a
-// line that says nothing, and a person reads past it until the day it matters.
-// The heading is there only when something is under it, so it reads as news.
+// Hide the empty FAILED section so the heading indicates an actual failure.
 func TestWriteInboxLeavesFailedOutWhenItIsEmpty(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -151,11 +140,8 @@ func TestWriteInboxLeavesFailedOutWhenItIsEmpty(t *testing.T) {
 	})
 }
 
-// A queued ticket that depends on a ticket that is not done says so at the
-// right of its row. A person who sees a ticket at the top of the queue and no
-// run needs to know that the queue is passing it over on purpose. A queued
-// ticket whose links are all done depends on nothing, holds no id here, and its
-// row ends at its title.
+// Show unfinished blockers beside queued tickets, omitting the note once all
+// prerequisites are done.
 func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -182,9 +168,7 @@ func TestWriteInboxNamesTheTicketsAQueuedTicketDependsOn(t *testing.T) {
 	})
 }
 
-// The note of a queued ticket and the duration of a run end at the same
-// column, because they answer the same question about two rows: what the
-// ticket is doing now. A person reads down one edge of the inbox for it.
+// Align blocker notes and elapsed durations at the same right edge.
 func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -211,9 +195,7 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 	})
 }
 
-// The notes at the right of rows belong to the edge of the terminal rather
-// than to a fixed-width table. A wide pseudo-terminal stands in for a resized
-// terminal, and both kinds of noted row take every column it offers.
+// A wide PTY verifies that both note types follow terminal width.
 func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
 	// A real terminal wins over a COLUMNS inherited from an outer terminal.
 	t.Setenv("COLUMNS", "80")
@@ -265,10 +247,8 @@ func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
 	}
 }
 
-// watch gives dg a pipe for stdout, so the ioctl cannot see the terminal, but
-// it exports the width as COLUMNS. Values outside the positive 16-bit range of
-// a terminal size are not widths and leave redirected output at its stable
-// default instead.
+// Piped watch output uses COLUMNS. Invalid or out-of-range values must
+// preserve the default width.
 func TestOutputWidthReadsColumnsForWatch(t *testing.T) {
 	output, pipe, err := os.Pipe()
 	if err != nil {
@@ -297,9 +277,7 @@ func TestOutputWidthReadsColumnsForWatch(t *testing.T) {
 	}
 }
 
-// A ticket of READY can hold a link to a ticket that is not accepted, and its
-// row says nothing about it: READY waits for the person and not for the queue,
-// so the note would name a rule that does not hold there.
+// Do not show blockers on ready work, which already awaits review.
 func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -322,9 +300,8 @@ func TestWriteInboxLeavesTheLinkOffAReadyRow(t *testing.T) {
 	})
 }
 
-// A title that would reach the column of the durations is cut, and an ellipsis
-// says that it was. The title of a ticket is the one field of a row that has
-// no width of its own, so it is the field that gives way.
+// Truncate titles to preserve note alignment, indicating truncation with an
+// ellipsis.
 func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -348,11 +325,8 @@ func TestWriteInboxCutsATitleThatReachesTheDuration(t *testing.T) {
 	})
 }
 
-// Each row of a run is as wide as the rule of dg show, whatever its title, so
-// the durations line up and nothing runs past the width the two commands
-// share. A title of a person can hold a character that takes more than one
-// byte, and the width of a row is a count of characters: a row measured in
-// bytes comes up short by one column for each byte past the first.
+// Multibyte characters must be counted as runes, not bytes, when aligning
+// rows.
 func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
 	titles := []string{
 		"a",
@@ -361,8 +335,7 @@ func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
 		"Mové to a néw versión of Go — the ölder one is out",
 		"Mové to a néw versión of Go — the ölder one is out of maintenance now",
 	}
-	// The name of a project is on the row before the title, so a name that
-	// holds such a character moves the title by as much.
+	// Project names also contribute rune width.
 	projects := []string{"/projects/web-api", "/projects/wéb-àpi"}
 
 	for _, project := range projects {
@@ -380,9 +353,7 @@ func TestWriteInboxKeepsEachRowOfARunAtOneWidth(t *testing.T) {
 	}
 }
 
-// A title that fits in the row keeps every character of itself. The count is
-// in characters: a title of 43 characters and 49 bytes fits a column of 44,
-// and a row that counted its bytes would cut a title that had room.
+// A 43-rune, 49-byte title fits a 44-rune column without truncation.
 func TestWriteInboxKeepsATitleThatFitsInCharacters(t *testing.T) {
 	title := "Mové to a néw versión — the ölder Go is out"
 	box := inbox.Inbox{Running: []store.OpenTicket{{
@@ -399,8 +370,7 @@ func TestWriteInboxKeepsATitleThatFitsInCharacters(t *testing.T) {
 	}
 }
 
-// A ticket that a version before the table runs put in running has no row of
-// runs, so there is no time to count from and the row ends with the title.
+// Legacy running tickets without a run record have no elapsed time to show.
 func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -422,9 +392,8 @@ func TestWriteInboxWithARunningTicketThatHasNoRun(t *testing.T) {
 	})
 }
 
-// An inbox with no ticket takes one line, and not three headings with none
-// below each of them. The line says what makes a ticket, because a person who
-// has no ticket is a person who has not made one yet.
+// An empty inbox should give ticket-creation guidance instead of empty
+// groups.
 func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	got := render(t, inbox.Inbox{QueueRunning: true})
 	if len(got) != 2 {
@@ -440,9 +409,7 @@ func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	}
 }
 
-// The first line always says the state of the queue, so a person never has to
-// know what the absence of a line means; and it is there for an empty inbox
-// too, because a paused queue with nothing in it is still paused.
+// Always show queue state, including when the inbox is empty.
 func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 	queued := []store.OpenTicket{{ID: 1, Title: "a title"}}
 	for name, c := range map[string]struct {
@@ -462,10 +429,8 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 	}
 }
 
-// The duration on the row comes from the database and from the clock, and
-// writeInbox alone does not say that either one is connected. A claim writes
-// runs.started_at a moment before dg reads it, so the row holds a duration of
-// zero seconds or of one or two more.
+// Exercise the database-to-renderer path for elapsed time, allowing a few
+// seconds for the test to run.
 func TestRunShowsTheDurationOfTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo, _ := runningTicket(t, dataDir)
@@ -501,9 +466,7 @@ func TestRunShowsTheStateOfTheQueue(t *testing.T) {
 	}
 }
 
-// DONE is at the top of the inbox: it is the group the person reads and
-// leaves, and what is left to do is below it, where the eyes stop. A row of a
-// closed ticket carries no duration, because its run stopped.
+// DONE appears first and shows no running duration.
 func TestWriteInboxPutsDoneAtTheTop(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -527,8 +490,8 @@ func TestWriteInboxPutsDoneAtTheTop(t *testing.T) {
 	})
 }
 
-// A person whose only tickets are in DONE finished work today, and the line
-// that says how to make a ticket would take that away.
+// DONE-only inboxes still contain work and must not show the empty-inbox
+// message.
 func TestWriteInboxWithOnlyDoneTicketsShowsThem(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -546,8 +509,7 @@ func TestWriteInboxWithOnlyDoneTicketsShowsThem(t *testing.T) {
 	}
 }
 
-// The columns take DONE in with the other groups, so the title of a closed
-// ticket is below the title of an open one.
+// DONE shares column widths with open groups.
 func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
 	box := inbox.Inbox{
 		QueueRunning: true,
@@ -571,9 +533,7 @@ func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
 	})
 }
 
-// The heading of DONE says how far back the group reaches. The window is not
-// the one that render writes, so the heading cannot be a fixed text that holds
-// the number by chance.
+// Use a nondefault window to detect hard-coded heading text.
 func TestWriteInboxSaysTheWindowOfDone(t *testing.T) {
 	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
 
@@ -586,8 +546,6 @@ func TestWriteInboxSaysTheWindowOfDone(t *testing.T) {
 	}
 }
 
-// A pipe, a file and a test see plain text: the colour is for a person at a
-// terminal, and it would be noise in a log or a grep.
 func TestStatusLineIsPlainOffATerminal(t *testing.T) {
 	for _, box := range []inbox.Inbox{{QueueRunning: true}, {}} {
 		var buf bytes.Buffer
@@ -597,9 +555,7 @@ func TestStatusLineIsPlainOffATerminal(t *testing.T) {
 	}
 }
 
-// Green is for a queue that will start work and yellow for one that will not,
-// and the pairing has to hold through statusLine, which is what a terminal
-// actually gets.
+// Check status colors through the rendering entry point.
 func TestStatusLineColoursAtATerminal(t *testing.T) {
 	pty, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
 	if err != nil {
@@ -620,9 +576,8 @@ func TestStatusLineColoursAtATerminal(t *testing.T) {
 	}
 }
 
-// The whole path: dg accept closes a ticket, and the inbox still shows it in
-// DONE. The store, the window from the config and the text of the group each
-// have their own test, and none of them says that the three are connected.
+// Exercise acceptance through storage, inbox grouping, and terminal
+// rendering.
 func TestRunShowsAnAcceptedTicketInDone(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
@@ -641,10 +596,7 @@ func TestRunShowsAnAcceptedTicketInDone(t *testing.T) {
 	}
 }
 
-// The whole path: a run that stops without a report puts its ticket in
-// FAILED, and dg shows it there. The store, the inbox and the text of the
-// group each have their own test, and none of them says that the three are
-// connected.
+// Exercise unreported-run failure through storage, grouping, and rendering.
 func TestRunShowsAFailedTicketInFailed(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -668,8 +620,7 @@ func TestRunShowsAFailedTicketInFailed(t *testing.T) {
 	}
 }
 
-// done_hours in the settings row says how far back DONE reaches. At 0 the group
-// is empty, and a ticket accepted a moment ago is already out of the window.
+// A zero DONE window excludes even newly accepted tickets.
 func TestRunTakesTheWindowOfDoneFromTheConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	s, id, repo := readyTicket(t, dataDir)
@@ -689,9 +640,8 @@ func TestRunTakesTheWindowOfDoneFromTheConfig(t *testing.T) {
 	}
 }
 
-// The window in the heading of DONE is the one the person set. done_hours is 6
-// and not the 24 of a person who set nothing, so the number in the heading can
-// only have come from the database.
+// A six-hour setting proves the heading reads the database rather than the
+// 24-hour default.
 func TestRunSaysTheWindowOfDoneFromTheConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	s, _, repo := readyTicket(t, dataDir)

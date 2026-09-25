@@ -9,13 +9,9 @@ import (
 	"testing"
 )
 
-// These fixtures start git through Command rather than exec.Command, because
-// Command removes GIT_DIR, GIT_INDEX_FILE and the other gitEnv variables from
-// the environment. Git sets those variables when it runs a hook, and the
-// pre-commit hook runs make check, so every test inherits them. When GIT_DIR
-// is set, git works on the repository it names, whatever directory -C gives
-// it. A fixture that meant to build a temporary repository would then run its
-// git init and git commit inside the real repository of the person.
+// Use Command to strip inherited Git environment overrides. Tests can run
+// inside a pre-commit hook, where GIT_DIR and GIT_INDEX_FILE would otherwise
+// redirect fixture operations into the user's repository despite git -C.
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
 	if _, err := Command(dir, "init").Output(); err != nil {
@@ -99,8 +95,7 @@ func TestRootWithDirectoryWithTrailingSpace(t *testing.T) {
 	}
 }
 
-// gitIn runs one git command in dir. It stops the test if git gives an error,
-// because a repository that the test cannot build is not a result of the test.
+// gitIn runs Git in dir and fails the test on error.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	if out, err := Command(dir, args...).CombinedOutput(); err != nil {
@@ -108,17 +103,16 @@ func gitIn(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// commitIn makes one empty commit, because a branch has no ref until a commit
-// is on it. The identity is in the command, so the test does not read the
-// config of the person.
+// commitIn creates an empty commit so the branch has a ref, with identity
+// independent of user configuration.
 func commitIn(t *testing.T, dir string) {
 	t.Helper()
 	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"commit", "--allow-empty", "-q", "-m", "first")
 }
 
-// trunkRepo makes a repository on a branch that is not main and not master, so
-// each result shows which question of DefaultBranch gave the answer.
+// trunkRepo uses a branch other than main or master to distinguish
+// DefaultBranch fallbacks.
 func trunkRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -128,8 +122,8 @@ func trunkRepo(t *testing.T) string {
 
 func TestDefaultBranchTakesOriginHeadFirst(t *testing.T) {
 	dir := trunkRepo(t)
-	// A branch with the name main is present, so this shows that the remote
-	// comes before it and not only before the branch of HEAD.
+	// A local main proves origin/HEAD wins over both main and the current
+	// branch.
 	commitIn(t, dir)
 	gitIn(t, dir, "branch", "main")
 	gitIn(t, dir, "remote", "add", "origin", "https://example.invalid/r.git")
@@ -161,8 +155,7 @@ func TestDefaultBranchTakesMasterWhenThereIsNoMain(t *testing.T) {
 func TestDefaultBranchTakesMainBeforeMaster(t *testing.T) {
 	dir := trunkRepo(t)
 	commitIn(t, dir)
-	// master is made first, so an answer of master cannot come from the order
-	// of the branches in the repository.
+	// Create master first to rule out incidental branch ordering.
 	gitIn(t, dir, "branch", "master")
 	gitIn(t, dir, "branch", "main")
 
@@ -203,8 +196,7 @@ func TestFirstCommitGivesTheCommitWithNoParent(t *testing.T) {
 	dir := trunkRepo(t)
 	commitIn(t, dir)
 	want := gitLine(t, dir, "rev-parse", "HEAD")
-	// A second commit, so an answer that comes from HEAD is not the same as an
-	// answer that comes from the first commit.
+	// A second commit distinguishes HEAD from the root commit.
 	commitIn(t, dir)
 
 	got, err := FirstCommit(dir)
@@ -237,9 +229,7 @@ func commitAt(t *testing.T, dir, date string) {
 	}
 }
 
-// A merge of two histories that had no relation gives a repository two commits
-// with no parent. The older one is the start of the repository, and a history
-// that a person adds later must not change the answer.
+// Merging an unrelated, newer root must preserve the original root selection.
 func TestFirstCommitWithTwoHistoriesGivesTheOlder(t *testing.T) {
 	dir := trunkRepo(t)
 	commitAt(t, dir, "2020-01-01T00:00:00Z")
@@ -261,9 +251,8 @@ func TestFirstCommitWithTwoHistoriesGivesTheOlder(t *testing.T) {
 	}
 }
 
-// A hook of git sets GIT_INDEX_FILE and GIT_DIR to a path that is relative to
-// the root of the repository. A command of delegator runs in a different
-// directory, so git must not see either value.
+// Hook-relative GIT_DIR and GIT_INDEX_FILE must not reach Git in another
+// directory.
 func TestRootIgnoresTheGitEnvironmentOfTheCaller(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
@@ -283,8 +272,7 @@ func TestRootIgnoresTheGitEnvironmentOfTheCaller(t *testing.T) {
 	}
 }
 
-// A git command that fails writes its reason to stderr, and the error of
-// gitOutput is the only place the person can read it.
+// Git stderr must survive error wrapping for users to see the failure reason.
 func TestGitOutputGivesTheStderrOfGit(t *testing.T) {
 	dir := trunkRepo(t)
 
@@ -300,8 +288,7 @@ func TestGitOutputGivesTheStderrOfGit(t *testing.T) {
 	}
 }
 
-// Git says no with nothing on stderr when it is asked to be quiet. The error
-// then has the exit status and no more, and it must still say something.
+// A quiet Git failure must still report its exit status.
 func TestGitOutputWithNoStderrStillGivesAnError(t *testing.T) {
 	dir := trunkRepo(t)
 
@@ -317,8 +304,7 @@ func TestGitOutputWithNoStderrStillGivesAnError(t *testing.T) {
 	}
 }
 
-// Callers of gitOutput read the failure of git from the type of the error, so
-// the exec.ExitError has to survive the wrapping with its exit code.
+// Preserve exec.ExitError and its exit code through wrapping.
 func TestGitOutputKeepsTheExitError(t *testing.T) {
 	dir := trunkRepo(t)
 

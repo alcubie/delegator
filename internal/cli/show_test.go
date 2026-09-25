@@ -21,8 +21,7 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// queuedIn adds one ticket to the queue of the project at repo, and returns its
-// id. The project arrives with the first ticket of it.
+// queuedIn creates a queued ticket, registering repo on its first use.
 func queuedIn(t *testing.T, s *store.Store, repo, title string) int64 {
 	t.Helper()
 	projectID, err := s.ProjectID(repo, repoBranch)
@@ -36,8 +35,8 @@ func queuedIn(t *testing.T, s *store.Store, repo, title string) int64 {
 	return id
 }
 
-// finishIn takes a queued ticket through a run, so that it arrives at READY
-// at this moment. It returns the branch of the run.
+// finishIn moves a queued ticket through a run to Ready and returns its
+// branch.
 func finishIn(t *testing.T, s *store.Store, id int64) string {
 	t.Helper()
 	branch := fmt.Sprintf("delegator/%d-a-title", id)
@@ -58,10 +57,8 @@ func finishIn(t *testing.T, s *store.Store, id int64) string {
 	return branch
 }
 
-// nextSecond waits for the clock to reach the next second. The time of a change
-// holds one second and no part of a second, so two tickets that change inside
-// one second hold the same time and the id decides the order between them. A
-// test of the order waits, so that the times differ.
+// nextSecond waits for distinct second-precision timestamps so ordering tests
+// do not fall back to ID ties.
 func nextSecond(t *testing.T) {
 	t.Helper()
 	start := time.Now().Truncate(time.Second)
@@ -92,8 +89,7 @@ func TestWrapBreaksAtASpace(t *testing.T) {
 }
 
 func TestWrapWithAWordLongerThanTheWidth(t *testing.T) {
-	// A word with no space in it cannot break, so it takes its own line and
-	// goes past the width. A path of a worktree is such a word.
+	// Unbreakable paths may exceed the wrap width.
 	got := wrap("a supercalifragilistic word", 10)
 	want := []string{"a", "supercalifragilistic", "word"}
 	if !slices.Equal(got, want) {
@@ -139,8 +135,6 @@ func TestAgoInTheFuture(t *testing.T) {
 	}
 }
 
-// A path below the home of the person takes a tilde in place of it, which is
-// what a shell writes and what a person reads.
 func TestTilde(t *testing.T) {
 	tests := []struct {
 		path, home, want string
@@ -161,10 +155,8 @@ func TestTilde(t *testing.T) {
 	}
 }
 
-// showTicketLines writes one ticket at testNow and returns each line of it.
-// started is the time the last run of the ticket began, and the zero time is a
-// ticket that no supervisor has claimed. The worktree of the ticket is on
-// disk, which is what a ticket that a run has reached holds.
+// showTicketLines renders at testNow with an existing worktree. A zero
+// started value represents a never-run ticket.
 func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started time.Time) []string {
 	t.Helper()
 	var out bytes.Buffer
@@ -178,9 +170,8 @@ func showTicketLines(t *testing.T, ticket store.Ticket, prose string, started ti
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
-// timeOf returns the time that dg show puts between the title and the rule
-// below it, with no space around it. A ticket with no time has the rule on
-// that line, and gives the empty string.
+// timeOf extracts the timestamp line between heading and rule, or empty when
+// absent.
 func timeOf(t *testing.T, lines []string) string {
 	t.Helper()
 	line := strings.TrimSpace(lines[1])
@@ -217,9 +208,7 @@ func TestWriteTicketHoldsEachPart(t *testing.T) {
 	}
 }
 
-// A ticket with no link writes no row for one, as a ticket with no branch
-// writes no row for a branch. An empty row reads as a value that failed to
-// arrive.
+// Omit empty dependency rows as with other missing fields.
 func TestWriteTicketWithNoLinkWritesNoRow(t *testing.T) {
 	var out bytes.Buffer
 	writeTicket(&out, shown{Ticket: store.Ticket{
@@ -253,9 +242,7 @@ func TestWriteTicketNamesWhatItBlocks(t *testing.T) {
 	}
 }
 
-// Every link, and not only the ones that are still waiting. A link to a ticket
-// that is done is one the person made and can take away, so dg show keeps
-// naming it after the queue stops acting on it.
+// Show completed dependencies too, preserving the full relationship record.
 func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -282,10 +269,8 @@ func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
 	}
 }
 
-// The duration on the heading comes from the table runs through Store.Run, and
-// writeTicket alone does not say that the two are connected. A claim writes
-// runs.started_at a moment before dg show reads it, so the heading holds a
-// duration of zero seconds or of one or two more.
+// Exercise stored run timestamps through dg show, allowing a few seconds of
+// elapsed test time.
 func TestRunShowGivesTheDurationOfTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo, _ := runningTicket(t, dataDir)
@@ -303,9 +288,7 @@ func TestRunShowGivesTheDurationOfTheRun(t *testing.T) {
 	}
 }
 
-// A ticket whose run stopped without a report says failed, and gives the time
-// of the failure, which is the time that it entered failed. A person who comes
-// back to a failed run sees both at a look.
+// Failed tickets show their failure timestamp beside the status.
 func TestRunShowOnAFailedTicketSaysFailedAndGivesTheTime(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -331,7 +314,6 @@ func TestRunShowOnAFailedTicketSaysFailedAndGivesTheTime(t *testing.T) {
 	}
 }
 
-// dg show reads the fields from the database and the prose from the file.
 func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -435,9 +417,7 @@ func TestRunShowWithAnIDThatIsNotANumber(t *testing.T) {
 	}
 }
 
-// The person owns the prose, and it is markdown that the person wrote with the
-// line breaks that they chose. dg show writes it as it is: a re-wrap breaks a
-// list, and it makes each long line into one long line and one short one.
+// Preserve Markdown line breaks, including lists and long lines.
 func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 	prose := "A line that is quite long and holds more than the width of the wrap for the flags.\n" +
 		"\n" +
@@ -462,11 +442,8 @@ func TestWriteTicketKeepsTheProseAsItIs(t *testing.T) {
 	}
 }
 
-// The time of a ticket is the time that it entered the status it has: a ready
-// ticket became ready then, and a queued ticket entered the queue then. The
-// history of the ticket holds that one time, so each status reads the same
-// field. A running ticket has the duration of its run instead, and that ticket
-// has no run here.
+// Use the latest transition for status age; running tickets instead use
+// elapsed run time.
 func TestWriteTicketShowsTheTimeOfTheLastChange(t *testing.T) {
 	base := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"}, Title: "a title",
@@ -495,10 +472,8 @@ func TestWriteTicketShowsTheTimeOfTheLastChange(t *testing.T) {
 	}
 }
 
-// The time is on its own line between the title and the rule, and it ends
-// where the status above it ends. A title as long as the line allows therefore
-// takes nothing away from the time, and the two values a person reads first
-// are one above the other.
+// Keep the time on a separate line aligned under status, leaving room for
+// long titles.
 func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
 	ticket := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/p/one"},
@@ -522,9 +497,7 @@ func TestWriteTicketPutsTheTimeBelowTheStatus(t *testing.T) {
 	}
 }
 
-// A ticket that is not running holds the start of its last run, and dg show
-// gives it no clock: that run stopped, and a duration that counts up beside a
-// ready ticket would say that the agent is still at work.
+// Never show a ticking duration for a run that has ended.
 func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
 	base := store.Ticket{
 		ID: 9, Project: store.Project{Path: "/p/one"}, Title: "a title",
@@ -541,8 +514,7 @@ func TestWriteTicketShowsNoDurationWhenTheTicketIsNotRunning(t *testing.T) {
 	}
 }
 
-// The text of a field stops where the rule stops. The prose is not in this,
-// because the person chose its line breaks and dg show writes them as they are.
+// Wrap metadata to the rule width while preserving description line breaks.
 func TestWriteTicketKeepsEachFieldInsideTheRule(t *testing.T) {
 	ticket := store.Ticket{
 		ID: 4, Project: store.Project{Path: "/projects/a-name-of-some-length"}, Title: "a title", Status: store.Ready,
@@ -592,8 +564,7 @@ func TestWriteTicketGivesTheShortHashAndTheSubject(t *testing.T) {
 	}
 }
 
-// Only the repository changed, so the ticket is still correct and the hash is
-// what a person needs to go looking.
+// An unresolvable commit must still expose its recorded hash.
 func TestWriteTicketWithACommitThatGitDoesNotKnow(t *testing.T) {
 	const gone = "0123456789abcdef0123456789abcdef01234567"
 	line := showCommit(t, testfix.Repo(t, repoBranch), gone)
@@ -608,10 +579,8 @@ func TestWriteTicketWithNoCommitGivesNoRow(t *testing.T) {
 	}
 }
 
-// A person opens the conversation of a run while the agent works, with
-// claude --resume <session>, so dg show on a running ticket gives the
-// session. The agent starts its session and then sleeps, and dg show is read
-// while dg run is still waiting on it.
+// Verify dg show exposes the session ID while the agent is still running,
+// using a fake that starts a session then waits.
 func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)
@@ -656,8 +625,8 @@ func TestRunShowGivesTheSessionOfARunningTicket(t *testing.T) {
 	}
 }
 
-// A --*-only flag writes one field and nothing else, in the form that another
-// command line takes: no label, no wrap and no tilde.
+// Field-only output must be raw, without labels, wrapping, or tilde
+// abbreviation.
 func TestWriteOnlyGivesOneField(t *testing.T) {
 	ticket := store.Ticket{
 		ID:      4,
@@ -688,8 +657,6 @@ func TestWriteOnlyGivesOneField(t *testing.T) {
 	}
 }
 
-// A field with no value writes no line. The text form leaves such a row out,
-// and a line with nothing on it reads as a value that failed to arrive.
 func TestWriteOnlyWithNoValueWritesNothing(t *testing.T) {
 	var out bytes.Buffer
 	writeOnly(&out, shown{Ticket: store.Ticket{ID: 4}, ProseFile: proseFile("/data", 4)}, onlyWorktree)
@@ -698,8 +665,8 @@ func TestWriteOnlyWithNoValueWritesNothing(t *testing.T) {
 	}
 }
 
-// A path below the home of the person keeps the home. The text form writes a
-// tilde, and a shell that takes the path from a variable does not expand one.
+// Raw paths keep the full home directory; shells do not expand ~ from
+// variables.
 func TestWriteOnlyKeepsTheHomeOfAPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -743,8 +710,7 @@ func TestRunShowWithAnOnlyFlagGivesTheFieldAlone(t *testing.T) {
 	}
 }
 
-// Two --*-only flags are one more than the person needs, and the first of them
-// on the command line is the one that dg show answers.
+// The first field-only flag wins in command-line order.
 func TestRunShowWithTwoOnlyFlagsTakesTheFirst(t *testing.T) {
 	dataDir := t.TempDir()
 	s, id, repo := readyTicket(t, dataDir)
@@ -770,10 +736,8 @@ func TestRunShowWithTwoOnlyFlagsTakesTheFirst(t *testing.T) {
 	}
 }
 
-// The ticket a person reviews is nearly always the head of READY, so dg show
-// with no id takes it. The head is the ready ticket that finished first, which
-// is the one the inbox shows at the top of READY, and it is not the smallest
-// id: the ticket that finished first here is the second one made.
+// Implicit selection follows ready position, not ID; finish the second-
+// created ticket first.
 func TestRunShowWithNoIDTakesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -803,10 +767,8 @@ func TestRunShowWithNoIDTakesTheHeadOfReady(t *testing.T) {
 	}
 }
 
-// twoProjects makes a data directory holding two projects, each with one ready
-// ticket. The ticket of the other project finished first, so a dg show that
-// ignored the project would take it. It returns the store, the two
-// repositories and the id of the ticket of each.
+// twoProjects creates one ready ticket per project, with the other project
+// finishing first to expose unscoped selection.
 func twoProjects(t *testing.T) (dataDir, mine, other string, mineID, otherID int64) {
 	t.Helper()
 	dataDir = t.TempDir()
@@ -821,9 +783,7 @@ func twoProjects(t *testing.T) (dataDir, mine, other string, mineID, otherID int
 	return dataDir, mine, other, mineID, otherID
 }
 
-// The head of READY is the head for one project. A person who reviews the work
-// of this repository is not offered the ticket of another one, whatever the
-// order of the inbox as a whole.
+// Implicit selection must stay within the requested project.
 func TestRunShowWithNoIDSkipsAnotherProject(t *testing.T) {
 	dataDir, mine, _, _, _ := twoProjects(t)
 
@@ -836,8 +796,6 @@ func TestRunShowWithNoIDSkipsAnotherProject(t *testing.T) {
 	}
 }
 
-// --project names the project, as it does on dg ticket, so a person reviews
-// the work of a repository from somewhere else.
 func TestRunShowWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	dataDir, mine, other, _, _ := twoProjects(t)
 
@@ -856,10 +814,8 @@ func TestRunShowWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	}
 }
 
-// A project with nothing ready has no ticket to show, and the error names it,
-// because a person who gave --project may be looking at a project that is not
-// the one they meant. Another project's ticket is not an answer to the
-// question that was asked.
+// Report no ready ticket for this project without selecting another project's
+// work.
 func TestRunShowWithNoIDAndNoReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	mine := testfix.Repo(t, repoBranch)
@@ -884,8 +840,6 @@ func TestRunShowWithNoIDAndNoReadyTicket(t *testing.T) {
 	}
 }
 
-// A directory outside any repository names no project, so there is no head of
-// READY to take.
 func TestRunShowWithNoIDOutsideAProject(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), t.TempDir(), "show")
 	if !errors.Is(err, project.ErrNotARepository) {
@@ -896,8 +850,7 @@ func TestRunShowWithNoIDOutsideAProject(t *testing.T) {
 	}
 }
 
-// An id is still an id, and it names a ticket of any project: the id comes off
-// the inbox, which is one list for every project.
+// Explicit IDs may select tickets from any project.
 func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
 	dataDir, mine, _, _, otherID := twoProjects(t)
 
@@ -910,8 +863,7 @@ func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
 	}
 }
 
-// §9.3 says that a program reads command documents through dg rpc, so that a
-// script of the person reads the data and not the text.
+// RPC exposes structured ticket data without parsing terminal text.
 func TestRunShowJSONHoldsEachField(t *testing.T) {
 	dataDir := t.TempDir()
 	s, id, repo := readyTicket(t, dataDir)
@@ -957,13 +909,11 @@ func TestRunShowJSONHoldsEachField(t *testing.T) {
 	}
 }
 
-// The paths are full paths. A script gives one to another command, and no
-// command expands a tilde that came from a variable.
+// JSON paths must remain absolute for use by other commands.
 func TestRunShowJSONGivesTheFullPaths(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
-	// Each path of the ticket is below the home of the person, which is what
-	// the text form writes a tilde for.
+	// Use paths under home to exercise abbreviation boundaries.
 	t.Setenv("HOME", filepath.Dir(dataDir))
 
 	got := showJSON(t, dataDir, repo, fmt.Sprint(id))
@@ -979,7 +929,6 @@ func TestRunShowJSONGivesTheFullPaths(t *testing.T) {
 	}
 }
 
-// A field with no value is null, so a script tests one thing and not two.
 func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)
@@ -993,7 +942,6 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 	}
 }
 
-// The acceptance is a time once the person has accepted the work.
 func TestRunShowJSONGivesTheTimeOfTheAcceptance(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
@@ -1023,9 +971,8 @@ func TestRunShowJSONWithATicketThatIsNotThere(t *testing.T) {
 	}
 }
 
-// The prose is markdown that a person wrote, and the encoder of Go escapes
-// `<`, `>` and `&` for a browser that reads JSON inside a page. Nothing here
-// is a page, and a person who reads the object reads what they wrote.
+// Leave <, >, and & unescaped so Markdown remains readable in JSON outside
+// HTML.
 func TestRunShowJSONKeepsTheCharactersOfTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := queuedTicket(t, dataDir)

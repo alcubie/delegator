@@ -9,7 +9,7 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// setEditor puts fn in place of the editor of the person for one test.
+// setEditor replaces the editor until test cleanup.
 func setEditor(t *testing.T, fn func(path string) error) {
 	t.Helper()
 	old := editor
@@ -17,8 +17,7 @@ func setEditor(t *testing.T, fn func(path string) error) {
 	t.Cleanup(func() { editor = old })
 }
 
-// withEditor puts an editor in place of the one of the person. It writes text
-// into the file that the command gives it, which is what a person does.
+// withEditor installs an editor that writes the supplied text.
 func withEditor(t *testing.T, text string) {
 	t.Helper()
 	setEditor(t, func(path string) error {
@@ -26,8 +25,7 @@ func withEditor(t *testing.T, text string) {
 	})
 }
 
-// fakeEditor writes a program that puts text into the last path that it gets,
-// which is what an editor does.
+// fakeEditor creates a program that writes text to its final path argument.
 func fakeEditor(t *testing.T, text string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "fake-editor")
@@ -39,9 +37,8 @@ func fakeEditor(t *testing.T, text string) string {
 	return path
 }
 
-// EDITOR can hold arguments, as "code --wait" does.
-// echoEditor writes each argument that it gets into the last one, so a test can
-// see the arguments that startEditor gave it.
+// echoEditor records argv to verify EDITOR values with arguments, such as
+// "code --wait".
 func echoEditor(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "echo-editor")
@@ -113,8 +110,7 @@ func TestTicketFromEditorKeepsEachLineOfTheProse(t *testing.T) {
 	}
 }
 
-// An editor can leave a space at the end of the line, and an editor on another
-// system ends a line with a return and a newline.
+// Accept trailing spaces and CRLF line endings.
 func TestTicketFromEditorTrimsTheEndOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure  \r\n\nRemove the staging app.\n")
@@ -173,7 +169,6 @@ func TestEditorNameTakesEDITOR(t *testing.T) {
 	}
 }
 
-// A person who has set no EDITOR still gets an editor.
 func TestEditorNameWithNoEDITOR(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	if got := editorName(); got != "vi" {
@@ -181,9 +176,7 @@ func TestEditorNameWithNoEDITOR(t *testing.T) {
 	}
 }
 
-// A person who writes nothing, or only spaces, or a body with no first line,
-// has given the ticket no title. Each one is an error, and each one leaves the
-// database as it was.
+// Missing or whitespace-only titles must leave the database unchanged.
 func TestTicketFromEditorWithNoTitle(t *testing.T) {
 	tests := []struct {
 		name string
@@ -218,8 +211,7 @@ func TestTicketFromEditorWithNoTitle(t *testing.T) {
 	}
 }
 
-// The failure takes no id, so the ticket that comes after it takes the first
-// one.
+// A refused ticket must not consume an ID.
 func TestTicketFromEditorWithNoTitleUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

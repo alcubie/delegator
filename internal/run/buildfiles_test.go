@@ -1,9 +1,4 @@
-// The helpers of the tests about the files that a build takes for one system,
-// and the type check of the files that a build for Windows takes. bootTime has
-// one file for each system, and alive, detachAttr and stop each have one for
-// Unix and one for Windows, and the tests of all of them ask the same two
-// questions: which files a build takes, and whether the declaration in one file
-// is the declaration in another.
+// Shared checks for platform-specific file selection and function signatures.
 
 package run
 
@@ -19,8 +14,8 @@ import (
 	"testing"
 )
 
-// signature gives the declaration of a function in one file as text, so that
-// the declaration of one file can be compared with the declaration of another.
+// signature formats a function declaration for comparison across platform
+// files.
 func signature(t *testing.T, file, name string) string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -43,9 +38,8 @@ func signature(t *testing.T, file, name string) string {
 	return ""
 }
 
-// files gives the files that a build for one system takes from this package.
-// The field is the name that go list gives the list, GoFiles for the code of
-// the package and TestGoFiles for its tests.
+// files asks go list for the selected GoFiles or TestGoFiles on a target
+// platform.
 func files(t *testing.T, goos, field string) []string {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-f", "{{."+field+"}}", ".")
@@ -57,17 +51,10 @@ func files(t *testing.T, goos, field string) []string {
 	return strings.Fields(strings.Trim(strings.TrimSpace(string(out)), "[]"))
 }
 
-// The tests that need Windows cannot run in make check, which runs on Linux. A
-// type check for Windows is what is left, and this is the whole of it: every
-// code file that a build for Windows takes, and every test file that a build
-// for Windows takes and a build for Linux does not. A Windows file that does
-// not answer the call another file makes fails here, and so does a Windows test
-// that names something no file declares.
-//
-// This names the files and not the package because the tests of the package do
-// not build for Windows. internal/testfix starts a shell with Setsid and
-// signals a process group, and next_test.go reads a process group with ps, so
-// go vet of the package reaches them and stops.
+// Type-check Windows production files and Windows-only tests from the host
+// platform. Select files explicitly because common test fixtures use Unix-
+// only shells, Setsid, and process-group signals, preventing a whole-package
+// Windows test build.
 func TestTheWindowsFilesTypeCheck(t *testing.T) {
 	vetted := files(t, "windows", "GoFiles")
 	onLinux := files(t, "linux", "TestGoFiles")

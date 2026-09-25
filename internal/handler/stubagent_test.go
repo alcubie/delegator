@@ -13,29 +13,24 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// The stub agent is an ACP agent built on the SDK's agent side and run as a
-// second copy of the test binary, so a test exercises Start over a real
-// process and a real protocol exchange without a real agent. It writes what
-// the client told it into a file the test reads, because a pipe the client
-// owns is not a channel the test can wait on.
+// The stub runs the ACP SDK agent side in a subprocess of the test binary. It
+// records client requests in a file so tests can inspect them without owning
+// the protocol pipes.
 const (
 	stubSessionID       = "sess-stub"
 	stubHello           = "stub agent started"
 	stubEnvironmentName = "DELEGATOR_HANDLER_TEST_ENV"
 )
 
-// The two sets of permission options the stub agent offers, named by an
-// argument of the stub so that a test says what the agent offers. In the full
-// set the option that allows once comes after the one that allows always, and
-// the same for the two that reject, so a client that takes the first option
-// it can use is told apart from one that takes the narrower answer.
+// Permission sets put persistent options before one-time options. This
+// distinguishes the client's narrower preference from simply taking the first
+// match.
 const (
 	stubFullOptions   = "full"
 	stubAlwaysOptions = "always"
 )
 
-// What the stub agent's prompt does, named by an argument of the stub so
-// that a test says which turn it wants.
+// Prompt behaviors selected by the stub command arguments.
 const (
 	stubTurnPermissions = "permissions" // ask for two permissions and end the turn
 	stubTurnUpdates     = "updates"     // send one update of every kind and end the turn
@@ -43,34 +38,30 @@ const (
 	stubTurnError       = "error"       // fail the turn
 )
 
-// What the stub agent does with a load, named by an argument of the stub. It
-// implements the loader whatever it says, so a request that reaches an agent
-// that says it cannot load is answered rather than refused, and a test sees
-// whether the client asked at all.
+// Load behaviors selected by arguments. Even when load support is advertised
+// as false, the stub can answer, allowing tests to detect clients that ignore
+// capabilities.
 const (
-	stubLoads     = "loads"      // say it loads, and replay two updates
-	stubLoadsLong = "loads-long" // say it loads, and replay more than the channel holds
-	stubNoLoad    = "no-load"    // say it cannot load
+	stubLoads     = "loads"      // load with short replay
+	stubLoadsLong = "loads-long" // replay beyond buffer capacity
+	stubNoLoad    = "no-load"    // advertise no load support
 )
 
-// The two updates the stub agent replays when it loads a session, which stand
-// for the turn the session already took.
+// Short history replayed on session load.
 const (
 	stubReplayFirst  = "the session said this before"
 	stubReplaySecond = "and then it said this"
 )
 
-// stubLongHistory is how many updates the long replay sends. It is more than
-// the channel between the client and a turn holds, which is the history of
-// any session a person has worked in for a while.
+// stubLongHistory exceeds the client event buffer to exercise concurrent
+// replay draining.
 const stubLongHistory = 3 * eventRoom
 
-// stubHistoryLine is the text of one update of the long history. The updates
-// are numbered so that a test reads back the order as well as the count.
+// stubHistoryLine is numbered per update so tests can check replay order and
+// count.
 func stubHistoryLine(i int) string { return fmt.Sprintf("history line %d", i) }
 
-// What the updates turn sends. The command has a second line, so a test sees
-// that a summary is one line of the command and not all of it.
+// The multiline command checks that tool summaries use only the first line.
 const (
 	stubThought     = "the tests come first"
 	stubReadTitle   = "Read internal/cli/run.go"
@@ -80,13 +71,12 @@ const (
 	stubFailure     = "the stub agent has no model"
 )
 
-// What the stub agent says of an id it never issued. It names neither the id
-// nor the agent, so a test that wants both in the error is reading what the
-// handler put there and not what the agent happened to say.
+// Omit agent name and session ID from the stub error so tests verify that the
+// handler supplies that context.
 const stubUnknownSession = "there is no session of that id"
 
-// The ids of the options the stub agent offers. A decision it records is the
-// id the client selected, or stubCancelled when the client took no option.
+// Permission option IDs; stubCancelled records a request with no selected
+// option.
 const (
 	stubAllowOnce    = "allow-once"
 	stubAllowAlways  = "allow-always"
@@ -95,12 +85,11 @@ const (
 	stubCancelled    = "cancelled"
 	stubEditTitle    = "Edit internal/cli/run.go"
 	stubExecuteTitle = "Run the tests"
-	stubPermissions  = 2 // the permissions one prompt of the stub agent asks for
+	stubPermissions  = 2 // permission requests per prompt
 )
 
-// stubRecord is what the stub agent saw: the capabilities of the initialize,
-// the directory of the session, and the option the client selected for each
-// permission it asked for, in the order it asked.
+// stubRecord captures initialization capabilities, session directory, and
+// permission decisions in request order.
 type stubRecord struct {
 	Fs                    acp.FileSystemCapabilities `json:"fs"`
 	Terminal              bool                       `json:"terminal"`
@@ -110,9 +99,7 @@ type stubRecord struct {
 	Decisions             []string                   `json:"decisions"`
 }
 
-// stubLaunch gives the name and command that start the stub agent offering one
-// of the sets of permission options, taking one of the turns and saying
-// whether it can load a session, and the path of the file it records into.
+// stubLaunch returns the configured stub command and its record path.
 func stubLaunch(t *testing.T, options, turn, loading string) (string, []string, string) {
 	t.Helper()
 	self, err := os.Executable()
@@ -138,9 +125,8 @@ func readRecord(t *testing.T, path string) stubRecord {
 	return r
 }
 
-// TestStubAgent is the stub agent and not a test. It runs only in the copy of
-// the test binary that stubLaunch starts, which names itself in the arguments
-// after the flags; every other run skips it.
+// TestStubAgent serves only in subprocesses marked by stubLaunch arguments;
+// ordinary test runs skip it.
 func TestStubAgent(t *testing.T) {
 	args := flag.Args()
 	if len(args) != 5 || args[0] != "stub" {
@@ -188,10 +174,9 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID)}, nil
 }
 
-// LoadSession replays the two updates of the session's history and then
-// answers, which is the order the protocol asks for, and refuses an id it
-// never issued. It records the directory first, so a test that expects the
-// load to be refused before it is sent sees that nothing was recorded.
+// LoadSession records the requested directory, rejects unknown IDs, and
+// replays history before replying. An empty record proves the client rejected
+// unsupported loading before sending the request.
 func (a *stubAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
 	a.cwd, a.directories = p.Cwd, p.AdditionalDirectories
 	if err := a.write(); err != nil {
@@ -209,8 +194,8 @@ func (a *stubAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (
 	return acp.LoadSessionResponse{}, nil
 }
 
-// history is the text the stub agent replays, which is two updates or a whole
-// session's worth of them.
+// history replays either two updates or a history larger than the event
+// buffer.
 func (a *stubAgent) history() []string {
 	if a.loading != stubLoadsLong {
 		return []string{stubReplayFirst, stubReplaySecond}
@@ -237,9 +222,8 @@ func (a *stubAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.Prompt
 	return acp.PromptResponse{}, fmt.Errorf("the stub agent has no turn %q", a.turn)
 }
 
-// permissions asks permission for a tool of kind edit and then for one of kind
-// execute, and records what it was answered. It writes the record before it
-// replies, so the test reads the decisions as soon as the prompt is over.
+// permissions requests edit and execute access, recording answers before
+// replying so tests can inspect them as soon as Prompt returns.
 func (a *stubAgent) permissions(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	for _, ask := range []struct {
 		id    string
@@ -273,9 +257,8 @@ func (a *stubAgent) permissions(ctx context.Context, p acp.PromptRequest) (acp.P
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
-// updates sends one update of each kind the handler maps and one plan, which
-// it does not. The first chunk is the text of the prompt, so a test that runs
-// two prompts at once tells the events of one turn from the other's.
+// updates sends all mapped update kinds and an unsupported plan. Echoing the
+// prompt first distinguishes events in concurrent-prompt tests.
 func (a *stubAgent) updates(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	for _, u := range []acp.SessionUpdate{
 		acp.UpdateAgentMessageText(promptText(p)),
@@ -302,8 +285,8 @@ func (a *stubAgent) updates(ctx context.Context, p acp.PromptRequest) (acp.Promp
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
-// hang sends one chunk and then waits, so that a test cancels a turn that has
-// started. The turn ends when the client cancels the request.
+// hang sends a marker chunk and waits for cancellation, ensuring the test
+// cancels an active turn.
 func (a *stubAgent) hang(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	u := acp.UpdateAgentMessageText(promptText(p))
 	if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {

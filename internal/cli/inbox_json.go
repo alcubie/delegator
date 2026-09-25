@@ -1,11 +1,5 @@
-// The inbox for a reader that is not a person. Section 9.3 says that a program
-// reads command documents through dg rpc, and section 12 says that a GUI in a
-// different language uses that endpoint and needs no Go code.
-//
-// This file writes the inbox.Inbox structure and decides nothing about which
-// ticket goes where: the groups and their order are the answer of
-// internal/inbox, and a second answer here would come apart from the one the
-// terminal shows.
+// JSON inbox rendering shares grouping and ordering with terminal output
+// through internal/inbox.
 
 package cli
 
@@ -16,16 +10,13 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// The value of queue, which is the state that the first line of the text form
-// says in words.
+// Queue states correspond to the terminal status line.
 const (
 	queueRunning = "running"
 	queuePaused  = "paused"
 )
 
-// inboxJSON is the whole inbox as one object. It holds one key for each group
-// of inbox.Inbox, in the order that the text form writes them, so a reader of
-// the two sees one list.
+// inboxJSON holds queue state and the same groups as terminal output.
 type inboxJSON struct {
 	Queue   string            `json:"queue"`
 	Done    []inboxTicketJSON `json:"done"`
@@ -39,27 +30,24 @@ type inboxJSON struct {
 	done time.Duration
 }
 
-// inboxTicketJSON is one row of the inbox. Each key that names a field of
-// the show result of dg rpc is the same word there, so a reader of the two knows the
-// field without a second table.
+// inboxTicketJSON represents one inbox row, using the same field names as the
+// show result.
 type inboxTicketJSON struct {
 	ID      int64  `json:"id"`
 	Title   string `json:"title"`
 	Status  string `json:"status"`
 	Project string `json:"project"`
 
-	// The times are RFC 3339, and a time the ticket has not reached is null.
-	// Started is the start of the last run, which for a ticket in running is
-	// the run that holds it and the moment a GUI counts the elapsed time from.
-	// No key holds that count: a string made here stops as soon as the reader
-	// draws it.
+	// Timestamps use RFC 3339; absent times are null. Started is the
+	// latest run start, allowing clients to update elapsed time without
+	// fetching a new value every second.
 	Created  *time.Time `json:"created"`
 	Accepted *time.Time `json:"accepted"`
 	Started  *time.Time `json:"started"`
 }
 
-// inboxTickets turns one group into its rows. A group that holds no ticket is
-// an empty list and not null, so a reader walks each group the one way.
+// inboxTickets converts a group to JSON rows. Empty groups use [] rather than
+// null.
 func inboxTickets(tickets []store.OpenTicket) []inboxTicketJSON {
 	rows := make([]inboxTicketJSON, 0, len(tickets))
 	for _, t := range tickets {

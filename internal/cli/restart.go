@@ -10,15 +10,9 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// restartCommand returns the command dg restart. It takes the id of a ticket
-// and no default: dg accept closes the head of READY because that is the
-// ticket the person is reading, and a person who restarts has read a failure
-// and says which ticket it was.
-//
-// The restarted supervisor takes the ticket directly from failed to running.
-// It keeps its branch, its session and its worktree, so the run continues the
-// work of the run that failed. The command writes nothing, because the person
-// named the ticket.
+// restartCommand resumes an explicitly named failed ticket directly,
+// bypassing the queue. It preserves the branch, session, and worktree, and
+// writes nothing on success.
 func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart <id>",

@@ -12,9 +12,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// runIn runs one command and returns what it wrote to the output. cobra writes
-// each error to the error output, and cmd/dg makes the text for those, so the
-// test reads the two apart.
+// runIn executes a command with separate output and error buffers.
 func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error) {
 	t.Helper()
 	return runInWithStdin(t, dataDir, workDir, "", args...)
@@ -29,8 +27,8 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 	root.SetOut(&out)
 	root.SetErr(&errOut)
 	root.SetIn(strings.NewReader(stdin))
-	// A nil slice makes cobra read os.Args, which holds the arguments of the
-	// test, so the arguments are always a slice that is there.
+	// Use a non-nil slice so Cobra does not read the test process's
+	// os.Args.
 	if args == nil {
 		args = []string{}
 	}
@@ -43,7 +41,6 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 	return out.String(), err
 }
 
-// dg with no command is the inbox. The help is still there, at dg help.
 func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -275,9 +272,7 @@ func TestAbsentDataDirFlagUsesTheDefaultAfterParsing(t *testing.T) {
 	}
 }
 
-// Windows has no XDG rule, and a person there keeps the data of a program
-// below LOCALAPPDATA. make check runs on Linux, so the system is a parameter
-// of the unexported dataDir and the test names it.
+// Inject the platform to verify Windows LOCALAPPDATA behavior on any host.
 func TestDataDirOnWindowsTakesLocalAppData(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)
@@ -291,9 +286,7 @@ func TestDataDirOnWindowsTakesLocalAppData(t *testing.T) {
 	}
 }
 
-// Windows sets LOCALAPPDATA for a person who signed in, so a run with it empty
-// is a run with nothing to join, and joining nothing gives the relative path
-// delegator, which would put the database wherever the command was run.
+// Missing LOCALAPPDATA must fail rather than create a relative data path.
 func TestDataDirOnWindowsWithNoLocalAppData(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("LOCALAPPDATA", "")
@@ -307,10 +300,7 @@ func TestDataDirOnWindowsWithNoLocalAppData(t *testing.T) {
 	}
 }
 
-// A person who sets XDG_DATA_HOME means it on whichever system they are on,
-// and the tests of this repository set it to hold their own directory, so it
-// comes before the directory the system asks for. LOCALAPPDATA is set here to
-// name the one that would otherwise win.
+// XDG_DATA_HOME must override LOCALAPPDATA even on Windows.
 func TestXDGDataHomeWinsOnEachSystem(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
 	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)
@@ -326,9 +316,7 @@ func TestXDGDataHomeWinsOnEachSystem(t *testing.T) {
 	}
 }
 
-// Linux and macOS keep the directory they had. LOCALAPPDATA is set here
-// because a person can set any variable on any system, and neither of these
-// systems reads it.
+// Unix defaults must ignore LOCALAPPDATA even when it is set.
 func TestDataDirOffWindowsIsTheXDGDirectory(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("LOCALAPPDATA", `C:\Users\person\AppData\Local`)

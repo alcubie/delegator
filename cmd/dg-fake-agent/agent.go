@@ -16,13 +16,12 @@ import (
 // recordSuffix names the file of permission answers, beside the script.
 const recordSuffix = ".record"
 
-// recordPerm is the permission of the record file, which is the agent's own
-// working file in a test's directory and not delegator's data.
+// recordPerm applies to the fake agent's test-local permission log, not
+// delegator data.
 const recordPerm = 0o644
 
-// options is what the agent offers for every permission it asks for: one of
-// each kind, so the answer says which kind the client took as well as that it
-// answered.
+// options offers one permission choice of each kind so tests can identify the
+// client's policy decision.
 var options = []acp.PermissionOption{
 	{Kind: acp.PermissionOptionKindAllowAlways, Name: "Always allow", OptionId: "allow-always"},
 	{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow-once"},
@@ -59,17 +58,14 @@ func (a *fakeAgent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewS
 	return acp.NewSessionResponse{SessionId: acp.SessionId("fake-" + strconv.Itoa(a.sessions))}, nil
 }
 
-// LoadSession replays the history and then answers, which is the order the
-// protocol asks for. It takes whatever id it is given: the process that issued
-// the id was another one and this one holds no record of it, so an id it
-// refused would be every id a test could load.
+// LoadSession replays history before replying, as ACP requires. It accepts
+// any session ID because the process that created it may already have exited.
 func (a *fakeAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
 	_, _, err := a.take(ctx, p.SessionId, a.script.history, "")
 	return acp.LoadSessionResponse{}, err
 }
 
-// Prompt runs the turn of the script. Every prompt runs it again, so a test
-// that takes two turns writes the turn once.
+// Prompt replays the scripted turn for every prompt.
 func (a *fakeAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	text := ""
 	if len(p.Prompt) > 0 && p.Prompt[0].Text != nil {
@@ -82,10 +78,8 @@ func (a *fakeAgent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.Prompt
 	return acp.PromptResponse{StopReason: stop, Usage: usage}, nil
 }
 
-// take does the actions in order and gives the reason and standard aggregate
-// usage the turn reports. A usage action is the JSON object ACP puts in
-// PromptResponse. A run of actions that names no reason ends the turn, which
-// is what an agent that has run out of things to do reports.
+// take executes actions and returns the stop reason and ACP usage. Without an
+// explicit stop action, the turn ends normally.
 func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string, prompt string) (acp.StopReason, *acp.Usage, error) {
 	var usage *acp.Usage
 	for _, action := range actions {
@@ -164,10 +158,8 @@ func (a *fakeAgent) update(ctx context.Context, id acp.SessionId, u acp.SessionU
 	return a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: id, Update: u})
 }
 
-// tool starts a tool call of a kind and a title, on the file the line names.
-// A title holds spaces and a path does not, so the last word is the path when
-// it is absolute, which is what the protocol asks of a location, and the end
-// of the title when it is not.
+// tool starts a call with a kind and title. An absolute final word is treated
+// as a file location; otherwise it remains part of the title.
 func (a *fakeAgent) tool(ctx context.Context, id acp.SessionId, rest string) error {
 	kind, title, _ := strings.Cut(rest, " ")
 	opts := []acp.ToolCallStartOpt{
@@ -225,8 +217,7 @@ func cutLast(s string) (head, last string, ok bool) {
 	return s[:i], s[i+1:], true
 }
 
-// The rest of the agent side is not what a script says, so each method gives
-// the empty answer of its call.
+// Unscripted ACP methods return empty responses.
 func (a *fakeAgent) Authenticate(context.Context, acp.AuthenticateRequest) (acp.AuthenticateResponse, error) {
 	return acp.AuthenticateResponse{}, nil
 }

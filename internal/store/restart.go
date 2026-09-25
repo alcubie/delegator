@@ -1,5 +1,3 @@
-// The restart of a failed ticket, which dg restart makes.
-
 package store
 
 import (
@@ -7,18 +5,12 @@ import (
 	"time"
 )
 
-// Restart marks a failed ticket running and writes the row for the new run.
-// The ticket keeps its branch and its session, and nothing removes its
-// worktree, so the run that follows continues the work of the run that failed.
+// Restart marks a failed ticket running and creates a new run, preserving its
+// branch, session, and worktree. It returns ErrNoTicket for a missing ticket
+// and ErrInvalidTicketStateChange for any status other than Failed.
 //
-// Every status but failed gives ErrInvalidTicketStateChange, and an id that
-// holds no ticket gives ErrNoTicket. The table of the state machine allows
-// ready to queued, which is dg revise giving work back with more instructions,
-// so the status is read here rather than left to that table: the table says
-// what a change is, and not which command makes it.
-//
-// The transition and the row of the run are one transaction, so a ticket in
-// running always has the process id of the supervisor that restarted it.
+// The transition and run record share one transaction so a running ticket
+// always has a supervisor PID.
 func (s *Store) Restart(id int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {

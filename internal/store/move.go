@@ -2,7 +2,7 @@ package store
 
 import "slices"
 
-// Move is a direction that one ticket goes in the queue.
+// Move is a direction for reordering a ticket within its list.
 type Move string
 
 const (
@@ -12,10 +12,8 @@ const (
 	Bottom Move = "bottom"
 )
 
-// reorder returns the order that ids becomes when the ticket at from goes in
-// the direction of move. A move that goes past the end of the order is no
-// move, so the ticket at the top stays there when it goes up. The slice that
-// reorder gets does not change.
+// reorder returns a copy of ids with the ticket at from moved in the
+// requested direction. Moving beyond either end leaves the order unchanged.
 func reorder(ids []int64, from int, move Move) []int64 {
 	to := from
 	switch move {
@@ -38,14 +36,11 @@ func reorder(ids []int64, from int, move Move) []int64 {
 	return moveTo(ids, from, to)
 }
 
-// reorderBefore returns the order that ids becomes when the ticket at from goes
-// to the place that target holds. target and each ticket below it go down one
-// place. A target that the queue does not hold, and a target that is the ticket
-// itself, give the order back as it was.
+// reorderBefore moves the ticket at from immediately before target. A missing
+// target or the ticket itself leaves the order unchanged.
 //
-// The ticket comes out of the order before the place of target is read. The
-// place of a target below the ticket moves up by one when the ticket comes out,
-// and a read that came first would put the ticket one place short.
+// Remove the ticket before finding the target position, since removal shifts
+// later positions.
 func reorderBefore(ids []int64, from int, target int64) []int64 {
 	moved := slices.Clone(ids)
 	id := moved[from]
@@ -58,8 +53,7 @@ func reorderBefore(ids []int64, from int, target int64) []int64 {
 	return slices.Insert(moved, to, id)
 }
 
-// moveTo returns the order that ids becomes when the ticket at from goes to to.
-// The slice that moveTo gets does not change.
+// moveTo returns a copy of ids with the ticket at from moved to to.
 func moveTo(ids []int64, from, to int) []int64 {
 	moved := slices.Clone(ids)
 	id := moved[from]

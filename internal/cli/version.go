@@ -1,7 +1,5 @@
-// The version of the binary, for a program that starts dg and has to know that
-// this dg writes the JSON it expects. The desktop GUI carries its own copy of
-// dg and uses the one on the PATH when the two agree, so it reads the version
-// of each at its start.
+// Version and schema information lets external clients check compatibility
+// with this binary.
 
 package cli
 
@@ -12,20 +10,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is the version of this binary. A build sets it with
-// -ldflags -X github.com/alcubie/delegator/internal/cli.Version=<value>, and
-// the Makefile takes the value from git describe. A build that sets nothing
-// keeps dev, which says the binary came from a tree and not from a release.
+// Version is set at build time with -ldflags -X
+// github.com/alcubie/delegator/internal/cli.Version=<value>. The Makefile
+// uses git describe; unset builds report dev.
 var Version = "dev"
 
-// jsonSchema is the version of the documents that dg rpc
-// writes. It goes up by one when a key changes its name or its type,
-// or goes away; a new key leaves it where it is, because a reader that does not
-// know the key ignores it. §9.3 says so to the reader of the document.
+// jsonSchema versions the structured command results. Increment it when
+// removing a key or changing its name or type. Additive keys are compatible
+// because consumers ignore unknown fields.
 const jsonSchema = 1
 
-// versionJSON is the result of the version method of dg rpc. A program reads version to
-// show it to a person, and schema to decide whether it can read the rest.
+// versionJSON exposes the binary version for display and schema version for
+// compatibility checks.
 type versionJSON struct {
 	Version string `json:"version"`
 	Schema  int    `json:"schema"`

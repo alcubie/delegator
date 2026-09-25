@@ -9,15 +9,11 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// repoBranch is the branch of each repository that these tests make. It is not
-// main and not master, so a value that does not come from the repository is
-// visible in a result.
+// repoBranch deliberately differs from main and master to expose hard-coded
+// branch defaults.
 const repoBranch = "trunk"
 
-// testNow is the moment that each test of this package writes text at. A time
-// that a test puts before it or after it is a time the person would see beside
-// that text, and the six copies of the same date these tests held said nothing
-// that this one name does not.
+// testNow is the fixed clock used by rendering tests.
 var testNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
 // ticketIn makes one ticket in a data directory, with a store the test opens,
@@ -27,15 +23,14 @@ func ticketIn(t *testing.T, dataDir, workDir, title, body string) (int64, error)
 	return Ticket(testfix.OpenStore(t, dataDir), workDir, title, body)
 }
 
-// ticketFromEditorIn makes one ticket from the editor of the person, with a
-// store the test opens.
+// ticketFromEditorIn creates an editor-based ticket using a test-owned store.
 func ticketFromEditorIn(t *testing.T, dataDir, workDir string) (int64, error) {
 	t.Helper()
 	return TicketFromEditor(testfix.OpenStore(t, dataDir), workDir)
 }
 
-// proseFiles returns each file of prose that a command made. The test does not
-// build the name itself, because the name is condition 5 of the ticket.
+// proseFiles discovers description files without assuming their naming
+// convention.
 func proseFiles(t *testing.T, dataDir string) []string {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(dataDir, "tickets", "*.md"))
@@ -70,9 +65,7 @@ func proseOfTicket(t *testing.T, dataDir string, id int64) string {
 	return string(data)
 }
 
-// The duration of a run counts up while the person watches, so each part of it
-// keeps a fixed width and the seconds are there. A run of more than 99 hours
-// takes a wider field of hours rather than wrapping to zero.
+// Keep minutes and seconds fixed-width while allowing hours above 99.
 func TestElapsed(t *testing.T) {
 	tests := []struct {
 		start time.Time
@@ -92,9 +85,8 @@ func TestElapsed(t *testing.T) {
 	}
 }
 
-// A clock that moves back, or a run that started on another computer, gives a
-// start in the future. Zero is the honest answer, and a negative duration
-// would print as a row of minus signs.
+// Future starts after clock rollback must clamp to zero rather than print
+// negative durations.
 func TestElapsedWithAStartInTheFuture(t *testing.T) {
 	if got := elapsed(testNow.Add(time.Hour), testNow); got != "00:00:00" {
 		t.Errorf("elapsed = %q, want %q", got, "00:00:00")

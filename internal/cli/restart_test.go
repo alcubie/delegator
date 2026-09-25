@@ -14,9 +14,7 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// restartIn runs dg restart on one ticket and stops the test if the command
-// gives an error. The command writes nothing: the person named the ticket, so
-// there is nothing to tell them that they do not know.
+// restartIn runs dg restart and checks that it succeeds silently.
 func restartIn(t *testing.T, dataDir, workDir string, id int64) {
 	t.Helper()
 	out, err := runIn(t, dataDir, workDir, "restart", fmt.Sprint(id))
@@ -28,8 +26,6 @@ func restartIn(t *testing.T, dataDir, workDir string, id int64) {
 	}
 }
 
-// Only a failed ticket restarts. A queued ticket keeps its place, which a
-// restart that went through would have made it run again.
 func TestRestartRefusesATicketThatDidNotFail(t *testing.T) {
 	tests := []struct {
 		state string
@@ -58,8 +54,7 @@ func TestRestartRefusesATicketThatDidNotFail(t *testing.T) {
 	}
 }
 
-// A restart starts the supervisor for the failed ticket directly rather than
-// putting the ticket back in the queue to wait behind other work.
+// Restart selects the failed ticket directly, bypassing queued work.
 func TestRestartStartsTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := failedTicket(t, dataDir)
@@ -108,9 +103,7 @@ func TestRestartSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	assertDefaultDataDirUnused(t, defaultDir)
 }
 
-// The run that follows a restart works in the worktree of the run that
-// failed, so the agent keeps the files that run left there and no commit
-// holds.
+// Restart must preserve uncommitted files in the existing worktree.
 func TestRestartRunsTheAgentInTheWorktreeOfTheFailedRun(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, ticketID, repo := queuedTicket(t, dataDir)
@@ -136,8 +129,7 @@ func TestRestartRunsTheAgentInTheWorktreeOfTheFailedRun(t *testing.T) {
 	}
 }
 
-// The second claim writes a row of its own, so the ticket has a run for each
-// time it was given to an agent and dg show can give the history of both.
+// Each restart creates a separate run record.
 func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	s, ticketID, repo := queuedTicket(t, dataDir)
@@ -164,16 +156,12 @@ func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	}
 }
 
-// A restart is not something a person types by hand for a ticket they have
-// not read, so dg restart takes the id of the ticket and nothing else.
 func TestRestartWithNoID(t *testing.T) {
 	if _, err := runIn(t, t.TempDir(), t.TempDir(), "restart"); err == nil {
 		t.Error("err = nil, want dg restart to ask for an id")
 	}
 }
 
-// A word that is not a number is not the id of a ticket, and the command says
-// so rather than acting on a ticket the person did not name.
 func TestRestartWithAnIDThatIsNotANumber(t *testing.T) {
 	_, err := runIn(t, t.TempDir(), t.TempDir(), "restart", "seven")
 	if err == nil || !strings.Contains(err.Error(), "seven") {

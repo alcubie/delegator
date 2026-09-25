@@ -6,13 +6,12 @@ import (
 	"strings"
 )
 
-// historyHeader starts the section of a script that a load replays. It runs to
-// the end of the file, so a script is the turn the agent takes and then the
-// turn it already took.
+// historyHeader begins the replay section, which continues to the end of the
+// script.
 const historyHeader = "history:"
 
-// A script is the actions of a turn and the actions of the history. A blank
-// line is skipped, so a script is laid out as the test that writes it likes.
+// script separates prompt actions from replay history. Blank lines are
+// ignored.
 type script struct {
 	turn    []string
 	history []string

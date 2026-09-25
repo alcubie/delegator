@@ -14,9 +14,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rpcIn sends one JSON-RPC request to dg rpc and returns the single line it
-// wrote.  The endpoint has one response for a request, including one that
-// reports an error, so a caller never has to read command text from stdout.
+// rpcIn submits one JSON-RPC request and returns its response line, including
+// protocol or command errors.
 func rpcIn(t *testing.T, dataDir, workDir, request string) (string, error) {
 	t.Helper()
 	return runInWithStdin(t, dataDir, workDir, request, "rpc")

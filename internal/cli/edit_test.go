@@ -14,10 +14,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// editedTo puts an editor in place of the one of the person. It keeps the text
-// that the command gave the editor, which the test reads through the pointer it
-// returns, and writes text in its place, which is what a person who changes a
-// ticket does.
+// editedTo records the editor's initial text and replaces it with text,
+// returning a pointer to the captured input.
 func editedTo(t *testing.T, text string) *string {
 	t.Helper()
 	var gave string
@@ -32,9 +30,7 @@ func editedTo(t *testing.T, text string) *string {
 	return &gave
 }
 
-// editedUnchanged puts an editor in place of the one of the person that writes
-// back the text it got, as it was, which is what a person who opens a ticket
-// and closes it does.
+// editedUnchanged installs an editor that writes its input back unchanged.
 func editedUnchanged(t *testing.T) {
 	t.Helper()
 	setEditor(t, func(path string) error {
@@ -46,8 +42,8 @@ func editedUnchanged(t *testing.T) {
 	})
 }
 
-// editedTicket makes one ticket that waits in the queue, with prose, and
-// returns its id and the repository of its project.
+// editedTicket creates a queued ticket with a description and returns its ID
+// and repository.
 func editedTicket(t *testing.T, dataDir, title, body string) (int64, string) {
 	t.Helper()
 	repo := testfix.Repo(t, repoBranch)
@@ -58,9 +54,8 @@ func editedTicket(t *testing.T, dataDir, title, body string) (int64, string) {
 	return id, repo
 }
 
-// ageProse moves the time of the file of prose of a ticket to testNow, and
-// returns it. A file that a command writes takes the time of that write, so a
-// time that is still testNow is a file that nothing wrote.
+// ageProse sets the description mtime to testNow so a subsequent rewrite is
+// detectable.
 func ageProse(t *testing.T, dataDir string, id int64) time.Time {
 	t.Helper()
 	if err := os.Chtimes(proseFile(dataDir, id), testNow, testNow); err != nil {
@@ -69,8 +64,7 @@ func ageProse(t *testing.T, dataDir string, id int64) time.Time {
 	return testNow
 }
 
-// proseWritten returns the time that the file of prose of a ticket was last
-// written.
+// proseWritten returns the description file's modification time.
 func proseWritten(t *testing.T, dataDir string, id int64) time.Time {
 	t.Helper()
 	info, err := os.Stat(proseFile(dataDir, id))
@@ -80,8 +74,7 @@ func proseWritten(t *testing.T, dataDir string, id int64) time.Time {
 	return info.ModTime()
 }
 
-// statePath holds each state that a ticket goes through to reach one state,
-// because a ticket moves one state at a time.
+// statePath lists valid transitions for arranging each test status.
 var statePath = map[store.TicketStatus][]store.TicketStatus{
 	store.Ready:     {store.Running, store.Ready},
 	store.Failed:    {store.Running, store.Failed},
@@ -89,9 +82,7 @@ var statePath = map[store.TicketStatus][]store.TicketStatus{
 	store.Cancelled: {store.Cancelled},
 }
 
-// editorRefused puts an editor in place of the one of the person that fails the
-// test when a command starts it. A caller that hands dg the text it wants has
-// no editor to open, so a form that takes a flag must open none.
+// editorRefused fails if a text-flag command unexpectedly opens an editor.
 func editorRefused(t *testing.T) {
 	t.Helper()
 	setEditor(t, func(path string) error {
@@ -100,23 +91,20 @@ func editorRefused(t *testing.T) {
 	})
 }
 
-// editForm is one form of dg edit: a name for the subtest and the flags that
-// tell the command where its new text comes from.
+// editForm names an input method and its command flags.
 type editForm struct {
 	name  string
 	flags []string
 }
 
-// formTitle and formProse are the text that a form of dg edit carries. They are
-// not the text of the ticket that a test makes, so a form that wrote when it
-// was to write nothing is visible in the ticket.
+// Use text distinct from the fixture to detect unintended writes.
 const (
 	formTitle = "A title from the flag"
 	formProse = "Prose from the flag.\n"
 )
 
-// editTextForms returns each form of dg edit that carries the new text of the
-// ticket in a flag. The file that --body-file names is a file of the test.
+// editTextForms supplies flag-based input methods with a test-owned body
+// file.
 func editTextForms(t *testing.T) []editForm {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "body.md")
@@ -130,8 +118,7 @@ func editTextForms(t *testing.T) []editForm {
 	}
 }
 
-// editForms returns each form of dg edit: the three that carry the text of the
-// caller, and the editor of the person.
+// editForms includes all flag and editor input methods.
 func editForms(t *testing.T) []editForm {
 	t.Helper()
 	return append(editTextForms(t), editForm{"the editor", []string{"--editor"}})
@@ -143,9 +130,8 @@ func editIn(t *testing.T, dataDir, workDir string, id int64, flags ...string) (s
 	return runIn(t, dataDir, workDir, append([]string{"edit", fmt.Sprint(id)}, flags...)...)
 }
 
-// The editor gets the ticket in the form that dg ticket with no arguments
-// takes, and what the person leaves there goes back to the column and the file
-// it came from.
+// Editor input and output must use the same title/description split as ticket
+// creation.
 func TestEditWritesBackWhatTheEditorGave(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -181,9 +167,7 @@ func TestEditWritesBackWhatTheEditorGave(t *testing.T) {
 	}
 }
 
-// A caller that is not a person, such as the desktop GUI, has the new title
-// already and has no editor, so --title takes it. The prose is a file of its
-// own and stays as it was.
+// Title-only edits must preserve the separate description file.
 func TestEditWithATitleSetsTheTitleAndLeavesTheProse(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -209,10 +193,8 @@ func TestEditWithATitleSetsTheTitleAndLeavesTheProse(t *testing.T) {
 	}
 }
 
-// A title that holds no word is a ticket that a person cannot find again,
-// whether it came from the editor or from the flag, so the two give the one
-// error. The ticket stays as it was, prose and all, because half an edit is a
-// ticket that nobody wrote.
+// Both editor and flag input must reject blank titles without partially
+// changing the ticket.
 func TestEditWithAnEmptyTitleIsRefused(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -243,9 +225,7 @@ func TestEditWithAnEmptyTitleIsRefused(t *testing.T) {
 	}
 }
 
-// The standard input of dg rpc is taken by the protocol it speaks, so a caller
-// there has no - to read the prose from and hands it over as text. The title is
-// a column of its own and stays as it was.
+// RPC owns stdin, so its callers supply description text directly.
 func TestEditWithABodySetsTheProseAndLeavesTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -267,9 +247,7 @@ func TestEditWithABodySetsTheProseAndLeavesTheTitle(t *testing.T) {
 	}
 }
 
-// A prose that is long meets the limit of the command line, so --body-file
-// names a file that holds it, and it is the same word and reads the same way as
-// --body-file of dg ticket.
+// File input supports descriptions too large for command-line arguments.
 func TestEditWithABodyFileSetsTheProseFromTheFile(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -296,8 +274,6 @@ func TestEditWithABodyFileSetsTheProseFromTheFile(t *testing.T) {
 	}
 }
 
-// A path of - is the standard input, as it is for dg ticket and for
-// git commit -F, so a program that holds the prose can pipe it in.
 func TestEditWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -314,8 +290,6 @@ func TestEditWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
 	}
 }
 
-// The prose has one source, here as in dg ticket. With both flags dg cannot
-// tell which of the two the person meant, so it refuses and writes nothing.
 func TestEditWithABodyAndABodyFile(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -338,8 +312,6 @@ func TestEditWithABodyAndABodyFile(t *testing.T) {
 	}
 }
 
-// A --body-file that names nothing is a prose the person wrote and dg cannot
-// find, so the error holds the path and the ticket stays as it was.
 func TestEditWithABodyFileThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -359,8 +331,7 @@ func TestEditWithABodyFileThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A caller that has both has one command to write both, so a ticket is never
-// half of one edit and half of the one before it.
+// Combined title and description edits must update both parts together.
 func TestEditWithATitleAndAProseSetsBoth(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "body.md")
 	if err := os.WriteFile(path, []byte("Remove the volume of the staging app.\n"), filePerm); err != nil {
@@ -394,9 +365,8 @@ func TestEditWithATitleAndAProseSetsBoth(t *testing.T) {
 	}
 }
 
-// The editor is one form of the command among four, and a person who wants it
-// says so. A command that opened it by default would open it for a caller that
-// meant a flag and typed it wrong, and wait for an editor nobody is at.
+// Require explicit editor selection so malformed scripted calls cannot hang
+// waiting for interactive input.
 func TestEditWithNoFlagIsRefused(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -413,8 +383,6 @@ func TestEditWithNoFlagIsRefused(t *testing.T) {
 	}
 }
 
-// The editor holds the title and the prose as one text, so a flag that holds
-// one of them beside it is a second answer to the question the editor asks.
 func TestEditWithTheEditorAndAFlagIsRefused(t *testing.T) {
 	for _, form := range editTextForms(t) {
 		t.Run(form.name, func(t *testing.T) {
@@ -442,9 +410,7 @@ func TestEditWithTheEditorAndAFlagIsRefused(t *testing.T) {
 	}
 }
 
-// An editor that closes with the text as it was changes nothing. The file is
-// the file of the person, and a write of the same text is still a write of
-// text that delegator holds in memory over a file that it does not own.
+// Unchanged editor contents must not rewrite the description file.
 func TestEditWithNoChangeWritesNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
@@ -466,9 +432,7 @@ func TestEditWithNoChangeWritesNothing(t *testing.T) {
 	}
 }
 
-// A person who takes the first line away has given the ticket no title, which
-// is the error that dg ticket gives for the same text. The ticket stays as it
-// was, so the work of the person is not lost with the title.
+// Reject removal of the title while preserving the existing ticket.
 func TestEditWithNoTitleIsRefused(t *testing.T) {
 	tests := []struct {
 		name string
@@ -503,9 +467,8 @@ func TestEditWithNoTitleIsRefused(t *testing.T) {
 	}
 }
 
-// The agent read the ticket when its run started, so a change it cannot see
-// leaves a report that answers a ticket which is not there any more. dg revise
-// gives the work again, and the error says so.
+// Reject edits after a run may have read the ticket; otherwise its report
+// could describe obsolete instructions.
 func TestEditARunningTicketIsRefused(t *testing.T) {
 	for _, form := range editForms(t) {
 		t.Run(form.name, func(t *testing.T) {
@@ -535,8 +498,6 @@ func TestEditARunningTicketIsRefused(t *testing.T) {
 	}
 }
 
-// A ticket the queue does not hold is a ticket that a run has already read, so
-// only a ticket that waits can be changed.
 func TestEditATicketThatIsNotInTheQueueIsRefused(t *testing.T) {
 	forms := editForms(t)
 	for _, state := range []store.TicketStatus{store.Ready, store.Failed, store.Done, store.Cancelled} {

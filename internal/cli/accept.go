@@ -12,14 +12,12 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// acceptCommand returns the command dg accept. With no id it closes the head of
-// READY, which is the ticket the person has just reviewed, and writes the id of
-// the ticket it closed. A person who typed an id already knows which one went.
+// acceptCommand accepts an explicit ticket or the project's first ready
+// ticket. An implicit selection prints the accepted ID.
 //
-// The merge check and the removal of the worktree happen inside the transaction
-// that closes the ticket, so either refusal leaves the ticket ready and a
-// person sees it again. --force skips the check and takes the worktree even
-// when it holds uncommitted changes.
+// The merge check and worktree removal run inside the status transaction, so
+// failures leave the ticket ready. --force skips the merge check and permits
+// removing uncommitted changes.
 func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var force bool

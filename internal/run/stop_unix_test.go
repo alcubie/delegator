@@ -1,8 +1,3 @@
-// The tests of the stop of a run on Unix. The suffix _unix is not a build
-// constraint of the go tool, so the constraint below is the whole of it: these
-// tests are in a build for Linux, for darwin and for the other Unix systems,
-// and in no build for Windows.
-
 //go:build unix
 
 package run
@@ -18,13 +13,10 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// shortGrace is the wait these tests give between the two signals. The real
-// grace is seconds, which every test that reaches SIGKILL would spend waiting.
+// shortGrace avoids production-length waits in tests that reach SIGKILL.
 const shortGrace = 50 * time.Millisecond
 
-// A signal to the group reaches the supervisor and each program the agent
-// started, which is why the stop is a signal to the group and not to one
-// process id.
+// Stopping the group must terminate both supervisor and descendants.
 func TestStopEndsEachProgramOfTheGroup(t *testing.T) {
 	pgid := testfix.Group(t, `sleep 60 & : > "$1"; sleep 60`)
 
@@ -35,9 +27,7 @@ func TestStopEndsEachProgramOfTheGroup(t *testing.T) {
 	testfix.WaitForGroupGone(t, pgid)
 }
 
-// SIGTERM comes first, so an agent with a handler for it closes what it opened
-// rather than being taken away. Only a program that keeps the signal past the
-// grace is killed.
+// Give signal handlers a chance to clean up before forced termination.
 func TestStopSendsSIGTERMBeforeSIGKILL(t *testing.T) {
 	handled := filepath.Join(t.TempDir(), "handled")
 	pgid := testfix.Group(t, fmt.Sprintf(
@@ -53,13 +43,9 @@ func TestStopSendsSIGTERMBeforeSIGKILL(t *testing.T) {
 	}
 }
 
-// An agent that keeps SIGTERM would hold the ticket in running for ever. The
-// stop waits for the grace and then sends SIGKILL, which no program can keep.
-//
-// The shell of the script keeps the signal and its sleep does not, so SIGTERM
-// ends the sleep and the loop starts another: the group is still there when
-// the grace is over. A script of one sleep would not do, because a shell runs
-// the last command of its script in place of itself and the trap goes with it.
+// The shell traps SIGTERM and starts a new sleep after its child exits,
+// keeping the group alive until SIGKILL. A single sleep could replace the
+// shell and lose the trap.
 func TestStopKillsAProgramThatKeepsTheSignal(t *testing.T) {
 	pgid := testfix.Group(t, `trap "" TERM; : > "$1"; while :; do sleep 1; done`)
 
@@ -70,17 +56,14 @@ func TestStopKillsAProgramThatKeepsTheSignal(t *testing.T) {
 	testfix.WaitForGroupGone(t, pgid)
 }
 
-// A run that ended between the read of its row and the signal is not an error.
-// The command that sent the signal writes the state either way.
 func TestStopOnARunThatIsAlreadyOver(t *testing.T) {
 	if err := Stop(testfix.FreePID(t), shortGrace); err != nil {
 		t.Errorf("err = %v, want nil", err)
 	}
 }
 
-// A row with no process id reads as 0, and 0 as a group is the group of the
-// caller: a stop that passed it on would signal dg itself and every program
-// beside it. This test kills the test binary if the guard is not there.
+// Reject PID zero: passing it through would signal the test runner's own
+// group.
 func TestStopWithNoProcessID(t *testing.T) {
 	for _, pid := range []int{0, -1} {
 		if err := Stop(pid, shortGrace); err == nil {

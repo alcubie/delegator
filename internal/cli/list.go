@@ -1,6 +1,5 @@
-// The command dg list: every ticket of every status, one to a line. The inbox
-// is the work of a day, and this is the record behind it, for a person or an
-// agent who wants a ticket the inbox no longer shows.
+// dg list shows tickets of every status, including those no longer in the
+// inbox.
 
 package cli
 
@@ -15,9 +14,8 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// listShort is the line the help gives for dg list. A person who wanted the
-// whole list guessed at dg ticket list, which made a ticket named list, so the
-// line has to say that this is the command that shows them all.
+// listShort makes ticket listing discoverable; dg ticket list would create a
+// ticket named list.
 const listShort = "List every ticket, whatever its status"
 
 // listCommand writes every ticket. --project narrows the list to one project.
@@ -46,10 +44,7 @@ func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	return cmd
 }
 
-// listTickets reads the tickets that dg list writes. projectDir is the value
-// of --project, and the empty string is every project: a person who gives no
-// directory asked for the whole list, and dg ticket has no such reading to
-// take from it because a ticket belongs to one project.
+// listTickets selects all projects unless projectDir specifies --project.
 func listTickets(dataDir, workDir string, cfg *config.Config, projectDir string) ([]store.OpenTicket, error) {
 	var root string
 	if projectDir != "" {
@@ -73,14 +68,8 @@ func listTickets(dataDir, workDir string, cfg *config.Config, projectDir string)
 	return tickets, err
 }
 
-// writeList writes one row for each ticket, in the order it is given, with the
-// status of the ticket at the right of the row. The columns are the inbox's,
-// so a person who reads one list reads the other.
-//
-// A list with no ticket writes nothing at all. The inbox says that there is no
-// ticket because it is the page a person opens each day and an empty one has
-// to say what it means; this list is asked a question and answers it, and a
-// line of prose in it is a line that whatever reads the list has to know.
+// writeList renders tickets in the supplied order, sharing inbox columns and
+// showing status at the right. An empty list writes nothing.
 func writeList(out io.Writer, tickets []store.OpenTicket) {
 	idWidth, projectWidth := ticketWidths(tickets)
 	rowWidth := outputWidth(out)

@@ -1,7 +1,5 @@
-// The migration of the database of delegator. Each step is one element of
-// migrations, and PRAGMA user_version holds the count of steps that the
-// database has. A new version of delegator adds a step at the end of the list
-// and never changes a step that a person has.
+// Database migrations are append-only. PRAGMA user_version records how many
+// steps have been applied.
 
 package store
 
@@ -11,18 +9,12 @@ import (
 	"fmt"
 )
 
-// ErrNewerDatabase shows that a later version of delegator made the database.
-// The person must install that version again, because this one does not know
-// each step that made the database what it is.
+// ErrNewerDatabase means this database requires a newer version of delegator.
 var ErrNewerDatabase = errors.New("the database comes from a later version of delegator")
 
-// migrations holds one step for each version of the database. The number of a
-// step is its position in the list, and the first step is version 1. A step
-// that a person installed already must never change: the way to change the
-// database is a new step at the end of the list.
-//
-// Lesson 3 of the technical document says that CREATE TABLE IF NOT EXISTS is
-// not a migration. This list is the answer to that lesson.
+// migrations lists schema upgrades in order, starting at version 1. Never
+// modify an applied step; append a new one so existing databases receive the
+// change.
 var migrations = []string{
 	tables,
 	completedColumn,
@@ -46,13 +38,10 @@ var migrations = []string{
 	addOnboardingInstallHints,
 }
 
-// tables makes the two tables and the index of the queue. The ids of tickets
-// are unique for all projects, so dg show 4 is not ambiguous.
-//
-// The CHECK keeps the status and the position together: a ticket is in the queue
-// with both, and with neither half alone. A unique index counts each NULL as
-// different from each other NULL, so it does not affect a ticket that is out of
-// the queue.
+// tables creates projects, tickets, and the queue index. Ticket IDs are
+// global across projects. The CHECK requires queued status and position
+// together; the unique index permits multiple NULL positions for tickets
+// outside the queue.
 const tables = `
 CREATE TABLE projects (
   id             INTEGER PRIMARY KEY,
@@ -78,12 +67,9 @@ CREATE TABLE tickets (
 CREATE UNIQUE INDEX tickets_position ON tickets(position);
 `
 
-// completedColumn holds the time that a ticket became ready. DONE comes in the
-// order of it, dg show says how long ago the run stopped, and the window of
-// DONE reads it to decide which tickets it still shows.
-//
-// A ticket that never became ready holds NULL, and a ticket that goes back to
-// the queue and becomes ready again holds the later time.
+// completedColumn adds the legacy ready timestamp, originally used for DONE
+// ordering and its display window. Later migrations replace it with
+// transition history and acceptance time.
 const completedColumn = `
 ALTER TABLE tickets ADD COLUMN completed TEXT;
 `
@@ -105,10 +91,8 @@ CREATE TABLE queue_state (
 INSERT INTO queue_state (id, running) VALUES (1, 1);
 `
 
-// addRunsTable makes the table of runs. A ticket has more than one run after
-// dg restart and dg revise, and the process id, the start time, the end time
-// and the exit code are facts of one run, so they are a row here and not a
-// column of tickets. A run that has not ended holds NULL in ended_at and
+// addRunsTable stores process IDs, start and end times, and exit codes per
+// run, allowing multiple runs per ticket. Active runs have NULL ended_at and
 // exit_code.
 const addRunsTable = `
 CREATE TABLE runs (
@@ -121,18 +105,12 @@ CREATE TABLE runs (
 );
 `
 
-// addReadyPositionColumn gives READY an order that the person sets, so a later
-// ticket can go to the top of the tickets that wait for review. A ticket that
-// becomes ready takes the end of READY, which is where the order of completion
-// put it before this column, and dg move takes it from there.
+// addReadyPositionColumn adds user-controlled ordering for READY, separate
+// from the queue position constrained by the original table. New ready
+// tickets append to the list.
 //
-// The column is not position: the CHECK of the table holds that one to a ticket
-// of the queue, and the place of a ticket in READY is a different place.
-//
-// The UPDATE gives each ready ticket of a database that migrates the place it
-// has now, which is the order of completion with the id between two tickets of
-// one second, so READY stays as the person last saw it. A ready ticket with no
-// completed time comes first, as it did in that order.
+// Backfill preserves the old completion order, with IDs breaking ties and
+// NULL completion times first.
 const addReadyPositionColumn = `
 ALTER TABLE tickets ADD COLUMN ready_position INTEGER;
 
@@ -147,15 +125,9 @@ UPDATE tickets SET ready_position = (
 CREATE UNIQUE INDEX tickets_ready_position ON tickets(ready_position);
 `
 
-// addDependenciesTable makes the table of links between tickets. One row says
-// that the ticket ticket_id depends on the ticket depends_on, so the row for
-// "ticket 3 must be done before ticket 5" is (5, 3).
-//
-// The link is a row and not a column, because a ticket can depend on more than
-// one other ticket. The primary key is the pair, so a link that is written
-// twice is one row, and the CHECK refuses a ticket that depends on itself. The
-// index on depends_on is for the other direction of the question: which
-// tickets depend on this one.
+// addDependenciesTable stores prerequisite edges: (5, 3) means ticket 5
+// depends on ticket 3. The primary key prevents duplicates, the CHECK rejects
+// self-dependencies, and the reverse index supports dependent lookups.
 const addDependenciesTable = `
 CREATE TABLE ticket_deps (
   ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
@@ -167,25 +139,14 @@ CREATE TABLE ticket_deps (
 CREATE INDEX ticket_deps_depends_on ON ticket_deps(depends_on);
 `
 
-// addTransitionsTable makes the table of the history of each ticket. One row is
-// one change of state: the ticket, the status it left, the status it entered
-// and the time. The first row of a ticket is its arrival, which has no status
-// before it, and the last row is the status the ticket has now.
+// addTransitionsTable records status changes and their timestamps. The
+// initial entry has no previous status. History replaces event-specific
+// ticket columns that could become stale after a later transition.
 //
-// A column that holds one event goes out of date, which the column completed
-// showed: dg revise takes a ticket back to the queue and that column still
-// holds the time of the run that is complete, so the queue showed the time
-// that an earlier run stopped. A row is written once and never again, so no
-// time here can say a thing that was true on another day.
-//
-// The two INSERTs give a database that migrates the history it holds. The
-// arrival of each ticket is the column created. The time that a ticket became
-// ready is the column completed, and the row goes in for a ticket that is in
-// ready or in done, because that ticket is still where the time put it. A
-// ticket that left ready has a later change whose time the database does not
-// hold, and a row for the earlier one would then read as the last change of
-// that ticket. FEATURES.md says that you cannot get this data later: the
-// history of each ticket begins with the times that are there.
+// Backfill creation times for all tickets and ready times only for tickets
+// still ready or done. Other tickets may have changed state at unknown times;
+// recording their old completion as the latest transition would misrepresent
+// their current status. Acceptance times cannot be recovered.
 const addTransitionsTable = `
 CREATE TABLE transitions (
   id          INTEGER PRIMARY KEY,
@@ -205,21 +166,14 @@ INSERT INTO transitions (ticket_id, from_status, to_status, at)
   WHERE completed IS NOT NULL AND status IN ('ready', 'done');
 `
 
-// dropCompletedColumn takes away the column that held the time of one change of
-// state: the last change into ready, which the table transitions holds now.
-//
-// The column went out of date, because a ticket that leaves ready keeps the
-// time it had. A ticket that went back to the queue held the time that its
-// earlier run stopped, and dg show wrote that time below the status queued.
+// dropCompletedColumn removes the ready timestamp now stored in transitions.
+// A separate completion field became stale when a ticket left ready.
 const dropCompletedColumn = `
 ALTER TABLE tickets DROP COLUMN completed;
 `
 
-// dropCreatedColumn takes away the column that held the arrival of a ticket,
-// which is the first row of its history: the row with no status before it.
-//
-// The step comes after the one that makes transitions, because that one reads
-// created to seed the history of each ticket that the database already holds.
+// dropCreatedColumn removes the creation timestamp after addTransitionsTable
+// has copied it into each ticket's initial history entry.
 const dropCreatedColumn = `
 ALTER TABLE tickets DROP COLUMN created;
 `
@@ -352,17 +306,15 @@ INSERT INTO settings
 VALUES (1, 2, 60, 24, 0);
 `
 
-// migrate applies each step above the number in PRAGMA user_version, and then
-// writes the new number. A database that is current gets no statement.
+// migrate applies pending steps and updates PRAGMA user_version after each
+// one. A current database needs no migrations.
 func migrate(db *sql.DB) error {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
 
-	// A number above the last step means that a later version of delegator made
-	// this database. This version does not know what that step did, so it stops
-	// and writes nothing.
+	// Refuse schemas newer than this binary understands.
 	if version > len(migrations) {
 		return fmt.Errorf("%w: the database is version %d, and this delegator knows version %d",
 			ErrNewerDatabase, version, len(migrations))
@@ -376,8 +328,8 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// applyStep applies one step and its new number below one transaction. A step
-// that gives an error part way therefore leaves the database as it was.
+// applyStep commits a migration and its version number atomically, rolling
+// back both on failure.
 func applyStep(db *sql.DB, i int) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -388,9 +340,8 @@ func applyStep(db *sql.DB, i int) error {
 	if _, err := tx.Exec(migrations[i]); err != nil {
 		return err
 	}
-	// PRAGMA takes no parameter, so the number goes in the text of the
-	// statement. The number is the position in a list of this package, and no
-	// text of a person reaches here.
+	// PRAGMA does not accept parameters. The interpolated version comes
+	// from our migration list, not user input.
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
 		return err
 	}

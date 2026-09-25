@@ -1,11 +1,6 @@
-// Command dg-fake-agent is an agent of the Agent Client Protocol that does
-// what a script says, so that a test of an ACP client runs a real protocol
-// exchange in milliseconds and for nothing. It serves the protocol on stdin
-// and stdout, where an ACP agent serves it, and takes one argument: the path
-// of the script.
-//
-// A line of the script is one action, and the actions of a script are the turn
-// the agent takes for every prompt:
+// Command dg-fake-agent serves scripted ACP responses over stdin and stdout
+// for integration tests. Its only argument is the script path. Each prompt
+// executes the scripted actions:
 //
 //	text <t>                  say t
 //	thought <t>               think t
@@ -18,17 +13,12 @@
 //	usage <json>              return that standard ACP Usage object
 //	stop <reason>             end the turn with that reason
 //
-// A wait that the client cancels ends the turn with the cancelled reason and
-// runs no more of the script, which is how a test drives a client that stops a
-// turn part way.
+// Cancelling a wait ends the turn with the cancelled reason and skips the
+// remaining actions. A "history:" line starts replay actions, which run when
+// a client loads a session instead of sending a prompt.
 //
-// A line of "history:" starts the section that runs to the end of the file.
-// Its actions are the turn the session already took, which the agent replays
-// when a client loads the session.
-//
-// The agent records each permission answer in a file beside the script, one
-// option id to the line, because the client owns the agent's pipes and a file
-// is what a test can read.
+// Permission answers are recorded beside the script, one option ID per line,
+// so tests can inspect them without accessing the protocol pipes.
 package main
 
 import (

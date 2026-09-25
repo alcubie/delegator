@@ -91,8 +91,8 @@ func TestReorderBeforeLeavesTheGivenSliceAlone(t *testing.T) {
 	}
 }
 
-// A target that the queue does not hold gives back the order that it had, and
-// the store tells the person.
+// A missing target preserves the order; the store reports the invalid
+// selection.
 func TestReorderBeforeWithATargetThatIsNotThere(t *testing.T) {
 	ids := []int64{10, 20, 30}
 	got := reorderBefore(ids, 0, 99)

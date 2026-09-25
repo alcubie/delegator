@@ -1,7 +1,5 @@
-// The command that links two tickets that are already there: dg depend makes
-// one ticket depend on another, and --remove takes the link away. dg ticket
-// says the same thing about a ticket as it is made. internal/store holds the
-// link and the rules that come out of it, and this file takes the ids.
+// dg depend changes dependencies between existing tickets. Store validates
+// and persists the links; this file parses command arguments.
 
 package cli
 
@@ -12,10 +10,8 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// dependCommand returns the command dg depend. It writes nothing when it works,
-// as dg move does: the inbox says what a queued ticket depends on, and a
-// command that reads back what the person just typed adds a line to every
-// script that uses it.
+// dependCommand updates dependencies silently on success; the inbox and dg
+// show display them.
 func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var after []int64
 	var remove bool
@@ -45,8 +41,7 @@ func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		"the ticket ID to add or remove as a dependency (required; may be repeated or comma-separated)")
 	cmd.Flags().BoolVar(&remove, "remove", false,
 		"remove the named dependency links instead of adding them")
-	// The error of MarkFlagRequired is a flag that the command does not have,
-	// and the line above gave it that one.
+	// The flag was registered above, so MarkFlagRequired cannot fail.
 	_ = cmd.MarkFlagRequired("after")
 	return cmd
 }

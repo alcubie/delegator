@@ -1,7 +1,4 @@
-// The tests of detachAttr that hold for every system. The attributes of one
-// system are tested by TestNextStartsTheProgramInItsOwnSession, which runs
-// wherever the build ran. These tests are about the two files together, and
-// they run on any of them.
+// Cross-platform signature and build-selection checks for detachAttr.
 
 package run
 
@@ -14,11 +11,7 @@ import (
 // one for Windows.
 var detachFiles = []string{"detach_unix.go", "detach_windows.go"}
 
-// detach calls detachAttr for whichever system the build is for, and gives
-// what it returns to a *exec.Cmd, so the two files must agree on what that
-// call looks like. A Windows file that returns a value rather than a pointer
-// breaks the build of the package, and no test of this package can report it,
-// because none of them runs on Windows.
+// All platform implementations must expose the same signature.
 func TestEachDetachAttrHasTheSameSignature(t *testing.T) {
 	want := signature(t, detachFiles[0], "detachAttr")
 	if got := signature(t, detachFiles[1], "detachAttr"); got != want {
@@ -26,11 +19,8 @@ func TestEachDetachAttrHasTheSameSignature(t *testing.T) {
 	}
 }
 
-// A build takes one detachAttr and never two. The name detach_windows.go is
-// the whole constraint of the Windows file, and the //go:build unix line is
-// the whole constraint of the other, because _unix in a name says nothing to a
-// build. A build for Windows that took both files, or neither, is the fault
-// this finds.
+// Select exactly one implementation. _windows is an implicit constraint;
+// _unix requires //go:build unix.
 func TestEachBuildTakesOneDetachAttr(t *testing.T) {
 	for _, system := range []struct{ goos, want, leave string }{
 		{"windows", "detach_windows.go", "detach_unix.go"},
@@ -47,9 +37,7 @@ func TestEachBuildTakesOneDetachAttr(t *testing.T) {
 	}
 }
 
-// The test of the Windows attributes goes to a build for Windows and to no
-// other. A constraint that let it in here would put a test in make check that
-// reads the Setsid of Linux and says nothing about Windows.
+// Platform tests must be selected only for the platform they exercise.
 func TestOnlyAWindowsBuildTakesTheWindowsDetachTest(t *testing.T) {
 	const test = "detach_windows_test.go"
 	if taken := files(t, "windows", "TestGoFiles"); !slices.Contains(taken, test) {

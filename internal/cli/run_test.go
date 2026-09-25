@@ -17,25 +17,20 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// The real launch starts this program's own executable, and under go test
-	// that is the test binary: every dg ticket in these tests would start a
-	// copy of the test binary, which would run these tests, which would start
-	// more. Tests that care what was launched put their own launch in place.
+	// Disable real launches: under go test the current executable is the
+	// test binary, which would recursively spawn this suite.
 	launch = func() *exec.Cmd { return exec.Command("true") }
-	// The real chat starts the agent of the adapter in a terminal, and no
-	// test has a person at one. Tests that care what was started put their
-	// own chat in place.
+	// Disable interactive agent launches; tests install observable
+	// substitutes.
 	chat = func([]string, string) *exec.Cmd { return exec.Command("true") }
-	// The shell that runs the tests may set either variable, and each test of
-	// --color=auto would then see its colour. A test that wants one sets it.
+	// Clear inherited color settings; tests that need them set their own
+	// values.
 	os.Unsetenv("NO_COLOR")
 	os.Unsetenv("CLICOLOR_FORCE")
 	os.Exit(testfix.RunTests(m, true))
 }
 
-// useLaunch puts l in place of the launch of dg run, for one test. The tests
-// must replace it: the real launch starts this program's own executable, which
-// in a test is the test binary.
+// useLaunch replaces the supervisor launcher until test cleanup.
 func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	t.Helper()
 	saved := launch
@@ -126,8 +121,7 @@ func useFakeAgent(t *testing.T, dataDir string, lines ...string) {
 	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
 }
 
-// The file the script writes is in the worktree, so it is there only if dg run
-// started the agent there and waited for it.
+// The worktree marker proves the agent ran in that directory and was awaited.
 func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := queuedTicket(t, dataDir)
@@ -156,9 +150,7 @@ func TestRunStartsTheAgentOnTheTicket(t *testing.T) {
 	}
 }
 
-// dg run with no id is the command a trigger starts. It claims the first
-// ticket of the queue for itself, so no trigger has to read the queue and name
-// a ticket for it.
+// Automatic run commands leave atomic ticket selection to the supervisor.
 func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := queuedTicket(t, dataDir)
@@ -194,8 +186,8 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	}
 }
 
-// A person does not start a run; delegator does. The command stays out of
-// dg help so the help lists what a person types, and typing it still works.
+// Keep the supervisor entry point hidden from ordinary help but callable
+// directly.
 func TestRunIsHiddenFromTheHelp(t *testing.T) {
 	for _, c := range Root(t.TempDir()).Commands() {
 		if c.Name() == "run" {
@@ -208,11 +200,8 @@ func TestRunIsHiddenFromTheHelp(t *testing.T) {
 	t.Error("dg run is not in the command tree")
 }
 
-// A supervisor that claimed nothing launches nothing. The queue here holds a
-// ticket and the limit leaves a slot free, so the count of Next says one
-// supervisor, but the ticket waits on a cancelled one and no supervisor can
-// claim it. Each one that launched another would read the same queue, and the
-// chain would not end.
+// A blocked ticket with spare capacity must not trigger another supervisor.
+// Repeated empty claims previously caused an endless launch chain.
 func TestRunWithNoIDThatClaimsNothingStartsNothing(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	s, first, repo := queuedTicket(t, dataDir)
@@ -237,9 +226,7 @@ func TestRunWithNoIDThatClaimsNothingStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 0)
 }
 
-// A supervisor that claimed a ticket and ran it to its end launches the next
-// one. The slot it held is the one that is free now, so the queue has moved
-// since the trigger counted the slots.
+// A completed run must trigger more work after freeing its capacity.
 func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, _, repo := queuedTicket(t, dataDir)
@@ -276,10 +263,8 @@ func TestNextSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	assertDefaultDataDirUnused(t, defaultDir)
 }
 
-// A run that could not start leaves the queue where it is. What stopped it is
-// the repository of the project or the database, and a run started after it
-// would meet the same fault. The repository is removed here, so git cannot
-// make the worktree.
+// Remove the repository to force setup failure; do not trigger a replacement
+// that would repeat the same failure.
 func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	_, id, repo := queuedTicket(t, dataDir)

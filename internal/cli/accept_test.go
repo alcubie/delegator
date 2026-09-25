@@ -14,9 +14,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// readyTicket makes a data directory holding one ticket that a run finished,
-// which is the only state dg accept takes, with the worktree that the run left
-// behind. It returns the store, the id of the ticket and the repository.
+// readyTicket creates a finished ticket with its worktree, returning the
+// store, ID, and repository.
 func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	t.Helper()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
@@ -134,9 +133,8 @@ func TestAcceptClosesATicketAfterAnEquivalentSquash(t *testing.T) {
 	}
 }
 
-// Only a ready ticket is work that a person has read, so nothing else closes.
-// The worktree must survive as well: an agent is still working in the one that
-// belongs to a running ticket, and no removal can be undone.
+// Refuse other statuses without removing their worktrees, which may still
+// have active agents.
 func TestAcceptWithATicketThatIsNotReady(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -163,8 +161,6 @@ func TestAcceptWithATicketThatIsNotReady(t *testing.T) {
 	}
 }
 
-// The worktree goes when the ticket closes, so the disk does not fill with a
-// directory for each ticket a person ever accepted.
 func TestAcceptRemovesTheWorktree(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := readyTicket(t, dataDir)
@@ -181,16 +177,15 @@ func TestAcceptRemovesTheWorktree(t *testing.T) {
 	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
 		t.Errorf("the worktree is still at %s", worktree)
 	}
-	// git keeps its own record of a worktree, and one it still lists but cannot
-	// find blocks the next worktree at that path.
+	// Check Git registration as well as directory removal; stale records
+	// can block reuse of the path.
 	if out := testfix.GitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
 		t.Errorf("git still lists the worktree:\n%s", out)
 	}
 }
 
-// Git refuses a worktree holding changes that are not committed. The ticket
-// must then stay ready, so a person sees the work again and dg accept can be
-// run once the worktree is dealt with.
+// Uncommitted changes must leave both ticket and worktree available for
+// retry.
 func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
@@ -213,9 +208,6 @@ func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
 	}
 }
 
-// --force is the answer to that refusal. A person who has read the work and
-// wants the ticket closed takes the worktree with the changes still in it, and
-// the ticket goes to done like any other.
 func TestAcceptWithForceRemovesAWorktreeGitRefuses(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
@@ -271,9 +263,8 @@ func TestRPCAcceptReportsTheCodeOfAnUnmergedBranch(t *testing.T) {
 	}
 }
 
-// The worktree goes but the branch stays, so a person can read the work again
-// long after the ticket closed. dg show resolves the commit through it, and
-// dg open diff needs it to exist.
+// Preserve the branch after worktree removal so accepted work remains
+// accessible.
 func TestAcceptKeepsTheBranch(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
@@ -295,8 +286,7 @@ func TestAcceptKeepsTheBranch(t *testing.T) {
 	}
 }
 
-// The queue continues from the review. A ticket in ready holds it, so the
-// command that closes the ticket is the one that starts the next.
+// Acceptance frees ready capacity and must trigger queued work.
 func TestAcceptStartsTheNextTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := readyTicket(t, dataDir)
@@ -311,11 +301,8 @@ func TestAcceptStartsTheNextTicket(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The ticket a person accepts is nearly always the head of READY, so dg accept
-// with no id takes it. The head is the ready ticket that finished first, and it
-// is not the smallest id: the ticket that finished first here is the second one
-// made. The id goes out, because a command that closed
-// a ticket the person did not name must say which one went.
+// Implicit acceptance follows ready position, not ID. Finish the second-
+// created ticket first and verify the selected ID is printed.
 func TestAcceptWithNoIDClosesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -343,9 +330,7 @@ func TestAcceptWithNoIDClosesTheHeadOfReady(t *testing.T) {
 	}
 }
 
-// The head of READY is the head for one project. A person who closes the work
-// of this repository must not close the ticket of another one, whatever the
-// order of the inbox as a whole.
+// Implicit selection must stay within the requested project.
 func TestAcceptWithNoIDSkipsAnotherProject(t *testing.T) {
 	dataDir, mine, _, mineID, otherID := twoProjects(t)
 
@@ -365,9 +350,7 @@ func TestAcceptWithNoIDSkipsAnotherProject(t *testing.T) {
 	}
 }
 
-// --project names the project, as it does on dg ticket, so a person closes the
-// work of a repository from somewhere else. The path here is relative, which
-// is the form that has a directory to be joined to.
+// Resolve relative --project paths from the command working directory.
 func TestAcceptWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	dataDir, mine, other, mineID, otherID := twoProjects(t)
 
@@ -391,11 +374,7 @@ func TestAcceptWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	}
 }
 
-// A project with nothing ready has no ticket to close, and the error names it,
-// because a person who gave --project may be looking at a project that is not
-// the one they meant. Another project's ticket is not an answer to the
-// question that was asked, and a ticket that no run has finished is not one
-// either.
+// A project without ready work must not select another project's ticket.
 func TestAcceptWithNoIDAndNoReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	mine := testfix.Repo(t, repoBranch)
@@ -424,8 +403,6 @@ func TestAcceptWithNoIDAndNoReadyTicket(t *testing.T) {
 	}
 }
 
-// A directory outside any repository names no project, so there is no head of
-// READY to close.
 func TestAcceptWithNoIDOutsideAProject(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), t.TempDir(), "accept")
 	if !errors.Is(err, project.ErrNotARepository) {
@@ -436,9 +413,8 @@ func TestAcceptWithNoIDOutsideAProject(t *testing.T) {
 	}
 }
 
-// An id is still an id, and it names a ticket of any project: the id comes off
-// the inbox, which is one list for every project. Its branch exists only in the
-// other checkout, so the merge check must resolve HEAD there too.
+// Explicit IDs may select another project; resolve its merge check against
+// that project's HEAD.
 func TestAcceptWithAnIDClosesATicketOfAnotherProject(t *testing.T) {
 	dataDir, mine, _, mineID, otherID := twoProjects(t)
 
@@ -458,9 +434,7 @@ func TestAcceptWithAnIDClosesATicketOfAnotherProject(t *testing.T) {
 	}
 }
 
-// The id goes out after the ticket closes. A worktree git refuses leaves the
-// ticket ready, and a line holding its id would tell the person that the
-// ticket they never named is gone when it is still there.
+// Print the implicit ID only after acceptance succeeds.
 func TestAcceptWithNoIDWritesNothingWhenTheCloseFails(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := readyTicket(t, dataDir)

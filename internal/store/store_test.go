@@ -1,9 +1,5 @@
-// These tests call Open directly rather than through a helper like the
-// openStore in the cli and run tests. Open is the thing under test here: the
-// migration steps, the refusal of a database from a later version, the WAL
-// mode and the permission of the file are each a behaviour of Open, and a
-// helper that stopped the test on Open's error would hide the very error
-// some of these tests wait for.
+// Tests of Open call it directly so helpers do not hide expected migration,
+// version, or permission errors.
 package store
 
 import (
@@ -65,9 +61,7 @@ func ticketIDs(tickets []OpenTicket) []int64 {
 	return out
 }
 
-// queuedTickets adds one ticket of a project for each title, and returns their
-// ids. AddTicket puts each one at the end of the queue, so the order of the
-// titles is their order in the queue.
+// queuedTickets creates tickets in title order and returns their IDs.
 func queuedTickets(t *testing.T, s *Store, projectID int64, titles ...string) []int64 {
 	t.Helper()
 	ids := make([]int64, 0, len(titles))
@@ -104,9 +98,8 @@ func twoProjects(t *testing.T) (*Store, []int64, []int64) {
 		queuedTickets(t, s, secondProject, "second one", "second two")
 }
 
-// twoPrograms returns two stores on one data directory, each with its own pool of
-// connections, and the ids of six tickets in the queue. Two stores are what two
-// programs of delegator have.
+// twoPrograms opens separate connection pools on one database to simulate
+// concurrent commands, with six queued tickets.
 func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	t.Helper()
 	dir := t.TempDir()
@@ -132,15 +125,12 @@ func twoPrograms(t *testing.T) (*Store, *Store, []int64) {
 	return first, second, queuedTickets(t, first, projectID, titles...)
 }
 
-// claimBranch is the branch of a claim in these tests. ClaimNext takes a
-// function and not a name, because only the transaction knows which ticket it
-// claimed.
+// claimBranch names the ticket selected inside ClaimNext's transaction.
 func claimBranch(t Ticket) string {
 	return fmt.Sprintf("delegator/%d-%s", t.ID, t.Title)
 }
 
-// claimableCount returns how many tickets of the queue a claim could take, and
-// stops the test when the read fails.
+// claimableCount reads the number of eligible tickets and fails on error.
 func claimableCount(t *testing.T, s *Store, cfg config.Config) int {
 	t.Helper()
 	n, err := s.ClaimableCount(cfg)
@@ -194,9 +184,7 @@ func threeReady(t *testing.T) (*Store, []int64) {
 	return s, ids
 }
 
-// readyTitles returns the title of each ready ticket, in the order of READY.
-// The store has no method for READY: internal/inbox puts that group in order,
-// and this reads the column that it orders by.
+// readyTitles sorts ready tickets by ready_position, matching internal/inbox.
 func readyTitles(t *testing.T, s *Store) []string {
 	t.Helper()
 	rows, err := s.db.Query(`
@@ -222,9 +210,7 @@ func readyTitles(t *testing.T, s *Store) []string {
 	return titles
 }
 
-// ticketPosition returns the place of one ticket in the list that column keeps,
-// which is position for the queue and ready_position for READY. A ticket that
-// is not in that list holds no place, and the value is then not valid.
+// ticketPosition reads position or ready_position as a nullable value.
 func ticketPosition(t *testing.T, s *Store, column string, id int64) sql.Null[int] {
 	t.Helper()
 	var position sql.Null[int]
@@ -324,8 +310,7 @@ func allRunning(Run) bool { return true }
 
 func noneRunning(Run) bool { return false }
 
-// askedRuns returns an answer for Reconcile that keeps each run it was asked
-// about, in the order of the asking, and says that every one is running.
+// askedRuns records reconciliation probes and reports every run alive.
 func askedRuns(asked *[]Run) func(Run) bool {
 	return func(r Run) bool {
 		*asked = append(*asked, r)
@@ -333,9 +318,8 @@ func askedRuns(asked *[]Run) func(Run) bool {
 	}
 }
 
-// setEndedAt writes ended_at on the last run of a ticket, so that a test can
-// tell an end time that was there already from one that a call has just
-// written. Both would hold the same second otherwise.
+// setEndedAt gives the latest run a distinct end timestamp so tests can
+// detect overwrites despite second precision.
 func setEndedAt(t *testing.T, s *Store, ticketID int64, ended string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
@@ -346,8 +330,8 @@ func setEndedAt(t *testing.T, s *Store, ticketID int64, ended string) {
 	}
 }
 
-// setMigrations puts a different list of steps in place for one test. Each test
-// of this package runs one after the other, so no test sees the list of another.
+// setMigrations replaces the migration list until cleanup. These tests must
+// run serially.
 func setMigrations(t *testing.T, list []string) {
 	t.Helper()
 	old := migrations
@@ -355,13 +339,9 @@ func setMigrations(t *testing.T, list []string) {
 	t.Cleanup(func() { migrations = old })
 }
 
-// openBefore opens the database below dataDir as the version of delegator that
-// came before the step: the list of migrations is cut at the step for the call
-// and put back before it returns, so the next Open is the one under test.
-//
-// It names the step rather than counting from the end of the list, because a
-// step added to the end would otherwise change which database each test that
-// counts gets.
+// openBefore creates a database just before a named migration, then restores
+// the full migration list. Naming the step keeps tests stable as later
+// migrations are appended.
 func openBefore(t *testing.T, dataDir, step string) *Store {
 	t.Helper()
 	i := slices.Index(migrations, step)
@@ -388,8 +368,8 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 	}
 	defer s.Close()
 
-	// The name of the file is a literal, because a change of the name loses the
-	// data of each person who has delegator now.
+	// Keep the filename literal to detect changes that would hide
+	// existing databases.
 	if _, err := os.Stat(filepath.Join(dataDir, "delegator.db")); err != nil {
 		t.Error(err)
 	}
@@ -404,10 +384,8 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 	}
 }
 
-// Section 7 of docs/RUN_CONTROL.md gives the table runs. The process id, the
-// start time, the end time and the exit code are facts of a run, and a ticket
-// has more than one run after dg restart and dg revise, so a column of tickets
-// cannot hold them.
+// Run metadata belongs to separate rows because a ticket can run more than
+// once.
 func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
 	s, _ := emptyStore(t)
 
@@ -582,8 +560,8 @@ func TestAgentIDRefusesAnAgentOutsideTheRegistry(t *testing.T) {
 }
 
 func TestOpenMakesTheDirectories(t *testing.T) {
-	// A directory below the temporary directory, because Open must make the
-	// data directory itself and not only the directories below it.
+	// Use a missing child directory to check creation of the data root
+	// itself.
 	dataDir := filepath.Join(t.TempDir(), "delegator")
 
 	s, err := Open(dataDir)
@@ -592,10 +570,9 @@ func TestOpenMakesTheDirectories(t *testing.T) {
 	}
 	defer s.Close()
 
-	// The empty name is the data directory. The test says the permission 0700 a
-	// second time as a literal. A test that read the constant would stay green
-	// after a change of it, because that one change moves the value that the
-	// test wants at the same time.
+	// The empty name checks the data root. Literal permissions ensure
+	// changing the production constant cannot silently change
+	// expectations.
 	for _, name := range []string{"", "tickets", "worktrees", "runs"} {
 		info, err := os.Stat(filepath.Join(dataDir, name))
 		if err != nil {
@@ -621,8 +598,6 @@ func TestDataDirIsTheDirectoryTheStoreWasOpenedIn(t *testing.T) {
 	}
 }
 
-// One transaction holds each step, so a step that gives an error part way
-// leaves the database as it was.
 func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	first, err := Open(dataDir)
@@ -631,8 +606,8 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	}
 	first.Close()
 
-	// The new step makes a table, and then gives an error. Neither statement
-	// must stay.
+	// Fail after creating a table to verify the entire migration rolls
+	// back.
 	good := len(migrations)
 	setMigrations(t, append(migrations,
 		"CREATE TABLE later (id INTEGER PRIMARY KEY);\nSELECT no_such_function();"))
@@ -653,9 +628,7 @@ func TestOpenWithAStepThatFailsChangesNothing(t *testing.T) {
 	}
 }
 
-// A later version of delegator can add a step, and a person can then start an
-// earlier version. The earlier version knows nothing about the new step, so it
-// must stop and write nothing.
+// An older binary must refuse a newer schema without changing it.
 func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 	dataDir := t.TempDir()
 	first, err := Open(dataDir)
@@ -664,7 +637,7 @@ func TestOpenWithADatabaseFromALaterVersion(t *testing.T) {
 	}
 	first.Close()
 
-	// What a later version of delegator leaves behind.
+	// Simulate a schema version from a newer binary.
 	db := openRaw(t, dataDir)
 	if _, err := db.Exec("CREATE TABLE later (id INTEGER PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
@@ -705,10 +678,8 @@ func TestOpenSetsWalMode(t *testing.T) {
 	}
 }
 
-// busy_timeout belongs to one connection, and database/sql keeps a pool that
-// can make a new connection at any time. Each connection must therefore get the
-// value. The test holds the first connection while it takes the second, because
-// the pool gives the same connection again if the first one is free.
+// Hold the first connection while opening a second to verify busy_timeout
+// applies to every pooled connection.
 func TestOpenSetsBusyTimeoutOnEachConnection(t *testing.T) {
 	dataDir := t.TempDir()
 	s, err := Open(dataDir)
@@ -735,9 +706,7 @@ func TestOpenSetsBusyTimeoutOnEachConnection(t *testing.T) {
 	}
 }
 
-// The path of the database goes in a URL, and a path can hold the characters
-// that separate a URL. SQLite reads such a path only as far as that character,
-// and it makes the database at a different place with no error.
+// URL delimiters in paths must be escaped so SQLite opens the intended file.
 func TestOpenWithAPathThatHoldsURLCharacters(t *testing.T) {
 	for _, name := range []string{"my data", "we#ird", "qu?ery"} {
 		t.Run(name, func(t *testing.T) {
@@ -877,11 +846,9 @@ func TestQueueGivesATicketThatHasAPosition(t *testing.T) {
 func TestQueueGivesTheOrderOfPosition(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	// The position of each ticket runs against its id. A queue in the order
-	// of id therefore looks different from a queue in the order of position,
-	// and the test can tell the two apart. Each position goes below zero first,
-	// because the column has a unique index and the CHECK of the table refuses a
-	// queued ticket with no position.
+	// Reverse ID order to distinguish position sorting. Temporary
+	// negative positions avoid unique-index collisions without violating
+	// the non-NULL constraint.
 	if _, err := s.db.Exec("UPDATE tickets SET position = -position"); err != nil {
 		t.Fatal(err)
 	}
@@ -923,10 +890,8 @@ func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
 	}
 }
 
-// READY had no order of its own before the column ready_position, and the
-// inbox put it in the order of the time of completion. The step that adds the
-// column gives each ready ticket the place that order had, so the READY of a
-// person who upgrades is the one they last looked at.
+// Backfilling ready_position must preserve the completion order shown before
+// migration.
 func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -935,8 +900,8 @@ func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The tickets go in by hand: this version of the store writes the column
-	// that the old database does not have yet.
+	// Insert directly because current store methods require the new
+	// schema.
 	for _, ticket := range []struct {
 		title     string
 		completed string
@@ -966,10 +931,7 @@ func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
 	}
 }
 
-// The database of a person who has an earlier version of delegator holds only
-// the steps of that version. The next start must apply each step that is
-// missing, and no step that is present. This is the path that such a database
-// takes.
+// Opening an older database must apply each missing migration exactly once.
 func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -1005,8 +967,7 @@ func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 		t.Errorf("the queue is %v, want %v", got, want)
 	}
 
-	// The order starts at 1. The queue works with any first number, but a
-	// person who reads the table sees these numbers.
+	// Normalize positions to a contiguous sequence starting at 1.
 	if position := ticketPosition(t, s, "position", ids[0]); position.V != 1 {
 		t.Errorf("the first ticket is at position %d, want 1", position.V)
 	}
@@ -1099,10 +1060,8 @@ func TestMoveTicketThatIsInNoListChangesNothing(t *testing.T) {
 	}
 }
 
-// A ticket of the queue holds the status queued and a position. Each one alone
-// puts the ticket in no queue: a ticket with a position and another status left
-// the queue, and a ticket with the status queued and no position is in no queue
-// at all. The database refuses each half, so no command can make one.
+// Enforce queued status and non-NULL position together; neither half is valid
+// alone.
 func TestTheDatabaseRefusesATicketThatIsHalfInTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -1138,18 +1097,16 @@ func TestTwoProgramsThatWriteAtTheSameTimeLoseNoTicket(t *testing.T) {
 
 	const moves = 20
 	var wg sync.WaitGroup
-	// Each move sends its error here. Two goroutines cannot add to a slice at
-	// the same time, and one of the two writes goes away. The channel holds one
-	// place for each move, so a send never waits for a read, and nothing reads
-	// until each move has stopped.
+	// Collect concurrent errors through a buffered channel to avoid a
+	// shared-slice race or blocked sends before joining workers.
 	errs := make(chan error, moves)
 	for i := range moves {
 		program := first
 		if i%2 == 1 {
 			program = second
 		}
-		// Add is here and not below, because Wait can see a count of zero
-		// before the first goroutine has run, and return at once.
+		// Register workers before launching them so Wait cannot
+		// return early.
 		wg.Add(1)
 		go func(s *Store, n int) {
 			defer wg.Done()
@@ -1169,8 +1126,7 @@ func TestTwoProgramsThatWriteAtTheSameTimeLoseNoTicket(t *testing.T) {
 		t.Errorf("%d of %d moves gave an error; the first was %v", len(failed), moves, failed[0])
 	}
 
-	// Each ticket is still in the queue, and the positions are 1 to 6 with no
-	// gap. A gap is a write that another write lost.
+	// Check contiguous positions to catch lost concurrent updates.
 	if got := len(queueTitles(t, first)); got != len(ids) {
 		t.Fatalf("the queue holds %d tickets, want %d", got, len(ids))
 	}
@@ -1214,16 +1170,14 @@ func TestProjectIDMakesTheProjectOnce(t *testing.T) {
 	if projects[0].Path != "/projects/path" {
 		t.Errorf("path = %q, want /projects/path", projects[0].Path)
 	}
-	// The first call settles the branch. The second gave a different one, and
-	// the project keeps the branch that it has.
+	// The initial project registration must retain its default branch.
 	if projects[0].DefaultBranch != "main" {
 		t.Errorf("default branch = %q, want main", projects[0].DefaultBranch)
 	}
 }
 
-// A ticket can hold private data, so only the person who made it can read the
-// database. SQLite makes the file, and it takes the umask of the person, so
-// Open must set the permission itself.
+// Database permissions must protect ticket data regardless of the user's
+// umask.
 func TestOpenMakesTheDatabaseForItsPersonOnly(t *testing.T) {
 	dataDir := t.TempDir()
 	s, err := Open(dataDir)
@@ -1241,8 +1195,7 @@ func TestOpenMakesTheDatabaseForItsPersonOnly(t *testing.T) {
 	}
 }
 
-// setStatus takes a ticket out of the queue and sets its status. No command
-// makes a ticket ready yet, because that is dg finish in milestone 2.
+// setStatus bypasses transition rules to arrange non-queued test states.
 func setStatus(t *testing.T, s *Store, id int64, status TicketStatus) {
 	t.Helper()
 	if _, err := s.db.Exec(
@@ -1289,8 +1242,7 @@ func TestOpenTicketsGivesEachTicketThatIsNotClosed(t *testing.T) {
 	}
 }
 
-// The inbox shows each project together, so one query returns the tickets of two
-// projects.
+// One inbox query must return tickets across projects.
 func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	s, projectID := emptyStore(t)
 	other, err := s.ProjectID("/projects/other", "main")
@@ -1308,8 +1260,7 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A join that is not on the project returns each ticket with each project,
-	// so the count matters as much as the paths.
+	// Check row count as well as paths to catch an accidental cross join.
 	if len(open) != 2 {
 		t.Fatalf("OpenTickets gives %d tickets, want 2", len(open))
 	}
@@ -1325,9 +1276,8 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 }
 
-// setAccepted writes the time that the person accepted a ticket, which is a
-// row of its history. dg accept does this work, and a test that is not about
-// dg accept writes the row rather than the whole path of a run and a review.
+// setAccepted inserts an acceptance transition without running the full
+// command workflow.
 func setAccepted(t *testing.T, s *Store, id int64, accepted string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
@@ -1337,9 +1287,8 @@ func setAccepted(t *testing.T, s *Store, id int64, accepted string) {
 	}
 }
 
-// setReady writes the time that a run of a ticket finished, which is a row of
-// its history. No time of the inbox comes from it, and a test writes it to say
-// which row the inbox reads.
+// setReady inserts a ready transition to distinguish completion from
+// acceptance.
 func setReady(t *testing.T, s *Store, id int64, ready string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
@@ -1349,9 +1298,7 @@ func setReady(t *testing.T, s *Store, id int64, ready string) {
 	}
 }
 
-// A ticket of the open list holds no time of acceptance, whatever its history
-// holds. A ready ticket has finished a run, and the time of that run is not an
-// acceptance: the person has not read the work yet.
+// A ready timestamp is not an acceptance timestamp.
 func TestOpenTicketsHoldNoTimeOfAcceptance(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[0], Ready)
@@ -1373,9 +1320,7 @@ func TestOpenTicketsHoldNoTimeOfAcceptance(t *testing.T) {
 	}
 }
 
-// The inbox shows how long a ticket has been waiting, so each row of it holds
-// the time the ticket arrived. That is the first row of its history, which
-// every ticket has.
+// Creation time must come from the initial history entry.
 func TestOpenTicketsHoldTheTimeOfCreation(t *testing.T) {
 	s, ids := threeTickets(t)
 	before := time.Now().Add(-time.Second)
@@ -1396,9 +1341,8 @@ func TestOpenTicketsHoldTheTimeOfCreation(t *testing.T) {
 	}
 }
 
-// setStarted writes the start time of one run. Claim writes the time of the
-// call, to the second, so two claims in one test hold the same text and only a
-// write like this one tells them apart.
+// setStarted assigns distinct run timestamps; normal claims in one test may
+// share a second.
 func setStarted(t *testing.T, s *Store, runID int64, started string) {
 	t.Helper()
 	if _, err := s.db.Exec(
@@ -1407,9 +1351,7 @@ func setStarted(t *testing.T, s *Store, runID int64, started string) {
 	}
 }
 
-// The inbox shows how long a run has been going, so each open ticket carries
-// the start of its run. A ticket that no supervisor has claimed has no run,
-// and holds the zero time.
+// Expose the run start for elapsed time, or zero for never-run tickets.
 func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 	s, ids := threeTickets(t)
 	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
@@ -1434,9 +1376,8 @@ func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 	}
 }
 
-// A ticket that failed and restarted has a run for each claim,
-// and the run that holds it now is the last one. The time of an earlier run
-// would give the inbox a duration of hours for a run of a minute.
+// Use the latest run start after a restart, not the earlier failed run's
+// time.
 func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -1468,9 +1409,8 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	}
 }
 
-// setFailed writes the time that a run of a ticket failed, which is a row of
-// its history. dg fail writes this row, and a test writes it to say which time
-// the inbox reads.
+// setFailed inserts a failure transition to check which timestamp the inbox
+// reads.
 func setFailed(t *testing.T, s *Store, id int64, failed string) {
 	t.Helper()
 	if _, err := s.db.Exec(`
@@ -1480,9 +1420,7 @@ func setFailed(t *testing.T, s *Store, id int64, failed string) {
 	}
 }
 
-// A ticket that failed is open: the person must see it in the inbox, and it
-// carries the time that it entered failed, which is the time of the failure.
-// The group FAILED comes in the order of that time.
+// Failed tickets remain visible with their failure timestamp for ordering.
 func TestOpenTicketsGivesAFailedTicketWithTheTimeOfTheFailure(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[0], Failed)
@@ -1541,8 +1479,6 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	}
 }
 
-// A ticket that is not in the queue holds no position, and a column that holds
-// NULL arrives as the zero value of its type.
 func TestTicketWithNoPositionAndNoBranch(t *testing.T) {
 	s, id := oneTicket(t)
 	if err := s.ChangeStatus(id, Running); err != nil {
@@ -1634,8 +1570,7 @@ func TestMoveTicketBeforeWithATicketThatIsInNoList(t *testing.T) {
 	}
 }
 
-// A person who wants to review a later ticket first moves it inside READY, and
-// the tickets of the queue below it do not move.
+// Reordering READY must leave the queue unchanged.
 func TestMoveTicketMovesInEachDirectionInReady(t *testing.T) {
 	tests := []struct {
 		move Move
@@ -1671,9 +1606,7 @@ func TestMoveTicketBeforeInReady(t *testing.T) {
 	}
 }
 
-// A move orders one list. A ready ticket therefore cannot take the place of a
-// ticket of the queue, which would put it among the tickets that wait for a
-// run.
+// Moves cannot cross from READY into QUEUED.
 func TestMoveTicketBeforeATargetInTheOtherList(t *testing.T) {
 	s, projectID := emptyStore(t)
 	queued, err := s.AddTicket(projectID, "queued")
@@ -1701,8 +1634,6 @@ func TestMoveTicketBeforeATargetInTheOtherList(t *testing.T) {
 	}
 }
 
-// The two lists keep their own column, so a move in one leaves the other as it
-// was.
 func TestMoveTicketInReadyLeavesTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, status := range []TicketStatus{Running, Ready} {
@@ -1728,7 +1659,6 @@ func TestMoveTicketInReadyLeavesTheQueue(t *testing.T) {
 	}
 }
 
-// nextStates says which change one status can take, and ChangeStatus obeys it.
 func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
 	s, id := oneTicket(t)
 	if err := s.ChangeStatus(id, Running); err != nil {
@@ -1756,7 +1686,6 @@ func TestChangeStatusWithAChangeThatNextStatesDoesNotHold(t *testing.T) {
 	}
 }
 
-// An end is an end: no change leaves done or cancelled.
 func TestChangeStatusFromAnEnd(t *testing.T) {
 	s, id := oneTicket(t)
 	if err := s.ChangeStatus(id, Cancelled); err != nil {
@@ -1768,8 +1697,7 @@ func TestChangeStatusFromAnEnd(t *testing.T) {
 	}
 }
 
-// A ticket that becomes ready goes to the end of READY, which is where the
-// order of completion put it before READY had an order of its own.
+// New ready tickets append after existing review work.
 func TestChangeStatusIntoReadyPutsTheTicketAtTheEnd(t *testing.T) {
 	s, ids := threeReady(t)
 	if err := s.MoveTicket(ids[2], Top); err != nil {
@@ -1792,10 +1720,8 @@ func TestChangeStatusIntoReadyPutsTheTicketAtTheEnd(t *testing.T) {
 	}
 }
 
-// dg accept and dg revise take a ticket out of READY, and a ticket that is not
-// in a list keeps no place in it. No CHECK holds this the way one holds the
-// position of the queue, and a place left behind comes back as a number that
-// another ready ticket wants.
+// Leaving READY must clear ready_position; unlike the queue column, no CHECK
+// enforces this.
 func TestChangeStatusOutOfReadyClearsTheReadyPosition(t *testing.T) {
 	for _, status := range []TicketStatus{Done, Queued} {
 		t.Run(string(status), func(t *testing.T) {
@@ -1815,8 +1741,7 @@ func TestChangeStatusOutOfReadyClearsTheReadyPosition(t *testing.T) {
 	}
 }
 
-// dg revise puts a ticket that a person rejected back into the queue. It goes
-// to the end, behind each ticket that already waits.
+// Returning a ticket to queued status must append it behind existing work.
 func TestChangeStatusIntoTheQueuePutsTheTicketAtTheEnd(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -1840,9 +1765,7 @@ func TestChangeStatusOnATicketThatIsNotThere(t *testing.T) {
 	}
 }
 
-// The supervisor claims a ticket, so the process id of the caller of Claim is
-// the process id that the reconcile asks about. The start time is the moment
-// of the claim, in RFC 3339 and UTC like each other time of the store.
+// Claim records the caller's supervisor PID and a UTC start timestamp.
 func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	s, id := oneTicket(t)
 	before := time.Now().UTC().Truncate(time.Second)
@@ -1870,9 +1793,7 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	}
 }
 
-// Two supervisors can reach one ticket, and the one that loses writes nothing:
-// the row of runs is below the transaction of the change of state, so a claim
-// that the state machine refuses leaves no run behind.
+// A losing claim must roll back without creating a run.
 func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -1892,13 +1813,10 @@ func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 	}
 }
 
-// The supervisor claims its own ticket, so the read of the queue and the write
-// of the claim are one transaction. What it claims is the first ticket of the
-// queue, which is what the trigger used to read for it.
+// Selection and claim share a transaction.
 func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
-	// The queue is in the order of position and not of id, so the ticket the
-	// person moved to the top is the one the supervisor takes.
+	// User-set position, not ID, determines which ticket runs first.
 	if err := s.MoveTicket(ids[2], Top); err != nil {
 		t.Fatal(err)
 	}
@@ -1939,8 +1857,6 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 	}
 }
 
-// A supervisor that finds nothing to claim stops, and the queue with no ticket
-// at all is the plainest way to find nothing.
 func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	s, _ := emptyStore(t)
 
@@ -1954,9 +1870,7 @@ func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	}
 }
 
-// With a limit of one, one ticket fills the queue however long the queue
-// behind it, and the ticket in ready is work the person has not examined yet,
-// which fills it in the same way.
+// Running and ready tickets each consume a slot at limit one.
 func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 	for _, status := range []TicketStatus{Running, Ready} {
 		s, ids := threeTickets(t)
@@ -1980,9 +1894,6 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 	}
 }
 
-// A limit above one leaves a slot for a second supervisor, which claims the
-// ticket below the one that is running: two runs, in two worktrees, at one
-// time.
 func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
 	s, ids := threeTickets(t)
 	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
@@ -1999,9 +1910,7 @@ func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
 	}
 }
 
-// A ticket in ready holds its slot, at any limit: the person has not examined
-// that work yet, and the count is of the tickets a run has opened and nobody
-// has closed.
+// Ready tickets consume global capacity until reviewed.
 func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
@@ -2023,9 +1932,7 @@ func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 	}
 }
 
-// A person who lowers the limit while runs are going has more tickets open
-// than the limit allows. The claim takes nothing until they close enough of
-// them, and the count of slots below zero is a count of none.
+// Lowering capacity below current occupancy must clamp free slots to zero.
 func TestClaimNextWithMoreTicketsOpenThanTheLimitClaimsNothing(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
@@ -2044,8 +1951,7 @@ func TestClaimNextWithMoreTicketsOpenThanTheLimitClaimsNothing(t *testing.T) {
 	}
 }
 
-// A paused queue starts no run of its own. dg run with an id still claims,
-// because a person typed it, and this is the claim that no person asked for.
+// Automatic claims respect pause; explicit ticket claims are separate.
 func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 	s, _ := threeTickets(t)
 	if err := s.PauseQueue(); err != nil {
@@ -2062,10 +1968,7 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 	}
 }
 
-// A project at its limit does not stop the queue. The claim passes over the
-// ticket that waits behind it and takes the first ticket below that one whose
-// project has room, so the first ticket of the queue is not always the next to
-// run.
+// Skip a full project to start eligible work in another project.
 func TestClaimNextPassesOverAProjectAtItsLimit(t *testing.T) {
 	s, first, second := twoProjects(t)
 	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
@@ -2083,9 +1986,6 @@ func TestClaimNextPassesOverAProjectAtItsLimit(t *testing.T) {
 	}
 }
 
-// A limit above one leaves a project room for a second ticket of its own, and
-// the claim then takes the first ticket of the queue as it does with no limit
-// for each project at all.
 func TestClaimNextTakesASecondTicketOfAProjectWithRoom(t *testing.T) {
 	s, first, _ := twoProjects(t)
 	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
@@ -2103,9 +2003,7 @@ func TestClaimNextTakesASecondTicketOfAProjectWithRoom(t *testing.T) {
 	}
 }
 
-// The queue has slots free and every ticket left in it belongs to a project
-// that is at its limit. The supervisor that a trigger started for one of those
-// slots finds nothing and stops.
+// Global capacity alone is insufficient when every queued project is full.
 func TestClaimNextWithEveryProjectAtItsLimitClaimsNothing(t *testing.T) {
 	s, first, second := twoProjects(t)
 	for _, id := range []int64{first[0], second[0]} {
@@ -2124,8 +2022,7 @@ func TestClaimNextWithEveryProjectAtItsLimitClaimsNothing(t *testing.T) {
 	}
 }
 
-// A ticket in ready holds a place of its project for the reason it holds a
-// slot of the whole queue: the person has not examined that work yet.
+// Ready tickets also consume per-project capacity.
 func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	s, first, second := twoProjects(t)
 	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
@@ -2146,8 +2043,6 @@ func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	}
 }
 
-// A queue of tickets that nothing holds back counts one for each of them, and
-// that is what a trigger starts supervisors for.
 func TestClaimableCountCountsTheTicketsOfTheQueue(t *testing.T) {
 	s, _ := threeTickets(t)
 
@@ -2156,10 +2051,7 @@ func TestClaimableCountCountsTheTicketsOfTheQueue(t *testing.T) {
 	}
 }
 
-// The count never passes the free slots of the whole queue, whatever room the
-// projects have between them. Two projects with three tickets the rule holds
-// for, a limit of two for the queue and one run active leaves one slot, and
-// one slot is what the supervisors will find.
+// Global capacity caps the sum of per-project claimable counts.
 func TestClaimableCountStopsAtTheFreeSlots(t *testing.T) {
 	s, first, _ := twoProjects(t)
 	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
@@ -2173,9 +2065,8 @@ func TestClaimableCountStopsAtTheFreeSlots(t *testing.T) {
 	}
 }
 
-// The fault this count was written for. The queue has slots free and every
-// ticket left in it belongs to a project that is at its limit, so every
-// supervisor a trigger started would find ErrNoRoom and stop. None starts.
+// Do not launch supervisors into an otherwise empty queue whose projects are
+// all full.
 func TestClaimableCountWithEveryProjectAtItsLimitCountsNothing(t *testing.T) {
 	s, first, second := twoProjects(t)
 	for _, id := range []int64{first[0], second[0]} {
@@ -2191,9 +2082,8 @@ func TestClaimableCountWithEveryProjectAtItsLimitCountsNothing(t *testing.T) {
 	}
 }
 
-// Two tickets of one project can be claimed one at a time, not both: the first
-// claim fills the one place the project has. The count is the tickets the
-// claims will take and not the tickets the rule holds for right now.
+// Two currently eligible tickets in one project still count as one if only
+// one project slot remains.
 func TestClaimableCountStopsAtTheRoomOfOneProject(t *testing.T) {
 	s, _ := threeTickets(t)
 
@@ -2204,8 +2094,7 @@ func TestClaimableCountStopsAtTheRoomOfOneProject(t *testing.T) {
 	}
 }
 
-// The limit for each project holds for each project on its own, so a queue of
-// two projects with a place each counts one of each.
+// Apply the project limit separately to each project.
 func TestClaimableCountCountsTheRoomOfEveryProject(t *testing.T) {
 	s, _, _ := twoProjects(t)
 
@@ -2216,9 +2105,7 @@ func TestClaimableCountCountsTheRoomOfEveryProject(t *testing.T) {
 	}
 }
 
-// Two triggers at the same time start two supervisors, and both read the same
-// queue. The claim is one transaction with the read, so one takes the ticket
-// and the other finds nothing.
+// Concurrent claims of the last ticket must produce one winner.
 func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 	first, second, ids := twoPrograms(t)
 
@@ -2259,10 +2146,7 @@ func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 	}
 }
 
-// Two supervisors that a limit of two started fill the two slots between them:
-// each one takes a ticket of its own, and no ticket is claimed twice. The read
-// of the queue and the claim are one transaction, so the second supervisor
-// reads a queue that no longer holds the first ticket.
+// With two slots, concurrent supervisors must claim distinct tickets.
 func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
 	first, second, ids := twoPrograms(t)
 
@@ -2297,8 +2181,7 @@ func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
 	}
 }
 
-// The reconcile of a ticket in running asks whether its supervisor is alive,
-// and it asks with the process id and the start time of the run.
+// Liveness checks receive the supervisor PID and run start time.
 func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -2475,9 +2358,7 @@ func TestRunUsageAggregatesPromptsWithoutFillingMissingCategories(t *testing.T) 
 	}
 }
 
-// A ticket that failed and restarted has a run for each claim,
-// and the run of the ticket is the last one: the earlier run ended, and its
-// process id belongs to nobody or to a different program by now.
+// Run returns the latest attempt, not the failed predecessor.
 func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -2503,8 +2384,8 @@ func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	}
 }
 
-// A ticket in the queue has no run yet, and a ticket that is not there has
-// none either. Both give ErrNoRun, and the id is in the message.
+// Both missing tickets and never-run tickets return ErrNoRun with the
+// requested ID.
 func TestRunOnATicketThatHasNoRun(t *testing.T) {
 	s, id := oneTicket(t)
 
@@ -2519,8 +2400,6 @@ func TestRunOnATicketThatHasNoRun(t *testing.T) {
 	}
 }
 
-// The exit code 0 is a value and not the absence of one, so the column must
-// hold it and the store must give it back as a value.
 func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	for _, exitCode := range []int{0, 3} {
 		s, id := oneTicket(t)
@@ -2565,9 +2444,7 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	}
 }
 
-// The supervisor ends the run it holds, and it names that run. A ticket that
-// failed and restarted has a later run that a different supervisor
-// holds, and the end of this one must not land on that row.
+// Ending an older run must not close the run created by a restart.
 func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	s, id := oneTicket(t)
 	first, err := s.Claim(id, "delegator/1-my-ticket")
@@ -2605,8 +2482,6 @@ func TestEndRunOnARunThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A ticket that dg accept closed stays in reach for a while, so the inbox can
-// show the person what they finished after it left the open list.
 func TestDoneTicketsGivesTheTicketsClosedSinceATime(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids {
@@ -2625,9 +2500,7 @@ func TestDoneTicketsGivesTheTicketsClosedSinceATime(t *testing.T) {
 	}
 }
 
-// A ticket that finished at the moment the window begins is inside it. The
-// bound has to fall one way, and a person who asks for the last day means the
-// day up to now.
+// The acceptance cutoff is inclusive.
 func TestDoneTicketsHoldsATicketAtTheEdgeOfTheWindow(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2642,8 +2515,7 @@ func TestDoneTicketsHoldsATicketAtTheEdgeOfTheWindow(t *testing.T) {
 	}
 }
 
-// The window is a time in UTC whatever zone the caller holds, because the
-// column is in UTC and the comparison is of the text.
+// Normalize the cutoff to UTC before comparing stored timestamp text.
 func TestDoneTicketsTakesATimeInAnyZone(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2661,9 +2533,7 @@ func TestDoneTicketsTakesATimeInAnyZone(t *testing.T) {
 	}
 }
 
-// Only a ticket that dg accept closed is in the list. A cancelled ticket was
-// thrown away and never finished, and a ticket that is still open is in the
-// open list.
+// Exclude cancelled and still-open tickets from DONE.
 func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
 	s, ids := threeTickets(t)
 	setStatus(t, s, ids[0], Cancelled)
@@ -2682,9 +2552,8 @@ func TestDoneTicketsLeavesOutEveryOtherStatus(t *testing.T) {
 	}
 }
 
-// A done ticket whose history holds no change into done is in no window, and it
-// does not come out for one that reaches back to the zero time. A version before
-// the history left every ticket it had already closed that way.
+// Legacy done tickets without acceptance history must remain outside every
+// window.
 func TestDoneTicketsLeavesOutATicketWithNoAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2698,8 +2567,6 @@ func TestDoneTicketsLeavesOutATicketWithNoAcceptance(t *testing.T) {
 	}
 }
 
-// A row of DoneTickets holds the same fields as a row of OpenTickets, because
-// the inbox writes the two the same way.
 func TestDoneTicketsGivesTheProjectAndTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2727,9 +2594,7 @@ func TestDoneTicketsGivesTheProjectAndTheAcceptance(t *testing.T) {
 	}
 }
 
-// The window reaches back from the acceptance and not from the end of the run.
-// A ticket whose run finished before the window and that the person accepted
-// inside it is work they have just dealt with, so DONE holds it.
+// Recent acceptance must include work completed before the window began.
 func TestDoneTicketsMeasuresTheWindowFromTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -2745,16 +2610,14 @@ func TestDoneTicketsMeasuresTheWindowFromTheAcceptance(t *testing.T) {
 	}
 }
 
-// A window of no length holds no ticket, not even one that finished in the
-// second the window began in. A person who sets the window to nothing wants no
-// DONE at all.
+// A zero-length window must exclude tickets accepted earlier in the current
+// second.
 func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 	setAccepted(t, s, id, "2026-08-28T09:00:00Z")
 
-	// The second is the one the ticket finished in, and the window begins
-	// part of the way through it, as a clock in the middle of a second does.
+	// Place the cutoff partway through the ticket's acceptance second.
 	done, err := s.DoneTickets(time.Date(2026, 8, 28, 9, 0, 0, 500, time.UTC))
 	if err != nil {
 		t.Fatal(err)
@@ -2764,9 +2627,7 @@ func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 	}
 }
 
-// The supervisor writes the end time and the exit code before it fails the
-// ticket, and those are the times of the run itself. A second end time from
-// here would move the end of the run to a moment after it.
+// Preserve an end time already recorded by the supervisor.
 func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 	s, id := oneTicket(t)
 	runID, err := s.Claim(id, "delegator/1-my-ticket")
@@ -2792,8 +2653,7 @@ func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 	}
 }
 
-// A run that stopped before it could write its own end still gets one, so no
-// run of a ticket that is not running is open.
+// Fill a missing end time when the supervisor could not record it.
 func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 	s, id := oneTicket(t)
 	runID, err := s.Claim(id, "delegator/1-my-ticket")
@@ -2818,9 +2678,7 @@ func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 	}
 }
 
-// dg finish made the ticket ready, so the run gave its report and there is
-// nothing to fail. A cancelled ticket is the same: the state it has is the one
-// the person asked for.
+// FailUnfinished must preserve Ready and Cancelled statuses.
 func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 	for _, status := range []TicketStatus{Ready, Failed, Cancelled} {
 		s, id := oneTicket(t)
@@ -2844,9 +2702,7 @@ func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 	}
 }
 
-// A supervisor that stopped with no report leaves its ticket in running, and
-// only a later command can correct it. Reconcile is that correction: the
-// ticket becomes failed, and its run gets the end time it never wrote.
+// Reconcile recovers abandoned running tickets and closes their runs.
 func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -2878,8 +2734,6 @@ func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
 	}
 }
 
-// A supervisor that is alive holds its ticket, and the reconcile of a command
-// that runs beside it must leave the run alone.
 func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -2910,8 +2764,7 @@ func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
 	}
 }
 
-// The question is asked about the run, so Reconcile gives the whole row: the
-// process id to signal and the start time to compare with the boot time.
+// Pass the full run to liveness checks for PID and boot-time comparison.
 func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	s, ids := threeTickets(t)
 	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
@@ -2920,8 +2773,8 @@ func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	if _, err := s.Claim(ids[1], "delegator/2-second"); err != nil {
 		t.Fatal(err)
 	}
-	// The second ticket ends in ready, so its run is over and no question
-	// belongs to it. The third was never claimed.
+	// Only the first ticket is still running; ready and never-claimed
+	// tickets need no probe.
 	if err := s.FinishTicket(ids[1], "abc123"); err != nil {
 		t.Fatal(err)
 	}
@@ -2945,8 +2798,7 @@ func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	}
 }
 
-// A ticket that failed and restarted has one row for each claim, and
-// only the last one can still be alive.
+// Only the latest run is relevant to reconciliation.
 func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -2970,8 +2822,7 @@ func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 	}
 }
 
-// Each dead run is marked in the one transaction, so no command sees the queue
-// part way through a reconcile.
+// Reconcile all dead runs atomically.
 func TestReconcileMarksEachDeadRun(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
@@ -3006,14 +2857,13 @@ func TestFailUnfinishedOnARunThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A cancel closes a ticket from each state that is not the end, whether or not
-// it ever had a run. A ticket with no run to close is cancelled with the run id
-// 0, which no run has.
+// Cancel accepts every non-terminal state, with run ID zero when there is no
+// run to close.
 func TestCancelClosesATicket(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Running, Ready, Failed} {
 		s, id := oneTicket(t)
-		// A new ticket is queued already, and setStatus clears the position,
-		// which the CHECK of the table does not allow for that state.
+		// Do not use setStatus for queued fixtures; it clears the
+		// required position.
 		if status != Queued {
 			setStatus(t, s, id, status)
 		}
@@ -3032,8 +2882,7 @@ func TestCancelClosesATicket(t *testing.T) {
 	}
 }
 
-// The run of a ticket that a person cancels stops with the ticket, so the row
-// of that run is closed and no run of a ticket that is not running is open.
+// Cancellation closes the named run as well as the ticket.
 func TestCancelWritesTheEndOfTheRun(t *testing.T) {
 	s, id := oneTicket(t)
 	runID, err := s.Claim(id, "delegator/1-my-ticket")
@@ -3055,9 +2904,8 @@ func TestCancelWritesTheEndOfTheRun(t *testing.T) {
 	}
 }
 
-// The end time of a run that has one is the moment that run ended, and the
-// cancel comes after it: the reconcile wrote it, or the supervisor did before
-// it stopped.
+// Cancellation must preserve an end time already written by the supervisor or
+// reconciliation.
 func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
 	s, id := oneTicket(t)
 	runID, err := s.Claim(id, "delegator/1-my-ticket")
@@ -3078,10 +2926,8 @@ func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
 	}
 }
 
-// The run that a cancel closes is the run the caller named, and not whichever
-// run of the ticket is the last one. A ticket that failed between the stop and
-// the write restarted, and a new supervisor holds it. An end time on its row
-// would say that a run which is going has ended.
+// Cancellation must close the named run, not a newer one created by a
+// concurrent restart.
 func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	s, id := oneTicket(t)
 	stopped, err := s.Claim(id, "delegator/1-my-ticket")
@@ -3094,8 +2940,8 @@ func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	if _, err := s.Restart(id); err != nil {
 		t.Fatal(err)
 	}
-	// FailUnfinished closed the run the cancel names, so this reopens it: the
-	// cancel has to reach that row and not the row of the claim after it.
+	// Reopen the old run to prove cancellation updates it rather than the
+	// newer run.
 	if _, err := s.db.Exec("UPDATE runs SET ended_at = NULL WHERE id = ?", stopped); err != nil {
 		t.Fatal(err)
 	}
@@ -3113,8 +2959,6 @@ func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	}
 }
 
-// done and cancelled are the end, and a cancel that reached one would reopen a
-// ticket that is closed. The run of the ticket is left as it is with the state.
 func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
 	for _, status := range []TicketStatus{Done, Cancelled} {
 		s, id := oneTicket(t)
@@ -3142,7 +2986,6 @@ func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
 	}
 }
 
-// A cancel on an id that no ticket has writes nothing and says so.
 func TestCancelWithNoSuchTicket(t *testing.T) {
 	s, _ := oneTicket(t)
 	if err := s.Cancel(404, 0); !errors.Is(err, ErrNoTicket) {
@@ -3150,8 +2993,6 @@ func TestCancelWithNoSuchTicket(t *testing.T) {
 	}
 }
 
-// A finish on a running ticket records the commit, puts the ticket at the end
-// of READY and writes the change into its history.
 func TestFinishTicketOnARunningTicket(t *testing.T) {
 	s, _ := threeReady(t)
 	fourth, err := s.AddTicket(mustProject(t, s), "fourth")
@@ -3226,10 +3067,8 @@ func TestFinishTicketOnAFailedTicket(t *testing.T) {
 	}
 }
 
-// A commit that was amended or rebased after the finish has a new hash, and a
-// second finish writes it. The ticket is ready already, so nothing else about
-// it moves: it keeps its place in READY, which decides the turn dg accept
-// takes, and its history, which the age dg show prints comes from.
+// A repeated finish updates an amended commit without changing ready position
+// or transition history.
 func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 	s, ids := threeReady(t)
 	if err := s.FinishTicket(ids[1], "abc1234"); err != nil {
@@ -3264,8 +3103,6 @@ func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 	}
 }
 
-// A queued or closed ticket is outside the states that can report completed
-// work. A finish writes nothing and names the change it refused.
 func TestFinishTicketFromAnInvalidState(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
@@ -3293,10 +3130,8 @@ func TestFinishTicketFromAnInvalidState(t *testing.T) {
 	}
 }
 
-// dg list shows every ticket, so AllTickets holds each status and not the four
-// that are open. A done ticket that the window of the inbox has passed is the
-// one a person goes to this list for: the inbox stops showing it after a day,
-// and the work it names does not stop existing then.
+// AllTickets includes closed work even after it leaves the inbox's DONE
+// window.
 func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 	s, projectID := emptyStore(t)
 	want := map[int64]TicketStatus{}
@@ -3306,8 +3141,6 @@ func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// A new ticket is queued and holds a position, which setStatus takes
-		// away.
 		if status != Queued {
 			setStatus(t, s, id, status)
 		}
@@ -3316,8 +3149,7 @@ func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 			done = id
 		}
 	}
-	// The person accepted the done ticket two days ago, which is outside the
-	// window that DoneTickets reads.
+	// Backdate acceptance beyond the DONE window.
 	setAccepted(t, s, done, rfc3339(time.Now().Add(-48*time.Hour)))
 
 	all, err := s.AllTickets("")
@@ -3334,8 +3166,6 @@ func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 	}
 }
 
-// The list is in the order of the ids, which is the order the tickets were
-// made in. A person who reads it goes to a ticket by its number.
 func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.MoveTicket(ids[2], Top); err != nil {
@@ -3355,9 +3185,7 @@ func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
 	}
 }
 
-// A path takes the list to the tickets of one project, which is dg list
-// --project. The query does the work, so a list of one project of many reads
-// only the rows it gives back.
+// Project filtering belongs in the query so unrelated rows are not loaded.
 func TestAllTicketsTakesTheTicketsOfOneProject(t *testing.T) {
 	s, _, second := twoProjects(t)
 
@@ -3377,8 +3205,7 @@ func TestAllTicketsTakesTheTicketsOfOneProject(t *testing.T) {
 	}
 }
 
-// A path that no project holds gives no ticket, and it is not an error: the
-// person named a directory that delegator has no ticket for.
+// An unknown project path returns an empty list, not an error.
 func TestAllTicketsOfAProjectThatHasNone(t *testing.T) {
 	s, _ := threeTickets(t)
 
