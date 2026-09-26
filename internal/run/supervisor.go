@@ -29,7 +29,7 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID)
+	return supervise(s, cfg, ticket, runID, cfg.DefaultAgent, "")
 }
 
 // Restart starts a failed ticket again. Restart writes the running state and
@@ -40,11 +40,19 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
+	agent := cfg.DefaultAgent
+	if ticket.Session != "" {
+		prior, err := s.Run(id)
+		if err != nil {
+			return err
+		}
+		agent = prior.Agent
+	}
 	runID, err := s.Restart(id)
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID)
+	return supervise(s, cfg, ticket, runID, agent, ticket.Session)
 }
 
 // StartNext claims and runs the first eligible queued ticket under cfg
@@ -62,7 +70,7 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID)
+	return true, supervise(s, cfg, ticket, runID, cfg.DefaultAgent, "")
 }
 
 // noExitCode marks a run without a reported exit code, matching os/exec for a
@@ -114,7 +122,7 @@ func (t *supervisorTimer) Close() error {
 // use the claimed runID, since a restart may create a newer run. Setup
 // failures close the run and mark the ticket failed so it does not keep
 // occupying capacity.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent, sessionID string) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// Any return without dg finish must fail the claimed ticket.
@@ -140,7 +148,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(ctx, s, cfg, id, runID, worktree, cacheDir, log)
+	return superviseACP(ctx, s, agent, sessionID, id, runID, worktree, cacheDir, log)
 }
 
 // logTime uses RFC 3339 with filename-safe separators and millisecond

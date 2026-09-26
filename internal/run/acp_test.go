@@ -237,6 +237,92 @@ func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	}
 }
 
+// A restart must load the prior run's session with the agent that created it,
+// even when the configured default has changed. The replay marker distinguishes
+// Load from a new session, while the failed prompt proves the old ID survives.
+func TestRestartLoadsTheExistingSessionWithItsOriginalAgent(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	loaded := filepath.Join(t.TempDir(), "loaded")
+	cfg := acpConfig(t, dataDir,
+		"no-such-action",
+		"history:",
+		"write "+loaded+" replayed",
+	)
+	s := testfix.OpenStore(t, dataDir)
+	if err := Start(s, id, cfg); err == nil {
+		t.Fatal("err = nil, want the first prompt to fail")
+	}
+	first, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := testfix.ReadTicket(t, dataDir, id).Session
+	if session == "" {
+		t.Fatal("the first run did not record its new session")
+	}
+
+	worktree := WorktreePath(dataDir, id)
+	sentinel := filepath.Join(worktree, "first-run-work")
+	if err := os.WriteFile(sentinel, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	replacementRan := filepath.Join(t.TempDir(), "replacement-ran")
+	testfix.UseAgent(t, dataDir, "replacement", testfix.FakeAgentPath,
+		testfix.Script(t, "write "+replacementRan+" replacement", "stop end_turn"))
+	cfg.DefaultAgent = "replacement"
+
+	if err := Restart(s, id, cfg); err == nil {
+		t.Fatal("err = nil, want the loaded session's prompt to fail")
+	}
+	if got := testfix.WaitFor(t, loaded); got != "replayed" {
+		t.Errorf("the load marker = %q, want %q", got, "replayed")
+	}
+	if _, err := os.Stat(replacementRan); !os.IsNotExist(err) {
+		t.Errorf("the replacement default ran: %v", err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != session {
+		t.Errorf("session after the failed prompt = %q, want %q", got, session)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "kept" {
+		t.Errorf("work from the first run = %q, %v; want it kept", got, err)
+	}
+	second, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first.ID {
+		t.Error("the restart reused the first run record")
+	}
+	if second.Agent != "fake" {
+		t.Errorf("restart agent = %q, want the prior run's agent %q", second.Agent, "fake")
+	}
+}
+
+func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+	if err := Start(s, id, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got == "" {
+		t.Fatal("the first run did not record its new session")
+	}
+	const session = "existing-session"
+	if err := s.SetSession(id, session); err != nil {
+		t.Fatal(err)
+	}
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath,
+		testfix.Script(t, "stop end_turn", "history:", "no-such-action"))
+
+	if err := Restart(s, id, cfg); err == nil {
+		t.Fatal("err = nil, want loading the session to fail")
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Session; got != session {
+		t.Errorf("session after the failed load = %q, want %q", got, session)
+	}
+}
+
 // The mid-turn marker proves the session ID was saved before completion,
 // allowing interrupted runs to resume.
 func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
