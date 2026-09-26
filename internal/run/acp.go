@@ -18,11 +18,12 @@ import (
 // A completed turn records exit code zero; other outcomes record failure
 // details. The supervisor context cancels the turn on timeout, alongside
 // process-group termination.
-func superviseACP(ctx context.Context, s *store.Store, agent, sessionID string, id, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
+func superviseACP(ctx context.Context, s *store.Store, agent string, ticket store.Ticket, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
 	// Always close the claimed run. Use noExitCode unless the turn
 	// completes normally.
 	code := noExitCode
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
+	id := ticket.ID
 
 	entry, err := s.Agent(agent)
 	if err != nil {
@@ -37,10 +38,10 @@ func superviseACP(ctx context.Context, s *store.Store, agent, sessionID string, 
 	}
 	options := sessionOptions(cacheDir)
 	var session *handler.Session
-	if sessionID == "" {
+	if ticket.Session == "" {
 		session, err = handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, options, log)
 	} else {
-		session, err = handler.Load(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, sessionID, options, log)
+		session, err = handler.Load(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, ticket.Session, options, log)
 	}
 	if err != nil {
 		return err
@@ -49,7 +50,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent, sessionID string, 
 
 	// Save only newly created sessions. A failed load or prompt must leave a
 	// restarted ticket's existing session available for another attempt.
-	if sessionID == "" {
+	if ticket.Session == "" {
 		if err := s.SetSession(id, session.ID()); err != nil {
 			return err
 		}
