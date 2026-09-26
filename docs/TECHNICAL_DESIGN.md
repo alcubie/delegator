@@ -353,13 +353,10 @@ The row holds the ticket, the status before the change, the status after the cha
 the time. The first row of each ticket is the time that the person made it, and that row
 holds no status before the change. The last row gives the status that the ticket has now.
 
-A column that holds one time goes out of date. The column `completed` held the time that a
-ticket became ready. `dg revise` put the ticket back in the queue, and the column kept the
-time of the run that was complete. `dg show` then wrote that time below the status
-`queued`, and a person read it as the time that the ticket came into the queue. The history
-does not have this error, because delegator writes each row one time and does not write it
-again. The store writes the row in the transaction of the change, so a change that gives an
-error writes no row.
+A single timestamp cannot describe every change of state. For example, restarting a
+failed ticket begins another run without removing the history of its earlier failure.
+Delegator writes each transition row once and does not change it again. The store writes
+the row in the transaction of the change, so a change that gives an error writes no row.
 
 A run keeps its own start time and its own end time, and the rows of `transitions` do not
 replace them. Those times are facts of one run, and a ticket has one run for each claim.
@@ -491,7 +488,7 @@ one transaction.
 
 An earlier design put the sequence in `$EDITOR`, as `git rebase -i` does. The person can
 hold that file open for a long time, and the queue can change while it is open: a
-supervisor starts the first ticket, or `dg revise` puts a ticket at the end. The file then
+supervisor starts the first ticket, or `dg ticket` adds a ticket at the end. The file then
 holds a sequence for a queue that is not there any more, and delegator must find the
 difference and say so. A command that moves one ticket reads the queue at the time that it
 writes it, so no such difference is possible.
@@ -527,10 +524,8 @@ Remove the staging app, the volume, the records of the DNS, the monitor and
 the secrets.
 ```
 
-Only two commands write this file. The command `dg ticket` makes it. The command `dg
-revise` adds new prose to the end of it. No command removes text from the file, and no
-command writes the file again from memory. A person can therefore change the prose with an
-editor at any time.
+The command `dg ticket` creates this file. The command `dg edit` can change the prose
+while the ticket is queued, before an agent starts reading it for a run.
 
 **Why the prose is not in the database.** The person owns the prose. Section 9.2 gives the
 variable `{ticket}` to each command of the person, and that variable is a path. A row of a
@@ -563,7 +558,6 @@ stateDiagram-v2
     failed --> running: dg restart
     failed --> ready: dg finish after dg chat
     ready --> done: dg accept
-    ready --> queued: dg revise
     done --> [*]
 ```
 
@@ -578,7 +572,6 @@ Each change of state is in the table below.
 | `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
 | `failed` | `ready` | `dg finish`, after the agent completes the work interactively through `dg chat`. |
 | `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD. Delegator removes the worktree and keeps the branch. |
-| `ready` | `queued` | `dg revise`. The ticket goes at the end of the queue again, and its commit goes away. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
 
 **Only an agent gives the state `ready`.** The command `dg finish` is one of the two
@@ -586,15 +579,10 @@ commands of the agent in §9.3. A run that stops before `dg finish` becomes `fai
 not `ready`. Section 6.4 says why: a ticket that looks complete but is not complete is the
 most expensive error.
 
-**The state `ready` is where the person examines the work.** The person then gives one of
-three commands. The command `dg accept` closes the ticket. The command `dg revise` puts
-the ticket at the end of the queue with more instructions, and a new run continues the
-same session. The command `dg cancel` stops the work.
-
-**`dg revise` takes away the commit.** That commit is the report of the run that is
-complete. The person read it, and gives the work again because of what it said, so the next
-run makes its own. The commits themselves stay on the branch, so nothing is lost: only the
-link from the ticket to one of them goes away.
+**The state `ready` is where the person examines the work.** The command `dg accept`
+closes the ticket after its branch is merged. The command `dg cancel` stops the work.
+If changes are needed, the person can continue the agent session with `dg chat` or edit
+the worktree directly before merging and accepting it.
 
 **The command `dg cancel` is not in the diagram.** It operates from each state that is
 not the end, so an edge from each of those states would go to `cancelled`. Those edges
@@ -769,7 +757,7 @@ installer.
 | `dg` | Show the inbox. |
 | `dg list` | Show every ticket, in every status, one to a line, in the order of the ids. The row is the row of the inbox, with the status of the ticket where the inbox puts its note. The inbox holds the work of a day and drops a done ticket after the window of DONE; this list holds every ticket there has ever been. The flag `--project <dir>` narrows it to one project, and with no flag it holds the tickets of every project. A person who has no ticket gets no output and no error. |
 | `dg show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
-| `dg edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. `dg revise` changes a ticket after a run. |
+| `dg edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg start` and `dg pause` | Start or stop work on the queue. |
 | `dg move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
@@ -778,7 +766,6 @@ installer.
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |
 | `dg accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
-| `dg revise <id> <text>` | Put a ticket back in the queue, with more instructions. It adds the text to the end of `ticket.md`. |
 | `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
@@ -928,7 +915,7 @@ Each milestone uses the fake agent, includes tests, and is usable at its end.
 2. **Work.** The supervisor, the worktree, the git boundary, the timeout, `start`,
    `pause`, `cancel` and `restart`. The claude adapter. The commands `read` and `finish`,
    with their limits.
-3. **Closure.** The commands `accept` and `revise`, the removal of a worktree, and the
+3. **Closure.** The command `accept`, the removal of a worktree, and the
    commit of each run on the ticket.
 4. **Commands of the person.** The config, the variables, `dg open` and the new window.
 5. **Installation.** goreleaser, the installer for Linux and macOS, and `dg doctor`.
