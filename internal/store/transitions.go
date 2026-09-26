@@ -1,6 +1,5 @@
-// The history of the state of each ticket. One row of transitions is one change,
-// and the status of a ticket is the last row of its history, so no field of a
-// ticket holds the time of one change and goes out of date.
+// Ticket history records each status change rather than keeping event
+// timestamps in ticket fields that can become stale.
 
 package store
 
@@ -9,13 +8,9 @@ import (
 	"time"
 )
 
-// addTransition writes one row of the history of a ticket. before is the empty
-// string for the arrival of a ticket, which is the first row of each ticket and
-// has no status before it.
-//
-// The caller gives the time, and a caller that writes a second record of the
-// same moment gives the time it wrote there: the claim of a ticket is the start
-// of a run, and two clocks would give the two records different times.
+// addTransition records a status change. An empty before marks ticket
+// creation. The caller supplies at so related records, such as a run start
+// and its transition, use exactly the same timestamp.
 func addTransition(tx *sql.Tx, ticketID int64, before, after TicketStatus, at time.Time) error {
 	var from any
 	if before != "" {
@@ -27,27 +22,21 @@ func addTransition(tx *sql.Tx, ticketID int64, before, after TicketStatus, at ti
 	return err
 }
 
-// lastChange is the time of the last change of state of one ticket, which is the
-// time that the ticket entered the status it has. It is a sub-query of a query
-// over tickets, and tickets.id names the row of that query.
+// lastChange is a correlated subquery for the latest transition time of the
+// outer tickets.id.
 const lastChange = `(SELECT at FROM transitions
 	 WHERE transitions.ticket_id = tickets.id
 	 ORDER BY transitions.id DESC LIMIT 1)`
 
-// acceptedTime is the time that a ticket became done, which is the time that
-// the person accepted the work. DONE comes in the order of it, and the window
-// of DONE reads it to decide which tickets the inbox still shows.
-//
-// Done is the end of the states, so a ticket has at most one change into it. A
-// ticket that nobody has accepted gives NULL, and so does a done ticket whose
-// history reaches back before the history held this change.
+// acceptedTime selects the transition into Done for the outer tickets.id. It
+// controls DONE ordering and its display window. Never-accepted tickets and
+// legacy done tickets without acceptance history return NULL.
 const acceptedTime = `(SELECT at FROM transitions
 	 WHERE transitions.ticket_id = tickets.id AND transitions.to_status = 'done'
 	 LIMIT 1)`
 
-// createdTime is the time that a ticket arrived, which is the first row of its
-// history: the row with no status before it. It is a sub-query of a query over
-// tickets, and tickets.id names the row of that query.
+// createdTime selects the first history timestamp for the outer tickets.id,
+// which records ticket creation.
 const createdTime = `(SELECT at FROM transitions
 	 WHERE transitions.ticket_id = tickets.id
 	 ORDER BY transitions.id LIMIT 1)`

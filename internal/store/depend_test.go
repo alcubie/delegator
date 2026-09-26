@@ -8,9 +8,8 @@ import (
 	"github.com/alcubie/delegator/internal/config"
 )
 
-// mustAddTicket adds a ticket that depends on the ids of dependsOn, and stops
-// the test when the store refuses it. A test that examines a refusal calls
-// AddTicket itself.
+// mustAddTicket creates a ticket with dependencies and fails on error.
+// Refusal tests call AddTicket directly.
 func mustAddTicket(t *testing.T, s *Store, projectID int64, title string, dependsOn ...int64) int64 {
 	t.Helper()
 	id, err := s.AddTicket(projectID, title, dependsOn...)
@@ -20,8 +19,7 @@ func mustAddTicket(t *testing.T, s *Store, projectID int64, title string, depend
 	return id
 }
 
-// linksOf returns the id of each ticket that the ticket id depends on, and
-// stops the test when the read fails.
+// linksOf returns prerequisite IDs, failing on query errors.
 func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
 	ids, err := s.Dependencies(id)
@@ -31,8 +29,7 @@ func linksOf(t *testing.T, s *Store, id int64) []int64 {
 	return ids
 }
 
-// blockersOf returns the id of each ticket that depends on id, and stops the
-// test when the read fails.
+// blockersOf returns dependent IDs, failing on query errors.
 func blockersOf(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
 	ids, err := s.Dependents(id)
@@ -42,13 +39,10 @@ func blockersOf(t *testing.T, s *Store, id int64) []int64 {
 	return ids
 }
 
-// dependentQueue returns a store whose queue holds one ticket that depends on an
-// earlier ticket and then one that depends on nothing, with the id of the ticket
-// depended on, the id of the dependent ticket and the id of the free one.
-//
-// The ticket that is depended on is running, so it is out of the queue and the
-// dependent ticket is at the top of it. A queue that gave the free ticket the
-// first place would claim it whether the links were read or not.
+// dependentQueue creates a running prerequisite, its queued dependent, and an
+// independent queued ticket, returning their IDs in that order. The blocked
+// ticket leads the queue so selecting the independent ticket proves
+// dependencies were checked.
 func dependentQueue(t *testing.T) (s *Store, dependedOn, dependent, free int64) {
 	t.Helper()
 	s, projectID := emptyStore(t)
@@ -75,8 +69,7 @@ func TestAddTicketRecordsTheTicketsItDependsOn(t *testing.T) {
 	}
 }
 
-// The reverse read tells a person what work finishing one ticket lets go. It
-// keeps the ids in order and gives nothing when no link names the ticket.
+// Reverse lookup returns sorted dependents, or none when there are no links.
 func TestDependentsNamesTheTicketsThatWaitOnOne(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -98,8 +91,6 @@ func TestDependentsNamesTheTicketsThatWaitOnOne(t *testing.T) {
 	}
 }
 
-// The same id twice is the state the caller asked for, so it is one row and not
-// a fault.
 func TestAddTicketWithOneIdTwiceMakesOneLink(t *testing.T) {
 	s, id := oneTicket(t)
 	projectID := mustProject(t, s)
@@ -111,8 +102,8 @@ func TestAddTicketWithOneIdTwiceMakesOneLink(t *testing.T) {
 	}
 }
 
-// A link to an id that names no ticket could never be satisfied, and the
-// mistyped id is the likely cause, so the ticket is refused rather than made.
+// Missing prerequisites must reject creation rather than leave permanently
+// blocked work.
 func TestAddTicketRefusesAnIdThatNamesNoTicket(t *testing.T) {
 	s, id := oneTicket(t)
 	projectID := mustProject(t, s)
@@ -130,8 +121,7 @@ func TestAddTicketRefusesAnIdThatNamesNoTicket(t *testing.T) {
 	}
 }
 
-// The rule the ticket asks for: no run starts on a ticket whose link is not
-// satisfied, and a later ticket of the queue that depends on nothing goes first.
+// Skip a blocked queue head to run independent work behind it.
 func TestClaimNextPassesOverATicketWhoseLinkIsNotDone(t *testing.T) {
 	s, _, dependent, free := dependentQueue(t)
 
@@ -145,8 +135,7 @@ func TestClaimNextPassesOverATicketWhoseLinkIsNotDone(t *testing.T) {
 	}
 }
 
-// Done satisfies a link and no earlier status does. Only dg accept gives done,
-// so a run starts on work that a person has looked at.
+// Only accepted work satisfies a dependency.
 func TestClaimNextStillWaitsWhileTheOtherTicketIsOnlyReady(t *testing.T) {
 	s, dependedOn, dependent, free := dependentQueue(t)
 	if err := s.ChangeStatus(dependedOn, Ready); err != nil {
@@ -236,9 +225,8 @@ func TestClaimNextHonorsADependencyFromAnotherProject(t *testing.T) {
 	}
 }
 
-// A cancelled ticket is work that was thrown away, so a link to it is never
-// satisfied and the ticket that depends on it keeps its place in the queue
-// until the person takes the link away.
+// Cancellation does not satisfy a dependency; removing its edge unblocks the
+// dependent.
 func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 	s, dependedOn, _, free := dependentQueue(t)
 	if err := s.ChangeStatus(dependedOn, Cancelled); err != nil {
@@ -255,9 +243,8 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 	}
 }
 
-// The other half of the fault that ClaimableCount was written for: the queue
-// has slots free and every ticket in it waits on work that is not done, so a
-// supervisor started for one of those slots would find ErrNoRoom and stop.
+// Free capacity with all work blocked must not count supervisors that would
+// find ErrNoRoom.
 func TestClaimableCountWithEveryTicketWaitingOnALinkCountsNothing(t *testing.T) {
 	s, _, _, free := dependentQueue(t)
 	if _, err := s.Claim(free, claimBranch(Ticket{ID: free})); err != nil {
@@ -271,8 +258,6 @@ func TestClaimableCountWithEveryTicketWaitingOnALinkCountsNothing(t *testing.T) 
 	}
 }
 
-// A link that is done holds nothing back, and the ticket behind it is counted
-// like any other.
 func TestClaimableCountCountsATicketWhoseLinksAreDone(t *testing.T) {
 	s, dependedOn, _, _ := dependentQueue(t)
 	for _, status := range []TicketStatus{Ready, Done} {
@@ -288,8 +273,8 @@ func TestClaimableCountCountsATicketWhoseLinksAreDone(t *testing.T) {
 	}
 }
 
-// inboxDependsOn returns the DependsOn of one ticket of the inbox, and stops the
-// test when the inbox does not hold it.
+// inboxDependsOn returns a ticket's inbox blockers, failing if the ticket is
+// absent.
 func inboxDependsOn(t *testing.T, s *Store, id int64) []int64 {
 	t.Helper()
 	open, err := s.OpenTickets()
@@ -305,8 +290,6 @@ func inboxDependsOn(t *testing.T, s *Store, id int64) []int64 {
 	return nil
 }
 
-// A ticket of the inbox names each ticket it depends on, so the row can say
-// what holds it back.
 func TestOpenTicketsNameTheLinksOfATicket(t *testing.T) {
 	s, dependedOn, dependent, free := dependentQueue(t)
 
@@ -318,9 +301,8 @@ func TestOpenTicketsNameTheLinksOfATicket(t *testing.T) {
 	}
 }
 
-// A link to a ticket that is done holds nothing back, so the inbox leaves it
-// out and the row of a ticket whose links are all done ends at its title. The
-// link is still there, and dg show gives it.
+// Completed edges disappear from inbox blockers but remain available to dg
+// show.
 func TestOpenTicketsLeaveOutALinkThatIsDone(t *testing.T) {
 	s, dependedOn, dependent, _ := dependentQueue(t)
 	for _, status := range []TicketStatus{Ready, Done} {
@@ -351,8 +333,6 @@ func TestOpenCreatesTheLinksTableAndIndex(t *testing.T) {
 	}
 }
 
-// The flag of the command repeats, so the call takes more than one id, and each
-// one gets a link.
 func TestAddDependenciesLinksEachIdItIsGiven(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -365,8 +345,6 @@ func TestAddDependenciesLinksEachIdItIsGiven(t *testing.T) {
 	}
 }
 
-// A link that is there already is the state the person asked for, so the second
-// command says the same thing as the first and leaves one row.
 func TestAddDependenciesTwiceMakesOneLink(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
@@ -382,8 +360,6 @@ func TestAddDependenciesTwiceMakesOneLink(t *testing.T) {
 	}
 }
 
-// A ticket that depends on itself could never start, and the person meant
-// another id.
 func TestAddDependenciesRefusesATicketThatDependsOnItself(t *testing.T) {
 	s, id := oneTicket(t)
 
@@ -397,8 +373,7 @@ func TestAddDependenciesRefusesATicketThatDependsOnItself(t *testing.T) {
 	}
 }
 
-// No ticket of a ring can ever start, because each one waits for the next, so
-// the link that would close the ring is refused rather than written.
+// Reject cycles before they can leave every member blocked.
 func TestAddDependenciesRefusesARingOfTwo(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.AddDependencies(ids[1], ids[0]); err != nil {
@@ -415,8 +390,7 @@ func TestAddDependenciesRefusesARingOfTwo(t *testing.T) {
 	}
 }
 
-// The walk goes over every link and not only the first, so a ring that three
-// tickets make is refused as a ring of two is.
+// Cycle detection must traverse every edge, including indirect paths.
 func TestAddDependenciesRefusesARingOfThree(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.AddDependencies(ids[1], ids[0]); err != nil {
@@ -436,8 +410,7 @@ func TestAddDependenciesRefusesARingOfThree(t *testing.T) {
 	}
 }
 
-// One call writes its links under one transaction, so a call that has to refuse
-// its second id leaves the first one unwritten too.
+// An invalid second dependency must roll back the first insertion.
 func TestAddDependenciesWritesNoLinkWhenItRefusesOne(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -451,9 +424,7 @@ func TestAddDependenciesWritesNoLinkWhenItRefusesOne(t *testing.T) {
 	}
 }
 
-// A link only holds a ticket back in the queue, so a link on a ticket that has
-// left it changes nothing and the command says so rather than writing a row
-// that means nothing.
+// Dependency changes are restricted to queued tickets.
 func TestAddDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.ChangeStatus(ids[2], Running); err != nil {
@@ -470,7 +441,7 @@ func TestAddDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
 	}
 }
 
-// The way out for a ticket that depends on one that was cancelled.
+// Removing a cancelled prerequisite unblocks the dependent.
 func TestRemoveDependenciesTakesTheLinkAway(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.AddDependencies(ids[2], ids[0], ids[1]); err != nil {
@@ -486,8 +457,7 @@ func TestRemoveDependenciesTakesTheLinkAway(t *testing.T) {
 	}
 }
 
-// A remove that takes nothing away is a person who named the wrong ticket, and
-// a command that said nothing would leave them believing the link is gone.
+// Removing a missing edge must report the mistake.
 func TestRemoveDependenciesRefusesALinkThatIsNotThere(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -498,8 +468,7 @@ func TestRemoveDependenciesRefusesALinkThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A ticket that has left the queue is refused whichever way the link goes, for
-// the reason the add is refused: the link changes nothing now.
+// Removal has the same queued-only restriction as addition.
 func TestRemoveDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
 	s, ids := threeTickets(t)
 	if err := s.AddDependencies(ids[2], ids[0]); err != nil {
@@ -519,7 +488,6 @@ func TestRemoveDependenciesRefusesATicketThatIsNotQueued(t *testing.T) {
 	}
 }
 
-// An id that names no ticket is a mistyped id, and the error names it.
 func TestAddDependenciesRefusesAnIdThatNamesNoTicket(t *testing.T) {
 	s, id := oneTicket(t)
 

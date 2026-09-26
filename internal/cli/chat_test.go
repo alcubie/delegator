@@ -16,16 +16,15 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// started is what dg chat asked to start: the argv and the directory. A test
-// that expects nothing to start compares against the zero value.
+// started records launch arguments and directory. The zero value means no
+// launch.
 type started struct {
 	argv []string
 	dir  string
 }
 
-// useChat puts a recorder in place of the start of dg chat, for one test, and
-// returns the record it writes. The recorder starts program in place of the
-// agent, so no test starts an agent and dg chat still waits for a real status.
+// useChat records the requested launch and substitutes a harmless program so
+// dg chat still waits for a real exit status.
 func useChat(t *testing.T, program string) *started {
 	t.Helper()
 	var record started
@@ -44,9 +43,8 @@ func resumeArgv(session string) []string {
 	return []string{"claude", "--resume", session}
 }
 
-// chattableTicket makes a ticket that dg chat can continue: it has a session,
-// it is not running, and its worktree is on disk. It returns the id of the
-// ticket, the repository and the session.
+// chattableTicket creates a non-running ticket with a saved session and
+// existing worktree, returning ID, repository, and session.
 func chattableTicket(t *testing.T, dataDir string) (int64, string, string) {
 	t.Helper()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
@@ -64,8 +62,8 @@ func chattableTicket(t *testing.T, dataDir string) (int64, string, string) {
 	return ticketID, repo, session
 }
 
-// chattableIn makes a ticket of the project at repo that dg chat can continue,
-// and gives it session as the session of its run. It returns the id.
+// chattableIn creates a resumable ticket in repo with the supplied session
+// ID.
 func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session string) int64 {
 	t.Helper()
 	id := queuedIn(t, s, repo, title)
@@ -111,9 +109,6 @@ func twoChattableProjects(t *testing.T) (dataDir, mine, other, mineSession, othe
 	return dataDir, mine, other, mineSession, otherSession
 }
 
-// The argv is the table's, because delegator knows which program continues a
-// session of an agent and with which arguments, and the person types no line
-// of config.
 func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, session := chattableTicket(t, dataDir)
@@ -232,9 +227,8 @@ func TestChatTakesTheResumeOfTheRegistry(t *testing.T) {
 	}
 }
 
-// An agent with no command that opens a session has nothing dg chat can start,
-// and an argv without the id of the session would open a conversation other
-// than the one the person asked for. The error names the agent.
+// Reject missing resume commands and commands that omit the session ID,
+// naming the agent in the error.
 func TestChatRefusesAnAgentWithNoResume(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
@@ -256,9 +250,7 @@ func TestChatRefusesAnAgentWithNoResume(t *testing.T) {
 	}
 }
 
-// claude keeps the record of a conversation below the directory it ran in, so
-// the directory of the start is the worktree of the ticket and not the
-// directory the person typed in.
+// Launch in the original worktree so the agent can find its session history.
 func TestChatStartsInTheWorktreeOfTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
@@ -273,10 +265,8 @@ func TestChatStartsInTheWorktreeOfTheTicket(t *testing.T) {
 	}
 }
 
-// A ticket in running has an agent on that session already, and two writers on
-// one conversation is the fault this command exists to stop. The message names
-// the process id, because that is what a person needs to see what holds the
-// run.
+// Reject active sessions to avoid concurrent writers; include the supervisor
+// PID for diagnosis.
 func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -297,8 +287,7 @@ func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	}
 }
 
-// A ticket that never ran has no conversation to continue. It is given a
-// worktree, so the only thing wrong with it is the session.
+// Provide a worktree so the missing session is the only invalid condition.
 func TestChatRefusesATicketWithNoSession(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := queuedTicket(t, dataDir)
@@ -316,9 +305,7 @@ func TestChatRefusesATicketWithNoSession(t *testing.T) {
 	}
 }
 
-// claude looks for the conversation below the directory it ran in, so a start
-// with no worktree gives a new conversation under the id of the old one, which
-// is the fault this command exists to stop.
+// Refuse a missing worktree rather than resume in an unrelated directory.
 func TestChatRefusesATicketWithNoWorktree(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
@@ -336,9 +323,6 @@ func TestChatRefusesATicketWithNoWorktree(t *testing.T) {
 	}
 }
 
-// dg is the terminal of the conversation for as long as it runs, so the status
-// of dg is the status of the program it started. cmd/dg exits with the code
-// this error carries.
 func TestChatGivesTheStatusOfTheProgramItStarted(t *testing.T) {
 	dataDir := t.TempDir()
 	ticketID, repo, _ := chattableTicket(t, dataDir)
@@ -355,9 +339,7 @@ func TestChatGivesTheStatusOfTheProgramItStarted(t *testing.T) {
 	}
 }
 
-// The command that continues a session runs in the worktree, with the three
-// streams of the terminal the person typed in, because the conversation is
-// between the person and the agent and dg is only the program that started it.
+// Resume with the original worktree and inherited terminal streams.
 func TestChatCmdTakesTheDirectoryAndTheTerminal(t *testing.T) {
 	argv := []string{"agent", "--resume", "s-1"}
 
@@ -374,10 +356,8 @@ func TestChatCmdTakesTheDirectoryAndTheTerminal(t *testing.T) {
 	}
 }
 
-// The ticket a person has something to say to is nearly always the one they
-// have just read, so dg chat with no id continues the head of READY. The head
-// is the ready ticket that finished first, and it is not the smallest id: the
-// ticket that finished first here is the second one made.
+// Implicit chat follows ready position, not ID; finish the second-created
+// ticket first.
 func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -399,9 +379,7 @@ func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 	}
 }
 
-// The head of READY is the head for one project. A person who says something
-// to the work of this repository must not land in the conversation of another
-// one, whatever the order of the inbox as a whole.
+// Implicit chat must stay within the requested project.
 func TestChatWithNoIDSkipsAnotherProject(t *testing.T) {
 	dataDir, mine, _, mineSession, _ := twoChattableProjects(t)
 	record := useChat(t, "true")
@@ -433,9 +411,7 @@ func TestChatWithNoIDInALinkedWorktreeFindsThePrimaryProject(t *testing.T) {
 	}
 }
 
-// --project names the project, as it does on dg show and dg accept, so a
-// person continues the work of a repository from somewhere else. The path here
-// is relative, which is the form that has a directory to be joined to.
+// Resolve relative --project paths from the command working directory.
 func TestChatWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	dataDir, mine, other, _, otherSession := twoChattableProjects(t)
 	record := useChat(t, "true")
@@ -454,10 +430,8 @@ func TestChatWithNoIDTakesTheProjectOfTheFlag(t *testing.T) {
 	}
 }
 
-// A project with nothing ready has no conversation to continue, and the error
-// names it, because a person who gave --project may be looking at a project
-// that is not the one they meant. Another project's session is not an answer
-// to the question that was asked.
+// Report no ready work in the requested project without opening another
+// project's session.
 func TestChatWithNoIDAndNoReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	mine := testfix.Repo(t, repoBranch)
@@ -480,8 +454,6 @@ func TestChatWithNoIDAndNoReadyTicket(t *testing.T) {
 	}
 }
 
-// A directory outside any repository names no project, so there is no head of
-// READY whose session to continue.
 func TestChatWithNoIDOutsideAProject(t *testing.T) {
 	record := useChat(t, "true")
 

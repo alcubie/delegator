@@ -16,26 +16,21 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// filePerm is the permission of a ticket's prose file. A ticket can hold
-// private data, so only the person who made it can read it.
+// filePerm restricts ticket descriptions to their owner.
 const filePerm = 0o600
 
-// ErrNoTitle shows that a ticket has no title. The inbox shows the title, and
-// the branch of a run takes its name from it, so a ticket with no title is a
-// ticket that a person cannot find again.
+// ErrNoTitle rejects a missing title, which is required for inbox display and
+// branch naming.
 var ErrNoTitle = errors.New("the ticket must have a title")
 
-// errTwoBodies shows that a ticket was given its prose twice. The prose has one
-// source, and dg cannot tell which of the two the person meant.
+// errTwoBodies rejects competing description sources.
 var errTwoBodies = errors.New("dg ticket takes the prose from a body or from --body-file, and got both")
 
-// errBodyAndNoBody shows that a ticket was given prose and told that it has
-// none. The two contradict, and the person wrote one of them by mistake.
+// errBodyAndNoBody rejects combining a description with --no-body.
 var errBodyAndNoBody = errors.New("dg ticket takes a body or --no-body, and got both")
 
-// errNoBody shows that a title arrived on its own and said nothing about the
-// prose. A word that dg reads as a title makes a ticket that nobody meant, so
-// the empty body is a choice the person states.
+// errNoBody requires an explicit description source or --no-body, preventing
+// accidental tickets from a stray argument.
 var errNoBody = errors.New("the ticket has no body: write one, or pass --no-body for a ticket that has none")
 
 // ticketID is the value dg ticket and dg accept write when they name a ticket.
@@ -43,10 +38,9 @@ type ticketID struct {
 	ID int64 `json:"id"`
 }
 
-// ticketCommand makes a ticket and shows its id. With no argument it opens the
-// editor of the person, with one it takes the title, and with two it takes the
-// title and the prose. The flag --body-file takes the prose from a file
-// instead, and --no-body says that the ticket has none.
+// ticketCommand creates a ticket and prints its ID. No arguments open the
+// editor; arguments supply title and description. --body-file reads the
+// description from a file, and --no-body explicitly omits it.
 func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var bodyFile string
@@ -71,8 +65,8 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 			if len(args) == 1 && bodyFile == "" && !noBody {
 				return errNoBody
 			}
-			// The prose is read before the store is open, so a path that
-			// names nothing costs no ticket.
+			// Read the description before creating any ticket, so
+			// an unreadable file leaves no record.
 			var fileBody string
 			if bodyFile != "" {
 				var err error
@@ -143,14 +137,9 @@ func ticketProse(cmd *cobra.Command, path string) (string, error) {
 	return string(data), nil
 }
 
-// ticketProject returns the directory whose project the new ticket belongs to.
-// It is the directory dg runs in, and the flag --project names another one. A
-// path that is not absolute is relative to the directory dg runs in, which is
-// what the person who typed it meant.
-//
-// A directory that is not there is an error here rather than at project.Root,
-// which asks git and would answer that a path nobody can find is not under
-// version control.
+// ticketProject resolves --project relative to the command's working
+// directory, defaulting to that directory. It reports missing paths before
+// Git would turn them into a misleading not-a-repository error.
 func ticketProject(workDir, flag string) (string, error) {
 	if flag == "" {
 		return workDir, nil
@@ -169,13 +158,10 @@ func ticketProject(workDir, flag string) (string, error) {
 	return dir, nil
 }
 
-// Ticket makes a ticket for the project that holds workDir, and puts it at the
-// end of the queue. It returns the id. The body is the prose of the ticket, and
-// it can be empty. The ids of dependsOn name the tickets the new one depends on.
-//
-// The caller gives the store, so that one command has one open: dg ticket
-// writes the ticket and then starts the next run, and both are the work of the
-// one command.
+// Ticket appends a ticket to the queue for the repository containing workDir
+// and returns its ID. body may be empty; dependsOn lists prerequisite
+// tickets. The supplied store is shared with the command's scheduling
+// trigger.
 func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (int64, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -200,8 +186,8 @@ func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (in
 		return 0, err
 	}
 
-	// The person owns the prose after this write. Only dg revise adds to the
-	// file, and no command writes it again from what it holds in memory.
+	// Keep the description in an editable file, separate from ticket
+	// metadata.
 	if err := os.WriteFile(proseFile(s.DataDir(), id), []byte(body), filePerm); err != nil {
 		return 0, err
 	}

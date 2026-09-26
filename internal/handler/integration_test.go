@@ -19,19 +19,17 @@ import (
 	"github.com/creack/pty"
 )
 
-// The words the session is given. The file word is written into the
-// repository and committed, so a question about it is a question about the
-// file. The kept word goes into no file, so an answer that has it came from
-// the session and from nowhere else.
+// The file word is committed to the repository. The kept word appears only in
+// the conversation, so recalling it proves session continuity rather than a
+// fresh file read.
 const (
 	integrationFile = "hello.txt"
 	integrationWord = "marmalade"
 	integrationKept = "peppercorn"
 )
 
-// The three prompts of the test. The first asks for the file and the commit
-// in one turn, so the turn holds a permission for an edit and one for a
-// command, and it plants the word that the terminal asks for later.
+// The first prompt requests a file edit and commit, exercising both tool
+// kinds, and plants the word used by the later terminal recall check.
 const (
 	integrationWork = "Write the file " + integrationFile + " at the root of this repository. " +
 		"Its only content is the word " + integrationWord + ". " +
@@ -42,14 +40,12 @@ const (
 	integrationRecalled = "terminal-recall=" + integrationKept
 )
 
-// integrationTurn is how long one turn of a real agent has. A turn that takes
-// longer than this has gone wrong, and the test says so rather than holding
-// the run to the timeout of the whole package.
+// integrationTurn bounds each real-agent turn separately from the package
+// timeout.
 const integrationTurn = 5 * time.Minute
 
-// agentOnThePath is the registry entry that delegator itself would start. A
-// machine without that command skips the test and says which command it
-// wanted, because an agent nobody has installed is not a failure of the code.
+// agentOnThePath loads the production registry entry and skips when its
+// executable is unavailable.
 func agentOnThePath(t *testing.T, name string) (string, []string, []string) {
 	t.Helper()
 	agent, err := testfix.OpenStore(t, t.TempDir()).Agent(name)
@@ -65,9 +61,8 @@ func agentOnThePath(t *testing.T, name string) (string, []string, []string) {
 	return agent.Name, agent.Argv, agent.Resume
 }
 
-// integrationRepo is a git repository of one commit, with an identity of its
-// own so that the commit the agent makes does not depend on the git config of
-// the person who runs the test.
+// integrationRepo creates a one-commit repository with an explicit identity
+// independent of user Git configuration.
 func integrationRepo(t *testing.T) string {
 	t.Helper()
 	repo := testfix.Repo(t, "main")
@@ -84,9 +79,8 @@ func allowed(events []Event) bool {
 	})
 }
 
-// permissions is the line each permission of the turn leaves: the tool the
-// agent asked for and the answer it was given. A turn holds hundreds of
-// events and a failure is about these, so it shows these and not the turn.
+// permissions extracts tool names and policy decisions for focused failure
+// output.
 func permissions(events []Event) []string {
 	var asked []string
 	for _, e := range events {
@@ -97,8 +91,7 @@ func permissions(events []Event) []string {
 	return asked
 }
 
-// said is what the agent said in the turn, and not what a loaded session
-// replayed of the turns before it.
+// said extracts new assistant text, excluding replayed history.
 func said(events []Event) string {
 	var text strings.Builder
 	for _, e := range events {
@@ -109,11 +102,9 @@ func said(events []Event) string {
 	return text.String()
 }
 
-// writeAndCommit opens a session of the agent in repo and has it write the
-// file and commit it. It checks that the file is on disk and that the commit
-// landed, and gives back the id of the session, which the caller loads once
-// the process is gone, and the events of the turn, which hold whatever the
-// agent asked delegator to answer on the way.
+// writeAndCommit asks the agent to edit and commit, verifies both results,
+// and returns the session ID and events for subsequent load and permission
+// checks.
 func writeAndCommit(t *testing.T, name string, argv []string, repo string) (string, []Event) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
@@ -139,10 +130,8 @@ func writeAndCommit(t *testing.T, name string, argv []string, repo string) (stri
 	return s.ID(), events
 }
 
-// loadAndAsk loads the session the id names and asks it one question. It
-// checks that the agent replayed a history, which is what tells a loaded
-// session from a new one in the same directory, and gives back what the agent
-// said in the turn.
+// loadAndAsk resumes the session, verifies history replay, and returns its
+// answer to a new question.
 func loadAndAsk(t *testing.T, name string, argv []string, repo, id, question string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), integrationTurn)
@@ -162,11 +151,8 @@ func loadAndAsk(t *testing.T, name string, argv []string, repo, id, question str
 	return said(events)
 }
 
-// driveASession is what both agents are asked for: a session that writes a
-// file and commits it, and that same session loaded by its id and asked about
-// the file. It gives back the repository, the id of the session and the
-// events of the turn that did the work, which the two agents answer for
-// differently.
+// driveASession exercises editing, committing, and session reload, returning
+// the repository, session ID, and initial turn events.
 func driveASession(t *testing.T, name, repo string) (string, []Event) {
 	t.Helper()
 	name, argv, _ := agentOnThePath(t, name)
@@ -395,14 +381,10 @@ func resumeAndRecallInPTY(t *testing.T, name, repo, id, confirm string, promptAr
 	}
 }
 
-// TestIntegrationClaudeTakesASessionFromStartToTheTerminal drives
-// claude-agent-acp 0.77.0 with [claude-agent-acp], then Claude Code 2.1.273
-// with the registry's [claude --resume {session}] command. It costs money, so
-// it runs with make integration and not with make check.
-//
-// The terminal step asks for the word that is in the session and in no file,
-// so the answer cannot come from reading the repository. -p makes the command
-// answer once and exit, where a person would get a terminal.
+// TestIntegrationClaudeTakesASessionFromStartToTheTerminal was verified with
+// claude-agent-acp 0.77.0 and Claude Code 2.1.273. It uses the registry
+// resume command with -p to recall a word stored only in the session. This
+// paid test runs under make integration, not make check.
 func TestIntegrationClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 	verifyAgent(t, "claude", func(t *testing.T, events []Event) {
 		if !allowed(events) {
@@ -413,16 +395,13 @@ func TestIntegrationClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 	})
 }
 
-// TestIntegrationCodexTakesASessionFromStartToTheTerminal drives codex-acp
-// 1.11.0 with [codex-acp], then Codex CLI 0.155.0 with the registry's
-// [codex resume {session}] command. Codex resume has no batch form, so its
-// terminal assertion runs the TUI in a pseudo-terminal.
+// TestIntegrationCodexTakesASessionFromStartToTheTerminal was verified with
+// codex-acp 1.11.0 and Codex CLI 0.155.0. Resume runs in a PTY because that
+// terminal command has no batch mode.
 //
-// It does not ask that the policy answered a permission. codex-acp 1.11.0
-// opens a session in the mode it calls "Approve for me", which reviews its
-// own approvals, and on 2026-09-15 it wrote the file and made the commit
-// without asking delegator for anything. What it did ask for goes to the log,
-// so a run says what the policy was given to answer.
+// Permission requests are logged but not required: on 2026-09-15, the
+// adapter's "Approve for me" mode edited and committed without asking
+// delegator for approval.
 func TestIntegrationCodexTakesASessionFromStartToTheTerminal(t *testing.T) {
 	verifyAgent(t, "codex", func(t *testing.T, events []Event) {
 		asked := permissions(events)

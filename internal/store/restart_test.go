@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// failedTicket returns a store holding one ticket whose run failed, with the
-// id of the ticket. It is the state a supervisor and the reconcile both leave
-// behind, and the one state a restart takes.
+// failedTicket returns a store with one failed ticket and its ID.
 func failedTicket(t *testing.T) (*Store, int64) {
 	t.Helper()
 	s, id := oneTicket(t)
@@ -22,8 +20,7 @@ func failedTicket(t *testing.T) (*Store, int64) {
 	return s, id
 }
 
-// A restart gives the failed ticket the slot it had before the failure. The
-// queued tickets keep their places while the restarted ticket is running.
+// Restart claims directly without disturbing queue positions.
 func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 	s, id := failedTicket(t)
 	waiting := queuedTickets(t, s, mustProject(t, s), "the second")
@@ -47,8 +44,7 @@ func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 	}
 }
 
-// The ticket keeps its branch and its session, because the next run continues
-// the conversation of the run that failed, in the worktree that run made.
+// Preserve the branch and session to continue the failed run's work.
 func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 	s, id := failedTicket(t)
 	if err := s.SetSession(id, "s-1"); err != nil {
@@ -71,9 +67,8 @@ func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 	}
 }
 
-// Only a failed ticket restarts. The changes queued -> running and ready ->
-// queued belong to other commands, so a restart refuses them and writes
-// nothing at all.
+// Restart accepts only Failed, even though other state transitions are valid
+// elsewhere.
 func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Running, Ready, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
@@ -102,8 +97,6 @@ func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 	}
 }
 
-// The refusal names the status the ticket is in, so a person who typed the
-// wrong id reads what that ticket is doing.
 func TestRestartNamesTheStatusItRefused(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
@@ -123,8 +116,7 @@ func TestRestartWithNoSuchTicket(t *testing.T) {
 	}
 }
 
-// A run is a first class entity, so restart writes a row of its own. The row
-// of the run that failed stays as that run left it.
+// Restart creates a new run without modifying the failed run's record.
 func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	s, id := failedTicket(t)
 	first := runRows(t, s, id)

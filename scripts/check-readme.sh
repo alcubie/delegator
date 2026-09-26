@@ -1,8 +1,7 @@
 #!/bin/sh
 
-# Check the README's CLI paths against a binary built from the same tree. This
-# is intentionally smaller than the generated reference check: the reference
-# owns flags and full syntax, while the README owns only the first workflow.
+# Check README command paths against a binary from the same tree. Full command
+# syntax and flags are checked by the generated-reference target.
 set -eu
 
 [ "$#" -eq 1 ] || {

@@ -30,8 +30,7 @@ func TestStartStartsAPausedQueue(t *testing.T) {
 	}
 }
 
-// dg start resumes the queue and starts a supervisor. It names no ticket: the
-// supervisor claims the first ticket of the queue for itself.
+// Start launches a supervisor without selecting its ticket.
 func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	s, _, repo := queuedTicket(t, dataDir)
@@ -49,8 +48,7 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The limit is the one the settings row holds. dg start reads it and starts a
-// supervisor for each free slot.
+// Supervisor count must use capacity from stored settings.
 func TestStartStartsARunForEachSlotTheConfigGives(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	s, _, repo := queuedTicket(t, dataDir)

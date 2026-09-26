@@ -13,22 +13,17 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// launch returns the command that starts a supervisor: this program, dg, with
-// "run" and no id. It is a variable so that a test can put a program it can
-// observe in its place; the real one would start the test binary.
+// launch builds a supervisor command without a ticket ID. Tests replace it to
+// observe starts without launching the test binary as dg.
 var launch = dgRun
 
 // restartLaunch returns the supervisor for one failed ticket. It is separate
 // from launch because a restarted ticket bypasses the queue.
 var restartLaunch = dgRestart
 
-// dgRun returns dg run for the executable that is running now. A dg started as
-// ./dg from a build directory is not on the PATH, and the executable that is
-// running is the one dg the person has.
-//
-// It names no ticket. The supervisor claims the ticket it works on, so a
-// trigger that named one would be reading the queue a second time. dgRestart
-// is the exception: it names the failed ticket that it must resume.
+// dgRun uses the current executable, which may not be on PATH. It leaves
+// ticket selection to the supervisor's atomic claim; dgRestart instead names
+// the failed ticket to resume.
 func dgRun() *exec.Cmd {
 	return dgRunArgs()
 }
@@ -57,10 +52,8 @@ func launchFrom(dataDir string, next func() *exec.Cmd) func() *exec.Cmd {
 	return func() *exec.Cmd { return launchIn(dataDir, next()) }
 }
 
-// runCommand returns the command dg run. It is hidden from dg help because
-// delegator starts it and a person does not: a supervisor launches one for the
-// next ticket, and this is the program it launches. Typing it still works,
-// which is how a run is driven by hand.
+// runCommand provides the hidden supervisor entry point. Delegator launches
+// it automatically, but it can also be invoked manually.
 func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var restart bool
 	cmd := &cobra.Command{
@@ -72,9 +65,8 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			if restart && len(args) != 1 {
 				return fmt.Errorf("dg run --restart needs a ticket id")
 			}
-			// With no id the supervisor reads the queue and claims in one
-			// transaction, which is what a trigger starts; with one, a person
-			// named the ticket.
+			// Automatic starts claim the next eligible ticket; an
+			// explicit ID selects one ticket.
 			start := func(s *store.Store) (bool, error) { return run.StartNext(s, *cfg) }
 			if len(args) == 1 {
 				id, err := ticketArg(args[0])
@@ -86,13 +78,11 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg) }
 				}
 			}
-			// A run that could not start does not start the next one. What
-			// stopped it is the database or the repository of the project,
-			// and the next run would meet the same fault. A supervisor that
-			// claimed nothing does not start the next one either: the queue
-			// is as the trigger that started this one found it, and a
-			// supervisor that launched another for the same queue would make
-			// a chain that does not end.
+			// Only a supervisor that claimed and successfully ran
+			// a ticket triggers more work. Retrying after setup
+			// failure can repeat the same fault; chaining
+			// supervisors that claimed nothing can loop
+			// indefinitely.
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				claimed, err := start(s)
 				if err != nil {

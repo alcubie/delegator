@@ -1,8 +1,5 @@
-// The tests of alive on Windows. The name of the file is the build constraint,
-// as it is for alive_windows.go, and make check runs on Linux, so nothing in
-// make check runs these tests. TestOnlyAWindowsBuildTakesTheWindowsAliveTest
-// holds them to Windows, TestTheWindowsAliveTypeChecks compiles them for
-// Windows, and a person on Windows runs them.
+// Windows-only behavior tests. The cross-platform suite checks their build
+// selection and type-checks them; execution requires Windows.
 
 package run
 
@@ -14,9 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ended runs a program that does nothing and returns its process id. The
-// program has ended and nothing holds a handle of it, so Windows has taken the
-// id back, as it takes back the id of a supervisor that stopped.
+// ended returns the PID of a reaped process with no remaining handles.
 func ended(t *testing.T) int {
 	t.Helper()
 	cmd := exec.Command("cmd", "/c", "exit")
@@ -26,17 +21,12 @@ func ended(t *testing.T) int {
 	return cmd.Process.Pid
 }
 
-// The supervisor that a reconcile asks about is a program like this one. A
-// process that has not ended gives the exit code STILL_ACTIVE, and that is the
-// live supervisor the reconcile must leave alone.
 func TestTheWindowsAliveFindsThisProgram(t *testing.T) {
 	if !alive(os.Getpid()) {
 		t.Errorf("the process id %d of this program is not alive", os.Getpid())
 	}
 }
 
-// A process id that no process holds is the supervisor that stopped, and
-// OpenProcess refuses it with ERROR_INVALID_PARAMETER.
 func TestTheWindowsAliveOnAFreeProcessID(t *testing.T) {
 	pid := ended(t)
 	if alive(pid) {
@@ -44,12 +34,8 @@ func TestTheWindowsAliveOnAFreeProcessID(t *testing.T) {
 	}
 }
 
-// OpenProcess opens a process that ended while a handle of it stays open, so
-// the open alone answers nothing and the exit code is the check. The handle
-// this test holds is what puts the process id in that state: the program has
-// ended, and Windows cannot give the id to another program while the handle is
-// open. A test with no handle of its own passes on the refusal of OpenProcess
-// and says nothing about the exit code.
+// Hold a handle after exit so OpenProcess still succeeds. This proves alive
+// checks the exit code rather than treating an openable process as running.
 func TestTheWindowsAliveOnAProcessThatEnded(t *testing.T) {
 	cmd := exec.Command("cmd", "/c", "exit")
 	if err := cmd.Start(); err != nil {

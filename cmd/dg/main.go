@@ -1,5 +1,4 @@
-// Command dg gives the commands of delegator to the person. It takes the
-// directories and runs the command tree, and internal/cli holds each command.
+// Command dg runs delegator's command tree, implemented in internal/cli.
 package main
 
 import (
@@ -12,9 +11,8 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		// dg chat hands the terminal to the agent and waits, so the status of
-		// dg is the status of that program. It wrote to the terminal itself,
-		// so nothing is written here for it.
+		// dg chat inherits the agent's exit status. The agent already
+		// wrote its output to the terminal.
 		var exit cli.ExitError
 		if errors.As(err, &exit) {
 			os.Exit(exit.Code)

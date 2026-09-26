@@ -139,9 +139,7 @@ func TestProjectCacheSurvivesWorktreeRemoval(t *testing.T) {
 	}
 }
 
-// HEAD moves away from main before the call, so the last assertion shows that
-// the worktree starts at the default branch and not at the branch the person
-// happens to be on.
+// Move HEAD off main to prove the worktree uses the default branch.
 func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 	repo := repoOnMain(t)
 	testfix.GitIn(t, repo, "checkout", "-q", "-b", "other")
@@ -168,8 +166,7 @@ func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 	}
 }
 
-// A restart uses the worktree that the earlier run made, so a second call
-// returns the same path and no error.
+// Repeated creation must reuse the existing worktree.
 func TestWorktreeThatIsThereAlready(t *testing.T) {
 	repo := repoOnMain(t)
 	dataDir := t.TempDir()

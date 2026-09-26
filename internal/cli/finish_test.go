@@ -220,9 +220,8 @@ func TestFinishWritesTheTimeTheRunStopped(t *testing.T) {
 	if since := time.Since(ticket.Changed); since < 0 || since > time.Minute {
 		t.Errorf("the ticket changed at %v, and now is %v", ticket.Changed, time.Now())
 	}
-	// The column sorts as text, so the store holds the UTC form and not an
-	// offset. A time read from that form carries UTC, and one read from an
-	// offset would carry a fixed zone.
+	// Stored timestamps must use UTC so textual ordering matches
+	// chronological ordering.
 	if ticket.Changed.Location() != time.UTC {
 		t.Errorf("the ticket changed at %v, want the UTC form", ticket.Changed)
 	}

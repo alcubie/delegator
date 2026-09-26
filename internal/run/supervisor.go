@@ -13,21 +13,13 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Start runs the ticket with the given id: it claims the ticket for this run,
-// creates the worktree and its branch, then runs the agent in the worktree and
-// waits for it to exit. What the agent writes goes to a log below runs/<id>,
-// the session id it reports goes on the ticket, and the time it exits and its
-// exit code go on the row of the run.
+// Start claims the named ticket, creates its worktree and branch, then runs
+// the configured agent. Output goes under runs/<id>; the session ID is saved
+// on the ticket and the exit details on the run.
 //
-// The claim comes first, and it refuses a ticket that is not queued. A ticket
-// in running is one that a different supervisor holds, and this one stops
-// rather than run a second agent on the same worktree.
-//
-// A ticket the run claimed and did not finish is failed before Start returns.
-// dg finish is the only thing that makes a ticket ready, so a run that reached
-// its end with the ticket still in running gave no report, whatever ended it.
-//
-// cfg is the config of the person, which says which agent the run starts.
+// Claiming first prevents another supervisor from using the same worktree.
+// Before returning, any claimed ticket still running is marked failed: only
+// dg finish makes work ready.
 func Start(s *store.Store, id int64, cfg config.Config) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
@@ -55,22 +47,13 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 	return supervise(s, cfg, ticket, runID)
 }
 
-// StartNext claims the first ticket of the queue for this run and works it,
-// the way Start works the ticket a person named. The read of the queue and the
-// claim are one transaction, so two supervisors that a trigger started at the
-// same time take two different tickets, or one takes a ticket and the other
-// finds none.
+// StartNext claims and runs the first eligible queued ticket under cfg
+// limits. Selection and claim are atomic, so concurrent supervisors cannot
+// claim the same ticket.
 //
-// A supervisor with nothing to claim stops and gives no error. The slot that
-// was free when the trigger counted it can be taken by the time this one reads
-// the queue, and that is the ordinary end of the second supervisor.
-//
-// The bool it returns says whether it claimed a ticket. A supervisor that
-// claimed nothing is the wrong one to start the next, because nothing has
-// changed in the queue since the trigger that started it counted the slots, so
-// the caller launches no supervisor for a false.
-//
-// cfg is the config of the person, which the claim counts the slots against.
+// It returns false without error when no work can start, including when
+// another supervisor took the available capacity. Callers should only trigger
+// more work if this supervisor claimed a ticket.
 func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
 	if errors.Is(err, store.ErrNoRoom) {
@@ -82,13 +65,12 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	return true, supervise(s, cfg, ticket, runID)
 }
 
-// noExitCode is the exit code of a run that ended with no process of its own
-// to give one. os/exec gives the same for a process that a signal ended.
+// noExitCode marks a run without a reported exit code, matching os/exec for a
+// process terminated by a signal.
 const noExitCode = -1
 
-// runTimeout is how long a run may take, from the config. It is a variable so
-// that a test can shorten it: the config gives the time in minutes, and no
-// test can wait one.
+// runTimeout converts the configured limit to a duration. Tests replace it to
+// avoid waiting whole minutes.
 var runTimeout = config.Config.Timeout
 
 // stopRun is the process-group stop used when the timer expires. A test runs
@@ -128,19 +110,14 @@ func (t *supervisorTimer) Close() error {
 	return <-t.done
 }
 
-// supervise works the ticket that the caller has claimed: it makes the
-// worktree and runs the agent in it. runID is the run that the claim wrote,
-// and everything this function puts on the row of a run names it, because the
-// last run of a ticket is not always the one this supervisor holds.
-//
-// A worktree that git will not make ends the run before it starts. The ticket
-// is claimed by then, so this marks it failed and ends the run: a ticket left
-// in running would hold the queue with no supervisor working on it.
+// supervise creates the claimed ticket's worktree and runs its agent. Updates
+// use the claimed runID, since a restart may create a newer run. Setup
+// failures close the run and mark the ticket failed so it does not keep
+// occupying capacity.
 func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
-	// The caller has claimed the ticket, so this run holds it, and every way
-	// out of the function below is a way out with no report.
+	// Any return without dg finish must fail the claimed ticket.
 	defer func() { err = errors.Join(err, s.FailUnfinished(runID)) }()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -166,14 +143,9 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	return superviseACP(ctx, s, cfg, id, runID, worktree, cacheDir, log)
 }
 
-// logTime is the layout of a log's name. It is RFC 3339 with the colons
-// replaced, because a colon is not a safe character in a file name on every
-// system, and it still sorts by time.
-//
-// It keeps the milliseconds. A restart can claim a ticket in the same second
-// that its last run ended, and two runs that took the same name would give
-// the second one a file that O_EXCL refuses, which ends the run before the
-// agent starts.
+// logTime uses RFC 3339 with filename-safe separators and millisecond
+// precision. Rapid restarts can occur within one second; distinct names avoid
+// O_EXCL failures when creating their logs.
 const logTime = "2006-01-02T15-04-05.000"
 
 // openLog creates the log for one run below runs/<id>. Each run gets its own
@@ -187,15 +159,9 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 	return os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 }
 
-// prompt returns the first message to the agent for one ticket. It names the
-// two commands the agent uses: dg show gives it the ticket, so the prompt does
-// not repeat the prose, and dg finish ends the run.
-//
-// It also says how to read the repository. An agent that starts a run knows
-// nothing of the code and finds it by cat, and every file it reads that way
-// stays in the context and is sent again with each later call of the run. The
-// rules name the reading to avoid rather than the principle behind it, because
-// an agent that is told to read with care still cats the file.
+// prompt tells the agent to read its ticket with dg show and report its
+// commit with dg finish. It also gives concrete limits on repository reads to
+// keep unnecessary files out of the agent's context.
 func prompt(id int64, dataDir, cacheDir string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.

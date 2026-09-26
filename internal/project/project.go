@@ -1,9 +1,5 @@
-// Package project reads a git repository. It gives the root of the repository,
-// the default branch and the first commit.
-//
-// Delegator accepts a ticket only if the directory is below a repository, so
-// this package is the boundary at git. It starts the git command and reads the
-// output, and no other package of delegator does.
+// Package project provides repository metadata and worktree operations. It
+// centralizes Git subprocess calls for delegator.
 package project
 
 import (
@@ -38,12 +34,9 @@ var ErrBranchNotMerged = errors.New("the ticket branch is not merged into HEAD")
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
 
-// gitEnv are the variables that pin a git command to one repository. Delegator
-// names the repository with -C, so a value that another git left in the
-// environment must not reach the command. A hook of git sets GIT_DIR and
-// GIT_INDEX_FILE to paths that are relative to the root of the repository, and
-// a command of delegator that runs in a different directory then reads a file
-// that is not there.
+// gitEnv lists variables that override repository selection. Strip them
+// before using git -C: hooks can set GIT_DIR and GIT_INDEX_FILE to relative
+// paths that become invalid in another directory.
 var gitEnv = []string{
 	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
 	"GIT_COMMON_DIR",
@@ -54,12 +47,9 @@ var gitEnv = []string{
 	"GIT_WORK_TREE",
 }
 
-// Command returns the command for one git call in root, with each variable of
-// gitEnv taken out of the environment that it gets.
-//
-// It is exported for the fixtures of a test, which build a repository to run
-// delegator against and meet the same environment. No other package of
-// delegator starts git at run time.
+// Command builds a Git command in root with gitEnv variables removed. It is
+// exported so test fixtures use the same environment handling as production
+// calls.
 func Command(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
 	cmd.Env = withoutGitEnv(os.Environ())
@@ -96,11 +86,8 @@ func Root(path string) (string, error) {
 	return filepath.Dir(strings.TrimSuffix(string(gitDir), "\n")), nil
 }
 
-// The text of an exec.ExitError is the exit status alone, so a failure would
-// reach the person as a number and the sentence git wrote would be lost. The
-// error carries the stderr of git, and commandOutput puts it in front of the
-// status. The exec.ExitError stays underneath, because callers match on the
-// type.
+// commandOutput includes Git stderr in errors while preserving exec.ExitError
+// for callers that inspect its type.
 func commandOutput(cmd *exec.Cmd) ([]byte, error) {
 	out, err := cmd.Output()
 	if err != nil {
@@ -115,9 +102,8 @@ func commandOutput(cmd *exec.Cmd) ([]byte, error) {
 	return out, nil
 }
 
-// gitOutput runs one git command in root and returns its output with no final
-// newline. An error means that git said no, and each caller decides what that
-// answer means.
+// gitOutput runs Git in root and trims surrounding whitespace from its
+// output. Callers interpret command failures.
 func gitOutput(root string, args ...string) (string, error) {
 	out, err := commandOutput(Command(root, args...))
 	if err != nil {
@@ -126,29 +112,17 @@ func gitOutput(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// trunkNames are the two names that a repository with no remote is most likely
-// to give its main line of work. They come before the branch of HEAD, because
-// the person can be on a branch of a feature at this moment.
+// trunkNames lists common default branches for repositories without a remote.
+// Prefer these over HEAD, which may point to a feature branch.
 var trunkNames = []string{"main", "master"}
 
-// DefaultBranch returns the branch that each run of a ticket starts from. Section
-// 6.5 gives the reason that the value matters.
-//
-// No one answer from git is correct for each repository, so this asks four
-// questions and takes the first answer:
-//
-//  1. refs/remotes/origin/HEAD. The remote says which branch it gives by
-//     default. This is the best answer, but a repository with no remote, and a
-//     clone that came from a fetch with no head, do not have it.
-//  2. A local branch with the name main.
-//  3. A local branch with the name master.
-//  4. The branch that HEAD points at. This answers for a repository that has
-//     no remote and a different name for its main line, and it also answers
-//     for a new repository that has no commit.
+// DefaultBranch returns the base branch for ticket runs. It tries
+// origin/HEAD, local main, local master, then the branch named by HEAD. The
+// last fallback also works before the first commit.
 func DefaultBranch(root string) (string, error) {
 	if out, err := gitOutput(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		// The short form is origin/develop, and the name of the branch on the
-		// remote is the part that comes after the name of the remote.
+		// Strip the remote name from the short ref, for example
+		// origin/develop.
 		return strings.TrimPrefix(out, "origin/"), nil
 	}
 
@@ -168,13 +142,9 @@ func DefaultBranch(root string) (string, error) {
 	return out, nil
 }
 
-// FirstCommit returns the hash of the commit that has no parent. The hash of a
-// repository does not change when the person moves it, so it is the one value
-// that finds a project again after a move.
-//
-// A copy of a repository has the same first commit as its source, so this value
-// shows that two repositories can be the same. It does not prove that they are
-// the same, and the person makes that decision.
+// FirstCommit returns a root commit hash used to recognize projects after a
+// directory move. Clones share this hash, so a match suggests a project
+// identity but still requires user confirmation.
 func FirstCommit(root string) (string, error) {
 	out, err := gitOutput(root, "rev-list", "--max-parents=0", "HEAD")
 	if err != nil {
@@ -188,16 +158,13 @@ func FirstCommit(root string) (string, error) {
 		return "", err
 	}
 
-	// A merge of two histories that had no relation gives more than one commit
-	// with no parent. rev-list gives the newest commit first, so the last line
-	// is the first commit of the repository.
+	// Unrelated histories can have multiple root commits. Take the last
+	// root in rev-list order.
 	lines := strings.Split(out, "\n")
 	return lines[len(lines)-1], nil
 }
 
-// AddWorktree makes a worktree at path, checked out on a new branch that starts
-// at from. Git makes the branch together with the worktree, so the caller does
-// not make it first.
+// AddWorktree creates a worktree at path and a new branch starting at from.
 func AddWorktree(root, path, branch, from string) error {
 	_, err := gitOutput(root, "worktree", "add", "-b", branch, path, from)
 	return err
@@ -250,15 +217,12 @@ func CommitOnBranch(root, revision, branch string) (string, error) {
 	return "", err
 }
 
-// RequireBranchMerged returns nil when HEAD contains branch, either through an
-// ordinary merge or through one commit whose stable patch is the complete
-// change of branch. The second form recognizes a squash merge without
-// accepting one part of the branch or a commit that bundles other work with
-// it.
+// RequireBranchMerged checks that HEAD contains branch, either by ancestry or
+// by a single commit with an equivalent patch for the entire branch. Partial
+// squashes and squashes containing unrelated changes do not qualify.
 //
-// The caller gives the primary checkout of the project. HEAD is deliberately
-// resolved there rather than in the directory from which a command happened
-// to run.
+// The caller must pass the primary checkout so HEAD refers to the project
+// checkout, not the ticket worktree.
 func RequireBranchMerged(root, branch string) error {
 	ref := "refs/heads/" + branch
 	merged, err := isAncestor(root, ref, "HEAD")
@@ -296,10 +260,8 @@ func isAncestor(root, ancestor, descendant string) (bool, error) {
 	return false, err
 }
 
-// hasEquivalentSquash compares one patch for the complete branch change with
-// one patch for each commit added to HEAD since the histories separated. A
-// match is therefore a squash of all the work, not only a matching commit from
-// a branch that holds additional changes.
+// hasEquivalentSquash compares the full branch diff with each commit added to
+// HEAD since the merge base. A match must cover all branch changes.
 func hasEquivalentSquash(root, branch string) (bool, error) {
 	base, err := gitOutput(root, "merge-base", branch, "HEAD")
 	if err != nil {
@@ -359,10 +321,8 @@ func stablePatchID(root, form string, revisions ...string) (string, error) {
 	return fields[0], nil
 }
 
-// RemoveWorktree removes the worktree at path and the record git keeps of it.
-// Git refuses a worktree holding changes that are not committed, which is why
-// every run must end with a commit. force takes the worktree anyway, and the
-// changes that are not committed go with it.
+// RemoveWorktree removes the worktree and its Git registration. Unless force
+// is true, Git refuses to remove uncommitted changes.
 func RemoveWorktree(root, path string, force bool) error {
 	args := []string{"worktree", "remove"}
 	if force {

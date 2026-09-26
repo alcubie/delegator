@@ -14,9 +14,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// failedTicket makes a data directory holding one ticket whose run stopped
-// with no report, which is the state the supervisor and the reconcile both
-// leave behind. It returns the store, the id of the ticket and the repository.
+// failedTicket creates an unreported failed run, returning the store, ticket
+// ID, and repository.
 func failedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	t.Helper()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -26,9 +25,7 @@ func failedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	return s, ticketID, repo
 }
 
-// cancelIn runs dg cancel on one ticket and stops the test if the command
-// gives an error. The command writes nothing: the person named the ticket, so
-// there is nothing to tell them that they do not know.
+// cancelIn runs dg cancel and checks that it succeeds silently.
 func cancelIn(t *testing.T, dataDir, workDir string, id int64) {
 	t.Helper()
 	out, err := runIn(t, dataDir, workDir, "cancel", fmt.Sprint(id))
@@ -40,8 +37,7 @@ func cancelIn(t *testing.T, dataDir, workDir string, id int64) {
 	}
 }
 
-// A person who queued a ticket by mistake, or who read a run that went wrong,
-// closes it with dg cancel. The three states below hold no run to stop.
+// These states have no live run to stop.
 func TestCancelClosesATicketThatIsNotRunning(t *testing.T) {
 	tests := []struct {
 		state string
@@ -65,8 +61,7 @@ func TestCancelClosesATicketThatIsNotRunning(t *testing.T) {
 	}
 }
 
-// A ticket that leaves the queue leaves the order of the tickets behind it
-// where it was. The person cancelled one ticket and not the order of the rest.
+// Cancellation must preserve the remaining queue order.
 func TestCancelTakesAQueuedTicketOffTheQueue(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
 
@@ -78,9 +73,6 @@ func TestCancelTakesAQueuedTicketOffTheQueue(t *testing.T) {
 	}
 }
 
-// done and cancelled are the end. The state machine refuses the change, so a
-// ticket that is closed does not reopen and a second dg cancel is the same
-// refusal as the first.
 func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
 	for _, state := range []store.TicketStatus{store.Done, store.Cancelled} {
 		t.Run(string(state), func(t *testing.T) {
@@ -101,8 +93,7 @@ func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
 	}
 }
 
-// The stop is a signal to the process group of the supervisor, so it reaches
-// the agent and each program the agent started, and not the supervisor alone.
+// Terminate the whole supervisor group, including its agent.
 func TestCancelStopsTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -116,9 +107,7 @@ func TestCancelStopsTheRun(t *testing.T) {
 	}
 }
 
-// The supervisor that the signal ended writes nothing, so the command writes
-// the end of the run. A run with no end time would look like one that is still
-// going.
+// Cancellation must close the run if the stopped supervisor could not.
 func TestCancelWritesTheEndOfTheRunItStopped(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -136,11 +125,8 @@ func TestCancelWritesTheEndOfTheRunItStopped(t *testing.T) {
 	}
 }
 
-// A run that the reconcile calls dead gets no signal. Its process id can
-// belong to a different program by then, and the run below is past the
-// timeout with a process id that is very much alive. The reconcile of the
-// command has already made the ticket failed, and the cancel writes the state
-// alone.
+// Use an expired run with a live PID to verify reconciliation prevents
+// signalling a potentially reused process.
 func TestCancelSendsNoSignalToARunTheReconcileCallsDead(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -157,10 +143,7 @@ func TestCancelSendsNoSignalToARunTheReconcileCallsDead(t *testing.T) {
 	}
 }
 
-// The supervisor that a cancel stops is the program that would have started
-// the next run when its own ended. The command starts it in the supervisor's
-// place, so a cancel frees the queue rather than holding it until the person
-// types another command.
+// Cancellation must replace the stopped supervisor's scheduling trigger.
 func TestCancelStartsTheNextRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -174,16 +157,12 @@ func TestCancelStartsTheNextRun(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The stop is not something a person types by hand, so dg cancel takes the id
-// of the ticket and nothing else.
 func TestCancelWithNoID(t *testing.T) {
 	if _, err := runIn(t, t.TempDir(), t.TempDir(), "cancel"); err == nil {
 		t.Error("err = nil, want dg cancel to ask for an id")
 	}
 }
 
-// A word that is not a number is not the id of a ticket, and the command says
-// so rather than acting on a ticket the person did not name.
 func TestCancelWithAnIDThatIsNotANumber(t *testing.T) {
 	_, err := runIn(t, t.TempDir(), t.TempDir(), "cancel", "seven")
 	if err == nil || !strings.Contains(err.Error(), "seven") {
@@ -191,9 +170,7 @@ func TestCancelWithAnIDThatIsNotANumber(t *testing.T) {
 	}
 }
 
-// A ticket in running keeps its worktree. The work of a run that a person
-// stopped may be work they want to read, and no removal can be undone;
-// dg accept is what removes a worktree, and only for work that is complete.
+// Preserve cancelled worktrees for inspection and recovery.
 func TestCancelKeepsTheWorktree(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo, _ := runningTicket(t, dataDir)

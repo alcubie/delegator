@@ -14,8 +14,8 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// start opens a session on the stub agent and closes it when the test ends,
-// and gives back the record of what the agent saw and the agent's stderr.
+// start opens a stub session with test cleanup and returns its request record
+// and stderr.
 func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
 	t.Helper()
 	return startPolicy(t, cwd, Policy{}, stubFullOptions, stubTurnPermissions)
@@ -41,9 +41,8 @@ func startConfigured(t *testing.T, cwd string, policy Policy, options, turn stri
 	return s, record, &stderr
 }
 
-// prompt sends one prompt to the stub agent, which asks for its two
-// permissions, and gives back what the agent recorded of the decisions and
-// the events the session kept.
+// prompt sends a turn that requests two permissions, returning recorded
+// decisions and session events.
 func prompt(t *testing.T, policy Policy, options string) ([]string, []Event) {
 	t.Helper()
 	s, record, _ := startPolicy(t, t.TempDir(), policy, options, stubTurnPermissions)
@@ -56,8 +55,7 @@ func prompt(t *testing.T, policy Policy, options string) ([]string, []Event) {
 	return readRecord(t, record).Decisions, drain(t, s, stubPermissions)
 }
 
-// drain takes the events the session kept, and fails rather than waiting for
-// one that is not coming.
+// drain consumes buffered events and fails if an expected event is missing.
 func drain(t *testing.T, s *Session, want int) []Event {
 	t.Helper()
 	var got []Event

@@ -8,16 +8,13 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// defaultEditor is the editor that delegator starts when the person has set no
-// EDITOR. It is the editor that POSIX asks each system to have.
+// defaultEditor is the POSIX editor used when EDITOR is unset.
 const defaultEditor = "vi"
 
-// editor starts the editor of the person on path and waits for it to stop. It
-// is a variable so that a test can put its own editor in place of it.
+// editor opens path and waits. Tests replace it with a controlled editor.
 var editor = startEditor
 
-// editorName returns the editor of the person, or the one that each system has if
-// the person has set none.
+// editorName returns EDITOR or the default editor.
 func editorName() string {
 	if name := os.Getenv("EDITOR"); name != "" {
 		return name
@@ -35,17 +32,15 @@ func startEditor(path string) error {
 	return cmd.Run()
 }
 
-// splitTitle returns the first line of text and each line below it. The title is
-// a column and not the first line of the prose, so the prose does not hold it,
-// and the empty lines between the two go away.
+// splitTitle separates the first line from the description, trimming title
+// whitespace and leading blank lines from the description.
 func splitTitle(text string) (title, body string) {
 	title, body, _ = strings.Cut(text, "\n")
 	return strings.TrimSpace(title), strings.TrimLeft(body, "\n")
 }
 
-// fromEditor puts text in a file of its own, opens the editor of the person on
-// it, and returns what the editor left there. The file goes away after the
-// editor closes, because the ticket and not the file is what delegator keeps.
+// fromEditor edits text in a temporary file and returns its contents. The
+// temporary file is removed afterward.
 func fromEditor(text string) (string, error) {
 	f, err := os.CreateTemp("", "dg-*.md")
 	if err != nil {
@@ -68,9 +63,8 @@ func fromEditor(text string) (string, error) {
 	return string(data), nil
 }
 
-// TicketFromEditor makes a ticket from what the person writes in an editor. The
-// first line is the title, and each line below it is the prose. The ids of
-// dependsOn name the tickets the new one depends on.
+// TicketFromEditor creates a ticket from the editor's first line (title) and
+// remaining text (description), with the supplied dependencies.
 func TicketFromEditor(s *store.Store, workDir string, dependsOn ...int64) (int64, error) {
 	text, err := fromEditor("")
 	if err != nil {

@@ -9,17 +9,15 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// fakeSource returns the tickets that a test asks for, with no database. The
-// query of the store has its own test.
+// fakeSource supplies tickets without a database; store queries have separate
+// tests.
 type fakeSource struct {
 	tickets []store.OpenTicket
 	done    []store.OpenTicket
 	since   time.Time
 	running bool
 	err     error
-	// doneErr is the error of DoneTickets alone. err stops OpenTickets first,
-	// which is the call before it, so the error of DoneTickets needs a field
-	// of its own to reach Get at all.
+	// doneErr reaches the second query; err would fail OpenTickets first.
 	doneErr error
 }
 
@@ -27,8 +25,8 @@ func (f fakeSource) OpenTickets() ([]store.OpenTicket, error) {
 	return f.tickets, f.err
 }
 
-// DoneTickets keeps the time it was asked for, so a test can say that Get
-// passed the one it was given. The window itself is the work of the store.
+// Record the cutoff to verify that Get forwards it unchanged. Store tests
+// cover filtering.
 func (f *fakeSource) DoneTickets(since time.Time) ([]store.OpenTicket, error) {
 	f.since = since
 	if f.doneErr != nil {
@@ -41,8 +39,7 @@ func (f fakeSource) IsQueueRunning() (bool, error) {
 	return f.running, f.err
 }
 
-// get calls Get with a since that reaches back far enough to hold every ticket
-// a test makes, for the tests that are not about the window.
+// get uses a cutoff early enough to include every fixture ticket.
 func get(source *fakeSource) (Inbox, error) {
 	return Get(source, time.Time{})
 }
@@ -92,8 +89,7 @@ func TestGetWithNoTicket(t *testing.T) {
 	}
 }
 
-// A status that no group shows is not a fault of the inbox, and it is not in a
-// group either.
+// Unknown statuses are ignored.
 func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Done},
@@ -114,10 +110,8 @@ func TestGetLeavesOutAStatusThatNoGroupHolds(t *testing.T) {
 	}
 }
 
-// FAILED holds the tickets whose run stopped without a report, in the order of
-// the time of the failure, and the ticket that failed first is at the top, as
-// the ticket accepted first is at the top of DONE. The source gives them in
-// another order, so the inbox and not the query does this work.
+// Shuffle the source order to verify that FAILED sorts by failure time,
+// oldest first.
 func TestGetPutsFailedInTheOrderOfTheTimeOfFailure(t *testing.T) {
 	first := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 	last := time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)
@@ -152,9 +146,7 @@ func TestGetGivesTheErrorOfTheSource(t *testing.T) {
 	}
 }
 
-// READY is in the order of position, which is the order the person set with
-// dg move. The source gives the tickets in another order, so the inbox and not
-// the query does this work.
+// Shuffle the source order to verify that READY follows user-set positions.
 func TestGetPutsReadyInTheOrderOfPosition(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Ready, Position: 2},
@@ -171,8 +163,7 @@ func TestGetPutsReadyInTheOrderOfPosition(t *testing.T) {
 	}
 }
 
-// The time of acceptance no longer orders READY, so a ticket that holds a later
-// one stays where the position puts it.
+// Acceptance time must not override ready positions.
 func TestGetLeavesReadyInPositionOrderWhenAcceptanceDisagrees(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Status: store.Ready, Position: 1,
@@ -206,10 +197,7 @@ func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
 	}
 }
 
-// RUNNING takes the order of the id. Version 1 has one run at a time, so the
-// group holds one ticket and the order shows after a fault that leaves two. The
-// order is a decision here and not the ORDER BY of the query, which a change
-// for another reason would move.
+// RUNNING must sort by ID independently of source query order.
 func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 9, Status: store.Running},
@@ -226,11 +214,8 @@ func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
 	}
 }
 
-// The row of a running ticket shows how long the run has been going, so the
-// inbox carries the time that the run started. The value comes from the
-// source, which reads runs.started_at, and the inbox gives it out as it is:
-// the duration belongs to the moment it is written, and this package writes
-// no text.
+// Pass through the stored run start unchanged; renderers calculate elapsed
+// time.
 func TestGetCarriesTheStartOfTheRun(t *testing.T) {
 	started := time.Date(2026, 8, 28, 9, 30, 0, 0, time.UTC)
 	source := &fakeSource{tickets: []store.OpenTicket{
@@ -249,8 +234,7 @@ func TestGetCarriesTheStartOfTheRun(t *testing.T) {
 	}
 }
 
-// A person who sees tickets in QUEUED and no run must know whether delegator
-// is waiting or stopped, so the inbox carries the state of the queue.
+// Queue state distinguishes paused work from an idle queue.
 func TestGetSaysWhetherTheQueueIsRunning(t *testing.T) {
 	for _, running := range []bool{true, false} {
 		got, err := get(&fakeSource{running: running})
@@ -263,8 +247,6 @@ func TestGetSaysWhetherTheQueueIsRunning(t *testing.T) {
 	}
 }
 
-// DONE holds the tickets that the person accepted lately, so the work of a day
-// is still in the inbox after each one of them closed.
 func TestGetPutsTheAcceptedTicketsInDone(t *testing.T) {
 	source := &fakeSource{
 		tickets: []store.OpenTicket{{ID: 1, Status: store.Queued}},
@@ -286,9 +268,8 @@ func TestGetPutsTheAcceptedTicketsInDone(t *testing.T) {
 	}
 }
 
-// DONE is in the order of the time of acceptance, and the ticket the person
-// accepted last is at the end. The source gives them in another order, so the
-// inbox and not the query does this work.
+// Shuffle the source order to verify that DONE sorts by acceptance, oldest
+// first.
 func TestGetPutsDoneInTheOrderOfAcceptance(t *testing.T) {
 	source := &fakeSource{done: []store.OpenTicket{
 		{ID: 1, Status: store.Done, Accepted: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
@@ -305,9 +286,7 @@ func TestGetPutsDoneInTheOrderOfAcceptance(t *testing.T) {
 	}
 }
 
-// The caller says how far back DONE reaches, and Get asks the source for that
-// time and no other. A window that Get made up from a clock of its own would
-// put a decision of the person in a package that reads no clock.
+// Get must forward the caller's cutoff rather than read its own clock.
 func TestGetAsksTheSourceForTheTimeItWasGiven(t *testing.T) {
 	since := time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)
 	source := &fakeSource{}
@@ -320,8 +299,6 @@ func TestGetAsksTheSourceForTheTimeItWasGiven(t *testing.T) {
 	}
 }
 
-// An error from the tickets of DONE stops Get, as an error from the open
-// tickets does.
 func TestGetGivesTheErrorOfTheDoneTickets(t *testing.T) {
 	want := errors.New("the database is not there")
 
@@ -331,9 +308,8 @@ func TestGetGivesTheErrorOfTheDoneTickets(t *testing.T) {
 	}
 }
 
-// The ticket a person reviews is the head of READY of one project, which is
-// the ready ticket with the smallest position. A ticket of another project is
-// not it, and neither is a ticket that is queued or running.
+// Implicit selection uses the lowest ready position within the requested
+// project.
 func TestFirstReadyTakesTheHeadOfReadyOfTheProject(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Project: "/projects/web-api", Status: store.Ready, Position: 3},
@@ -357,9 +333,7 @@ func TestFirstReadyTakesTheHeadOfReadyOfTheProject(t *testing.T) {
 	}
 }
 
-// A project whose tickets are all queued or running has no head of READY, and
-// the caller says so in its own words rather than taking a ticket of another
-// project.
+// No ready ticket in this project must not select another project's work.
 func TestFirstReadyWithNoReadyTicketOfTheProject(t *testing.T) {
 	source := &fakeSource{tickets: []store.OpenTicket{
 		{ID: 1, Project: "/projects/billing", Status: store.Ready},

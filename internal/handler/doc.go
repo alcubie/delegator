@@ -1,6 +1,4 @@
-// Package handler runs agents for delegator through the Agent Client
-// Protocol. It starts an agent's ACP command, opens or loads a session in a
-// directory, sends a prompt, answers permission requests by a policy, serves
-// file reads and writes, and turns the session updates into one stream of
-// events, whatever the agent.
+// Package handler runs agents through the Agent Client Protocol. It manages
+// agent processes and sessions, serves file and permission requests, and
+// exposes session updates as a shared event stream.
 package handler

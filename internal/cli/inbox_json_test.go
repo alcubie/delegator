@@ -22,9 +22,8 @@ var jsonInboxFields = []string{
 	"id", "title", "status", "project", "created", "accepted", "started",
 }
 
-// eachGroup makes a data directory whose inbox holds one ticket in every
-// group, and returns the store, the repository, and the id of the ticket of
-// each group by the name that the document gives that group.
+// eachGroup creates one ticket per inbox group and returns the store,
+// repository, and IDs keyed by group name.
 func eachGroup(t *testing.T, dataDir string) (*store.Store, string, map[string]int64) {
 	t.Helper()
 	s, queued, repo := queuedTicket(t, dataDir)
@@ -103,9 +102,7 @@ func ticketIDs(tickets []store.OpenTicket) []int64 {
 	return ids
 }
 
-// §9.3 says that a program reads command documents through dg rpc, so that a
-// different interface reads the data and not the text. The desktop GUI reads
-// the inbox through this endpoint at each refresh.
+// RPC supplies structured inbox data for external clients.
 func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, ids := eachGroup(t, dataDir)
@@ -124,8 +121,6 @@ func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 	}
 }
 
-// The queue is running or paused, which is the state that the first line of
-// the text form says.
 func TestRunJSONSaysWhetherTheQueueIsRunning(t *testing.T) {
 	dataDir := t.TempDir()
 	_, _, repo := queuedTicket(t, dataDir)
@@ -141,8 +136,6 @@ func TestRunJSONSaysWhetherTheQueueIsRunning(t *testing.T) {
 	}
 }
 
-// A group that holds no ticket is an empty list and not null, so a reader
-// walks each group the one way.
 func TestRunJSONGivesAnEmptyListForAGroupWithNoTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, _, repo := queuedTicket(t, dataDir)
@@ -156,9 +149,8 @@ func TestRunJSONGivesAnEmptyListForAGroupWithNoTicket(t *testing.T) {
 	}
 }
 
-// Each group comes in the order that inbox.Get gives, so the GUI shows the
-// list that the terminal shows. The queue comes in the order the person last
-// set with dg move, which is not the order of the ids.
+// JSON ordering must match inbox.Get, including user-set positions that
+// differ from ID order.
 func TestRunJSONGivesEachGroupInTheOrderOfTheInbox(t *testing.T) {
 	dataDir := t.TempDir()
 	s, repo, ids := eachGroup(t, dataDir)
@@ -211,10 +203,8 @@ func wantRFC3339(t *testing.T, ticket map[string]any, key string) time.Time {
 	return at
 }
 
-// A row of the inbox holds the fields that the text form shows and the times
-// that a different interface needs. It holds no elapsed string: the GUI counts
-// the time of a run from started itself, and a string made at the moment the
-// document was written would stop as soon as the GUI drew it.
+// Expose timestamps rather than elapsed strings so clients can keep their own
+// clocks updating.
 func TestRunJSONHoldsEachFieldOfATicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, repo, ids := eachGroup(t, dataDir)
@@ -243,7 +233,6 @@ func TestRunJSONHoldsEachFieldOfATicket(t *testing.T) {
 	}
 }
 
-// Each time is RFC 3339, so a reader parses one form.
 func TestRunJSONGivesTheTimesOfATicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, repo, ids := eachGroup(t, dataDir)
@@ -261,8 +250,6 @@ func TestRunJSONGivesTheTimesOfATicket(t *testing.T) {
 		t.Errorf("accepted = %v, want %v", at, ticket.Accepted)
 	}
 
-	// A ticket that runs holds the start of its run, which is the time the GUI
-	// counts the elapsed time from.
 	lastRun, err := s.Run(ids["running"])
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +259,6 @@ func TestRunJSONGivesTheTimesOfATicket(t *testing.T) {
 	}
 }
 
-// A time with no value is null, so a reader tests one thing and not two.
 func TestRunJSONGivesNullForATimeWithNoValue(t *testing.T) {
 	dataDir := t.TempDir()
 	_, _, repo := queuedTicket(t, dataDir)
@@ -284,19 +270,17 @@ func TestRunJSONGivesNullForATimeWithNoValue(t *testing.T) {
 			t.Errorf("%s = %v for a ticket in the queue, want null", key, value)
 		}
 	}
-	// Every ticket arrived, so no ticket has a null there.
 	if got["created"] == nil {
 		t.Error("created = null for a ticket in the queue, want the time it arrived")
 	}
 }
 
-// The project is a full path with no tilde. A reader gives the path to another
-// command, and no command expands a tilde that came from a variable.
+// Keep absolute paths; shells do not expand a tilde obtained from a variable.
 func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	dataDir := t.TempDir()
 	_, _, repo := queuedTicket(t, dataDir)
-	// The repository is below the home of the person, which is what the text
-	// form of dg show writes a tilde for.
+	// Place the repository under home to exercise abbreviation
+	// boundaries.
 	t.Setenv("HOME", filepath.Dir(repo))
 
 	got := one(t, readInboxJSON(t, dataDir, repo), "queued")
@@ -310,11 +294,8 @@ func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	}
 }
 
-// Where a key of the inbox and a key of RPC show result name the same field,
-// the two keys are the same word and carry the same value, so a reader of one
-// document knows the other without a second table. started is the one key of a
-// row that dg show does not give: the inbox counts the run, and one ticket in
-// full does not.
+// Shared fields must match the show result. Started is inbox-specific for
+// clients calculating elapsed time.
 func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, ids := eachGroup(t, dataDir)
@@ -337,9 +318,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	}
 }
 
-// --color has no effect on RPC results. A reader that asks for the colour of the
-// terminal it writes to still gets JSON that parses, and the text form keeps
-// the colour that TestColorFlagDecidesTheColour holds it to.
+// Color flags must not inject terminal escapes into structured results.
 func TestRunJSONTakesNoColour(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, _ := eachGroup(t, dataDir)
@@ -362,9 +341,7 @@ func TestRunJSONTakesNoColour(t *testing.T) {
 	}
 }
 
-// The title is what the person wrote, and the encoder of Go escapes `<`, `>`
-// and `&` for a browser that reads JSON inside a page. Nothing here is a page,
-// and RPC show result makes the same choice for the prose.
+// Keep <, >, and & readable; this JSON is not embedded in HTML.
 func TestRunJSONKeepsTheCharactersOfTheTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	s, _, repo := queuedTicket(t, dataDir)

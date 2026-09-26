@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// fakeT stands for the *testing.T of a test that the fixture fails. A real one
-// would fail the test that examines the failure, and Fatalf on a real one does
-// not return, so the fixture would never reach its own end.
+// fakeT records expected fixture failures without failing or terminating the
+// enclosing test.
 type fakeT struct{ failed bool }
 
 func (f *fakeT) Helper() {}

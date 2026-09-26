@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-# Wrap the body of a commit message at 72 characters.
-#
-# Git indents the body by four spaces in "git log", so 72 + 4 fits an
-# 80-column terminal. The hook rewrites the file git passes in $1, so the
-# writer of the message does not have to count columns and does not have to
-# read the message back to check it.
-#
-# It changes only what is over the limit. A paragraph whose lines all fit is
-# left byte for byte as it was, which keeps the footer one identifier per
-# line and keeps a list that was written short. A paragraph that holds a list
-# marker or an indented line is left alone as well: those line breaks carry
-# meaning that a reflow would lose.
-#
-# The subject is never touched. Truncating it would lose words, so an over-
-# long subject is reported and the commit goes through.
+# Wrap commit bodies at 72 columns, leaving room for git log indentation.
+# Preserve short paragraphs, lists, and indented blocks because their line
+# breaks may be meaningful. Warn about long subjects without changing them or
+# rejecting the commit.
 import re
 import sys
 import textwrap

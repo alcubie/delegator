@@ -1,8 +1,6 @@
-// The text of one ticket for a terminal. dg show gives a person the fields that
-// a run wrote, the four variables that connect the ticket to its work, and the
-// prose that the person wrote. A --*-only flag gives one of those values on a
-// line of its own, for the person who is writing another command line with it,
-// and dg rpc gives every field to a script or to another interface.
+// dg show renders ticket metadata and its description. --*-only flags expose
+// individual values for shell commands; JSON output exposes the full
+// structured result.
 
 package cli
 
@@ -31,10 +29,8 @@ const indent = 2
 // gap is the width of the space between a label and its text.
 const gap = 2
 
-// wrap breaks text into lines of at most width characters. It breaks at a
-// space, and a word longer than the width takes its own line and goes past it,
-// because a path has no space to break at. An empty line of the prose stays,
-// because the person wrote it.
+// wrap breaks text at spaces up to width runes. Unbreakable words such as
+// paths may exceed the width; blank lines are preserved.
 func wrap(text string, width int) []string {
 	var lines []string
 	for _, para := range strings.Split(text, "\n") {
@@ -61,9 +57,7 @@ func wrap(text string, width int) []string {
 	return lines
 }
 
-// ago returns how long before now the time was, in the shortest form that a
-// person reads at a glance. The zero time is no time, and gives the empty
-// string.
+// ago formats a short relative age, returning empty for the zero time.
 func ago(when time.Time, now time.Time) string {
 	if when.IsZero() {
 		return ""
@@ -80,9 +74,8 @@ func ago(when time.Time, now time.Time) string {
 	}
 }
 
-// tilde puts a tilde in place of the home of the person, as a shell writes it.
-// The rest of the path stays: a person gives a path to another command, and a
-// path with a piece missing is one that no command takes.
+// tilde replaces the user's home prefix with ~ without shortening the rest of
+// the path.
 func tilde(path, home string) string {
 	if home == "" {
 		return path
@@ -97,19 +90,14 @@ func tilde(path, home string) string {
 	return "~" + string(filepath.Separator) + rest
 }
 
-// labelWidth holds the widest label, which is `depends on`, so each value
-// starts at one column. Every other label is one word and leaves two columns
-// spare; the row of the links keeps its preposition because it names a relation
-// and the note of the inbox row names it the same way.
+// labelWidth aligns values after the longest label, "depends on".
 const labelWidth = 10
 
 // ruleWidth is the width of the line below the title.
 const ruleWidth = 67
 
-// wrapWidth is the width of the text of flags and of result. It comes from the
-// width of the rule, so the text of a field stops where the rule stops and no
-// line goes past it. The prose takes no wrap, because the person chose its line
-// breaks.
+// wrapWidth aligns wrapped field values with the title rule. Ticket
+// descriptions retain their original line breaks.
 const wrapWidth = ruleWidth - indent - labelWidth - gap
 
 // writeField writes one label and its text, and puts each line below the first
@@ -126,8 +114,8 @@ func writeField(out io.Writer, label, text string) {
 // is enough to name one commit.
 const shortHashLen = 7
 
-// commitText returns the short hash and the subject for the commit row. A hash
-// git cannot find gives the hash alone, because only the repository moved.
+// commitText returns a short hash and commit subject, falling back to the
+// hash when Git cannot resolve it.
 func commitText(root, hash string) string {
 	short, subject, err := project.Commit(root, hash)
 	if err != nil {
@@ -145,11 +133,9 @@ func shortHash(hash string) string {
 	return hash[:shortHashLen]
 }
 
-// shown is one ticket with the values that dg show gathers beside it: the file
-// that holds the prose, the prose itself, the worktree if it is on disk, the
-// ticket that each link of this one names, and the start of the last run. The
-// start is the zero time for a ticket that no supervisor has claimed, and the
-// worktree is the empty string for one whose worktree is not on disk.
+// shown combines a stored ticket with its description file and text, existing
+// worktree path, dependency IDs, and latest run start. Missing worktrees use
+// an empty path; never-run tickets use the zero start time.
 type shown struct {
 	store.Ticket
 	ProseFile string
@@ -164,9 +150,8 @@ type shown struct {
 // writeHeading writes the title and the status, the time below the status, and
 // the rule below them.
 func writeHeading(out io.Writer, s shown, now time.Time) {
-	// Each status names how long ago the ticket entered it, which is the time of
-	// the last change of its state. A running ticket names how long its run has
-	// been going instead, which is the clock the inbox gives on the same run.
+	// Show status age except for running tickets, which show elapsed run
+	// time as in the inbox.
 	var when string
 	switch s.Status {
 	case store.Running:
@@ -179,11 +164,8 @@ func writeHeading(out io.Writer, s shown, now time.Time) {
 	pad := max(1, ruleWidth-len(heading)-len(status))
 	fmt.Fprintf(out, "%s%s%s\n", heading, strings.Repeat(" ", pad), status)
 
-	// The time takes the line below the status and ends where the status ends.
-	// Beside the status it shared the line with the title, and a title of the
-	// length a person writes then pushed the pair past the rule. A ticket with
-	// no time takes no line, because an empty line above the rule reads as a
-	// value that failed to arrive.
+	// Put time below the status to avoid crowding the title. Omit the
+	// line when no timestamp is available.
 	if when != "" {
 		fmt.Fprintf(out, "%*s\n", ruleWidth, when)
 	}
@@ -214,10 +196,8 @@ func writeFields(out io.Writer, s shown) {
 		writeField(out, "agent", s.Agent)
 	}
 
-	// Each link, and not only the ones that still hold the ticket back. The
-	// row of the inbox names the tickets that are not done, because that is
-	// what the queue acts on; here the person is reading the one ticket and
-	// asking what they linked it to.
+	// Show all dependencies here; the inbox shows only unfinished
+	// blockers.
 	if len(s.DependsOn) > 0 {
 		writeField(out, "depends on", ticketNames(s.DependsOn))
 	}
@@ -226,9 +206,8 @@ func writeFields(out io.Writer, s shown) {
 	}
 }
 
-// writeProse writes the prose as the person wrote it. It is markdown, and the
-// person chose each line break: a re-wrap breaks a list, and it makes each long
-// line into one long line and one short one.
+// writeProse preserves Markdown line breaks so lists and paragraphs retain
+// their formatting.
 func writeProse(out io.Writer, s shown) {
 	if prose := strings.TrimRight(s.Prose, "\n"); prose != "" {
 		fmt.Fprintln(out)
@@ -245,10 +224,8 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 	writeProse(out, s)
 }
 
-// ticketJSON is one ticket for a reader that is not a person. Each key is the
-// name that the text form gives the field, and §7 gives the same names to the
-// columns, so a reader of the document knows each key without a second table.
-// A field with no value is null, so a script tests one thing and not two.
+// ticketJSON is the structured show result. Missing values are null so
+// consumers need only one absence check.
 type ticketJSON struct {
 	ID       int64      `json:"id"`
 	Title    string     `json:"title"`
@@ -266,7 +243,7 @@ type ticketJSON struct {
 	shown shown
 }
 
-// nullable gives the value, and nothing for the empty string.
+// nullable maps an empty string to nil.
 func nullable(value string) *string {
 	if value == "" {
 		return nil
@@ -274,8 +251,7 @@ func nullable(value string) *string {
 	return &value
 }
 
-// nullableTime gives the time, and nothing for the zero time, which is the
-// time of a change that the ticket has not had.
+// nullableTime maps the zero time to nil and formats other timestamps.
 func nullableTime(at time.Time) *time.Time {
 	if at.IsZero() {
 		return nil
@@ -316,11 +292,9 @@ const (
 	onlySession  onlyField = "session"
 )
 
-// writeOnly writes the one field a --*-only flag asks for, and nothing else.
-// The value goes out as the person wrote it into the next command line: no
-// label, no wrap and no tilde, because a shell does not expand a tilde that
-// came from a variable. A field with no value writes no line, as the whole
-// ticket leaves out the row of a field that has none.
+// writeOnly prints one raw field without labels, wrapping, or home-directory
+// abbreviation. Shells do not expand ~ from a variable. Missing values
+// produce no line.
 func writeOnly(out io.Writer, s shown, only onlyField) {
 	var value string
 	switch only {
@@ -341,14 +315,9 @@ func writeOnly(out io.Writer, s shown, only onlyField) {
 	fmt.Fprintln(out, value)
 }
 
-// showTicket reads one ticket into the value that dg writes. The fields come
-// from the database, and the prose comes from the file, because the person
-// owns the prose and an editor opens a file and not a row.
-//
-// The caller gives the store, because a command opens one and reconciles once,
-// whatever else it reads from the database. The data directory comes off the
-// store, which is the directory it was opened on, so there is no second value
-// that could name another one.
+// showTicket loads metadata from the supplied store and description text from
+// its data directory. Reusing the caller's store avoids a second open or
+// reconciliation.
 func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	dataDir := s.DataDir()
 
@@ -387,10 +356,9 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	return ticketValue(t), nil
 }
 
-// onlyFlag is one --*-only flag. asks is the field of that flag, and field is
-// the one field dg show writes, which the five flags share. pflag calls Set in
-// the order that the person typed the flags, so the first of them takes the
-// field and the rest find it taken.
+// onlyFlag implements mutually exclusive --*-only flags. All flags share
+// field; pflag calls Set in command-line order, so the first selection claims
+// it.
 type onlyFlag struct {
 	field *onlyField
 	asks  onlyField
@@ -425,8 +393,8 @@ var onlyFlags = []struct {
 	{onlySession, "the session of the last run"},
 }
 
-// showCommand returns the command dg show. With no id it shows the head of
-// READY, because that is the ticket the person is nearly always reading.
+// showCommand displays an explicit ticket or the project's first ready
+// ticket.
 func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var only onlyField
 	var projectDir string

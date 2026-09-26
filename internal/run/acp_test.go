@@ -23,8 +23,8 @@ func acpConfig(t *testing.T, dataDir string, lines ...string) config.Config {
 	return config.Config{Runs: 2, TimeoutMinutes: 60, DoneHours: 24, DefaultAgent: "fake"}
 }
 
-// shortTimeout puts a limit on a run that a test can wait for, and gives the
-// config file's limit back at the end of the test.
+// shortTimeout installs a test-sized run limit and restores the configured
+// behavior at cleanup.
 func shortTimeout(t *testing.T, limit time.Duration) {
 	t.Helper()
 	was := runTimeout
@@ -32,9 +32,9 @@ func shortTimeout(t *testing.T, limit time.Duration) {
 	runTimeout = func(config.Config) time.Duration { return limit }
 }
 
-// recordStops replaces the process-group stop with one a test can observe.
-// Start runs in the process of the test, which is not a detached supervisor
-// and must not signal the process group of the test runner.
+// recordStops observes termination without signalling the test runner's
+// process group, since Start runs in this process rather than a detached
+// supervisor.
 func recordStops(t *testing.T) <-chan int {
 	t.Helper()
 	stopped := make(chan int, 1)
@@ -47,8 +47,8 @@ func recordStops(t *testing.T) <-chan int {
 	return stopped
 }
 
-// eventsOf is the events in the log of a run. The agent's own stderr shares
-// the log and is not an event, so a line that does not read as one is skipped.
+// eventsOf reads logged events, skipping agent stderr lines that are not JSON
+// events.
 func eventsOf(t *testing.T, dataDir string, id int64) []handler.Event {
 	t.Helper()
 	var got []handler.Event
@@ -80,8 +80,7 @@ func TestSessionOptionsGiveOnlyTheProjectCacheToTheAgent(t *testing.T) {
 	}
 }
 
-// A turn that the agent ran to its end is a run that succeeded: exit code 0,
-// no error, and every event of the turn in the log, one to the line.
+// A normal turn must record exit code zero and its event stream.
 func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "text "+acpSaid, "stop end_turn")
@@ -224,8 +223,7 @@ func TestTheACPRunnerUsesTheDefaultAgentFromItsSnapshot(t *testing.T) {
 	}
 }
 
-// The agent gave the session its own id, and the supervisor took it from the
-// session rather than from anything the agent printed.
+// Use the ACP session ID rather than parsing agent output.
 func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "stop end_turn")
@@ -239,11 +237,8 @@ func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	}
 }
 
-// The id is on the ticket before the turn ends, so a run that the timeout or a
-// restart stops part way has left the id a person opens it with. The agent
-// writes the marker in the middle of the turn and then waits, so a session
-// read once the marker is there is one the supervisor recorded while the turn
-// was still going.
+// The mid-turn marker proves the session ID was saved before completion,
+// allowing interrupted runs to resume.
 func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	marker := filepath.Join(t.TempDir(), "started")
@@ -284,9 +279,7 @@ func TestTheACPRunnerStartsTheDefaultRegistryAgent(t *testing.T) {
 	}
 }
 
-// A reason that is not end_turn is a turn that something stopped, and the run
-// failed. The reason is in the log and in the error, and the exit code is the
-// one of a run with no process of its own to give one.
+// Non-end_turn reasons must appear in both log and error, with noExitCode.
 func TestTheACPRunnerFailsARunTheAgentStoppedForAnotherReason(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "text "+acpSaid, "stop refusal")
@@ -318,8 +311,7 @@ func TestTheACPRunnerFailsARunTheAgentStoppedForAnotherReason(t *testing.T) {
 	}
 }
 
-// The timeout goes down the context, so a turn that runs past it is cancelled
-// and the run fails. The agent is left waiting and the reason is cancelled.
+// Timeout must cancel the waiting ACP turn and fail the run.
 func TestTheACPRunnerStopsATurnThatRanPastTheTimeout(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "text "+acpSaid, "wait 1m", "stop end_turn")
@@ -408,8 +400,6 @@ func TestTheACPRunnerTimeoutKeepsATicketThatFinishedFirstReady(t *testing.T) {
 	}
 }
 
-// A timeout of 0 in the config is no limit, and the run takes as long as the
-// agent does.
 func TestTheACPRunnerRunsWithNoLimitWhenTheTimeoutIsZero(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "stop end_turn")

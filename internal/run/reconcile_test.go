@@ -10,22 +10,18 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// liveRun returns a run that a reconcile must leave alone: this program holds
-// its process id, and it started after the last boot of the computer.
+// liveRun uses this process and a post-boot start time so reconciliation must
+// preserve it.
 func liveRun() store.Run {
 	return store.Run{PID: os.Getpid(), StartedAt: time.Now()}
 }
 
-// bootBefore gives a boot time before the start of a run, which is the boot
-// this run belongs to.
+// bootBefore returns a boot time preceding the run.
 func bootBefore(r store.Run) time.Time {
 	return r.StartedAt.Add(-time.Hour)
 }
 
-// The boot time is the one answer that a restart of the computer cannot fool.
-// Each process id is free after a restart, and the reconcile that asks is
-// itself a dg program, so a dg that got the old number would see a live
-// supervisor and leave the ticket in running for ever.
+// A live reused PID must not preserve a run from before this boot.
 func TestRunningOnARunFromBeforeTheBoot(t *testing.T) {
 	r := liveRun()
 	boot := r.StartedAt.Add(time.Second)
@@ -35,8 +31,6 @@ func TestRunningOnARunFromBeforeTheBoot(t *testing.T) {
 	}
 }
 
-// Signal 0 asks the operating system whether a process id has a program. No
-// program holds the id here, so the supervisor is gone.
 func TestRunningOnARunWhoseProcessIsNotThere(t *testing.T) {
 	r := liveRun()
 	r.PID = testfix.FreePID(t)
@@ -46,8 +40,7 @@ func TestRunningOnARunWhoseProcessIsNotThere(t *testing.T) {
 	}
 }
 
-// The timeout is the backstop of section 6.3: whatever the process id says, a
-// run that has taken longer than the person allows is over.
+// Timeout ends stale runs even if their PIDs are still alive.
 func TestRunningOnARunThatIsPastTheTimeout(t *testing.T) {
 	r := liveRun()
 	now := r.StartedAt.Add(90 * time.Minute)
@@ -57,8 +50,6 @@ func TestRunningOnARunThatIsPastTheTimeout(t *testing.T) {
 	}
 }
 
-// A supervisor that is there, on a run of this boot that is inside the
-// timeout, holds its ticket. The command that asked leaves it alone.
 func TestRunningOnARunThatIsGoing(t *testing.T) {
 	r := liveRun()
 
@@ -67,9 +58,7 @@ func TestRunningOnARunThatIsGoing(t *testing.T) {
 	}
 }
 
-// A timeout of nothing is no timeout, and not a timeout that every run is
-// past. The person who writes 0 in the config asks for no limit, and a run
-// that is marked failed the moment it starts would be the other reading.
+// Zero disables the time limit rather than expiring every run.
 func TestRunningWithNoTimeout(t *testing.T) {
 	r := liveRun()
 	now := r.StartedAt.Add(100 * time.Hour)
@@ -79,10 +68,7 @@ func TestRunningWithNoTimeout(t *testing.T) {
 	}
 }
 
-// A run of the store before the table runs held its process id, and a row that
-// holds none reads as 0. Signal 0 to the id 0 reaches every program of the
-// group of the caller, so the answer is that nothing is there, and it must be
-// given without asking.
+// Reject absent or invalid PIDs before signal 0 can probe the caller's group.
 func TestAliveOnNoProcessID(t *testing.T) {
 	for _, pid := range []int{0, -1} {
 		if alive(pid) {
@@ -91,9 +77,7 @@ func TestAliveOnNoProcessID(t *testing.T) {
 	}
 }
 
-// The boot time is a time in the past, and every run of the store began after
-// it. A zero time would make each run look older than the boot and fail the
-// whole queue.
+// Boot time must be a nonzero timestamp in the past.
 func TestBootTime(t *testing.T) {
 	boot, err := bootTime()
 	if err != nil {
@@ -107,11 +91,8 @@ func TestBootTime(t *testing.T) {
 	}
 }
 
-// The ticket of a run that is over becomes failed, and the run gets the end
-// time that its supervisor never wrote. The timeout is the rule this test
-// gives, because the process id of the claim is this test, which is alive. The
-// config counts the timeout in minutes, so the run is aged past the one minute
-// it allows rather than given a timeout no person could write.
+// Age the run past a real one-minute setting. Its PID belongs to this test,
+// so timeout is the only reason to fail it.
 func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	dataDir, id := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)
@@ -137,8 +118,6 @@ func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	}
 }
 
-// The supervisor of this claim is the test that is running, so the reconcile
-// of a command that runs beside a supervisor leaves the ticket where it is.
 func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 	dataDir, id := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)
@@ -156,10 +135,8 @@ func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 	}
 }
 
-// A ticket in running holds every ticket below it, so the reconcile that
-// frees one must start the next. After a restart of the computer no
-// supervisor is alive, and the command of the person that finds that out is
-// what makes the queue go again.
+// Recovering a stale run must trigger newly eligible work, including after a
+// machine restart.
 func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	dataDir, first := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
@@ -177,10 +154,7 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// A reconcile that found nothing to correct starts nothing. The queue that a
-// supervisor holds is going already, and each supervisor starts the next
-// ticket as it ends, so a command that adds a start of its own would put two
-// runs on one queue that takes one.
+// Do not trigger extra supervisors when reconciliation changes nothing.
 func TestReconcileThatMarksNothingStartsNothing(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)

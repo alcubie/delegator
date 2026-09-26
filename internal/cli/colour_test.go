@@ -9,10 +9,8 @@ import (
 	"github.com/alcubie/delegator/internal/inbox"
 )
 
-// The flag decides the colour, whatever the output is. always writes the
-// codes into a pipe, which is what `watch -c` needs; never keeps them off a
-// terminal; auto, the default, colours a terminal and nothing else. The flag
-// sits on the root, so a subcommand takes it too.
+// Explicit color modes override output detection, including pipes used by
+// watch -c. Root flags must also work on subcommands.
 func TestColorFlagDecidesTheColour(t *testing.T) {
 	dataDir := t.TempDir()
 	box := inbox.Inbox{QueueRunning: true}
@@ -50,9 +48,7 @@ func TestColorFlagDecidesTheColour(t *testing.T) {
 	}
 }
 
-// Only the word is coloured. The label stays plain so the eye lands on the
-// thing that changes, and the reset follows the word so nothing after it is
-// coloured by accident.
+// Color only the status word and reset immediately after it.
 func TestColourWrapsOnlyTheWord(t *testing.T) {
 	if got, want := colour(true, green, statusRunning), "Status: "+green+"Running"+plain; got != want {
 		t.Errorf("coloured = %q, want %q", got, want)
@@ -62,9 +58,8 @@ func TestColourWrapsOnlyTheWord(t *testing.T) {
 	}
 }
 
-// The check must say no for a buffer and for an ordinary file, and yes for a
-// terminal. A pseudo-terminal stands in for the terminal, and the test is
-// skipped where the system has none to give.
+// Use a PTY to distinguish terminals from buffers and files; skip if
+// unavailable.
 func TestIsTerminal(t *testing.T) {
 	if isTerminal(&bytes.Buffer{}) {
 		t.Error("a buffer is a terminal")
@@ -88,8 +83,6 @@ func TestIsTerminal(t *testing.T) {
 	}
 }
 
-// A value that is none of the three is refused with the value and the three
-// in the error, so a person who wrote --color=yes sees what to write instead.
 func TestColorFlagRefusesAnotherValue(t *testing.T) {
 	_, err := runIn(t, t.TempDir(), t.TempDir(), "--color=sometimes")
 	if err == nil {
@@ -102,9 +95,8 @@ func TestColorFlagRefusesAnotherValue(t *testing.T) {
 	}
 }
 
-// NO_COLOR, with any value, turns the colour off when the flag is auto, and
-// CLICOLOR_FORCE turns it on when the output is not a terminal. The flag wins
-// over both, so a person can override what a shell profile set.
+// Explicit flags override environment preferences; auto honors NO_COLOR
+// before CLICOLOR_FORCE.
 func TestColourEnvironmentDecidesAuto(t *testing.T) {
 	box := inbox.Inbox{QueueRunning: true}
 	coloured := colour(true, green, statusRunning)
@@ -133,8 +125,6 @@ func TestColourEnvironmentDecidesAuto(t *testing.T) {
 	}
 }
 
-// The help describes the flag and names its three values, so a person who
-// runs dg --help sees what to write for watch -c.
 func TestHelpDescribesColor(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), t.TempDir(), "--help")
 	if err != nil {

@@ -1,7 +1,5 @@
-// The migration of the database of delegator. Each step is one element of
-// migrations, and PRAGMA user_version holds the count of steps that the
-// database has. A new version of delegator adds a step at the end of the list
-// and never changes a step that a person has.
+// Database migrations are append-only. PRAGMA user_version records how many
+// steps have been applied.
 
 package store
 
@@ -11,9 +9,7 @@ import (
 	"fmt"
 )
 
-// ErrNewerDatabase shows that a later version of delegator made the database.
-// The person must install that version again, because this one does not know
-// each step that made the database what it is.
+// ErrNewerDatabase means this database requires a newer version of delegator.
 var ErrNewerDatabase = errors.New("the database comes from a later version of delegator")
 
 // migrations holds one step for each version of the database, starting at 1.
@@ -22,7 +18,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 var migrations = []string{initialSchema}
 
 // initialSchema creates the complete database and seeds the built-in agents
-// and instance settings. Ticket ids are unique across projects.
+// and instance settings. Ticket IDs are unique across projects.
 const initialSchema = `
 CREATE TABLE projects (
   id             INTEGER PRIMARY KEY,
@@ -128,17 +124,15 @@ CREATE TABLE run_usage (
 ) STRICT;
 `
 
-// migrate applies each step above the number in PRAGMA user_version, and then
-// writes the new number. A database that is current gets no statement.
+// migrate applies pending steps and updates PRAGMA user_version after each
+// one. A current database needs no migrations.
 func migrate(db *sql.DB) error {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
 
-	// A number above the last step means that a later version of delegator made
-	// this database. This version does not know what that step did, so it stops
-	// and writes nothing.
+	// Refuse schemas newer than this binary understands.
 	if version > len(migrations) {
 		return fmt.Errorf("%w: the database is version %d, and this delegator knows version %d",
 			ErrNewerDatabase, version, len(migrations))
@@ -152,8 +146,8 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// applyStep applies one step and its new number below one transaction. A step
-// that gives an error part way therefore leaves the database as it was.
+// applyStep commits a migration and its version number atomically, rolling
+// back both on failure.
 func applyStep(db *sql.DB, i int) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -164,9 +158,8 @@ func applyStep(db *sql.DB, i int) error {
 	if _, err := tx.Exec(migrations[i]); err != nil {
 		return err
 	}
-	// PRAGMA takes no parameter, so the number goes in the text of the
-	// statement. The number is the position in a list of this package, and no
-	// text of a person reaches here.
+	// PRAGMA does not accept parameters. The interpolated version comes
+	// from our migration list, not user input.
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
 		return err
 	}

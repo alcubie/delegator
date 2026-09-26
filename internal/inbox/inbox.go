@@ -1,15 +1,6 @@
-// Package inbox is the one list that the person examines. It answers which
-// ticket is in which group, and in what order, and it writes no text.
-//
-// The rule that READY and QUEUED come in the order of position, and DONE in
-// the order of acceptance, lives here, and in one place only. A terminal is not
-// the one interface that shows this list: internal/cli writes the text for a
-// terminal, a TUI reads the same structure, and dg --json writes it itself. An
-// order that lived in one of those would have to be written again in each other
-// one, and the three would come apart.
-//
-// Nothing here knows that a terminal exists. It makes no string that a person
-// reads, and it takes no width of a column.
+// Package inbox groups and sorts tickets for display. It defines the shared
+// ordering for terminal and JSON output without formatting text or reading
+// the clock.
 package inbox
 
 import (
@@ -20,18 +11,16 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// Source returns the tickets that the inbox holds. The store has this method,
-// and a test has its own.
+// Source provides tickets and queue state to the inbox.
 type Source interface {
 	OpenTickets() ([]store.OpenTicket, error)
 	DoneTickets(since time.Time) ([]store.OpenTicket, error)
 	IsQueueRunning() (bool, error)
 }
 
-// Inbox holds one group for each state that the person acts on. DONE holds the
-// tickets that the person accepted lately, READY waits for the person, RUNNING
-// has the one active run, FAILED holds the runs that stopped without a report,
-// and QUEUED waits for a run.
+// Inbox groups tickets by status: recently accepted work in Done, work
+// awaiting review in Ready, active work in Running, unsuccessful runs in
+// Failed, and pending work in Queued.
 type Inbox struct {
 	Done    []store.OpenTicket
 	Ready   []store.OpenTicket
@@ -39,15 +28,14 @@ type Inbox struct {
 	Failed  []store.OpenTicket
 	Queued  []store.OpenTicket
 
-	// QueueRunning says whether the queue will start work. It is false after
-	// dg pause, so a person who sees tickets waiting and no run knows why. The
-	// name is not Running because Running is the group of tickets above.
+	// QueueRunning reports whether the queue can start new work. It is
+	// false after dg pause.
 	QueueRunning bool
 }
 
-// Get returns the inbox. since is the earliest acceptance that DONE shows: a
-// ticket the person accepted before it has left the inbox. The caller gives
-// the time rather than a window, because this package reads no clock.
+// Get returns the grouped, sorted inbox. Done includes tickets accepted at or
+// after since. The caller supplies the cutoff so this package need not read
+// the clock.
 func Get(source Source, since time.Time) (Inbox, error) {
 	tickets, err := source.OpenTickets()
 	if err != nil {
@@ -87,12 +75,9 @@ func Get(source Source, since time.Time) (Inbox, error) {
 	return box, nil
 }
 
-// byAcceptance orders the tickets by acceptance in ascending order. A ticket
-// that the person accepts therefore goes at the end, which keeps the order
-// stable as tickets are accepted, and the one accepted last is at the end of
-// DONE.
-// The time holds one second and no part of a second, so two tickets can
-// hold the same one, and the id then keeps the order stable.
+// byAcceptance sorts oldest acceptances first, placing newly accepted tickets
+// at the end of DONE. IDs break ties because timestamps have one-second
+// resolution.
 func byAcceptance(a, b store.OpenTicket) int {
 	if by := a.Accepted.Compare(b.Accepted); by != 0 {
 		return by
@@ -100,21 +85,15 @@ func byAcceptance(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// byPosition orders the tickets by position in ascending order. A ticket that
-// enters a group goes at the end of it, and dg move takes it from there, so
-// the order is the one the person last set.
-// This assumes the position of each ticket is unique which is enforced by the
-// database for the tickets of one group.
+// byPosition sorts tickets in the order set by dg move. New entries go last;
+// the database enforces unique positions within each group.
 func byPosition(a, b store.OpenTicket) int {
 	return cmp.Compare(a.Position, b.Position)
 }
 
-// byChange orders the tickets by the time of their last change of state in
-// ascending order. The ticket that failed first therefore goes at the top of
-// FAILED, and the one that failed last is at the end, so the failure that has
-// waited longest is the one the person sees first.
-// The time holds one second and no part of a second, so two tickets can
-// hold the same one, and the id then keeps the order stable.
+// byChange sorts oldest state changes first, showing the longest-waiting
+// failures first. IDs break ties because timestamps have one-second
+// resolution.
 func byChange(a, b store.OpenTicket) int {
 	if by := a.Changed.Compare(b.Changed); by != 0 {
 		return by
@@ -122,24 +101,15 @@ func byChange(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// byID orders the tickets by id, and the smallest id is first.
-//
-// Version 1 runs one ticket at a time, so RUNNING holds one ticket and this
-// order shows after a fault that leaves two. It is here, and not the ORDER BY
-// of the query, because a change to that query for another reason would move
-// RUNNING and no test would say so.
+// byID sorts running tickets by ID, independently of the database query
+// order.
 func byID(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// FirstReady returns the ticket at the head of READY for the project at path,
-// which is the ticket a person reviews next. found is false when that project
-// has no ready ticket. A command that takes a ticket with no id calls it.
-//
-// Get has already put READY in its order, so the first ticket of the project is
-// the head of it. Nothing here reads a column or orders a ticket: the head of
-// READY is the ticket at the top of READY that the person is looking at, and a
-// second walk of the tickets could disagree with the list the person can see.
+// FirstReady returns the first ready ticket for the project at path, or
+// found=false if there is none. Commands without an explicit ticket ID use
+// this to select the same ticket shown first in the inbox.
 func (b Inbox) FirstReady(path string) (store.OpenTicket, bool) {
 	for _, t := range b.Ready {
 		if t.Project == path {

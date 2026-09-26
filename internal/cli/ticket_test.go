@@ -16,9 +16,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// projectPath returns the path that a ticket made in dir writes to its project.
-// git gives it, and a test that built the path itself would pass on a machine
-// whose temporary directory is a symbolic link and fail on one where it is not.
+// projectPath reads the canonical Git root so tests work when temporary
+// directories contain symlinks.
 func projectPath(t *testing.T, dir string) string {
 	t.Helper()
 	root, err := project.Root(dir)
@@ -97,8 +96,7 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 		t.Errorf("the command wrote %q, want %q", out, "1\n")
 	}
 
-	// The title comes from the editor, and not from an argument that is not
-	// there, so the title says that the editor gave it.
+	// Use a distinctive title to prove it came from the editor.
 	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
 	if err != nil {
 		t.Fatal(err)
@@ -108,8 +106,6 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	}
 }
 
-// The flag --project names the repository the ticket is for, so a person or an
-// agent in another directory can file a ticket without leaving it.
 func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
@@ -132,8 +128,6 @@ func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
 	}
 }
 
-// A path that is not absolute starts at the directory dg runs in, which is what
-// a person who typed it at a shell meant.
 func TestRunTicketWithARelativeProject(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
@@ -214,8 +208,6 @@ func TestRunTicketWithThePrimaryProjectFromALinkedWorktree(t *testing.T) {
 	}
 }
 
-// A --project that names nothing costs no ticket, and the error is the path and
-// not a sentence about git.
 func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	missing := filepath.Join(t.TempDir(), "nowhere")
@@ -235,7 +227,6 @@ func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A --project that names a file is not a project either.
 func TestRunTicketWithAProjectThatIsAFile(t *testing.T) {
 	dataDir := t.TempDir()
 	file := filepath.Join(t.TempDir(), "ticket.md")
@@ -280,8 +271,7 @@ func TestTicketWritesTheRowTheProseAndTheQueue(t *testing.T) {
 	}
 }
 
-// Ticket finds the project before it writes a row, so a directory that is not a
-// repository costs no id.
+// Reject non-repositories before allocating a ticket ID.
 func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -299,8 +289,7 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	}
 }
 
-// The branch of the project is the start of the branch of each run, so the
-// first ticket of a project settles it.
+// The first ticket registers the project's default branch.
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -317,8 +306,6 @@ func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	}
 }
 
-// A second ticket in the same repository uses the project that the first one
-// made, because the path of a project is unique.
 func TestTicketUsesTheProjectOfAnEarlierTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -361,8 +348,6 @@ func TestTicketWithNoBodyLeavesTheProseEmpty(t *testing.T) {
 	}
 }
 
-// A ticket can hold private data, so only the person who made it can read the
-// prose.
 func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -383,8 +368,7 @@ func TestTicketWritesTheProseForItsPersonOnly(t *testing.T) {
 	}
 }
 
-// The title comes from an argument here, and a ticket with no title is the same
-// error as one that comes from the editor.
+// Editor and argument input must use the same empty-title validation.
 func TestTicketWithNoTitle(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -402,9 +386,7 @@ func TestTicketWithNoTitle(t *testing.T) {
 	}
 }
 
-// A person adds a ticket and walks away, so dg ticket is the command that
-// starts the queue moving. It starts a supervisor and names no ticket: the
-// supervisor claims the first ticket of the queue for itself.
+// Ticket creation triggers scheduling; the supervisor selects its own ticket.
 func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	repo := testfix.Repo(t, repoBranch)
@@ -418,7 +400,6 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	testfix.WaitForStarts(t, marker, 1)
 }
 
-// The flag repeats, which is the form the help text gives.
 func TestRunTicketAfterTwoTickets(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -435,8 +416,7 @@ func TestRunTicketAfterTwoTickets(t *testing.T) {
 	}
 }
 
-// cobra's slice flag also takes the ids in one comma list, and a person who
-// writes that means the same thing as a person who repeats the flag.
+// Accept comma-separated dependencies as well as repeated flags.
 func TestRunTicketAfterACommaList(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -453,7 +433,6 @@ func TestRunTicketAfterACommaList(t *testing.T) {
 	}
 }
 
-// The flag works with the editor form as well as with the title and the body.
 func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -470,8 +449,6 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 	}
 }
 
-// An --after that is not a number is cobra's error, and it names what the
-// person typed.
 func TestRunTicketAfterSomethingThatIsNotANumber(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -484,8 +461,7 @@ func TestRunTicketAfterSomethingThatIsNotANumber(t *testing.T) {
 	}
 }
 
-// An --after that names no ticket costs no ticket: the store writes the row
-// and the links under one transaction, so the refusal leaves neither.
+// A missing dependency must roll back both ticket creation and edges.
 func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	const missing = 12
@@ -514,9 +490,7 @@ func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
 	}
 }
 
-// The prose of a GUI form is in memory and not in an argument, and a long
-// prose meets the limit of the command line, so --body-file names a file that
-// holds it. The ticket it makes is the ticket that the body argument makes.
+// File input supports descriptions beyond command-line size limits.
 func TestRunTicketWithABodyFileReadsTheProseFromTheFile(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -560,8 +534,6 @@ func TestRunTicketWithABodyFileReadsTheProseFromTheFile(t *testing.T) {
 	}
 }
 
-// A path of - is the standard input, as it is for git commit -F, so a program
-// that holds the prose can pipe it in and needs no file.
 func TestRunTicketWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
 	dataDir := t.TempDir()
 	const body = "Remove the staging app, the volume and the records of the DNS.\n"
@@ -577,8 +549,6 @@ func TestRunTicketWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
 	}
 }
 
-// The prose has one source. A body argument beside --body-file leaves dg to
-// choose which one the person meant, so it refuses and writes no ticket.
 func TestRunTicketWithABodyFileAndABodyArgument(t *testing.T) {
 	dataDir := t.TempDir()
 	path := filepath.Join(t.TempDir(), "body.md")
@@ -602,8 +572,6 @@ func TestRunTicketWithABodyFileAndABodyArgument(t *testing.T) {
 	}
 }
 
-// A --body-file that names nothing is a prose the person wrote and dg cannot
-// find, so the error holds the path and there is no ticket to fill in later.
 func TestRunTicketWithABodyFileThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	missing := filepath.Join(t.TempDir(), "body.md")
@@ -632,9 +600,8 @@ func TestRunTicketWithABodyFileThatIsNotThere(t *testing.T) {
 	}
 }
 
-// The editor is what dg opens when no argument is there, and it would throw
-// away the prose the flag names, so a --body-file with no title is the error of
-// a ticket with no title.
+// A body file without a title must fail rather than open an editor and
+// discard the file input.
 func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
 	dataDir := t.TempDir()
 	path := filepath.Join(t.TempDir(), "body.md")
@@ -651,9 +618,8 @@ func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
 	}
 }
 
-// A body is optional, and the silence around an empty one turned a mistyped
-// command into a ticket: dg ticket list made ticket 159, titled "list". A
-// title on its own now has to say that the ticket has no prose.
+// Regression: dg ticket list once created ticket 159 titled "list". Title-
+// only command lines now require an explicit --no-body.
 func TestRunTicketWithNoBodyAndNoFlag(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -681,9 +647,7 @@ func TestRunTicketWithNoBodyAndNoFlag(t *testing.T) {
 	}
 }
 
-// --no-body says that the ticket has no prose, and there is nothing for dg show
-// to show: writeProse puts a blank line in front of the prose, so a blank line
-// under the fields is the section that should not be there.
+// No description must also mean no empty description section in dg show.
 func TestRunTicketWithNoBodyAddsTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -710,8 +674,6 @@ func TestRunTicketWithNoBodyAddsTheTicket(t *testing.T) {
 	}
 }
 
-// A body beside --no-body is two answers to the one question, and dg cannot
-// tell which the person meant, so it refuses and writes no ticket.
 func TestRunTicketWithABodyArgumentAndNoBody(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -731,8 +693,6 @@ func TestRunTicketWithABodyArgumentAndNoBody(t *testing.T) {
 	}
 }
 
-// --body-file names the prose, so it contradicts --no-body as a body argument
-// does. Without this dg would take the prose of the file and say nothing.
 func TestRunTicketWithABodyFileAndNoBody(t *testing.T) {
 	dataDir := t.TempDir()
 	path := filepath.Join(t.TempDir(), "body.md")
@@ -756,9 +716,8 @@ func TestRunTicketWithABodyFileAndNoBody(t *testing.T) {
 	}
 }
 
-// The flag guards the command line, where a word read as a title becomes a
-// ticket. A person in the editor wrote the file and saw it, so a title on its
-// own there is still a ticket with no prose.
+// Editor-created title-only tickets remain valid because the user explicitly
+// reviewed their contents.
 func TestRunTicketFromTheEditorNeedsNoNoBody(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -782,8 +741,6 @@ func TestRunTicketFromTheEditorNeedsNoNoBody(t *testing.T) {
 	}
 }
 
-// A person who hits the error looks at the help for the flag it names, so the
-// help of dg ticket has a line for --no-body.
 func TestTicketHelpNamesNoBody(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "ticket", "--help")
 	if err != nil {

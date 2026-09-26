@@ -24,9 +24,7 @@ func listRows(t *testing.T, dataDir, workDir string, args ...string) []string {
 	return strings.Split(strings.TrimRight(out, "\n"), "\n")
 }
 
-// rowOf returns the row of one ticket by the title in it, so a test names the
-// ticket it examines rather than a place in the list that another ticket
-// would move.
+// rowOf finds a ticket by title rather than a fragile row index.
 func rowOf(t *testing.T, rows []string, title string) string {
 	t.Helper()
 	for _, row := range rows {
@@ -38,12 +36,9 @@ func rowOf(t *testing.T, rows []string, title string) string {
 	return ""
 }
 
-// eachStatus makes a data directory that holds one ticket in every status,
-// and returns the repository and the id of each ticket by its status. Each
-// title names the status, so a test finds the row of one ticket by what it is.
-//
-// The person accepted the done ticket two days ago, so the window of DONE has
-// passed it and the inbox no longer shows it.
+// eachStatus creates a ticket in every status with the status in its title.
+// Acceptance is backdated two days so Done is outside the default inbox
+// window.
 func eachStatus(t *testing.T, dataDir string) (string, map[store.TicketStatus]int64) {
 	t.Helper()
 	repo := testfix.Repo(t, repoBranch)
@@ -90,10 +85,7 @@ func changeStatusIn(t *testing.T, s *store.Store, id int64, status store.TicketS
 	}
 }
 
-// One row for each ticket: the id, the name of the project, the title and the
-// status, in the columns that the inbox puts them in. A title that reaches the
-// status is cut where the title of an inbox row is cut, so a person who reads
-// one list reads the other.
+// List rows share inbox column widths and title truncation.
 func TestWriteListWritesOneRowForEachTicket(t *testing.T) {
 	var out bytes.Buffer
 	writeList(&out, []store.OpenTicket{
@@ -110,9 +102,7 @@ func TestWriteListWritesOneRowForEachTicket(t *testing.T) {
 	})
 }
 
-// The list holds every status, and the one the inbox cannot show is the point
-// of the command: a ticket the person accepted two days ago is out of the
-// window of DONE, and nothing else says it was ever there.
+// Include accepted work even after it leaves the inbox window.
 func TestListHoldsATicketOfEveryStatus(t *testing.T) {
 	dataDir := t.TempDir()
 	repo, ids := eachStatus(t, dataDir)
@@ -140,9 +130,6 @@ func TestListHoldsATicketOfEveryStatus(t *testing.T) {
 	}
 }
 
-// The flag --project narrows the list to one project, and it names a
-// directory as it does on dg ticket. A person who works in one repository
-// wants the tickets of that repository.
 func TestListTakesTheTicketsOfOneProject(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
@@ -163,9 +150,7 @@ func TestListTakesTheTicketsOfOneProject(t *testing.T) {
 	}
 }
 
-// A person who has made no ticket gets no list and no error. A line that said
-// there were none would be the one line of output that a script reading the
-// list would have to know about.
+// An empty list produces neither output nor an error.
 func TestListWithNoTicketsWritesNothing(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "list")
 	if err != nil {
@@ -176,9 +161,8 @@ func TestListWithNoTicketsWritesNothing(t *testing.T) {
 	}
 }
 
-// The help is where a person looks for the command, and dg list exists
-// because a person who wanted the whole list guessed at dg ticket list and
-// made a ticket named list.
+// Keep listing discoverable to avoid mistaking dg ticket list for a list
+// command.
 func TestHelpNamesList(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "--help")
 	if err != nil {

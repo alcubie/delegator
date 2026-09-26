@@ -10,9 +10,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// staleTicket makes a data directory that holds a ticket in running whose
-// supervisor is gone, and a second ticket in the queue behind it. It returns
-// the repository of the project, the stale ticket and the queued one.
+// staleTicket creates a dead supervisor record followed by queued work,
+// returning the repository and both ticket IDs.
 func staleTicket(t *testing.T, dataDir string) (repo string, stale, queued int64) {
 	t.Helper()
 	_, stale, repo, _ = runningTicket(t, dataDir)
@@ -20,11 +19,8 @@ func staleTicket(t *testing.T, dataDir string) (repo string, stale, queued int64
 	return repo, stale, testfix.SecondTicket(t, dataDir)
 }
 
-// Each command does the reconcile before its own work, so a supervisor that
-// stopped with no report is corrected by the next command the person types,
-// whichever one that is. A ticket in running holds the queue, so a command
-// that left it there would leave delegator with nothing to do and no sign of
-// why.
+// Every stateful command must recover stale runs before its own work so dead
+// supervisors cannot keep occupying capacity.
 func TestEachCommandDoesTheReconcile(t *testing.T) {
 	for _, args := range [][]string{
 		{},
@@ -47,9 +43,8 @@ func TestEachCommandDoesTheReconcile(t *testing.T) {
 			repo, stale, _ := staleTicket(t, dataDir)
 			useFakeAgent(t, dataDir, "stop end_turn")
 
-			// The command itself can refuse: dg finish and dg accept are
-			// given the ticket that the reconcile has just failed. What the
-			// test examines is that the reconcile ran either way.
+			// Command failure must not undo reconciliation of the
+			// stale ticket.
 			runIn(t, dataDir, repo, args...)
 
 			if got := testfix.ReadTicket(t, dataDir, stale); got.Status != store.Failed {
@@ -59,8 +54,7 @@ func TestEachCommandDoesTheReconcile(t *testing.T) {
 	}
 }
 
-// The reconcile is before the work of the command and not after it, so dg
-// finish can complete a ticket that the reconcile has just marked failed.
+// Finishing can succeed after reconciliation has marked the stale run failed.
 func TestFinishCanCompleteTheTicketTheReconcileJustFailed(t *testing.T) {
 	dataDir := t.TempDir()
 	repo, stale, _ := staleTicket(t, dataDir)
@@ -81,10 +75,8 @@ func TestFinishCanCompleteTheTicketTheReconcileJustFailed(t *testing.T) {
 	}
 }
 
-// How long a run may take is the person's to set, so the reconcile takes the
-// timeout from the settings row. The supervisor of this run is the test, which
-// is alive, and the timeout is the one rule that answers for a run whose
-// process id says nothing.
+// Use a live PID with an expired configured timeout to prove reconciliation
+// reads the settings snapshot.
 func TestTheReconcileTakesTheTimeoutFromTheConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	_, stale, repo, _ := runningTicket(t, dataDir)

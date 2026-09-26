@@ -18,8 +18,7 @@ func startTurn(t *testing.T, turn string) *Session {
 	return s
 }
 
-// turn runs one prompt to the end of its sequence and gives back the
-// events in order and the error the sequence ended with, if it ended with one.
+// turn collects one prompt's events and final error.
 func turn(ctx context.Context, s *Session, text string) ([]Event, error) {
 	var events []Event
 	var bad error

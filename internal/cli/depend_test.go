@@ -11,8 +11,6 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// The command the ticket asks for: a ticket that is already in the queue is
-// made to depend on another, and the command writes nothing.
 func TestRunDependAfterOneTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -30,7 +28,6 @@ func TestRunDependAfterOneTicket(t *testing.T) {
 	}
 }
 
-// The flag repeats, as it does on dg ticket.
 func TestRunDependAfterTwoTickets(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -50,7 +47,6 @@ func TestRunDependAfterTwoTickets(t *testing.T) {
 	}
 }
 
-// The same command twice leaves the state the person asked for.
 func TestRunDependTwiceIsNotAnError(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -69,8 +65,7 @@ func TestRunDependTwiceIsNotAnError(t *testing.T) {
 	}
 }
 
-// The flag --remove is the way out for a ticket that depends on one that was
-// cancelled.
+// Removing a cancelled prerequisite unblocks queued work.
 func TestRunDependRemove(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -91,8 +86,6 @@ func TestRunDependRemove(t *testing.T) {
 	}
 }
 
-// A remove that takes nothing away is a person who named the wrong ticket, so
-// the command says so rather than leaving them believing the link is gone.
 func TestRunDependRemoveALinkThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -105,8 +98,7 @@ func TestRunDependRemoveALinkThatIsNotThere(t *testing.T) {
 	}
 }
 
-// A link holds a ticket back in the queue and nowhere else, so the command
-// refuses a ticket that has left it and says which state it is in.
+// Reject dependency changes outside Queued and name the current status.
 func TestRunDependOnATicketThatIsNotQueued(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -125,7 +117,6 @@ func TestRunDependOnATicketThatIsNotQueued(t *testing.T) {
 	}
 }
 
-// A ticket that depends on itself could never start.
 func TestRunDependOnItself(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -138,8 +129,6 @@ func TestRunDependOnItself(t *testing.T) {
 	}
 }
 
-// The id of the ticket is the one argument, so a command with none of it is
-// cobra's error and not a link on a ticket nobody named.
 func TestRunDependWithNoAfter(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -155,7 +144,6 @@ func TestRunDependWithNoAfter(t *testing.T) {
 	}
 }
 
-// An id that is not a number is the error that every command of an id gives.
 func TestRunDependOnSomethingThatIsNotANumber(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

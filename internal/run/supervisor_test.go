@@ -35,10 +35,8 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 	return dataDir, id
 }
 
-// The timer uses the same process-group stop as dg cancel. The group in this
-// test has a supervisor and a child below it, and both must be gone when the
-// timeout has finished. The timeout also closes the run before it sends the
-// signal, because the supervisor itself belongs to the group it stops.
+// Timeout must close the run before signalling its group, which includes the
+// supervisor itself, and must terminate both supervisor and child.
 func TestTheSupervisorTimeoutStopsTheRunGroupAndFailsTheRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)

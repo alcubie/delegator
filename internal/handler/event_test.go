@@ -9,8 +9,7 @@ import (
 	"testing"
 )
 
-// collect drains a stream into the events it holds and the errors it reports,
-// in the order they arrive, so a test can name both.
+// collect returns all events and errors in stream order.
 func collect(r io.Reader) ([]Event, []error) {
 	var events []Event
 	var errs []error
@@ -36,8 +35,7 @@ func write(t *testing.T, events ...Event) *bytes.Buffer {
 	return &buf
 }
 
-// errReader gives what it holds and then fails, the way a pipe fails when the
-// agent on the other end dies.
+// errReader returns its data, then a read error, simulating a failed pipe.
 type errReader struct {
 	data string
 	err  error

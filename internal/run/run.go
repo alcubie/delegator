@@ -1,4 +1,4 @@
-// Package run holds the functions needed for initiating a run of a ticket
+// Package run manages ticket worktrees, supervisors, and agent runs.
 package run
 
 import (
@@ -13,14 +13,13 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// branchPrefix is the prefix attached to all branch names
 const branchPrefix = "delegator"
 
 // ProjectCacheEnvironment names the project cache in an agent process. It is
 // deliberately neutral: an agent can choose which tools, if any, use it.
 const ProjectCacheEnvironment = "DELEGATOR_PROJECT_CACHE_DIR"
 
-// maxSlug is the max length of the branch slug that can be returned
+// maxSlug limits the title portion of a ticket branch name.
 const maxSlug = 40
 
 func init() { slug.MaxLength = maxSlug }
@@ -37,9 +36,8 @@ func branch(id int64, title string) string {
 	return fmt.Sprintf("%s/%d-%s", branchPrefix, id, generated)
 }
 
-// WorktreePath returns the directory a run works in. The name is the ticket id
-// alone, so no path on disk carries a project name and a project that moves
-// leaves every worktree where it was.
+// WorktreePath returns the ticket worktree path. Using the ticket ID keeps it
+// stable when the project moves.
 func WorktreePath(dataDir string, id int64) string {
 	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
 }

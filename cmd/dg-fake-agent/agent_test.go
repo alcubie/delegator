@@ -16,13 +16,11 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// selfArg is the first argument that tells a copy of the test binary to be the
-// agent rather than the tests. A test starts the agent as a second copy of
-// itself, so the exchange runs against this code and needs no build.
+// selfArg makes a subprocess of this test binary serve as the fake agent,
+// avoiding a separate build.
 const selfArg = "-agent"
 
-// What the scripts of the tests say, named so that a test reads what it wrote
-// back out of the events.
+// Named script output makes event assertions readable.
 const (
 	fakeText     = "the work is done"
 	fakeThought  = "the tests come first"
@@ -34,9 +32,8 @@ const (
 	fakeAnswered = "allow-once" // the option the handler's client takes
 )
 
-// TestMain is the agent when the arguments say so, and the tests when they do
-// not. It answers before the testing flags are parsed, because the arguments
-// of the agent are not flags of a test.
+// TestMain selects agent mode before parsing test flags, since agent
+// arguments are not testing flags.
 func TestMain(m *testing.M) {
 	if len(os.Args) == 3 && os.Args[1] == selfArg {
 		if err := serve(os.Args[2]); err != nil {
@@ -53,8 +50,8 @@ type agentLaunch struct {
 	argv []string
 }
 
-// fakeLaunch writes the script to a file and gives the launch that starts the
-// agent on it and the path the agent records its permission answers in.
+// fakeLaunch writes the script and returns the agent command and permission-
+// log path.
 func fakeLaunch(t *testing.T, lines ...string) (agentLaunch, string) {
 	t.Helper()
 	self, err := os.Executable()
@@ -106,13 +103,9 @@ func same(t *testing.T, got, want []handler.Event) {
 	}
 }
 
-// everyAction is a script of one line of each action, and the events and the
-// file that the handler's client makes of it.
-//
-// The permission comes first because it is a request and the rest are
-// notifications: the agent waits for the answer, so everything after it
-// reaches the client after it, while a request sent after a notification can
-// be seen before it.
+// everyAction exercises script actions and checks events and file writes.
+// Permission comes first because requests and notifications can be dispatched
+// out of order; waiting for its response orders subsequent updates.
 func everyAction(t *testing.T) (agent agentLaunch, record, written string, want []handler.Event) {
 	t.Helper()
 	dir := t.TempDir()
@@ -287,8 +280,7 @@ func TestAnActionTheScriptHasNoVerbForFailsTheTurn(t *testing.T) {
 	}
 }
 
-// The wait action is how a test drives a client that stops a turn: nothing
-// else in a script takes long enough for the client to reach for the cancel.
+// Wait gives the client time to cancel an active turn.
 func TestTheWaitActionEndsTheTurnWhenTheClientCancels(t *testing.T) {
 	agent, _ := fakeLaunch(t, "text "+fakeText, "wait 1m", "stop end_turn")
 	s := startFake(t, t.TempDir(), agent)
@@ -323,9 +315,8 @@ func TestTheWaitActionRefusesATimeItCannotRead(t *testing.T) {
 	}
 }
 
-// The continue action models an agent or one of its programs that does not
-// cooperate with cancellation. A supervisor timeout has to end its process,
-// rather than rely on the ACP cancellation that is enough for wait.
+// Continue ignores ACP cancellation so the test must rely on supervisor
+// process termination.
 func TestTheContinueActionRunsPastCancellation(t *testing.T) {
 	kind, _ := fakeLaunch(t, "continue 100ms", "stop end_turn")
 	s := startFake(t, t.TempDir(), kind)

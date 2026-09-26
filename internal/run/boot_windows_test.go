@@ -1,8 +1,5 @@
-// The test of the boot time on Windows. The name of the file is the build
-// constraint, as it is for boot_windows.go, and make check runs on Linux, so
-// nothing in make check runs this test. TestOnlyAWindowsBuildTakesTheWindowsBootTest
-// holds it to Windows, TestTheWindowsBootTimeTypeChecks compiles it for Windows,
-// and a person on Windows runs it.
+// Windows-only behavior tests. The cross-platform suite checks their build
+// selection and type-checks them; execution requires Windows.
 
 package run
 
@@ -11,10 +8,8 @@ import (
 	"time"
 )
 
-// The boot time is one moment, so two calls a short time apart give one answer.
-// Windows gives a length, and the subtraction that makes a moment of it is the
-// step that a length used in the place of a moment passes: a value that grew
-// between the two calls says that the code returned the length.
+// Two nearby calls must return a stable boot timestamp, not an increasing
+// uptime duration.
 func TestTheWindowsBootTimeIsOneMoment(t *testing.T) {
 	first, err := bootTime()
 	if err != nil {

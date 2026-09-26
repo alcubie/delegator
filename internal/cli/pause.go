@@ -9,9 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pausedMessage is what dg pause writes. It names dg cancel because a pause
-// leaves the run that is going, and a person who wanted that run to stop has
-// to be told what stops it.
+// pausedMessage points to dg cancel because pausing leaves active runs
+// running.
 const pausedMessage = "The queue is paused. Current runs will finish. Use dg cancel <id> to stop a ticket."
 
 // pauseCommand returns the command for dg pause.

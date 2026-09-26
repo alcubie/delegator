@@ -8,14 +8,8 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// cancelCommand returns the command dg cancel. It takes the id of a ticket and
-// no default: dg accept closes the head of READY because that is the ticket a
-// person is reading, and a person who cancels is throwing work away and says
-// which.
-//
-// The worktree stays. A run that a person stopped may hold work they want to
-// read before it goes, and only dg accept removes a worktree, for work that is
-// complete. Section 6.3 of TECHNICAL_DESIGN.md settles this.
+// cancelCommand requires an explicit ticket ID. Cancellation preserves the
+// worktree so unfinished work remains available for inspection.
 func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cancel <id>",
@@ -36,27 +30,20 @@ func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 }
 
-// cancelTicket stops the run of a ticket, if it has one, and then closes the
-// ticket.
+// cancelTicket stops a running supervisor before marking the ticket
+// cancelled. Reconciliation has already marked dead or timed-out runs failed;
+// do not signal those PIDs, which may now belong to unrelated processes.
 //
-// Only a ticket in running is signalled. The reconcile of every command has
-// already marked failed each run it calls dead, so a ticket that is still in
-// running here has a supervisor that answered signal 0, started after the boot
-// and is inside the timeout. A run the reconcile called dead gets no signal at
-// all: its process id can belong to a different program by then, and this
-// writes the state alone.
-//
-// The signal goes before the write and outside its transaction. A supervisor
-// that a signal ended writes nothing, so the end of the run comes from here,
-// and the wait between the two signals is seconds, which is far too long to
-// hold SQLite's writer lock.
+// Signal outside the database transaction to avoid holding SQLite's writer
+// lock through the grace period. Cancel records the end time if the stopped
+// supervisor could not.
 func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
 	}
-	// The run this stops is the run the write below closes, so its id is read
-	// here and named there rather than looked for a second time.
+	// Keep the stopped run ID for the database update; a restart may
+	// create a newer run.
 	var runID int64
 	if ticket.Status == store.Running {
 		r, err := s.Run(id)
@@ -71,7 +58,6 @@ func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 	if err := s.Cancel(id, runID); err != nil {
 		return err
 	}
-	// The supervisor this stopped is the program that would have started the
-	// next run as its own ended, so the command starts it in its place.
+	// Replace the stopped supervisor's scheduling trigger.
 	return run.Next(s, *cfg, launchFrom(s.DataDir(), launch))
 }

@@ -9,18 +9,16 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// serve gives the client that the tests call the way an agent calls it.
+// serve builds a client for direct protocol-handler tests.
 func serve() *client { return &client{} }
 
-// option gives one of the options an agent offers, with the kind for its id,
-// so that a test names the answer it expects by the answer it offered.
+// option uses the permission kind as its ID for readable assertions.
 func option(kind acp.PermissionOptionKind) acp.PermissionOption {
 	return acp.PermissionOption{Kind: kind, Name: string(kind), OptionId: acp.PermissionOptionId(kind)}
 }
 
-// ask puts to the client of a policy the request an agent makes for a tool,
-// and gives back the id it selected, which is empty when it took no option,
-// and the events it kept.
+// ask sends a permission request and returns the selected option ID and
+// emitted events. No selection gives an empty ID.
 func ask(t *testing.T, policy Policy, kind acp.ToolKind, options ...acp.PermissionOption) (string, []Event) {
 	t.Helper()
 	c := &client{policy: policy, events: make(chan Event, len(options)+1)}

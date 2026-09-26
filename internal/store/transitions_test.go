@@ -10,10 +10,8 @@ import (
 	"time"
 )
 
-// change is one row of the history of a ticket. Arrival is a row that holds no
-// status before, which is the arrival of the ticket, and Before is empty there.
-// The two are apart because a column that holds NULL and a column that holds the
-// empty string are not the same row, and only the first one is an arrival.
+// change represents a history row. Arrival distinguishes SQL NULL in
+// from_status from an empty string.
 type change struct {
 	Arrival bool
 	Before  TicketStatus
@@ -49,9 +47,7 @@ func history(t *testing.T, s *Store, id int64) []change {
 	return changes
 }
 
-// steps returns the history of one ticket as one string for each change, which
-// is the form a test compares when it is about what happened and not about when.
-// The arrival of a ticket is "new to queued".
+// steps formats transitions without timestamps; creation is "new to queued".
 func steps(t *testing.T, s *Store, id int64) []string {
 	t.Helper()
 	var steps []string
@@ -65,8 +61,6 @@ func steps(t *testing.T, s *Store, id int64) []string {
 	return steps
 }
 
-// The first row of a ticket is its arrival. It holds no status before, because
-// the ticket was in no state until the person wrote it.
 func TestAddTicketWritesTheArrivalOfTheTicket(t *testing.T) {
 	before := time.Now().UTC().Truncate(time.Second)
 	s, id := oneTicket(t)
@@ -85,8 +79,6 @@ func TestAddTicketWritesTheArrivalOfTheTicket(t *testing.T) {
 		t.Errorf("the arrival is at %s, want between %s and now", got[0].At, before)
 	}
 
-	// The time goes in as the text of one format, which is the format that a
-	// read parses back.
 	var at string
 	if err := s.db.QueryRow(
 		"SELECT at FROM transitions WHERE ticket_id = ?", id).Scan(&at); err != nil {
@@ -101,8 +93,6 @@ func TestAddTicketWritesTheArrivalOfTheTicket(t *testing.T) {
 	}
 }
 
-// Each ticket has its own history, and the arrival of one is not a row of
-// another.
 func TestAddTicketWritesTheArrivalOfThatTicketOnly(t *testing.T) {
 	s, ids := threeTickets(t)
 
@@ -113,10 +103,8 @@ func TestAddTicketWritesTheArrivalOfThatTicketOnly(t *testing.T) {
 	}
 }
 
-// Every way to change a status writes one row, so the history of a ticket holds
-// each state it was in and the order it was in them. This ticket takes the whole
-// path: a run, a report, dg revise, a second run that failed, dg restart, and a
-// cancel.
+// Exercise a full history: finish, requeue, fail, restart, and cancel. Every
+// state change must append one entry.
 func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	s, id := oneTicket(t)
 
@@ -162,9 +150,8 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	}
 }
 
-// dg accept closes a ticket, and the work it does outside the database is
-// inside the transaction of the change. The row of the change is inside it as
-// well, so work that gives an error leaves the history as it was.
+// A failed external callback must roll back transition history along with
+// status.
 func TestChangeStatusWithWritesTheRowWithTheChange(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -192,8 +179,6 @@ func TestChangeStatusWithWritesTheRowWithTheChange(t *testing.T) {
 	}
 }
 
-// A change that nextStates does not hold writes nothing at all, so the history
-// holds no change that the ticket did not make.
 func TestAChangeThatIsRefusedWritesNoRow(t *testing.T) {
 	s, id := oneTicket(t)
 
@@ -207,8 +192,6 @@ func TestAChangeThatIsRefusedWritesNoRow(t *testing.T) {
 	}
 }
 
-// The reconcile marks a ticket whose supervisor is gone, and that is a change of
-// state like each other one.
 func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -225,9 +208,7 @@ func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 	}
 }
 
-// The claim of a ticket is the start of its run, and the two records must not
-// disagree: the run keeps its own start time, and the claim writes one time into
-// both.
+// A claim's transition and run start must use the same timestamp.
 func TestClaimWritesOneTimeForTheRunAndTheChange(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -248,9 +229,7 @@ func TestClaimWritesOneTimeForTheRunAndTheChange(t *testing.T) {
 	}
 }
 
-// A run that a signal or a crash ended has no end time of its own, and the
-// command that closes it writes one. That time and the time of the change of
-// state are the same moment, so both records hold it.
+// Recovery must give the run end and status transition the same timestamp.
 func TestTheEndOfARunAndTheChangeOfStateHoldOneTime(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -288,10 +267,8 @@ func TestTheEndOfARunAndTheChangeOfStateHoldOneTime(t *testing.T) {
 	}
 }
 
-// backdate moves each change a ticket has so far to one earlier time, so a
-// change that a test makes after it is a different second. Every time the store
-// writes holds a whole second, and two changes in one test are otherwise the
-// same second.
+// backdate separates existing history from new changes despite second-
+// precision timestamps.
 func backdate(t *testing.T, s *Store, id int64, at string) {
 	t.Helper()
 	if _, err := s.db.Exec(
@@ -300,9 +277,8 @@ func backdate(t *testing.T, s *Store, id int64, at string) {
 	}
 }
 
-// A ticket holds the time that it entered the status it has. A ticket that
-// dg revise put back in the queue entered the queue at that moment, and the run
-// that is complete stopped before it.
+// Requeued tickets must show the new status time, not the previous
+// completion.
 func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -331,10 +307,7 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	}
 }
 
-// The time of a done ticket is the time the person accepted it, and not the
-// time the run that finished stopped. A ticket can sit in ready for days before
-// the person reads it, and the inbox holds it for the window from the moment
-// they did.
+// DONE uses acceptance time even when completion was days earlier.
 func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
@@ -363,10 +336,8 @@ func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	}
 }
 
-// No column of a ticket holds a time that the history holds. The column
-// completed went out of date the moment the ticket changed again, and the
-// column created was the arrival written twice: once there and once in the
-// first row of the history.
+// Drop duplicated event columns: transitions now own creation and completion
+// timestamps.
 func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 	s, _ := oneTicket(t)
 
@@ -383,15 +354,13 @@ func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 	}
 }
 
-// A ticket holds the time that it arrived, which is the first row of its
-// history and does not move when the ticket changes state.
+// Creation time must remain stable across later transitions.
 func TestTicketGivesTheTimeItArrived(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
 		t.Fatal(err)
 	}
-	// The arrival alone goes back, so the later rows of the history hold a
-	// different time and no other row can answer for it.
+	// Backdate only creation to distinguish it from every later entry.
 	arrived := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 	if _, err := s.db.Exec(`UPDATE transitions SET at = ?
 		WHERE id = (SELECT MIN(id) FROM transitions WHERE ticket_id = ?)`,
@@ -408,8 +377,6 @@ func TestTicketGivesTheTimeItArrived(t *testing.T) {
 	}
 }
 
-// The acceptance is the change into done, and a ticket that nobody has
-// accepted holds no time for it.
 func TestTicketGivesTheTimeOfTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
 	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {

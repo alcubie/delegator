@@ -1,7 +1,4 @@
-// The shape of one row of a list of tickets: the width of each column and the
-// text of the row itself. The inbox and dg list are two lists of the same
-// tickets, and they write a row the one way, so a person who reads one of them
-// reads the other without learning it again.
+// Shared row layout for the inbox and dg list.
 
 package cli
 
@@ -19,17 +16,12 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// defaultRowWidth is the width of a row when its output does not report a
-// terminal size. It is the width of the rule of dg show, so redirected output
-// without COLUMNS keeps the shape it had before rows followed the width of a
-// terminal.
+// defaultRowWidth preserves the original layout, matching dg show's rule,
+// when neither terminal size nor COLUMNS is available.
 const defaultRowWidth = ruleWidth
 
-// outputWidth returns the width available to rows on out. The notes belong at
-// the right edge of a terminal, whatever size the person gave it. watch reads
-// output through a pipe, so it gives the child the terminal width in COLUMNS;
-// other pipes, files and terminals that report neither keep the stable default
-// width instead.
+// outputWidth uses the terminal width or COLUMNS, which watch supplies to
+// piped commands. Otherwise it uses defaultRowWidth.
 func outputWidth(out io.Writer) int {
 	f, ok := out.(*os.File)
 	if !ok {
@@ -49,19 +41,15 @@ func outputWidth(out io.Writer) int {
 // timeGap is the space between the title of a row and the note at the right.
 const timeGap = 2
 
-// minTitleWidth is the least of a title that a row shows. A project with a
-// name long enough to push the title below it makes the row wider than
-// the requested width instead, because a title cut to three characters names
-// no ticket and the person can still read the note.
+// minTitleWidth keeps titles recognizable. Long project names can force rows
+// beyond the requested width rather than squeeze titles below this minimum.
 const minTitleWidth = 8
 
-// ellipsis ends a title that a row cut.
 const ellipsis = "…"
 
-// fit returns text at exactly width characters: it pads a short text with
-// spaces, and it cuts a long one and puts an ellipsis at the end. The count is
-// in characters and not in bytes, because the ellipsis takes three bytes and
-// one column, and a title holds whatever the person wrote.
+// fit pads or truncates text to width runes, adding an ellipsis when
+// truncated. It counts runes rather than bytes; this is not a display-cell
+// width calculation.
 func fit(text string, width int) string {
 	if width <= 0 {
 		return ""
@@ -73,9 +61,8 @@ func fit(text string, width int) string {
 	return string(runes[:width-1]) + ellipsis
 }
 
-// minIDWidth is the smallest width of the column of ids. A column that grows
-// with the largest id would move each row to the right at the id 10, and the
-// inbox is a list that a person reads each day.
+// minIDWidth reserves space for ticket IDs so early digit-count changes do
+// not shift every row.
 const minIDWidth = 2
 
 // ticketWidths returns the width of the column of ids and the width of the
@@ -103,9 +90,8 @@ func ticketRow(t store.OpenTicket, idWidth, projectWidth, width int, note string
 		return left + t.Title
 	}
 
-	// The note ends the row at width, so the notes of two rows are in one
-	// column. The title takes what is left, and it is the field that gives way
-	// because it is the only one with no width of its own.
+	// Reserve the right edge for the note and give the remaining width to
+	// the title.
 	titleWidth := max(minTitleWidth,
 		width-utf8.RuneCountInString(left)-timeGap-utf8.RuneCountInString(note))
 	return fmt.Sprintf("%s%s%*s%s", left, fit(t.Title, titleWidth), timeGap, "", note)

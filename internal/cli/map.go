@@ -1,4 +1,3 @@
-// Package cli provides the command layer of dg.
 package cli
 
 import (

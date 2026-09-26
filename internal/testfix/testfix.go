@@ -1,13 +1,6 @@
-// Package testfix holds the fixtures that the tests of more than one package
-// need: a repository, a store, a queued ticket, the fake agent, and a launch a
-// test can watch. Each was copied between the cli and run tests
-// before this package existed.
-//
-// It imports testing, which a package that is not a test normally does not.
-// The alternative was the copies. Only a test binary will ever import it.
-//
-// The tests of project and store keep their own helpers because Open and the
-// git commands are what those tests examine.
+// Package testfix provides shared repository, store, agent, and process
+// fixtures. It is used only by tests. The project and store packages keep
+// local fixtures for the operations they test directly.
 package testfix
 
 import (
@@ -28,8 +21,7 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// GitIn runs one git command in dir. It stops the test if git gives an error,
-// because a repository the test cannot build is not a result of the test.
+// GitIn runs Git in dir and fails the test on error.
 func GitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	if out, err := project.Command(dir, args...).CombinedOutput(); err != nil {
@@ -52,16 +44,16 @@ func GitOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// CommitIn makes one empty commit. The identity is in the command, so the test
-// does not read the config of the person who runs it.
+// CommitIn creates an empty commit with an explicit identity, independent of
+// the user's Git configuration.
 func CommitIn(t *testing.T, dir, message string) {
 	t.Helper()
 	GitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"commit", "--allow-empty", "-q", "-m", message)
 }
 
-// Repo makes an empty repository on the named branch. The name is given so a
-// test does not depend on the git config of the person who runs it.
+// Repo creates an empty repository with an explicit initial branch,
+// independent of the user's Git configuration.
 func Repo(t *testing.T, branch string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -71,8 +63,7 @@ func Repo(t *testing.T, branch string) string {
 	return dir
 }
 
-// OpenStore opens the store of a data directory and closes it when the test
-// ends, which is the defer a test helper cannot do for its caller.
+// OpenStore opens the store and registers cleanup at the end of the test.
 func OpenStore(t *testing.T, dataDir string) *store.Store {
 	t.Helper()
 	s, err := store.Open(dataDir)
@@ -132,10 +123,8 @@ func SecondTicket(t *testing.T, dataDir string) int64 {
 	return id
 }
 
-// FreePID returns a process id that no program holds, which is what the
-// reconcile sees for a supervisor that stopped. A child that has run and been
-// collected leaves its id free, and the system gives that id again only after
-// many thousands of other programs.
+// FreePID returns the PID of a child that has exited and been reaped. Tests
+// use it to represent a dead supervisor; immediate PID reuse is unlikely.
 func FreePID(t *testing.T) int {
 	t.Helper()
 	cmd := exec.Command("true")
@@ -145,22 +134,13 @@ func FreePID(t *testing.T) int {
 	return cmd.Process.Pid
 }
 
-// Group starts sh with script in a session of its own and returns the id of
-// the process group it leads. A script that starts a child of its own puts
-// that child in the same group, so one group stands for a supervisor with an
-// agent below it, and a test can stop the group and see that each program of
-// it ended.
+// Group starts a shell in a new session and returns its process-group ID.
+// Child processes in that group stand in for an agent under a supervisor.
 //
-// The script gets the path of a marker file as $1, and must create the marker
-// once it has done everything a signal has to find: its trap set, its child
-// started. Group returns after the marker is there. Without that the test
-// races the shell reading its own script, and a signal that arrives first
-// reaches a shell with no trap and no child.
-//
-// The shell is a child of the test, so a goroutine waits on it: a child that
-// nobody collects stays as a zombie, and a zombie still answers a signal, so
-// the group would never look gone. The group is killed when the test ends, for
-// a test whose own work leaves it alive.
+// The script receives a marker path as $1 and must create it after installing
+// traps and starting children. Waiting for the marker prevents signals from
+// racing setup. A goroutine reaps the shell so zombies do not keep the group
+// apparently alive. Cleanup kills any remaining group members.
 func Group(t *testing.T, script string) int {
 	t.Helper()
 	marker := filepath.Join(t.TempDir(), "ready")
@@ -177,22 +157,17 @@ func Group(t *testing.T, script string) int {
 	return pgid
 }
 
-// supervisorScript is the script of a Group that stands for a supervisor with
-// an agent below it: one shell and one child of the shell, both in the group,
-// and neither of them keeping a signal.
+// supervisorScript creates a shell and child in one group, neither trapping
+// termination signals.
 const supervisorScript = `sleep 60 & : > "$1"; sleep 60`
 
-// GroupAlive reports whether a process group still holds a program. Signal 0
-// sends nothing, and to a group it gives ESRCH only when the group holds no
-// program at all, so one call answers for the supervisor and for each program
-// below it together.
+// GroupAlive probes the group with signal 0. ESRCH means no members remain.
 func GroupAlive(pgid int) bool {
 	return !errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH)
 }
 
-// WaitForGroupGone fails the test if the group still holds a program after a
-// short wait. A signal is delivered while the program that sent it continues,
-// so the test waits for the programs to go rather than reading once.
+// WaitForGroupGone waits briefly for asynchronous signal delivery and process
+// exit, then fails if the group remains alive.
 func WaitForGroupGone(t *testing.T, pgid int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -205,10 +180,8 @@ func WaitForGroupGone(t *testing.T, pgid int) {
 	t.Errorf("the process group %d still holds a program", pgid)
 }
 
-// LiveRun makes the last run of a ticket look like the run of a supervisor
-// that is working, by starting a program in a session of its own and putting
-// its process id on the row. The program starts a child, which stands for the
-// agent below a supervisor. It returns the process group that holds both.
+// LiveRun gives the latest run a live supervisor PID. It starts a shell with
+// a child representing the agent and returns their process-group ID.
 func LiveRun(t *testing.T, dataDir string, ticketID int64) int {
 	t.Helper()
 	pgid := Group(t, supervisorScript)
@@ -216,24 +189,21 @@ func LiveRun(t *testing.T, dataDir string, ticketID int64) int {
 	return pgid
 }
 
-// StaleRun makes the last run of a ticket look like the run of a supervisor
-// that is gone, by putting a process id that no program holds on its row.
+// StaleRun replaces the latest run's PID with one whose process has exited.
 func StaleRun(t *testing.T, dataDir string, ticketID int64) {
 	t.Helper()
 	setRunColumn(t, dataDir, ticketID, "pid", FreePID(t))
 }
 
-// AgeRun moves the start of the last run of a ticket that far into the past,
-// which is how a test reaches the timeout of a run without waiting for it.
+// AgeRun backdates the latest run to test timeouts without waiting.
 func AgeRun(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
 	t.Helper()
 	started := time.Now().Add(-age).UTC().Format(time.RFC3339)
 	setRunColumn(t, dataDir, ticketID, "started_at", started)
 }
 
-// AgeAcceptance moves the moment that the person accepted a ticket back by
-// age. The window of DONE reads that moment, and a test cannot wait a day for
-// the window to pass a ticket, so it writes the row of the history itself.
+// AgeAcceptance backdates the acceptance transition to test the DONE window
+// without waiting.
 func AgeAcceptance(t *testing.T, dataDir string, ticketID int64, age time.Duration) {
 	t.Helper()
 	at := time.Now().Add(-age).UTC().Format(time.RFC3339)
@@ -248,16 +218,14 @@ func AgeAcceptance(t *testing.T, dataDir string, ticketID int64, age time.Durati
 	}
 }
 
-// setRunColumn writes one column of the last run of a ticket. It opens the
-// database itself, because no command can leave a run in the states above: a
-// claim writes the moment it happens and the id of the program that claims,
-// which in a test is the test, and the test can neither wait an hour nor crash
-// to make its own id free.
+// setRunColumn edits the latest run directly to create states unavailable
+// through normal commands, such as an old start time or a dead supervisor
+// PID.
 func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, value any) {
 	t.Helper()
 	db := openDB(t, dataDir)
-	// The name of the column is this file's and never a test's, so it is safe
-	// in the text of the statement, where SQLite takes no parameter.
+	// The column name comes from this file, not test input; SQL
+	// identifiers cannot use parameters.
 	result, err := db.Exec(fmt.Sprintf(`
 		UPDATE runs SET %s = ?
 		WHERE id = (SELECT id FROM runs WHERE ticket_id = ? ORDER BY id DESC LIMIT 1)`, column),
@@ -270,10 +238,8 @@ func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, v
 	}
 }
 
-// openDB opens the database of a data directory and closes it when the test
-// ends. The name of the file is the store's, and the store gives no way to
-// reach the database it holds, so a fixture that reaches a column no command
-// reaches opens it again.
+// openDB opens a separate connection for fixture-only database changes and
+// registers cleanup. Store intentionally exposes no raw database connection.
 func openDB(t *testing.T, dataDir string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(dataDir, "delegator.db"))
@@ -284,9 +250,9 @@ func openDB(t *testing.T, dataDir string) *sql.DB {
 	return db
 }
 
-// XDGDataDir points XDG_DATA_HOME at a fresh directory for one test and
-// returns the data directory dg will use below it, so that a dg the fake agent
-// runs reaches this test's database and not the person's.
+// XDGDataDir sets XDG_DATA_HOME to a fresh directory and returns dg's data
+// path, isolating commands launched by the fake agent from the user's
+// database.
 func XDGDataDir(t *testing.T) string {
 	t.Helper()
 	xdg := t.TempDir()
@@ -305,13 +271,10 @@ func Script(t *testing.T, lines ...string) string {
 	return path
 }
 
-// RecordingLaunch returns a launch that writes a file, and the path of that
-// file. It stands in for the launch of dg run, so a test sees that a
-// supervisor was started without starting a real run. The supervisor takes the
-// ticket for itself, so there is no ticket for the launch to record.
-//
-// Each launch appends a line, because a trigger starts one supervisor for each
-// free slot and a test of a limit above one counts them.
+// RecordingLaunch returns a supervisor command that appends to a marker file,
+// plus the marker path. Tests count launches without starting real
+// supervisors. No ticket ID is recorded because supervisors select their own
+// tickets.
 func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	t.Helper()
 	marker := filepath.Join(t.TempDir(), "started")
@@ -320,22 +283,16 @@ func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
 	}, marker
 }
 
-// waitTimeout is how long a wait gives a launched program to write its marker.
-// The programs are shells that write a file and take milliseconds, so the
-// timeout is the cost of a test that fails and not a time a test that passes
-// ever spends.
+// waitTimeout bounds how long tests wait for subprocess markers. Successful
+// waits return as soon as the marker appears.
 const waitTimeout = 2 * time.Second
 
-// settle is how long a wait for a launch waits after it has what it wants, to
-// catch a launch that should not have happened. A launched program writes its
-// marker in less than this on the computers that run the suite.
+// settle is the extra wait used to detect unexpected launches after the
+// expected count has arrived.
 const settle = 50 * time.Millisecond
 
-// WaitForStarts fails the test unless exactly want supervisors were started
-// and recorded at marker, the file of RecordingLaunch. It waits for that many
-// and then waits again, because the fault it has to catch is one supervisor
-// too many as much as one too few, and a launch that nothing waits on arrives
-// when it arrives.
+// WaitForStarts waits for exactly want launch records, then waits briefly for
+// unexpected extra launches. It fails on either too few or too many.
 func WaitForStarts(t *testing.T, marker string, want int) {
 	t.Helper()
 	deadline := time.Now().Add(waitTimeout)
@@ -361,16 +318,15 @@ func starts(t *testing.T, marker string) int {
 	return len(strings.Fields(string(data)))
 }
 
-// failing is what a wait needs of the test it fails. The test of a wait that
-// fails passes a stand-in, because a real *testing.T would fail with it and
-// Fatalf on a real one does not return.
+// failing lets wait-helper tests substitute a recorder for testing.T so
+// expected failures do not fail the enclosing test.
 type failing interface {
 	Helper()
 	Fatalf(format string, args ...any)
 }
 
-// WaitFor returns the content of path once it exists, or fails the test after
-// a short wait. A launched program is not waited on, so the test has to.
+// WaitFor waits for path to exist and returns its contents, failing after a
+// short timeout.
 func WaitFor(t failing, path string) string {
 	t.Helper()
 	deadline := time.Now().Add(waitTimeout)
@@ -387,14 +343,12 @@ func WaitFor(t failing, path string) string {
 // FakeAgentPath is dg-fake-agent, built by RunTests once for the package.
 var FakeAgentPath string
 
-// RunTests builds the fake agent once for a package and runs its tests, and
-// builds dg beside them when withDG is set, for a fake agent whose script
-// calls dg finish. It is called from TestMain and returns the code to exit with:
-// os.Exit runs no deferred call, so the cleanup lives here and not there.
+// RunTests builds the fake agent once per package and optionally dg for
+// scripts that call dg finish. Call it from TestMain and pass its result to
+// os.Exit; cleanup runs here because os.Exit skips deferred calls.
 //
-// Go has no setup that spans packages. Each package's tests are their own
-// process, so each builds its own copy; this only stops the builds drifting.
-// The directory is unique because go test runs packages side by side.
+// Each test package runs in its own process, so builds use unique directories
+// to allow concurrent package tests.
 func RunTests(m *testing.M, withDG bool) int {
 	dir, err := os.MkdirTemp("", "delegator-testfix")
 	if err != nil {

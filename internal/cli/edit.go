@@ -1,7 +1,5 @@
-// The command that changes the title and the prose of a ticket that waits. A
-// person takes the two in an editor, which gets them as one text, in the form
-// that dg ticket with no arguments takes. A caller that is not a person has the
-// new text already and no editor to open, so it hands the text over in a flag.
+// dg edit updates a queued ticket's title and description through explicit
+// text flags or an editor.
 
 package cli
 
@@ -18,18 +16,14 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// errEditTwoBodies shows that dg edit was given the prose twice. The prose has
-// one source, and dg cannot tell which of the two the person meant.
+// errEditTwoBodies rejects competing description sources.
 var errEditTwoBodies = errors.New("dg edit takes the prose from --body or from --body-file, and got both")
 
-// errEditorAndText shows that dg edit was told to open the editor and given the
-// text as well. The editor holds the title and the prose, so a flag beside it is
-// a second answer to the question the editor asks.
+// errEditorAndText rejects mixing editor input with text flags.
 var errEditorAndText = errors.New("dg edit --editor takes the title and the prose from the editor, so it takes no --title, --body or --body-file")
 
-// errEditNoForm shows that dg edit was given a ticket and nothing to put in it.
-// The editor is one form of the command and not the form it falls back to,
-// because a caller that is not a person has no editor to wait for.
+// errEditNoForm requires an explicit input method, so scripted calls do not
+// unexpectedly open an editor.
 var errEditNoForm = errors.New("dg edit takes --title, --body, --body-file or --editor, and got none")
 
 // editCommand returns the command dg edit.
@@ -62,8 +56,8 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			case !useEditor && !gaveText:
 				return errEditNoForm
 			}
-			// The prose is read before the store is open, so a path that names
-			// nothing leaves the ticket as it was.
+			// Read input before opening the store so an
+			// unreadable file leaves the ticket unchanged.
 			if gaveFile {
 				if body, err = ticketProse(cmd, bodyFile); err != nil {
 					return err
@@ -88,9 +82,8 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return cmd
 }
 
-// flagText returns the text of a flag that the person gave, and nil for one
-// that was not on the command line. An empty flag is text and not a flag that
-// is missing, so the two cannot be told apart by the value alone.
+// flagText distinguishes an omitted flag (nil) from an explicitly empty
+// value.
 func flagText(gave bool, text string) *string {
 	if !gave {
 		return nil
@@ -98,9 +91,8 @@ func flagText(gave bool, text string) *string {
 	return &text
 }
 
-// editTicket writes a new title and new prose to a ticket of the queue. A title
-// or a body that is nil leaves that part of the ticket as it is, because the
-// caller gave dg nothing to put there.
+// editTicket updates a queued ticket, preserving title or body when the
+// corresponding pointer is nil.
 func editTicket(s *store.Store, id int64, title, body *string) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
@@ -125,9 +117,8 @@ func editTicket(s *store.Store, id int64, title, body *string) error {
 	return nil
 }
 
-// editFromEditor opens the editor of the person on the title and the prose of a
-// ticket, and writes back what the editor gave: the first line to the column
-// title, and each line below it to the file of prose.
+// editFromEditor edits the title and description together, then saves the
+// first line as title and the remainder as description.
 func editFromEditor(s *store.Store, id int64) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
@@ -150,9 +141,7 @@ func editFromEditor(s *store.Store, id int64) error {
 		return err
 	}
 
-	// The person changed nothing, so nothing is written. The file is the file
-	// of the person, and a write that puts back what was read is still a write
-	// of text that delegator holds in memory.
+	// Avoid rewriting the description when the editor made no changes.
 	if after == before {
 		return nil
 	}
@@ -167,11 +156,8 @@ func editFromEditor(s *store.Store, id int64) error {
 	return os.WriteFile(path, []byte(body), filePerm)
 }
 
-// refuseEdit returns the error for a ticket that dg edit cannot change. A run
-// reads the ticket when it starts, so every state below queued belongs to a run
-// that has already read it, and a change the agent cannot see leaves a report
-// that answers a ticket which is not there any more. dg revise is the command
-// that gives the work again with new prose.
+// refuseEdit rejects tickets outside the queue. Once a run has read the
+// ticket, editing it could make the report describe different work.
 func refuseEdit(ticket store.Ticket) error {
 	if ticket.Status == store.Running {
 		return fmt.Errorf("ticket %d is running: use dg revise after the run to change it", ticket.ID)

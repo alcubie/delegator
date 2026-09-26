@@ -10,10 +10,9 @@ import (
 	"testing"
 )
 
-// Only a command opens the store. A command in internal/cli opens it once and
-// passes it down, and testfix opens it for tests. Code anywhere else takes a
-// *Store as an argument, so a second connection in one process has no way to
-// be written. This test holds that rule by reading the source.
+// Production store opens belong to the CLI boundary; other packages receive a
+// *Store. Inspect source to prevent hidden opens, allowing testfix to create
+// test stores.
 func TestOnlyCommandsAndFixturesOpenTheStore(t *testing.T) {
 	root := filepath.Join("..", "..")
 	allowed := []string{"internal/cli", "internal/testfix"}

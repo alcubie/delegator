@@ -152,8 +152,7 @@ func TestRunMoveWithNoDirection(t *testing.T) {
 	}
 }
 
-// <where> also takes the id of another ticket, so a person reaches a place in
-// the middle of the queue with one command.
+// A target ID allows a direct move into the middle of the queue.
 func TestRunMoveBeforeATicket(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -200,8 +199,6 @@ func TestRunMoveBeforeATicketThatIsNotInTheQueue(t *testing.T) {
 	}
 }
 
-// A ticket that waits for review moves the same way as one that waits for a
-// run, so a person can put a later ticket at the top of READY.
 func TestRunMoveInReady(t *testing.T) {
 	dataDir, repo, ids := threeInReady(t)
 
@@ -215,8 +212,7 @@ func TestRunMoveInReady(t *testing.T) {
 	}
 }
 
-// A word that is not a direction and not a number names each direction, and
-// says that an id is the other thing that dg move takes.
+// Invalid targets should mention both direction keywords and ticket IDs.
 func TestRunMoveErrorNamesBothWays(t *testing.T) {
 	dataDir, repo, ids := threeInTheQueue(t)
 

@@ -12,10 +12,9 @@ import (
 	"time"
 )
 
-// loadSession loads the session the id names from a stub agent that says
-// whether it can load one, and closes it when the test ends. It gives back
-// the path of the file the agent records into, so a test that expects the
-// load to be refused sees that the agent was never asked.
+// loadSession opens the stub with configurable load support and registers
+// cleanup. Its record file reveals whether an unsupported load was
+// incorrectly sent.
 func loadSession(t *testing.T, id, loading string) (*Session, string, error) {
 	return loadSessionConfigured(t, id, loading, SessionOptions{})
 }
@@ -23,9 +22,8 @@ func loadSession(t *testing.T, id, loading string) (*Session, string, error) {
 func loadSessionConfigured(t *testing.T, id, loading string, options SessionOptions) (*Session, string, error) {
 	t.Helper()
 	name, argv, record := stubLaunch(t, stubFullOptions, stubTurnUpdates, loading)
-	// A load that never returns is the failure this bounds: the history can be
-	// longer than the channel between the client and a turn, and nothing
-	// drains that channel until the first prompt.
+	// Bound the deadlock case where replay exceeds channel capacity
+	// before any prompt drains it.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	s, err := Load(ctx, name, argv, AllowAll(), t.TempDir(), id, options, io.Discard)
@@ -121,10 +119,9 @@ func TestTheSecondTurnOfALoadedSessionHasNoHistory(t *testing.T) {
 	same(t, got, updateEvents("the second prompt"))
 }
 
-// TestCollectTakesWhatArrivedBeforeTheRequestReturned drives collect without
-// an agent, because the event it is about is the one the client put in the
-// channel just as the request answered: the collector is then free to see the
-// stop before it sees the event, which a real agent's timing rarely gives.
+// TestCollectTakesWhatArrivedBeforeTheRequestReturned directly arranges an
+// event and completed request together, making the collector's select race
+// reproducible.
 func TestCollectTakesWhatArrivedBeforeTheRequestReturned(t *testing.T) {
 	s := &Session{events: make(chan Event, eventRoom)}
 	got, err := s.collect(func() error {

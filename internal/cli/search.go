@@ -45,9 +45,8 @@ func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	return cmd
 }
 
-// searchTickets reads the prose of every ticket that the project asks for.
-// The prose stays in its file, which is the thing a person edits, rather than
-// becoming a second copy in the database.
+// searchTickets searches titles and description files for the selected
+// projects, keeping the editable descriptions out of the database.
 func searchTickets(dataDir, workDir string, cfg *config.Config, projectDir, pattern string) ([]store.OpenTicket, error) {
 	tickets, err := listTickets(dataDir, workDir, cfg, projectDir)
 	if err != nil {
