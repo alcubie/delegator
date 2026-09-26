@@ -103,8 +103,8 @@ func TestAddTicketWritesTheArrivalOfThatTicketOnly(t *testing.T) {
 	}
 }
 
-// Exercise a full history: finish, requeue, fail, restart, and cancel. Every
-// state change must append one entry.
+// Exercise a full history: fail, restart, finish, and accept. Every state
+// change must append one entry.
 func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	s, id := oneTicket(t)
 
@@ -112,38 +112,30 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FailUnfinished(firstRun); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ChangeStatus(id, Queued); err != nil {
-		t.Fatal(err)
-	}
-	secondRun, err := s.Claim(id, "delegator/1-my-ticket")
+	secondRun, err := s.Restart(id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if firstRun == secondRun {
-		t.Fatalf("the two claims gave the run %d twice", firstRun)
+		t.Fatalf("the claim and restart gave the run %d twice", firstRun)
 	}
-	if err := s.FailUnfinished(secondRun); err != nil {
+	if err := s.FinishTicket(id, "abc1234"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Cancel(id, 0); err != nil {
+	if err := s.ChangeStatus(id, Done); err != nil {
 		t.Fatal(err)
 	}
 
 	want := []string{
 		"new to queued",
 		"queued to running",
-		"running to ready",
-		"ready to queued",
-		"queued to running",
 		"running to failed",
 		"failed to running",
-		"running to cancelled",
+		"running to ready",
+		"ready to done",
 	}
 	if got := steps(t, s, id); !slices.Equal(got, want) {
 		t.Errorf("the history is\n%v\nwant\n%v", got, want)
@@ -277,7 +269,7 @@ func backdate(t *testing.T, s *Store, id int64, at string) {
 	}
 }
 
-// Requeued tickets must show the new status time, not the previous
+// Cancelled tickets must show the cancellation time, not the previous
 // completion.
 func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	s, id := oneTicket(t)
@@ -291,7 +283,7 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	backdate(t, s, id, rfc3339(stopped))
 
 	revised := time.Now().UTC().Truncate(time.Second)
-	if err := s.ChangeStatus(id, Queued); err != nil {
+	if err := s.Cancel(id, 0); err != nil {
 		t.Fatal(err)
 	}
 
