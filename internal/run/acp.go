@@ -29,11 +29,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent string, ticket stor
 	if err != nil {
 		return err
 	}
-	agentID, err := s.AgentID(entry.Name)
-	if err != nil {
-		return err
-	}
-	if err := s.SetRunAgent(runID, agentID); err != nil {
+	if err := s.SetRunAgent(runID, entry.ID); err != nil {
 		return err
 	}
 	options := sessionOptions(cacheDir)
