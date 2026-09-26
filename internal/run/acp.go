@@ -7,7 +7,6 @@ import (
 	"io"
 	"iter"
 
-	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/handler"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -19,33 +18,38 @@ import (
 // A completed turn records exit code zero; other outcomes record failure
 // details. The supervisor context cancels the turn on timeout, alongside
 // process-group termination.
-func superviseACP(ctx context.Context, s *store.Store, cfg config.Config, id, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
+func superviseACP(ctx context.Context, s *store.Store, agent string, ticket store.Ticket, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
 	// Always close the claimed run. Use noExitCode unless the turn
 	// completes normally.
 	code := noExitCode
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
+	id := ticket.ID
 
-	entry, err := s.Agent(cfg.DefaultAgent)
+	entry, err := s.Agent(agent)
 	if err != nil {
 		return err
 	}
-	agentID, err := s.AgentID(entry.Name)
-	if err != nil {
+	if err := s.SetRunAgent(runID, entry.ID); err != nil {
 		return err
 	}
-	if err := s.SetRunAgent(runID, agentID); err != nil {
-		return err
+	options := sessionOptions(cacheDir)
+	var session *handler.Session
+	if ticket.Session == "" {
+		session, err = handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, options, log)
+	} else {
+		session, err = handler.Load(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, ticket.Session, options, log)
 	}
-	session, err := handler.Start(ctx, entry.Name, entry.Argv, handler.AllowAll(), worktree, sessionOptions(cacheDir), log)
 	if err != nil {
 		return err
 	}
 	defer session.Close()
 
-	// Save the session before prompting so interrupted runs can still be
-	// resumed.
-	if err := s.SetSession(id, session.ID()); err != nil {
-		return err
+	// Save only newly created sessions. A failed load or prompt must leave a
+	// restarted ticket's existing session available for another attempt.
+	if ticket.Session == "" {
+		if err := s.SetSession(id, session.ID()); err != nil {
+			return err
+		}
 	}
 
 	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir)), log)
