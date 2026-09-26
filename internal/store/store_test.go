@@ -339,26 +339,6 @@ func setMigrations(t *testing.T, list []string) {
 	t.Cleanup(func() { migrations = old })
 }
 
-// openBefore creates a database just before a named migration, then restores
-// the full migration list. Naming the step keeps tests stable as later
-// migrations are appended.
-func openBefore(t *testing.T, dataDir, step string) *Store {
-	t.Helper()
-	i := slices.Index(migrations, step)
-	if i < 0 {
-		t.Fatal("the step is not one of the migrations")
-	}
-	all := migrations
-	migrations = all[:i]
-	defer func() { migrations = all }()
-
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
 func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -374,7 +354,11 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 		t.Error(err)
 	}
 
-	for _, name := range []string{"projects", "tickets", "agents"} {
+	if got := userVersion(t, s.db); got != 1 {
+		t.Errorf("user_version = %d, want 1", got)
+	}
+
+	for _, name := range []string{"projects", "tickets", "queue_state", "agents", "runs", "ticket_deps", "transitions", "settings", "run_usage"} {
 		var got string
 		err := s.db.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", name).Scan(&got)
@@ -890,53 +874,22 @@ func TestOpenStopsTwoTicketsFromSharingAPosition(t *testing.T) {
 	}
 }
 
-// Backfilling ready_position must preserve the completion order shown before
-// migration.
-func TestOpenGivesAnOldReadyTicketThePlaceOfItsCompletion(t *testing.T) {
-	dataDir := t.TempDir()
-
-	before := openBefore(t, dataDir, addReadyPositionColumn)
-	projectID, err := before.AddProject("/projects/path", "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Insert directly because current store methods require the new
-	// schema.
-	for _, ticket := range []struct {
-		title     string
-		completed string
-	}{
-		{"last", "2026-08-28T15:00:00Z"},
-		{"first", "2026-08-28T09:00:00Z"},
-		{"middle", "2026-08-28T12:00:00Z"},
-	} {
-		if _, err := before.db.Exec(`
-			INSERT INTO tickets (project_id, title, status, created, completed)
-			VALUES (?, ?, 'ready', '2026-08-28T08:00:00Z', ?)`,
-			projectID, ticket.title, ticket.completed); err != nil {
-			t.Fatal(err)
-		}
-	}
-	before.Close()
-
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	want := []string{"first", "middle", "last"}
-	if got := readyTitles(t, s); !slices.Equal(got, want) {
-		t.Errorf("READY is %v, want %v", got, want)
-	}
-}
-
 // Opening an older database must apply each missing migration exactly once.
 func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	dataDir := t.TempDir()
 
-	first := openBefore(t, dataDir, completedColumn)
+	first, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID, err := first.AddProject("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	first.Close()
+
+	setMigrations(t, append(migrations,
+		"CREATE TABLE later (id INTEGER PRIMARY KEY);"))
 
 	if got := userVersion(t, openRaw(t, dataDir)); got != 1 {
 		t.Fatalf("the old database is at version %d, want 1", got)
@@ -953,10 +906,20 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	}
 	var name string
 	err = second.db.QueryRow(
-		"SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'tickets_position'").Scan(&name)
+		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'later'").Scan(&name)
 	if err != nil {
-		t.Errorf("the index of the second step is not on the old database: %v", err)
+		t.Errorf("the table of the new step is not on the old database: %v", err)
 	}
+	var id int64
+	if err := second.db.QueryRow("SELECT id FROM projects WHERE id = ?", projectID).Scan(&id); err != nil {
+		t.Errorf("the existing project did not survive migration: %v", err)
+	}
+	second.Close()
+	reopened, err := Open(dataDir)
+	if err != nil {
+		t.Fatalf("reopening an up-to-date database: %v", err)
+	}
+	reopened.Close()
 }
 
 func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {

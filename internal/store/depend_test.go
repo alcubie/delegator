@@ -321,23 +321,14 @@ func TestOpenTicketsLeaveOutALinkThatIsDone(t *testing.T) {
 	}
 }
 
-// Existing databases must gain the dependency table on their next open.
-func TestOpenGivesAnOldDatabaseTheLinksTable(t *testing.T) {
-	dataDir := t.TempDir()
-
-	openBefore(t, dataDir, addDependenciesTable).Close()
-
-	s, err := Open(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+func TestOpenCreatesTheLinksTableAndIndex(t *testing.T) {
+	s, _ := emptyStore(t)
 
 	for _, name := range []string{"ticket_deps", "ticket_deps_depends_on"} {
 		var found string
 		if err := s.db.QueryRow(
 			"SELECT name FROM sqlite_master WHERE name = ?", name).Scan(&found); err != nil {
-			t.Errorf("%s is not on the migrated database: %v", name, err)
+			t.Errorf("%s is not on the database: %v", name, err)
 		}
 	}
 }
