@@ -1686,7 +1686,7 @@ func TestChangeStatusIntoReadyPutsTheTicketAtTheEnd(t *testing.T) {
 // Leaving READY must clear ready_position; unlike the queue column, no CHECK
 // enforces this.
 func TestChangeStatusOutOfReadyClearsTheReadyPosition(t *testing.T) {
-	for _, status := range []TicketStatus{Done, Queued} {
+	for _, status := range []TicketStatus{Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
 			s, ids := threeReady(t)
 
@@ -1704,19 +1704,24 @@ func TestChangeStatusOutOfReadyClearsTheReadyPosition(t *testing.T) {
 	}
 }
 
-// Returning a ticket to queued status must append it behind existing work.
-func TestChangeStatusIntoTheQueuePutsTheTicketAtTheEnd(t *testing.T) {
+func TestChangeStatusFromReadyToQueuedIsRefused(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	for _, status := range []TicketStatus{Running, Ready, Queued} {
+	for _, status := range []TicketStatus{Running, Ready} {
 		if err := s.ChangeStatus(ids[0], status); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if err := s.ChangeStatus(ids[0], Queued); !errors.Is(err, ErrInvalidTicketStateChange) {
+		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
 
-	want := []string{"second", "third", "first"}
+	want := []string{"second", "third"}
 	if got := queueTitles(t, s); !slices.Equal(got, want) {
 		t.Errorf("the queue is %v, want %v", got, want)
+	}
+	if got := readyTitles(t, s); !slices.Equal(got, []string{"first"}) {
+		t.Errorf("READY is %v, want [first]", got)
 	}
 }
 
@@ -3069,17 +3074,17 @@ func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 func TestFinishTicketFromAnInvalidState(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
-			s, ids := threeReady(t)
-			if err := s.ChangeStatus(ids[1], status); err != nil {
-				t.Fatal(err)
+			s, id := oneTicket(t)
+			if status != Queued {
+				setStatus(t, s, id, status)
 			}
 
-			err := s.FinishTicket(ids[1], "abc1234")
+			err := s.FinishTicket(id, "abc1234")
 			if !errors.Is(err, ErrInvalidTicketStateChange) {
 				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
 			}
 
-			ticket, err := s.Ticket(ids[1])
+			ticket, err := s.Ticket(id)
 			if err != nil {
 				t.Fatal(err)
 			}
