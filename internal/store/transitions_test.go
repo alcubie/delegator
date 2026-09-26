@@ -108,7 +108,7 @@ func TestAddTicketWritesTheArrivalOfThatTicketOnly(t *testing.T) {
 func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	s, id := oneTicket(t)
 
-	firstRun, err := s.Claim(id, "delegator/1-my-ticket")
+	firstRun, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if err := s.ChangeStatus(id, Queued); err != nil {
 		t.Fatal(err)
 	}
-	secondRun, err := s.Claim(id, "delegator/1-my-ticket")
+	secondRun, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if err := s.FailUnfinished(secondRun); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Cancel(id, 0); err != nil {
@@ -154,7 +154,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 // status.
 func TestChangeStatusWithWritesTheRowWithTheChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -194,7 +194,7 @@ func TestAChangeThatIsRefusedWritesNoRow(t *testing.T) {
 
 func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,7 +211,7 @@ func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 // A claim's transition and run start must use the same timestamp.
 func TestClaimWritesOneTimeForTheRunAndTheChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -244,7 +244,7 @@ func TestTheEndOfARunAndTheChangeOfStateHoldOneTime(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, id := oneTicket(t)
-			runID, err := s.Claim(id, "delegator/1-my-ticket")
+			runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -281,7 +281,7 @@ func backdate(t *testing.T, s *Store, id int64, at string) {
 // completion.
 func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -310,7 +310,7 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 // DONE uses acceptance time even when completion was days earlier.
 func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -357,7 +357,7 @@ func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 // Creation time must remain stable across later transitions.
 func TestTicketGivesTheTimeItArrived(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	// Backdate only creation to distinguish it from every later entry.
@@ -379,7 +379,7 @@ func TestTicketGivesTheTimeItArrived(t *testing.T) {
 
 func TestTicketGivesTheTimeOfTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {

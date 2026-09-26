@@ -37,10 +37,10 @@ func eachGroup(t *testing.T, dataDir string) (*store.Store, string, map[string]i
 	if err := s.ChangeStatus(ids["done"], store.Done); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(ids["running"], "delegator/running"); err != nil {
+	if _, err := s.Claim(ids["running"], "delegator/running", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(ids["failed"], "delegator/failed"); err != nil {
+	if _, err := s.Claim(ids["failed"], "delegator/failed", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(ids["failed"], store.Failed); err != nil {

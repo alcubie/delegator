@@ -71,7 +71,7 @@ func eachStatus(t *testing.T, dataDir string) (string, map[store.TicketStatus]in
 // claimIn takes a queued ticket for a run, which is what a supervisor does.
 func claimIn(t *testing.T, s *store.Store, id int64) {
 	t.Helper()
-	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id)); err != nil {
+	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 }

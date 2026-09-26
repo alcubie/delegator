@@ -12,6 +12,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
+const testAgentID int64 = 1
+
 // queuedTicket makes a data directory holding one project and one ticket in
 // the queue, in a repository that has one commit. It returns the store, the id
 // of the ticket and the repository.
@@ -41,7 +43,7 @@ func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, s
 
 	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
 	testfix.GitIn(t, repo, "branch", branch)
-	if _, err := s.Claim(ticketID, branch); err != nil {
+	if _, err := s.Claim(ticketID, branch, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)

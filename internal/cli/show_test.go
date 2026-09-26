@@ -48,7 +48,7 @@ func finishIn(t *testing.T, s *store.Store, id int64) string {
 		testfix.CommitIn(t, ticket.Project.Path, "first")
 	}
 	testfix.GitIn(t, ticket.Project.Path, "branch", branch)
-	if _, err := s.Claim(id, branch); err != nil {
+	if _, err := s.Claim(id, branch, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, ""); err != nil {
@@ -294,7 +294,7 @@ func TestRunShowOnAFailedTicketSaysFailedAndGivesTheTime(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := queuedIn(t, s, repo, "the ticket that failed")
-	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id)); err != nil {
+	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, store.Failed); err != nil {
@@ -339,7 +339,7 @@ func TestRunShowGivesTheAgentOfTheLastRun(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := queuedIn(t, s, repo, "Record the agent")
-	runID, err := s.Claim(id, "delegator/1-record-the-agent")
+	runID, err := s.Claim(id, "delegator/1-record-the-agent", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}

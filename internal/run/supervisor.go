@@ -25,11 +25,15 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	runID, err := s.Claim(id, branch(id, ticket.Title))
+	agent, err := s.Agent(cfg.DefaultAgent)
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, cfg.DefaultAgent)
+	runID, err := s.Claim(id, branch(id, ticket.Title), agent.ID)
+	if err != nil {
+		return err
+	}
+	return supervise(s, cfg, ticket, runID, agent)
 }
 
 // Restart starts a failed ticket again. Restart writes the running state and
@@ -40,15 +44,23 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	agent := cfg.DefaultAgent
+	var agent store.Agent
 	if ticket.Session != "" {
 		prior, err := s.Run(id)
 		if err != nil {
 			return err
 		}
-		agent = prior.Agent
+		agent, err = s.AgentByID(prior.AgentID)
+		if err != nil {
+			return err
+		}
+	} else {
+		agent, err = s.Agent(cfg.DefaultAgent)
+		if err != nil {
+			return err
+		}
 	}
-	runID, err := s.Restart(id)
+	runID, err := s.Restart(id, agent.ID)
 	if err != nil {
 		return err
 	}
@@ -63,14 +75,25 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 // another supervisor took the available capacity. Callers should only trigger
 // more work if this supervisor claimed a ticket.
 func StartNext(s *store.Store, cfg config.Config) (bool, error) {
-	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) })
+	claimable, err := s.ClaimableCount(cfg)
+	if err != nil {
+		return false, err
+	}
+	if claimable == 0 {
+		return false, nil
+	}
+	agent, err := s.Agent(cfg.DefaultAgent)
+	if err != nil {
+		return false, err
+	}
+	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) }, agent.ID)
 	if errors.Is(err, store.ErrNoRoom) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID, cfg.DefaultAgent)
+	return true, supervise(s, cfg, ticket, runID, agent)
 }
 
 // noExitCode marks a run without a reported exit code, matching os/exec for a
@@ -122,7 +145,7 @@ func (t *supervisorTimer) Close() error {
 // use the claimed runID, since a restart may create a newer run. Setup
 // failures close the run and mark the ticket failed so it does not keep
 // occupying capacity.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent string) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// Any return without dg finish must fail the claimed ticket.

@@ -22,6 +22,8 @@ import (
 	"github.com/alcubie/delegator/internal/config"
 )
 
+const testAgentID int64 = 1
+
 // emptyStore returns a store that holds one project and no ticket, with the id of
 // the project.
 func emptyStore(t *testing.T) (*Store, int64) {
@@ -540,6 +542,21 @@ func TestAgentIDRefusesAnAgentOutsideTheRegistry(t *testing.T) {
 	s, _ := emptyStore(t)
 	if _, err := s.AgentID("not-registered"); !errors.Is(err, ErrInvalidAgent) {
 		t.Fatalf("AgentID error = %v, want ErrInvalidAgent", err)
+	}
+}
+
+func TestAgentByIDReturnsTheRegistryEntry(t *testing.T) {
+	s, _ := emptyStore(t)
+	want, err := s.Agent("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AgentByID(want.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("agent = %+v, want %+v", got, want)
 	}
 }
 
@@ -1317,7 +1334,7 @@ func setStarted(t *testing.T, s *Store, runID int64, started string) {
 // Expose the run start for elapsed time, or zero for never-run tickets.
 func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+	if _, err := s.Claim(ids[0], "delegator/1-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	setStarted(t, s, runRows(t, s, ids[0])[0].id, "2026-08-28T09:30:00Z")
@@ -1343,13 +1360,13 @@ func TestOpenTicketsGivesTheStartOfTheRun(t *testing.T) {
 // time.
 func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -1733,7 +1750,7 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 	s, id := oneTicket(t)
 	before := time.Now().UTC().Truncate(time.Second)
 
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1759,11 +1776,11 @@ func TestClaimWritesARunWithThePidAndTheStartTime(t *testing.T) {
 // A losing claim must roll back without creating a run.
 func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if !errors.Is(err, ErrInvalidTicketStateChange) {
 		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
 	}
@@ -1784,7 +1801,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1823,7 +1840,7 @@ func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+	claimed, runID, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1837,7 +1854,7 @@ func TestClaimNextWithAnEmptyQueueClaimsNothing(t *testing.T) {
 func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 	for _, status := range []TicketStatus{Running, Ready} {
 		s, ids := threeTickets(t)
-		if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+		if _, err := s.Claim(ids[0], "delegator/1-first", testAgentID); err != nil {
 			t.Fatal(err)
 		}
 		if status == Ready {
@@ -1846,7 +1863,7 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 			}
 		}
 
-		claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+		claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 
 		if !errors.Is(err, ErrNoRoom) {
 			t.Errorf("with a ticket in %s: err = %v, want ErrNoRoom", status, err)
@@ -1859,11 +1876,11 @@ func TestClaimNextWithATicketThatHoldsTheQueue(t *testing.T) {
 
 func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+	if _, err := s.Claim(ids[0], "delegator/1-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -1877,7 +1894,7 @@ func TestClaimNextWithASlotFreeClaimsTheNextTicket(t *testing.T) {
 func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
-		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id}), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1885,7 +1902,7 @@ func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1899,12 +1916,12 @@ func TestClaimNextWithEverySlotFullClaimsNothing(t *testing.T) {
 func TestClaimNextWithMoreTicketsOpenThanTheLimitClaimsNothing(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
-		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id}), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1921,7 +1938,7 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1934,11 +1951,11 @@ func TestClaimNextWithAPausedQueueClaimsNothing(t *testing.T) {
 // Skip a full project to start eligible work in another project.
 func TestClaimNextPassesOverAProjectAtItsLimit(t *testing.T) {
 	s, first, second := twoProjects(t)
-	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -1951,11 +1968,11 @@ func TestClaimNextPassesOverAProjectAtItsLimit(t *testing.T) {
 
 func TestClaimNextTakesASecondTicketOfAProjectWithRoom(t *testing.T) {
 	s, first, _ := twoProjects(t)
-	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 2}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 2}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -1970,12 +1987,12 @@ func TestClaimNextTakesASecondTicketOfAProjectWithRoom(t *testing.T) {
 func TestClaimNextWithEveryProjectAtItsLimitClaimsNothing(t *testing.T) {
 	s, first, second := twoProjects(t)
 	for _, id := range []int64{first[0], second[0]} {
-		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id}), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 4, MaxRunsPerProject: 1}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 4, MaxRunsPerProject: 1}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("err = %v, want ErrNoRoom", err)
@@ -1988,14 +2005,14 @@ func TestClaimNextWithEveryProjectAtItsLimitClaimsNothing(t *testing.T) {
 // Ready tickets also consume per-project capacity.
 func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	s, first, second := twoProjects(t)
-	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(first[0], Ready); err != nil {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 3, MaxRunsPerProject: 1}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -2017,7 +2034,7 @@ func TestClaimableCountCountsTheTicketsOfTheQueue(t *testing.T) {
 // Global capacity caps the sum of per-project claimable counts.
 func TestClaimableCountStopsAtTheFreeSlots(t *testing.T) {
 	s, first, _ := twoProjects(t)
-	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]})); err != nil {
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2033,7 +2050,7 @@ func TestClaimableCountStopsAtTheFreeSlots(t *testing.T) {
 func TestClaimableCountWithEveryProjectAtItsLimitCountsNothing(t *testing.T) {
 	s, first, second := twoProjects(t)
 	for _, id := range []int64{first[0], second[0]} {
-		if _, err := s.Claim(id, claimBranch(Ticket{ID: id})); err != nil {
+		if _, err := s.Claim(id, claimBranch(Ticket{ID: id}), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -2079,7 +2096,7 @@ func TestTwoSupervisorsThatClaimNextTakeOneTicket(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch)
+			claimed, _, err := s.ClaimNext(config.Config{Runs: 1}, claimBranch, testAgentID)
 			claims <- claimed
 			errs <- err
 		}()
@@ -2119,7 +2136,7 @@ func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch)
+			claimed, _, err := s.ClaimNext(config.Config{Runs: 2}, claimBranch, testAgentID)
 			if err != nil {
 				t.Errorf("err = %v, want nil", err)
 			}
@@ -2147,7 +2164,7 @@ func TestTwoSupervisorsWithTwoSlotsTakeTwoTickets(t *testing.T) {
 // Liveness checks receive the supervisor PID and run start time.
 func TestRunGivesThePidAndTheStartTimeOfTheRun(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2175,15 +2192,11 @@ func TestRunGivesTheAgentItReferences(t *testing.T) {
 	if err := s.SaveAgent(Agent{Name: "mine", Argv: []string{"mine-acp"}}); err != nil {
 		t.Fatal(err)
 	}
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
-	if err != nil {
-		t.Fatal(err)
-	}
 	agentID, err := s.AgentID("mine")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRunAgent(runID, agentID); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", agentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2198,13 +2211,15 @@ func TestRunGivesTheAgentItReferences(t *testing.T) {
 
 func TestRunAgentMustReferToAnAgent(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	if _, err := s.Claim(id, "delegator/1-my-ticket", 404); err == nil {
+		t.Fatal("Claim accepted an id that no agent has")
+	}
+	ticket, err := s.Ticket(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if err := s.SetRunAgent(runID, 404); err == nil {
-		t.Fatal("SetRunAgent accepted an id that no agent has")
+	if ticket.Status != Queued {
+		t.Errorf("status = %q, want %q after the failed claim", ticket.Status, Queued)
 	}
 }
 
@@ -2212,7 +2227,7 @@ func usageInt(n int) *int { return &n }
 
 func TestRunUsageKeepsEveryReportedCategoryIncludingZero(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2242,7 +2257,7 @@ func TestRunUsageKeepsEveryReportedCategoryIncludingZero(t *testing.T) {
 
 func TestRunWithNoReportedUsageHasNoUsageRow(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2269,7 +2284,7 @@ func TestRunUsageRefusesARunThatDoesNotExist(t *testing.T) {
 // categories and independently complete optional categories are summed.
 func TestRunUsageAggregatesPromptsWithoutFillingMissingCategories(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2324,13 +2339,13 @@ func TestRunUsageAggregatesPromptsWithoutFillingMissingCategories(t *testing.T) 
 // Run returns the latest attempt, not the failed predecessor.
 func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2366,7 +2381,7 @@ func TestRunOnATicketThatHasNoRun(t *testing.T) {
 func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 	for _, exitCode := range []int{0, 3} {
 		s, id := oneTicket(t)
-		runID, err := s.Claim(id, "delegator/1-my-ticket")
+		runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2410,14 +2425,14 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 // Ending an older run must not close the run created by a restart.
 func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	s, id := oneTicket(t)
-	first, err := s.Claim(id, "delegator/1-my-ticket")
+	first, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2593,7 +2608,7 @@ func TestDoneTicketsWithAWindowOfNoLengthHoldsNothing(t *testing.T) {
 // Preserve an end time already recorded by the supervisor.
 func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2619,7 +2634,7 @@ func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 // Fill a missing end time when the supervisor could not record it.
 func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2645,7 +2660,7 @@ func TestFailUnfinishedWritesTheEndOfARunThatHasNone(t *testing.T) {
 func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 	for _, status := range []TicketStatus{Ready, Failed, Cancelled} {
 		s, id := oneTicket(t)
-		runID, err := s.Claim(id, "delegator/1-my-ticket")
+		runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2668,7 +2683,7 @@ func TestFailUnfinishedLeavesATicketThatIsNotRunning(t *testing.T) {
 // Reconcile recovers abandoned running tickets and closes their runs.
 func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	before := time.Now().UTC().Truncate(time.Second)
@@ -2699,7 +2714,7 @@ func TestReconcileFailsATicketWhoseRunIsDead(t *testing.T) {
 
 func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2730,10 +2745,10 @@ func TestReconcileLeavesATicketWhoseRunIsAlive(t *testing.T) {
 // Pass the full run to liveness checks for PID and boot-time comparison.
 func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	s, ids := threeTickets(t)
-	if _, err := s.Claim(ids[0], "delegator/1-first"); err != nil {
+	if _, err := s.Claim(ids[0], "delegator/1-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(ids[1], "delegator/2-second"); err != nil {
+	if _, err := s.Claim(ids[1], "delegator/2-second", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	// Only the first ticket is still running; ready and never-claimed
@@ -2764,13 +2779,13 @@ func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 // Only the latest run is relevant to reconciliation.
 func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	last, err := s.Restart(id)
+	last, err := s.Restart(id, testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2789,7 +2804,7 @@ func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 func TestReconcileMarksEachDeadRun(t *testing.T) {
 	s, ids := threeTickets(t)
 	for _, id := range ids[:2] {
-		if _, err := s.Claim(id, "delegator/branch"); err != nil {
+		if _, err := s.Claim(id, "delegator/branch", testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -2848,7 +2863,7 @@ func TestCancelClosesATicket(t *testing.T) {
 // Cancellation closes the named run as well as the ticket.
 func TestCancelWritesTheEndOfTheRun(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2871,7 +2886,7 @@ func TestCancelWritesTheEndOfTheRun(t *testing.T) {
 // reconciliation.
 func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
 	s, id := oneTicket(t)
-	runID, err := s.Claim(id, "delegator/1-my-ticket")
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2893,14 +2908,14 @@ func TestCancelKeepsTheEndThatTheRunHas(t *testing.T) {
 // concurrent restart.
 func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	s, id := oneTicket(t)
-	stopped, err := s.Claim(id, "delegator/1-my-ticket")
+	stopped, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FailUnfinished(stopped); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	// Reopen the old run to prove cancellation updates it rather than the
@@ -2925,7 +2940,7 @@ func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 func TestCancelRefusesATicketThatIsClosed(t *testing.T) {
 	for _, status := range []TicketStatus{Done, Cancelled} {
 		s, id := oneTicket(t)
-		runID, err := s.Claim(id, "delegator/1-my-ticket")
+		runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2962,7 +2977,7 @@ func TestFinishTicketOnARunningTicket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(fourth, "delegator/4-fourth"); err != nil {
+	if _, err := s.Claim(fourth, "delegator/4-fourth", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2999,7 +3014,7 @@ func TestFinishTicketOnAFailedTicket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(fourth, "delegator/4-fourth"); err != nil {
+	if _, err := s.Claim(fourth, "delegator/4-fourth", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(fourth, Failed); err != nil {

@@ -15,6 +15,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
+const testAgentID int64 = 1
+
 func TestMain(m *testing.M) { os.Exit(testfix.RunTests(m, false)) }
 
 func queuedTicket(t *testing.T, title string) (string, int64) {
@@ -40,7 +42,7 @@ func queuedTicket(t *testing.T, title string) (string, int64) {
 func TestTheSupervisorTimeoutStopsTheRunGroupAndFailsTheRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
-	runID, err := s.Claim(id, branch(id, "Add the thing"))
+	runID, err := s.Claim(id, branch(id, "Add the thing"), testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +147,7 @@ func TestStartNextTakesTheFirstTicketOfTheQueueAndRunsIt(t *testing.T) {
 func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
+	if _, err := s.Claim(id, branch(id, "Add the thing"), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := StartNext(s, acpConfig(t, dataDir, "stop end_turn"))
@@ -163,7 +165,7 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 func TestStartRefusesATicketThatIsAlreadyRunning(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(id, branch(id, "Add the thing")); err != nil {
+	if _, err := s.Claim(id, branch(id, "Add the thing"), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	err := Start(s, id, acpConfig(t, dataDir, "stop end_turn"))
@@ -200,6 +202,9 @@ func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 	}
 	if failed.EndedAt.IsZero() {
 		t.Error("the run of a ticket that never started has no end time")
+	}
+	if failed.Agent != "fake" {
+		t.Errorf("agent = %q, want %q even though setup failed", failed.Agent, "fake")
 	}
 }
 
