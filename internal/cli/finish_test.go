@@ -38,12 +38,20 @@ func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 // that holds one commit. It returns the store, the id of the ticket, the
 // repository and the hash of that commit.
 func runningTicket(t *testing.T, dataDir string) (*store.Store, int64, string, string) {
+	return runningTicketWithAgent(t, dataDir, "claude")
+}
+
+func runningTicketWithAgent(t *testing.T, dataDir, agent string) (*store.Store, int64, string, string) {
 	t.Helper()
 	s, ticketID, repo := queuedTicket(t, dataDir)
 
 	branch := fmt.Sprintf("delegator/%d-ticket-title", ticketID)
 	testfix.GitIn(t, repo, "branch", branch)
-	if _, err := s.Claim(ticketID, branch, testAgentID); err != nil {
+	agentID, err := s.AgentID(agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(ticketID, branch, agentID); err != nil {
 		t.Fatal(err)
 	}
 	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)

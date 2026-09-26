@@ -1113,22 +1113,6 @@ func (s *Store) SetSetting(name, value string) error {
 	return nil
 }
 
-// SetRunAgent records the agent one run started.
-func (s *Store) SetRunAgent(runID, agentID int64) error {
-	result, err := s.db.Exec("UPDATE runs SET agent_id = ? WHERE id = ?", agentID, runID)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return fmt.Errorf("%w: run %d", ErrNoRun, runID)
-	}
-	return nil
-}
-
 // ErrNoRun means the requested run does not exist, or the requested ticket
 // has never run.
 var ErrNoRun = errors.New("the ticket has no run")

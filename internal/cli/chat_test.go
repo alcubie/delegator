@@ -46,9 +46,12 @@ func resumeArgv(session string) []string {
 // chattableTicket creates a non-running ticket with a saved session and
 // existing worktree, returning ID, repository, and session.
 func chattableTicket(t *testing.T, dataDir string) (int64, string, string) {
+	return chattableTicketWithAgent(t, dataDir, "claude")
+}
+
+func chattableTicketWithAgent(t *testing.T, dataDir, agent string) (int64, string, string) {
 	t.Helper()
-	s, ticketID, repo, commit := runningTicket(t, dataDir)
-	setChatAgent(t, s, ticketID, "claude")
+	s, ticketID, repo, commit := runningTicketWithAgent(t, dataDir, agent)
 	const session = "session-of-the-run"
 	if err := s.SetSession(ticketID, session); err != nil {
 		t.Fatal(err)
@@ -68,7 +71,6 @@ func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session str
 	t.Helper()
 	id := queuedIn(t, s, repo, title)
 	finishIn(t, s, id)
-	setChatAgent(t, s, id, "claude")
 	if err := s.SetSession(id, session); err != nil {
 		t.Fatal(err)
 	}
@@ -76,21 +78,6 @@ func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session str
 		t.Fatal(err)
 	}
 	return id
-}
-
-func setChatAgent(t *testing.T, s *store.Store, ticketID int64, name string) {
-	t.Helper()
-	r, err := s.Run(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	agentID, err := s.AgentID(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetRunAgent(r.ID, agentID); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // twoChattableProjects makes two repositories, each with one ready ticket that
@@ -130,7 +117,6 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
-	setChatAgent(t, s, ticketID, "claude")
 	const session = "session-of-the-failed-run"
 	if err := s.SetSession(ticketID, session); err != nil {
 		t.Fatal(err)
@@ -192,9 +178,7 @@ func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
 // Chat uses the agent that opened the session even after the default changes.
 func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
 	dataDir := t.TempDir()
-	ticketID, repo, session := chattableTicket(t, dataDir)
-	s := testfix.OpenStore(t, dataDir)
-	setChatAgent(t, s, ticketID, "codex")
+	ticketID, repo, session := chattableTicketWithAgent(t, dataDir, "codex")
 	record := useChat(t, "true")
 
 	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {

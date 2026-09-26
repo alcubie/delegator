@@ -339,15 +339,11 @@ func TestRunShowGivesTheAgentOfTheLastRun(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := queuedIn(t, s, repo, "Record the agent")
-	runID, err := s.Claim(id, "delegator/1-record-the-agent", testAgentID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	agentID, err := s.AgentID("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRunAgent(runID, agentID); err != nil {
+	if _, err := s.Claim(id, "delegator/1-record-the-agent", agentID); err != nil {
 		t.Fatal(err)
 	}
 
