@@ -5,13 +5,14 @@ import (
 	"time"
 )
 
-// Restart marks a failed ticket running and creates a new run, preserving its
-// branch, session, and worktree. It returns ErrNoTicket for a missing ticket
-// and ErrInvalidTicketStateChange for any status other than Failed.
+// Restart marks a failed ticket running and creates a new run for agentID,
+// preserving its branch, session, and worktree. It returns ErrNoTicket for a
+// missing ticket and ErrInvalidTicketStateChange for any status other than
+// Failed.
 //
 // The transition and run record share one transaction so a running ticket
-// always has a supervisor PID.
-func (s *Store) Restart(id int64) (int64, error) {
+// always has an agent and supervisor PID.
+func (s *Store) Restart(id, agentID int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -30,7 +31,7 @@ func (s *Store) Restart(id int64) (int64, error) {
 	if err := changeStatus(tx, id, Running, started); err != nil {
 		return 0, err
 	}
-	runID, err := startRun(tx, id, started)
+	runID, err := startRun(tx, id, agentID, started)
 	if err != nil {
 		return 0, err
 	}

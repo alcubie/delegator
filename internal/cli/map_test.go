@@ -211,7 +211,7 @@ func TestMapWithNoIDUsesTheHeadOfReady(t *testing.T) {
 	first, second := twoTickets(t, dataDir, repo)
 	s := testfix.OpenStore(t, dataDir)
 	for _, id := range []int64{first, second} {
-		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d", id)); err != nil {
+		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d", id), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.FinishTicket(id, ""); err != nil {

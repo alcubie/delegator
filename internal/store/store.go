@@ -728,8 +728,8 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus, at time.Time) error
 	return addTransition(tx, id, from, status, at)
 }
 
-// Claim atomically marks a ticket running, records its branch, and
-// creates a run with the supervisor PID and claim time. A competing claim
+// Claim atomically marks a ticket running, records its branch, and creates a
+// run with its agent, supervisor PID, and claim time. A competing claim
 // returns ErrInvalidTicketStateChange.
 //
 // The returned run ID identifies this supervisor's run. Use it for later
@@ -738,14 +738,14 @@ func changeStatus(tx *sql.Tx, id int64, status TicketStatus, at time.Time) error
 //
 // Keep worktree creation outside the claim transaction. Git operations
 // while holding SQLite's writer lock would delay other commands.
-func (s *Store) Claim(id int64, branch string) (int64, error) {
+func (s *Store) Claim(id int64, branch string, agentID int64) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
 
-	runID, err := claim(tx, id, branch)
+	runID, err := claim(tx, id, branch, agentID)
 	if err != nil {
 		return 0, err
 	}
@@ -813,7 +813,7 @@ func (s *Store) ClaimableCount(cfg config.Config) (int, error) {
 // Tickets blocked by dependencies or a full project are skipped. The branch
 // callback names the selected ticket's branch while the writer lock is held,
 // so it must not access the database.
-func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket, int64, error) {
+func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string, agentID int64) (Ticket, int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Ticket{}, 0, err
@@ -837,7 +837,7 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string) (Ticket
 		return Ticket{}, 0, err
 	}
 	t.Branch = branch(t)
-	runID, err := claim(tx, t.ID, t.Branch)
+	runID, err := claim(tx, t.ID, t.Branch, agentID)
 	if err != nil {
 		return Ticket{}, 0, err
 	}
@@ -887,7 +887,7 @@ func nextWithRoom(q querier, cfg config.Config) (int64, error) {
 }
 
 // claim performs Claim's writes within the caller's transaction.
-func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
+func claim(tx *sql.Tx, id int64, branch string, agentID int64) (int64, error) {
 	started := time.Now()
 	if err := changeStatus(tx, id, Running, started); err != nil {
 		return 0, err
@@ -895,15 +895,15 @@ func claim(tx *sql.Tx, id int64, branch string) (int64, error) {
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
 		return 0, err
 	}
-	return startRun(tx, id, started)
+	return startRun(tx, id, agentID, started)
 }
 
 // startRun records a new run after its ticket becomes running. Claim and
 // Restart share this process and start-time bookkeeping.
-func startRun(tx *sql.Tx, ticketID int64, started time.Time) (int64, error) {
+func startRun(tx *sql.Tx, ticketID, agentID int64, started time.Time) (int64, error) {
 	result, err := tx.Exec(
-		"INSERT INTO runs (ticket_id, pid, started_at) VALUES (?, ?, ?)",
-		ticketID, os.Getpid(), rfc3339(started),
+		"INSERT INTO runs (ticket_id, agent_id, pid, started_at) VALUES (?, ?, ?, ?)",
+		ticketID, agentID, os.Getpid(), rfc3339(started),
 	)
 	if err != nil {
 		return 0, err
@@ -986,12 +986,22 @@ func (s *Store) Agents() ([]Agent, error) {
 
 // Agent returns the named registry entry.
 func (s *Store) Agent(name string) (Agent, error) {
+	return scanAgent(s.db.QueryRow(
+		"SELECT id, name, argv, resume_argv, COALESCE(install_hint, '') FROM agents WHERE name = ?", name), name)
+}
+
+// AgentByID returns the registry entry with the given ID.
+func (s *Store) AgentByID(id int64) (Agent, error) {
+	return scanAgent(s.db.QueryRow(
+		"SELECT id, name, argv, resume_argv, COALESCE(install_hint, '') FROM agents WHERE id = ?", id), id)
+}
+
+func scanAgent(row *sql.Row, identifier any) (Agent, error) {
 	var a Agent
 	var argv, resume string
-	err := s.db.QueryRow("SELECT id, name, argv, resume_argv, COALESCE(install_hint, '') FROM agents WHERE name = ?", name).
-		Scan(&a.ID, &a.Name, &argv, &resume, &a.InstallHint)
+	err := row.Scan(&a.ID, &a.Name, &argv, &resume, &a.InstallHint)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Agent{}, fmt.Errorf("%w: %s", ErrInvalidAgent, name)
+		return Agent{}, fmt.Errorf("%w: %v", ErrInvalidAgent, identifier)
 	}
 	if err != nil {
 		return Agent{}, err
@@ -1103,29 +1113,13 @@ func (s *Store) SetSetting(name, value string) error {
 	return nil
 }
 
-// SetRunAgent records the agent one run started.
-func (s *Store) SetRunAgent(runID, agentID int64) error {
-	result, err := s.db.Exec("UPDATE runs SET agent_id = ? WHERE id = ?", agentID, runID)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return fmt.Errorf("%w: run %d", ErrNoRun, runID)
-	}
-	return nil
-}
-
 // ErrNoRun means the requested run does not exist, or the requested ticket
 // has never run.
 var ErrNoRun = errors.New("the ticket has no run")
 
-// Run records a supervisor PID and claim time. EndedAt is zero until the run
-// ends. ExitCode is nullable because zero is a valid exit code, and a crashed
-// supervisor may never report one.
+// Run records an agent, supervisor PID, and claim time. EndedAt is zero until
+// the run ends. ExitCode is nullable because zero is a valid exit code, and a
+// crashed supervisor may never report one.
 type Run struct {
 	ID        int64
 	TicketID  int64

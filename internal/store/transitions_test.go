@@ -108,14 +108,14 @@ func TestAddTicketWritesTheArrivalOfThatTicketOnly(t *testing.T) {
 func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	s, id := oneTicket(t)
 
-	firstRun, err := s.Claim(id, "delegator/1-my-ticket")
+	firstRun, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FailUnfinished(firstRun); err != nil {
 		t.Fatal(err)
 	}
-	secondRun, err := s.Restart(id)
+	secondRun, err := s.Restart(id, testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 // status.
 func TestChangeStatusWithWritesTheRowWithTheChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -186,7 +186,7 @@ func TestAChangeThatIsRefusedWritesNoRow(t *testing.T) {
 
 func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,7 +203,7 @@ func TestReconcileWritesTheChangeOfTheTicketItMarks(t *testing.T) {
 // A claim's transition and run start must use the same timestamp.
 func TestClaimWritesOneTimeForTheRunAndTheChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -236,7 +236,7 @@ func TestTheEndOfARunAndTheChangeOfStateHoldOneTime(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, id := oneTicket(t)
-			runID, err := s.Claim(id, "delegator/1-my-ticket")
+			runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,7 +273,7 @@ func backdate(t *testing.T, s *Store, id int64, at string) {
 // completion.
 func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -302,7 +302,7 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 // DONE uses acceptance time even when completion was days earlier.
 func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {
@@ -349,7 +349,7 @@ func TestTheTableOfTicketsHoldsNoTimeOfOneChange(t *testing.T) {
 // Creation time must remain stable across later transitions.
 func TestTicketGivesTheTimeItArrived(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	// Backdate only creation to distinguish it from every later entry.
@@ -371,7 +371,7 @@ func TestTicketGivesTheTimeItArrived(t *testing.T) {
 
 func TestTicketGivesTheTimeOfTheAcceptance(t *testing.T) {
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FinishTicket(id, "abc1234"); err != nil {

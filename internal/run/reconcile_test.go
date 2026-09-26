@@ -96,7 +96,7 @@ func TestBootTime(t *testing.T) {
 func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	dataDir, id := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(id, "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-the-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	testfix.AgeRun(t, dataDir, id, 2*time.Minute)
@@ -121,7 +121,7 @@ func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 	dataDir, id := queuedTicket(t, "the first")
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(id, "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-the-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,7 +141,7 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	dataDir, first := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(first, "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(first, "delegator/1-the-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	testfix.AgeRun(t, dataDir, first, 2*time.Minute)

@@ -125,7 +125,7 @@ func TestAddTicketRefusesAnIdThatNamesNoTicket(t *testing.T) {
 func TestClaimNextPassesOverATicketWhoseLinkIsNotDone(t *testing.T) {
 	s, _, dependent, free := dependentQueue(t)
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +142,7 @@ func TestClaimNextStillWaitsWhileTheOtherTicketIsOnlyReady(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestClaimNextTakesATicketOnceItsLinksAreDone(t *testing.T) {
 		}
 	}
 
-	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch)
+	claimed, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch, testAgentID)
 
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestClaimNextHonorsADependencyFromAnotherProject(t *testing.T) {
 	}
 	cfg := config.Config{Runs: 2}
 
-	claimed, _, err := s.ClaimNext(cfg, claimBranch)
+	claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestClaimNextHonorsADependencyFromAnotherProject(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		claimed, _, err := s.ClaimNext(cfg, claimBranch)
+		claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
 		if !errors.Is(err, ErrNoRoom) {
 			t.Errorf("with ticket A in %s: err = %v, want ErrNoRoom", status, err)
 		}
@@ -216,7 +216,7 @@ func TestClaimNextHonorsADependencyFromAnotherProject(t *testing.T) {
 	if err := s.ChangeStatus(a, Done); err != nil {
 		t.Fatal(err)
 	}
-	claimed, _, err = s.ClaimNext(cfg, claimBranch)
+	claimed, _, err = s.ClaimNext(cfg, claimBranch, testAgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,11 +232,11 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 	if err := s.ChangeStatus(dependedOn, Cancelled); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(free, claimBranch(Ticket{ID: free})); err != nil {
+	if _, err := s.Claim(free, claimBranch(Ticket{ID: free}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch)
+	_, _, err := s.ClaimNext(config.Config{Runs: 4}, claimBranch, testAgentID)
 
 	if !errors.Is(err, ErrNoRoom) {
 		t.Errorf("err = %v, want ErrNoRoom: the link to a cancelled ticket holds the ticket back", err)
@@ -247,7 +247,7 @@ func TestClaimNextKeepsWaitingForACancelledTicket(t *testing.T) {
 // find ErrNoRoom.
 func TestClaimableCountWithEveryTicketWaitingOnALinkCountsNothing(t *testing.T) {
 	s, _, _, free := dependentQueue(t)
-	if _, err := s.Claim(free, claimBranch(Ticket{ID: free})); err != nil {
+	if _, err := s.Claim(free, claimBranch(Ticket{ID: free}), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 

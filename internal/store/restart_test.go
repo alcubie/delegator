@@ -11,7 +11,7 @@ import (
 func failedTicket(t *testing.T) (*Store, int64) {
 	t.Helper()
 	s, id := oneTicket(t)
-	if _, err := s.Claim(id, "delegator/1-my-ticket"); err != nil {
+	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
@@ -25,7 +25,7 @@ func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 	s, id := failedTicket(t)
 	waiting := queuedTickets(t, s, mustProject(t, s), "the second")
 
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,7 +51,7 @@ func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 			}
 			before := steps(t, s, id)
 
-			_, err := s.Restart(id)
+			_, err := s.Restart(id, testAgentID)
 
 			if !errors.Is(err, ErrInvalidTicketStateChange) {
 				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
@@ -101,7 +101,7 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 
-	_, err := s.Restart(id)
+	_, err := s.Restart(id, testAgentID)
 
 	if err == nil || !strings.Contains(err.Error(), string(Done)) {
 		t.Errorf("err = %v, want it to name %q", err, Done)
@@ -111,7 +111,7 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 func TestRestartWithNoSuchTicket(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	if _, err := s.Restart(404); !errors.Is(err, ErrNoTicket) {
+	if _, err := s.Restart(404, testAgentID); !errors.Is(err, ErrNoTicket) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
 	}
 }
@@ -121,7 +121,7 @@ func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	s, id := failedTicket(t)
 	first := runRows(t, s, id)
 
-	if _, err := s.Restart(id); err != nil {
+	if _, err := s.Restart(id, testAgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,5 +134,40 @@ func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	}
 	if runs[1].id == runs[0].id {
 		t.Error("the second claim wrote the row of the first run")
+	}
+}
+
+func TestRestartRecordsTheAgentOnTheNewRun(t *testing.T) {
+	s, id := failedTicket(t)
+	if err := s.SaveAgent(Agent{Name: "mine", Argv: []string{"mine-acp"}}); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := s.Agent("mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Restart(id, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	run, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.AgentID != agent.ID || run.Agent != agent.Name {
+		t.Errorf("agent = (%d, %q), want (%d, %q)", run.AgentID, run.Agent, agent.ID, agent.Name)
+	}
+}
+
+func TestRestartWithNoSuchAgentKeepsTheTicketFailed(t *testing.T) {
+	s, id := failedTicket(t)
+	if _, err := s.Restart(id, 404); err == nil {
+		t.Fatal("Restart accepted an id that no agent has")
+	}
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != Failed {
+		t.Errorf("status = %q, want %q after the failed restart", ticket.Status, Failed)
 	}
 }

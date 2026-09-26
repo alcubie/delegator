@@ -56,7 +56,7 @@ func dependentQueue(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.Claim(first, fmt.Sprintf("delegator/%d-the-first", first)); err != nil {
+	if _, err := s.Claim(first, fmt.Sprintf("delegator/%d-the-first", first), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	return dataDir
@@ -117,7 +117,7 @@ func TestNextStartsNoMoreSupervisorsThanTheQueueHasTickets(t *testing.T) {
 func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(ids[0], "delegator/1-the-first"); err != nil {
+	if _, err := s.Claim(ids[0], "delegator/1-the-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	launch, marker := testfix.RecordingLaunch(t)
@@ -134,7 +134,7 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
 	for _, id := range ids[:2] {
-		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-ticket", id)); err != nil {
+		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-ticket", id), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -155,7 +155,7 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	dataDir, ids := queueOf(t, 4)
 	s := testfix.OpenStore(t, dataDir)
 	for _, id := range ids[:2] {
-		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-ticket", id)); err != nil {
+		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-ticket", id), testAgentID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -177,7 +177,7 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
 	dataDir, ids := queueOf(t, 3)
 	s := testfix.OpenStore(t, dataDir)
-	if _, err := s.Claim(ids[0], fmt.Sprintf("delegator/%d-ticket", ids[0])); err != nil {
+	if _, err := s.Claim(ids[0], fmt.Sprintf("delegator/%d-ticket", ids[0]), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	launch, marker := testfix.RecordingLaunch(t)

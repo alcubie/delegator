@@ -474,7 +474,7 @@ func TestEditARunningTicketIsRefused(t *testing.T) {
 		t.Run(form.name, func(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo := editedTicket(t, dataDir, "Remove staging infrastructure", "Remove the staging app.\n")
-			if _, err := testfix.OpenStore(t, dataDir).Claim(id, "delegator/1-remove-staging-infrastructure"); err != nil {
+			if _, err := testfix.OpenStore(t, dataDir).Claim(id, "delegator/1-remove-staging-infrastructure", testAgentID); err != nil {
 				t.Fatal(err)
 			}
 			testfix.LiveRun(t, dataDir, id)

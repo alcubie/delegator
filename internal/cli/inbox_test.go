@@ -602,7 +602,7 @@ func TestRunShowsAFailedTicketInFailed(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := queuedIn(t, s, repo, "ticket title")
-	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id)); err != nil {
+	if _, err := s.Claim(id, fmt.Sprintf("delegator/%d-a-title", id), testAgentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, store.Failed); err != nil {
