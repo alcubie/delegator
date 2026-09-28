@@ -1,190 +1,112 @@
-# Alcubi Delegator releases
+# Making a release
 
-This document is the contract for release artifacts and the procedure that the
-publishing workflow and installers use. The command is always named `dg`;
-Alcubi Delegator is the human-facing product name.
+Pushing a version tag publishes a release through GitHub Actions.
+`make release` only runs local checks and builds artifacts; it does not publish.
 
-## Versions and tags
+## One-time setup
 
-A release version is semantic versioning without a leading `v`, such as
-`1.4.0` or `1.4.0-rc.1`. Its Git tag is that version with one leading `v`, such
-as `v1.4.0`. A release build reports the tag form: `dg version` prints
-`dg v1.4.0`. Tags identify clean commits and are never moved or reused.
+The project uses [FSL-1.1-ALv2](../LICENSE) and publishes source alongside
+binaries. See the [trademark policy](../TRADEMARKS.md) for naming and branding.
 
-Snapshot versions have the form `0.0.0-snapshot-<commit>` and validation builds
-use `0.0.0-validate`. They are local artifacts, not published versions.
+Before the first public release:
 
-## Artifact contract
+1. Review the repository and Git history, then make the repository public.
+2. In **Settings → Environments**, create `release`. Add yourself as a required
+   reviewer, leave **Prevent self-review** off while you are the only maintainer,
+   and disable administrator bypass. Under **Deployment branches and tags**,
+   select **Selected branches and tags** and allow only **Tag → `v*`**.
+3. In **Settings → Rules → Rulesets**, create these two **active tag rulesets**:
 
-Releases support `amd64` and `arm64` on Linux, macOS, and Windows. The operating
-system identifiers in filenames are `linux`, `darwin`, and `windows`; macOS uses
-Go's stable `darwin` identifier. Linux and macOS archives are `tar.gz` files and
-Windows archives are ZIP files:
+   | Name | Target | Enabled rules | Bypass |
+   | --- | --- | --- | --- |
+   | `release-tag-creation` | `v*` | Restrict creations | Repository admin, Always allow |
+   | `release-tag-immutability` | `v*` | Restrict updates; Restrict deletions | None |
 
-```text
-alcubi-delegator_<version>_<os>_<arch>.tar.gz
-alcubi-delegator_<version>_windows_<arch>.zip
-```
+   Leave all other rules off, including **Block force pushes**. The admin bypass
+   assumes you are the only administrator; otherwise use a team containing only
+   authorized release maintainers.
 
-Each binary archive contains exactly `dg` (or `dg.exe` on Windows), `LICENSE`,
-and `TRADEMARKS.md` at its root. It contains no man pages, shell completions, or
-documentation-site copy. The separate source distribution is named
-`alcubi-delegator_<version>_source.tar.gz`; it contains the tracked source tree,
-including `LICENSE` and `TRADEMARKS.md`.
+The workflow already uses the `release` environment and GitHub's temporary
+publishing token. No additional release secret is needed. See GitHub's
+[environment instructions](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+and [ruleset instructions](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)
+for the settings above.
 
-`alcubi-delegator_<version>_checksums.txt` covers all six binary archives and
-the source archive. Each line is the lowercase hexadecimal SHA-256 digest,
-whitespace, and the artifact basename. Lines are sorted by basename.
+## Release checklist
 
-For a tag `<tag>` and artifact `<file>`, a client derives the stable URL without
-scraping a page:
+1. Run `make release-prepare`. If it changes the CLI reference, review and commit
+   those changes, then rerun it.
+2. Run `make check`. For the full local gate, use `make release` instead: it also
+   runs [live-agent integration tests](INTEGRATION_TESTS.md) and validates release
+   artifacts. Those tests require authenticated agents and can incur charges;
+   GitHub Actions does not run them.
+3. Review the changes being released and commit all intended changes. Choose a
+   new semantic version: `v1.4.0` for a stable release or `v1.4.0-rc.1` for a
+   prerelease. From the clean, checked commit, create and push an annotated tag:
 
-```text
-https://github.com/alcubie/delegator/releases/download/<tag>/<file>
-```
+   ```sh
+   tag=v1.4.0  # Replace with the version you are releasing.
+   test -z "$(git status --porcelain)" &&
+     git tag -a "$tag" -m "Alcubi Delegator $tag" &&
+     git push origin "$tag"
+   ```
 
-For example, the Linux arm64 archive for `v1.4.0` is:
+4. Open **Actions → Release**. After checks and builds pass, review and approve
+   the `release` environment deployment. The workflow uploads a draft, downloads
+   its assets to verify checksums, then publishes it with generated release notes.
+5. Download the archive for your machine and its checksum file from the release.
+   Compare its SHA-256 checksum, extract it, and run `./dg version` (`.\dg.exe version`
+   on Windows). For the example above, expect `dg v1.4.0`.
+6. For a stable release intended for default installation, edit the GitHub release
+   and mark it **Latest**. The workflow does not do this automatically; the
+   installer defaults to the latest stable release.
 
-```text
-https://github.com/alcubie/delegator/releases/download/v1.4.0/alcubi-delegator_1.4.0_linux_arm64.tar.gz
-```
+Never move or reuse a version tag, or replace published assets.
 
-Command documentation is the published [Alcubi Delegator CLI reference](https://alcubi-delegator.readthedocs.io/en/latest/).
-It is not copied into binary archives.
+## Dry run
 
-## Reproducible dry runs
+In **Actions → Release → Run workflow**, select the branch to validate. This
+runs checks and builds all archives without publishing or creating a tag.
+Download `release-assets` from the run within seven days.
 
-GoReleaser is pinned in the Makefile and invoked with `go run`, so no separately
-installed release tool is selected accidentally. These commands never publish
-and need no release credential:
-
-```sh
-make release-check
-make release-snapshot
-make release-validate
-```
-
-`release-check` validates the configuration. `release-snapshot` creates the
-platform and source archives under `dist`. `release-validate` makes a clean
-validation build and checks artifact names, archive contents and timestamps,
-checksums, and the version embedded in every binary. It also runs the native
-binary and checks its reported version. Go module downloads may use the normal
-shared Go cache; `dist` is ticket- or checkout-local.
-
-The build disables cgo, trims source paths, omits the Go build ID, and gives
-binaries and archive entries the source commit time. Repeating a build from the
-same clean commit with the same Go and pinned GoReleaser versions therefore
-does not introduce wall-clock timestamps. Keep the Go toolchain version fixed
-in the publishing workflow as well.
-
-## Prepare and tag
-
-Run `make release-prepare` before tagging. This runs `make docs`, shows status
-and the generated diff under `docs/public/reference`, and fails if that directory
-has uncommitted changes (including new files). Review the diff, stage and commit
-it yourself, and rerun preparation. Nothing is staged or committed automatically.
-Run `make check` on the complete reviewed tree. The tag workflow never runs
-`make docs`: `make docs-check`, through `make check`, compares the committed
-reference with `cli.Root` and builds the MkDocs site strictly in temporary paths.
-Either failure stops the release before any upload.
-
-Before the first production tag, maintainers must complete the licensing and
-source-availability decisions. Configure the GitHub `release` environment with
-required reviewers and tag restrictions, and protect version tags against
-unreviewed creation, modification, and deletion. Review the
-[FSL-1.1-ALv2 license](../LICENSE) and [trademark policy](../TRADEMARKS.md).
-This workflow does not establish trademark registration or clearance.
-
-After reviewing the source and release notes, create an annotated tag:
+Locally, run:
 
 ```sh
-test -z "$(git status --porcelain)"
-git tag -a v1.4.0 -m 'Alcubi Delegator v1.4.0'
-git push origin v1.4.0
+make check && make release-validate
 ```
 
-Use `v1.4.0-rc.1` for a public prerelease. Every tag starting with `v` triggers
-the workflow; invalid semantic versions fail before building. Production and
-prerelease tags use the same checks and six-target build. Go 1.26.6 and the
-Makefile's GoReleaser pin define the release toolchain. Artifact names remain
-those specified above; the executable remains `dg`.
+Artifacts go in `dist/`. For narrower checks, `make release-check` validates only
+GoReleaser configuration, and `make release-snapshot` builds snapshot artifacts.
+None of these commands publish.
 
-## Dry run and publication
+## If a release fails
 
-In Actions, select **Release → Run workflow** on the reviewed branch. This
-manual path runs `make check` and `make release-validate` with a unique
-`0.0.0-rc.<run-number>` version. It retains the seven archives and one canonical
-checksum file as the `release-assets` workflow artifact for seven days. It
-cannot enter the publishing job, create a tag, or create a repository release.
-The local equivalent is `make check` followed by
-`make release-validate VALIDATION_VERSION=0.0.0-rc.1`.
+- Inspect the failed Actions step. For a transient failure, use **Re-run all jobs**.
+- If a draft remains, inspect and delete only that draft before rerunning. Keep
+  its tag; the workflow refuses to overwrite an existing release or draft.
+- If the release is already published, verify its assets instead of deleting it.
+- If source, docs, or build configuration need fixing, commit the fix and use a
+  new version tag.
 
-Normal checks include formatting, vet, lint, coverage, archive policy, the
-committed CLI reference, and the strict site build. The credential-free runner
-compiles the optional live-agent integration tests through `make check`, but
-does not run `make integration`: these tests require installed, authenticated
-third-party agents and can incur charges. Maintainers can additionally run
-`make release` in an authenticated development environment before tagging.
+## Release files
 
-For tags, `make release-build` uses the pinned GoReleaser with `--skip=publish`,
-then validates every archive and embedded version. A clean-tree check follows.
-The separate publishing job receives only validated artifacts, has
-`contents: write`, and runs behind the `release` environment. Build jobs have
-only `contents: read`; checkout does not persist credentials. There is no
-pull-request trigger and no agent or personal-access credential. The temporary
-GitHub token is supplied only to the publication step, without shell tracing.
+Each release has eight files: six binary archives, one source archive, and one
+SHA-256 checksum file. `<version>` omits the tag's leading `v`.
 
-Publication first creates a **draft**, uploads all eight files, downloads them
-again, compares the canonical checksum file, and verifies all seven checksums.
-Only then does it make the release public. Prerelease tags are marked as such;
-the workflow does not change the repository's “Latest” selection automatically.
-A required test, build, validation, or upload failure cannot produce a new
-public release with an incomplete set of assets.
+| Contents | Filename |
+| --- | --- |
+| Linux/macOS binary | `alcubi-delegator_<version>_<os>_<arch>.tar.gz` |
+| Windows binary | `alcubi-delegator_<version>_windows_<arch>.zip` |
+| Tagged source tree | `alcubi-delegator_<version>_source.tar.gz` |
+| Checksums for all seven archives | `alcubi-delegator_<version>_checksums.txt` |
 
-Release titles use **Alcubi Delegator**. Notes combine GitHub's generated change
-list with verification guidance and links to the tagged FSL license and
-`TRADEMARKS.md`. Review the included changes before pushing the tag; maintainers
-can edit prose afterward without changing the tagged source or artifacts.
-See the [GoReleaser publication controls](https://goreleaser.com/getting-started/quick-start/)
-and [GitHub release commands](https://cli.github.com/manual/gh_release_create).
+`<os>` is `linux` or `darwin`; `<arch>` is `amd64` or `arm64`. Binary archives
+contain exactly `dg` (Windows: `dg.exe`), `LICENSE`, and `TRADEMARKS.md` at their
+root. The source archive includes the tracked source and policy files. Checksum
+lines contain the lowercase digest, whitespace, and filename, sorted by filename.
 
-## Retry and recovery
-
-Inspect the failed Actions run first. Failures before publication create no
-release. Retry a transient failure on the same immutable tag using **Re-run all
-jobs**. If an upload or verification failed, a private draft may remain: inspect
-it and delete **only the draft release**, retaining its tag, before rerunning.
-The workflow deliberately refuses to overwrite any existing release or draft.
-If publication succeeded but the job response was lost, inspect the public
-release and verify its assets; do not delete or replace it just to rerun CI.
-
-Source, documentation, or build-configuration fixes require a new commit and a
-new version tag. Never move a tag, reuse a published version, or replace public
-assets. Concurrent runs for one ref are serialized without cancellation.
-
-## Verify on a clean machine
-
-Download the archive for your OS/architecture and the checksum file from the
-same tagged repository release. For example, on Linux amd64:
-
-```sh
-version=1.4.0
-base="https://github.com/alcubie/delegator/releases/download/v$version"
-archive="alcubi-delegator_${version}_linux_amd64.tar.gz"
-checksums="alcubi-delegator_${version}_checksums.txt"
-curl --fail --location --remote-name "$base/$archive"
-curl --fail --location --remote-name "$base/$checksums"
-grep "  $archive$" "$checksums" > selected-checksum.txt
-test "$(wc -l < selected-checksum.txt)" -eq 1
-sha256sum --check selected-checksum.txt
-tar -xzf "$archive"
-./dg version
-```
-
-Expect `dg v1.4.0`. On macOS use the Darwin archive and
-`shasum -a 256 -c selected-checksum.txt`; on Windows use the matching ZIP,
-compare `Get-FileHash -Algorithm SHA256` with its entry in the checksum file,
-then `Expand-Archive` and run `.\dg.exe version`. Checksums detect corruption;
-obtain both files from the trusted repository release. Read the bundled license
-and trademark policy before redistribution. The source archive and its checksum
-are available alongside the binaries for inspecting the exact tagged source.
+Download URLs follow
+`https://github.com/alcubie/delegator/releases/download/<tag>/<filename>`.
+Build and validation details live in the [Makefile](../Makefile),
+[GoReleaser config](../.goreleaser.yaml), and
+[release workflow](../.github/workflows/release.yml).
