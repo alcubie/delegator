@@ -38,7 +38,7 @@ test: install-test
 # Run only tagged TestIntegration tests. These use real agents and cost time
 # and money; check compiles them without execution, while release runs them.
 integration:
-	go test -tags integration -timeout 15m -run '^TestIntegration' -v ./...
+	@python3 scripts/test-integration.py $(INTEGRATION_ARGS)
 
 # release is the gate before a release: every ordinary and integration test,
 # followed by the same publish-free artifact build that a release uses.
@@ -164,6 +164,7 @@ coverhtml: cover
 	@echo "open coverage.html"
 
 check: install-test archivecheck fmtcheck vet lint covercheck docs-check
+	python3 scripts/test-integration-output.py
 
 clean:
 	rm -f $(BIN) coverage.out coverage.html

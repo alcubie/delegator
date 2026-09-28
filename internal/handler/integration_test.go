@@ -409,7 +409,7 @@ func TestIntegrationCodexTakesASessionFromStartToTheTerminal(t *testing.T) {
 	}, func(t *testing.T, repo, id string) {
 		// The repository is made by this test, so the PTY accepts the trust
 		// dialog's default before Codex runs the positional recall prompt.
-		resumeAndRecallInPTY(t, "codex", repo, id, "press enter to continue", true, "--no-alt-screen")
+		resumeAndRecallInPTY(t, "codex", repo, id, "Trust and continue", true, "--no-alt-screen")
 	})
 }
 

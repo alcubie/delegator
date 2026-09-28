@@ -3,6 +3,8 @@
 package cli
 
 import (
+	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -10,26 +12,41 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// waitForStatus polls until the detached run leaves Queued or Running,
-// failing at the deadline. There is no child process handle to wait on.
+// waitForStatus polls until the detached run ends and leaves Queued or
+// Running, failing early if no supervisor claims it. There is no child
+// process handle to wait on.
 func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Minute)
+	started := time.Now()
+	deadline := started.Add(10 * time.Minute)
+	var status store.TicketStatus
 	for time.Now().Before(deadline) {
 		ticket, err := s.Ticket(id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ticket.Status != store.Queued && ticket.Status != store.Running {
+		if ticket.Status != status {
+			t.Logf("ticket %d: %s", id, ticket.Status)
+			status = ticket.Status
+		}
+		held, err := s.Run(id)
+		if err != nil && !errors.Is(err, store.ErrNoRun) {
+			t.Fatal(err)
+		}
+		if ticket.Status != store.Queued && ticket.Status != store.Running && err == nil && !held.EndedAt.IsZero() {
 			return ticket
+		}
+		if ticket.Status == store.Queued && time.Since(started) > 30*time.Second {
+			t.Fatalf("ticket %d is still queued after 30s; the detached supervisor did not claim it", id)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("the run of ticket %d has not ended", id)
+	t.Fatalf("the run of ticket %d has not ended after 10m (status %s)", id, status)
 	return store.Ticket{}
 }
 
@@ -39,12 +56,42 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 // database and binary.
 func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
+	s := testfix.OpenStore(t, dataDir)
+	// Fresh databases intentionally have no default until onboarding selects
+	// one. This fixture drives Claude directly instead of running onboarding.
+	if err := s.SetDefaultAgent("claude"); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := s.Agent("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath(agent.Argv[0]); err != nil {
+		t.Fatalf("Claude integration requires %s: %v", agent.Argv[0], err)
+	}
+
 	useLaunch(t, func() *exec.Cmd {
 		return exec.Command("dg", "run")
 	})
 
 	repo := testfix.Repo(t, repoBranch)
+	testfix.GitIn(t, repo, "config", "user.email", "test@example.com")
+	testfix.GitIn(t, repo, "config", "user.name", "Test")
 	testfix.CommitIn(t, repo, "first")
+	t.Cleanup(func() {
+		if held, err := s.Run(1); err == nil && held.EndedAt.IsZero() {
+			if err := run.Stop(held.PID, run.StopGrace); err != nil {
+				t.Errorf("stop test supervisor: %v", err)
+			}
+		}
+		if t.Failed() {
+			logs, _ := filepath.Glob(filepath.Join(dataDir, "runs", "1", "*.log"))
+			for _, path := range logs {
+				data, err := os.ReadFile(path)
+				t.Logf("run log %s (read error: %v):\n%s", path, err, data)
+			}
+		}
+	})
 
 	// Let dg ticket launch the supervisor; a second manual start would
 	// compete for the same ticket.
@@ -55,7 +102,6 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	}
 	t.Logf("ticket %s", strings.TrimSpace(out))
 
-	s := testfix.OpenStore(t, dataDir)
 	ticket := waitForStatus(t, s, 1)
 	if ticket.Status != store.Ready {
 		t.Errorf("status = %q, want %q", ticket.Status, store.Ready)

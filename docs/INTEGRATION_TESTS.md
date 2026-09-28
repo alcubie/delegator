@@ -63,6 +63,20 @@ dg agents --all
 make integration
 ```
 
+The runner requires Python 3. It streams test and subtest starts/results, prints
+elapsed-time heartbeats every 15 seconds (including during builds), and ends
+with a failure summary. Agent chatter stays in the full log; the terminal
+shows only the last 12 diagnostic lines for failures, with long lines shortened.
+The printed temporary directory retains `output.log` and the original Go JSON
+stream in `events.jsonl` after the tests finish. Remove it when no longer needed.
+Every invocation runs fresh tests instead of using Go's cached results.
+
+To rerun one agent with the same output format:
+
+```sh
+make integration INTEGRATION_ARGS='--run ^TestIntegrationCodex ./internal/handler'
+```
+
 The handler tests create a temporary Git repository, start a real ACP session,
 ask the agent to make and commit a small change, and then test session recall
 where the agent supports it. The recall prompt asks for text that was in the
