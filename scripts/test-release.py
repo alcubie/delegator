@@ -58,7 +58,7 @@ class ReleaseTests(unittest.TestCase):
                 data = f"archive {index}".encode()
                 (assets / name).write_bytes(data)
                 checksums.append(f"{hashlib.sha256(data).hexdigest()}  {name}\n")
-            (assets / f"alcubi-delegator_{tag[1:]}_checksums.txt").write_text("".join(checksums))
+            (assets / f"delegator_{tag[1:]}_checksums.txt").write_text("".join(checksums))
             if failure == "local-corruption":
                 (assets / "archive-0.tar.gz").write_text("corrupt")
             mock = root / "gh"

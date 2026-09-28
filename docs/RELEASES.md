@@ -51,45 +51,24 @@ for the settings above.
 4. Open **Actions → Release**. After checks and builds pass, review and approve
    the `release` environment deployment. The workflow uploads a draft, downloads
    its assets to verify checksums, then publishes it with generated release notes.
-5. Download the archive for your machine and
-   `alcubi-delegator_1.4.0_checksums.txt` from the release into the same directory.
-   In a terminal, change to that directory. Replace `1.4.0` and the archive name
-   below with your release version and downloaded filename (`amd64` for Intel/AMD
-   or `arm64` for ARM, including Apple silicon).
-
-   On macOS, verify the archive against its entry in the checksum file:
+5. On Linux, run this command with the GitHub CLI (`gh`) installed. Replace
+   `v1.4.0` with the release tag. It downloads all eight release assets into a
+   fresh temporary directory and checks all seven archives against the checksum
+   file, including the macOS, Windows, and source archives:
 
    ```sh
-   archive=alcubi-delegator_1.4.0_darwin_arm64.tar.gz
-   grep -F "  $archive" alcubi-delegator_1.4.0_checksums.txt | shasum -a 256 -c
+   make release-verify v1.4.0
    ```
 
-   On Linux:
+   Expect seven `OK` lines and the download directory. A failed download, missing
+   archive, or checksum mismatch stops the command with a nonzero exit status.
+   The checksum file is the reference used to verify the archives; it does not
+   contain a checksum of itself. This also works for older releases with the
+   `alcubi-delegator_` filename prefix.
 
-   ```sh
-   archive=alcubi-delegator_1.4.0_linux_amd64.tar.gz
-   grep -F "  $archive" alcubi-delegator_1.4.0_checksums.txt | sha256sum -c
-   ```
-
-   Both commands must print the archive filename followed by `OK`.
-
-   On Windows, use PowerShell:
-
-   ```powershell
-   $archive = 'alcubi-delegator_1.4.0_windows_amd64.zip'
-   $entry = Get-Content 'alcubi-delegator_1.4.0_checksums.txt' |
-     Where-Object { ($_ -split '\s+')[1] -eq $archive }
-   if (@($entry).Count -ne 1) { throw 'Expected exactly one checksum entry' }
-   $expected = ($entry -split '\s+')[0]
-   $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
-   if ($actual -ne $expected) { throw 'Checksum mismatch' }
-   Write-Host "$archive`: OK"
-   ```
-
-   If verification fails or no matching entry is found, stop and download the
-   files again. After a successful check, extract the archive and run
-   `./dg version` (`.\dg.exe version` on Windows). For the example above, expect
-   `dg v1.4.0`.
+   After verification, extract the Linux archive for your architecture (`amd64`
+   for Intel/AMD or `arm64` for ARM) from the printed directory and run
+   `./dg version`. For the example above, expect `dg v1.4.0`.
 6. For a stable release intended for default installation, edit the GitHub release
    and mark it **Latest**. The workflow does not do this automatically; the
    installer defaults to the latest stable release.
@@ -128,10 +107,10 @@ SHA-256 checksum file. `<version>` omits the tag's leading `v`.
 
 | Contents | Filename |
 | --- | --- |
-| Linux/macOS binary | `alcubi-delegator_<version>_<os>_<arch>.tar.gz` |
-| Windows binary | `alcubi-delegator_<version>_windows_<arch>.zip` |
-| Tagged source tree | `alcubi-delegator_<version>_source.tar.gz` |
-| Checksums for all seven archives | `alcubi-delegator_<version>_checksums.txt` |
+| Linux/macOS binary | `delegator_<version>_<os>_<arch>.tar.gz` |
+| Windows binary | `delegator_<version>_windows_<arch>.zip` |
+| Tagged source tree | `delegator_<version>_source.tar.gz` |
+| Checksums for all seven archives | `delegator_<version>_checksums.txt` |
 
 `<os>` is `linux` or `darwin`; `<arch>` is `amd64` or `arm64`. Binary archives
 contain exactly `dg` (Windows: `dg.exe`), `LICENSE`, and `TRADEMARKS.md` at their

@@ -18,7 +18,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install install-test test integration release release-prepare release-tag release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install install-test test integration release release-prepare release-tag release-verify release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -53,14 +53,15 @@ release-prepare: docs
 		{ echo 'Review and commit the generated reference before creating a tag.'; exit 1; }
 
 # Make treats positional arguments as goals. Consume the version as a no-op
-# target only for this command, and reject extra goals before doing any work.
-ifneq ($(filter release-tag,$(MAKECMDGOALS)),)
+# target only for these commands, and reject extra goals before doing any work.
+ifneq ($(filter release-tag release-verify,$(MAKECMDGOALS)),)
+RELEASE_COMMAND := $(filter release-tag release-verify,$(MAKECMDGOALS))
 RELEASE_TAG_ARG := $(word 2,$(MAKECMDGOALS))
-ifneq ($(MAKECMDGOALS),release-tag $(RELEASE_TAG_ARG))
-$(error Usage: make release-tag v1.4.0)
+ifneq ($(MAKECMDGOALS),$(RELEASE_COMMAND) $(RELEASE_TAG_ARG))
+$(error Usage: make $(RELEASE_COMMAND) v1.4.0)
 endif
 ifeq ($(filter v0% v1% v2% v3% v4% v5% v6% v7% v8% v9%,$(RELEASE_TAG_ARG)),)
-$(error Usage: make release-tag v1.4.0)
+$(error Usage: make $(RELEASE_COMMAND) v1.4.0)
 endif
 .PHONY: $(RELEASE_TAG_ARG)
 $(RELEASE_TAG_ARG): ;
@@ -72,6 +73,15 @@ release-tag:
 		{ echo 'Commit or stash changes before creating a release tag.'; exit 1; }
 	git tag -a "$(RELEASE_TAG_ARG)" -m "Alcubi Delegator $(RELEASE_TAG_ARG)"
 	git push origin "$(RELEASE_TAG_ARG)"
+
+# Download and verify every release archive on Linux; keep files for inspection.
+release-verify:
+	@set -eu; \
+	dir=$$(mktemp -d "$${TMPDIR:-/tmp}/delegator-release.XXXXXX"); \
+	gh release download "$(RELEASE_TAG_ARG)" --repo alcubie/delegator --dir "$$dir"; \
+	cd "$$dir"; \
+	sha256sum --check --strict ./*_checksums.txt; \
+	printf 'Verified release files: %s\n' "$$dir"
 
 # Build an exact tag without giving the builder publication credentials.
 release-build: release-check

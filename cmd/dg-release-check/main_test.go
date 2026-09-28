@@ -15,13 +15,13 @@ import (
 
 func TestArtifactNamesAreThePublicContract(t *testing.T) {
 	want := []string{
-		"alcubi-delegator_1.2.3_darwin_amd64.tar.gz",
-		"alcubi-delegator_1.2.3_darwin_arm64.tar.gz",
-		"alcubi-delegator_1.2.3_linux_amd64.tar.gz",
-		"alcubi-delegator_1.2.3_linux_arm64.tar.gz",
-		"alcubi-delegator_1.2.3_windows_amd64.zip",
-		"alcubi-delegator_1.2.3_windows_arm64.zip",
-		"alcubi-delegator_1.2.3_source.tar.gz",
+		"delegator_1.2.3_darwin_amd64.tar.gz",
+		"delegator_1.2.3_darwin_arm64.tar.gz",
+		"delegator_1.2.3_linux_amd64.tar.gz",
+		"delegator_1.2.3_linux_arm64.tar.gz",
+		"delegator_1.2.3_windows_amd64.zip",
+		"delegator_1.2.3_windows_arm64.zip",
+		"delegator_1.2.3_source.tar.gz",
 	}
 	if got := artifactNames("1.2.3"); !reflect.DeepEqual(got, want) {
 		t.Errorf("artifact names = %v, want %v", got, want)

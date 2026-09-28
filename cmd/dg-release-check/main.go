@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-const product = "alcubi-delegator"
+const product = "delegator"
 
 type target struct {
 	os, arch, extension, binary string

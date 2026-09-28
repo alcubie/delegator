@@ -121,8 +121,9 @@ sha256() {
 
 make_release() {
 	local version=$1 os=${2:-linux} arch=${3:-amd64} binary=${4:-}
+	local prefix=${5:-delegator}
 	local payload="$CASE_DIR/payload-$version-$os-$arch"
-	local archive="alcubi-delegator_${version}_${os}_${arch}.tar.gz"
+	local archive="${prefix}_${version}_${os}_${arch}.tar.gz"
 	mkdir -p "$payload"
 	if [[ -n $binary ]]; then
 		cp "$binary" "$payload/dg"
@@ -136,7 +137,7 @@ EOF
 	chmod +x "$payload/dg"
 	tar -czf "$CASE_DIR/releases/$archive" -C "$payload" dg
 	printf '%s  %s\n' "$(sha256 "$CASE_DIR/releases/$archive")" "$archive" \
-		> "$CASE_DIR/releases/alcubi-delegator_${version}_checksums.txt"
+		> "$CASE_DIR/releases/${prefix}_${version}_checksums.txt"
 }
 
 run_installer() {
@@ -206,8 +207,19 @@ test_successful_latest_install() {
 	[[ $("$CASE_DIR/bin/dg" version) == 'dg v1.2.3' ]]
 	assert_contains "$CASE_DIR/stdout" "Installed Alcubi Delegator (dg v1.2.3) at $CASE_DIR/bin/dg"
 	assert_contains "$CURL_LOG" 'https://api.github.com/repos/alcubie/delegator/releases/latest'
-	assert_contains "$CURL_LOG" '/v1.2.3/alcubi-delegator_1.2.3_checksums.txt'
-	assert_contains "$CURL_LOG" '/v1.2.3/alcubi-delegator_1.2.3_linux_amd64.tar.gz'
+	assert_contains "$CURL_LOG" '/v1.2.3/delegator_1.2.3_checksums.txt'
+	assert_contains "$CURL_LOG" '/v1.2.3/delegator_1.2.3_linux_amd64.tar.gz'
+	assert_no_staging_file
+}
+
+test_legacy_release_install() {
+	setup_case legacy
+	export FAKE_LATEST_VERSION=0.0.2
+	make_release 0.0.2 linux amd64 '' alcubi-delegator
+	run_installer
+	[[ $("$CASE_DIR/bin/dg" version) == 'dg v0.0.2' ]]
+	assert_contains "$CURL_LOG" '/v0.0.2/alcubi-delegator_0.0.2_checksums.txt'
+	assert_contains "$CURL_LOG" '/v0.0.2/alcubi-delegator_0.0.2_linux_amd64.tar.gz'
 	assert_no_staging_file
 }
 
@@ -228,7 +240,7 @@ test_macos_arm64_install() {
 	make_release 2.0.0 darwin arm64
 	run_installer --version 2.0.0
 	[[ $("$CASE_DIR/bin/dg" version) == 'dg v2.0.0' ]]
-	assert_contains "$CURL_LOG" 'alcubi-delegator_2.0.0_darwin_arm64.tar.gz'
+	assert_contains "$CURL_LOG" 'delegator_2.0.0_darwin_arm64.tar.gz'
 }
 
 test_unsupported_platform() {
@@ -251,7 +263,7 @@ test_checksum_failure_preserves_existing_binary() {
 	printf '#!/bin/sh\nprintf old\\n\n' > "$CASE_DIR/bin/dg"
 	cp "$CASE_DIR/bin/dg" "$CASE_DIR/original-dg"
 	chmod +x "$CASE_DIR/bin/dg" "$CASE_DIR/original-dg"
-	printf 'corruption' >> "$CASE_DIR/releases/alcubi-delegator_1.2.3_linux_amd64.tar.gz"
+	printf 'corruption' >> "$CASE_DIR/releases/delegator_1.2.3_linux_amd64.tar.gz"
 	expect_failure --version 1.2.3
 	assert_contains "$CASE_DIR/stderr" 'checksum verification failed'
 	cmp "$CASE_DIR/original-dg" "$CASE_DIR/bin/dg"
@@ -391,6 +403,7 @@ test_piped_install_without_a_terminal_prints_init_command() {
 
 tests=(
 	test_successful_latest_install
+	test_legacy_release_install
 	test_reinstall_same_and_newer
 	test_macos_arm64_install
 	test_unsupported_platform

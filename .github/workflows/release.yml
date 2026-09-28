@@ -90,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           cd assets
-          checksum="alcubi-delegator_${RELEASE_TAG#v}_checksums.txt"
+          checksum="delegator_${RELEASE_TAG#v}_checksums.txt"
           test "$(find . -maxdepth 1 -type f | wc -l)" -eq 8
           test "$(wc -l < "$checksum")" -eq 7
           sha256sum --check "$checksum"

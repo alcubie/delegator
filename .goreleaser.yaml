@@ -1,6 +1,6 @@
 version: 2
 
-project_name: alcubi-delegator
+project_name: delegator
 
 builds:
   - id: dg
@@ -32,7 +32,7 @@ archives:
       - goos: windows
         formats:
           - zip
-    name_template: "alcubi-delegator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "delegator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds_info:
       owner: root
       group: root
@@ -53,12 +53,12 @@ archives:
 
 source:
   enabled: true
-  name_template: "alcubi-delegator_{{ .Version }}_source"
+  name_template: "delegator_{{ .Version }}_source"
   format: tar.gz
-  prefix_template: "alcubi-delegator_{{ .Version }}/"
+  prefix_template: "delegator_{{ .Version }}/"
 
 checksum:
-  name_template: "alcubi-delegator_{{ .Version }}_checksums.txt"
+  name_template: "delegator_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
 snapshot:

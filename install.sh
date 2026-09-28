@@ -147,15 +147,19 @@ fi
 
 version=$requested_version
 tag=v$version
-archive="alcubi-delegator_${version}_${os}_${arch}.tar.gz"
-checksums="alcubi-delegator_${version}_checksums.txt"
+prefix=delegator
 base="$release_root/$tag"
-archive_path="$work_dir/$archive"
-checksums_path="$work_dir/$checksums"
+checksums_path="$work_dir/checksums.txt"
 
-if ! download "$base/$checksums" "$checksums_path"; then
-	fail "release $tag is unavailable or has no canonical checksum file"
+if ! download "$base/${prefix}_${version}_checksums.txt" "$checksums_path"; then
+	# Published releases from before the filename change retain their assets.
+	prefix=alcubi-delegator
+	if ! download "$base/${prefix}_${version}_checksums.txt" "$checksums_path"; then
+		fail "release $tag is unavailable or has no canonical checksum file"
+	fi
 fi
+archive="${prefix}_${version}_${os}_${arch}.tar.gz"
+archive_path="$work_dir/$archive"
 if ! download "$base/$archive" "$archive_path"; then
 	fail "release $tag has no archive for $os/$arch"
 fi
