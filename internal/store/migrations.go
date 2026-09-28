@@ -110,7 +110,7 @@ CREATE TABLE settings (
 
 INSERT INTO settings
   (id, runs, timeout_minutes, done_hours, max_runs_per_project)
-VALUES (1, 2, 60, 24, 0);
+VALUES (1, 3, 60, 24, 0);
 
 -- No row means no reported usage; NULL distinguishes an omitted count from zero.
 CREATE TABLE run_usage (

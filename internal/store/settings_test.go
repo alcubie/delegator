@@ -14,7 +14,7 @@ func TestSettingsMigrationSeedsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Config{Runs: 2, TimeoutMinutes: 60, DoneHours: 24}
+	want := config.Config{Runs: 3, TimeoutMinutes: 60, DoneHours: 24}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings = %+v, want defaults %+v", got, want)
 	}
