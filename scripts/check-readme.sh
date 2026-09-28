@@ -46,7 +46,6 @@ for path in \
 	docs/RELEASES.md \
 	docs/TECHNICAL_DESIGN.md \
 	docs/TOKEN_COSTS.md \
-	docs/TOKEN_USAGE.md \
 	docs/public/index.md
 do
 	[ -e "$root/$path" ] || {

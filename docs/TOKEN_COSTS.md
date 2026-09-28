@@ -38,7 +38,5 @@ report tokens differently, model prices change, and some agents omit usage.
 Delegator stores only the aggregate counts that an ACP agent reports. It does
 not calculate billing or enforce a spending limit.
 
-See [the token accounting design](TOKEN_USAGE.md) for the measurements, data
-model, and differences between provider reports. See the [privacy
-notice](../PRIVACY.md) for the usage data stored locally and for third-party
+See the [privacy notice](../PRIVACY.md) for the usage data stored locally and for third-party
 agent processing.

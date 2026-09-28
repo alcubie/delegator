@@ -233,7 +233,7 @@ For complete syntax and flags, use `dg help`, `dg COMMAND --help`, or the
 - [Generated CLI reference source](docs/public/index.md)
 - [Technical design](docs/TECHNICAL_DESIGN.md)
 - [Release artifacts and procedure](docs/RELEASES.md)
-- [Token-cost guidance](docs/TOKEN_COSTS.md) and [token accounting design](docs/TOKEN_USAGE.md)
+- [Token-cost guidance](docs/TOKEN_COSTS.md)
 - [Real-agent integration tests](docs/INTEGRATION_TESTS.md)
 - [Privacy notice](PRIVACY.md) and [security policy](SECURITY.md)
 - [FSL-1.1-ALv2 license](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md), and [trademark policy](TRADEMARKS.md)
