@@ -18,7 +18,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install install-test test integration release release-prepare release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install install-test test integration release release-prepare release-tag release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -51,6 +51,27 @@ release-prepare: docs
 	git diff -- $(DOCS_REFERENCE)
 	@test -z "$$(git status --porcelain -- $(DOCS_REFERENCE))" || \
 		{ echo 'Review and commit the generated reference before creating a tag.'; exit 1; }
+
+# Make treats positional arguments as goals. Consume the version as a no-op
+# target only for this command, and reject extra goals before doing any work.
+ifneq ($(filter release-tag,$(MAKECMDGOALS)),)
+RELEASE_TAG_ARG := $(word 2,$(MAKECMDGOALS))
+ifneq ($(MAKECMDGOALS),release-tag $(RELEASE_TAG_ARG))
+$(error Usage: make release-tag v1.4.0)
+endif
+ifeq ($(filter v0% v1% v2% v3% v4% v5% v6% v7% v8% v9%,$(RELEASE_TAG_ARG)),)
+$(error Usage: make release-tag v1.4.0)
+endif
+.PHONY: $(RELEASE_TAG_ARG)
+$(RELEASE_TAG_ARG): ;
+endif
+
+# Create and push the release tag: make release-tag v1.4.0
+release-tag:
+	@test -z "$$(git status --porcelain)" || \
+		{ echo 'Commit or stash changes before creating a release tag.'; exit 1; }
+	git tag -a "$(RELEASE_TAG_ARG)" -m "Alcubi Delegator $(RELEASE_TAG_ARG)"
+	git push origin "$(RELEASE_TAG_ARG)"
 
 # Build an exact tag without giving the builder publication credentials.
 release-build: release-check

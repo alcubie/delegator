@@ -45,18 +45,51 @@ for the settings above.
    prerelease. From the clean, checked commit, create and push an annotated tag:
 
    ```sh
-   tag=v1.4.0  # Replace with the version you are releasing.
-   test -z "$(git status --porcelain)" &&
-     git tag -a "$tag" -m "Alcubi Delegator $tag" &&
-     git push origin "$tag"
+   make release-tag v1.4.0  # Replace with the version you are releasing.
    ```
 
 4. Open **Actions → Release**. After checks and builds pass, review and approve
    the `release` environment deployment. The workflow uploads a draft, downloads
    its assets to verify checksums, then publishes it with generated release notes.
-5. Download the archive for your machine and its checksum file from the release.
-   Compare its SHA-256 checksum, extract it, and run `./dg version` (`.\dg.exe version`
-   on Windows). For the example above, expect `dg v1.4.0`.
+5. Download the archive for your machine and
+   `alcubi-delegator_1.4.0_checksums.txt` from the release into the same directory.
+   In a terminal, change to that directory. Replace `1.4.0` and the archive name
+   below with your release version and downloaded filename (`amd64` for Intel/AMD
+   or `arm64` for ARM, including Apple silicon).
+
+   On macOS, verify the archive against its entry in the checksum file:
+
+   ```sh
+   archive=alcubi-delegator_1.4.0_darwin_arm64.tar.gz
+   grep -F "  $archive" alcubi-delegator_1.4.0_checksums.txt | shasum -a 256 -c
+   ```
+
+   On Linux:
+
+   ```sh
+   archive=alcubi-delegator_1.4.0_linux_amd64.tar.gz
+   grep -F "  $archive" alcubi-delegator_1.4.0_checksums.txt | sha256sum -c
+   ```
+
+   Both commands must print the archive filename followed by `OK`.
+
+   On Windows, use PowerShell:
+
+   ```powershell
+   $archive = 'alcubi-delegator_1.4.0_windows_amd64.zip'
+   $entry = Get-Content 'alcubi-delegator_1.4.0_checksums.txt' |
+     Where-Object { ($_ -split '\s+')[1] -eq $archive }
+   if (@($entry).Count -ne 1) { throw 'Expected exactly one checksum entry' }
+   $expected = ($entry -split '\s+')[0]
+   $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+   if ($actual -ne $expected) { throw 'Checksum mismatch' }
+   Write-Host "$archive`: OK"
+   ```
+
+   If verification fails or no matching entry is found, stop and download the
+   files again. After a successful check, extract the archive and run
+   `./dg version` (`.\dg.exe version` on Windows). For the example above, expect
+   `dg v1.4.0`.
 6. For a stable release intended for default installation, edit the GitHub release
    and mark it **Latest**. The workflow does not do this automatically; the
    installer defaults to the latest stable release.
