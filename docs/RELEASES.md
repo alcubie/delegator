@@ -48,11 +48,15 @@ for the settings above.
    make release-tag v1.4.0  # Replace with the version you are releasing.
    ```
 
-4. Open **Actions → Release**. After checks and builds pass, review and approve
-   the `release` environment deployment. The workflow uploads a draft, downloads
-   its assets to verify checksums, then publishes it with generated release notes.
+4. Open **Actions → Release**. After Linux/macOS checks, builds, and Windows
+   installer checks pass, review and approve the `release` environment deployment. The workflow uploads a draft, downloads
+   its assets to verify the seven archive checksums and compare both installers
+   byte for byte, then publishes it with generated release notes. Windows checks
+   run the retained `install.ps1` under Windows PowerShell 5.1 and PowerShell 7;
+   a failed check blocks publication. The publication job also checks both scripts
+   against the source hashes retained by the build before creating the draft.
 5. On Linux, run this command with the GitHub CLI (`gh`) installed. Replace
-   `v1.4.0` with the release tag. It downloads all nine release assets into a
+   `v1.4.0` with the release tag. It downloads all ten release assets into a
    fresh temporary directory and checks all seven archives against the checksum
    file, including the macOS, Windows, and source archives:
 
@@ -64,7 +68,8 @@ for the settings above.
    archive, or checksum mismatch stops the command with a nonzero exit status.
    The checksum file is the reference used to verify the archives; it does not
    contain a checksum of itself. This also works for older releases with the
-   `alcubi-delegator_` filename prefix.
+   `alcubi-delegator_` filename prefix. This command checks archive checksums;
+   installer byte comparisons happen in the publication workflow.
 
    After verification, extract the Linux archive for your architecture (`amd64`
    for Intel/AMD or `arm64` for ARM) from the printed directory and run
@@ -75,17 +80,27 @@ for the settings above.
 
 Never move or reuse a version tag, or replace published assets.
 
-## Public installer URL
+## Public installer URLs
 
 The website's `public/_redirects` maps
 `https://alcubi.ai/delegator/install.sh` to
 `https://github.com/alcubie/delegator/releases/latest/download/install.sh`.
-The release workflow attaches the tested `install.sh` from the tagged source and
-compares the downloaded copy before publishing. No website deployment is needed
-for each release. Mark a stable release **Latest** to select it for this URL.
+The release workflow attaches the tested `install.sh` and `install.ps1` from
+the tagged source and compares both downloaded copies before publishing. No
+website deployment is needed for each subsequent release. Mark a stable release **Latest** to select it for this URL.
 
-If an older release is missing the installer asset, add it from that exact local
-tag (replace the example tag as needed):
+The planned Windows public URL is `https://alcubi.ai/delegator/install.ps1`,
+redirecting to
+`https://github.com/alcubie/delegator/releases/latest/download/install.ps1`.
+The README uses this GitHub asset URL directly until the website redirect ships.
+First publish a new stable version through the normal approved release process,
+verify it contains `install.ps1`, and mark it **Latest**. Only then deploy and
+verify the redirect and advertise the website command. Neither URL can serve the
+Windows installer while the selected latest release lacks the asset.
+
+If an older release is missing the shell installer asset and its source tag
+contains `install.sh`, add it from that exact local tag (replace the example tag
+as needed):
 
 ```sh
 make release-upload-installer v0.0.3
@@ -93,8 +108,11 @@ make release-upload-installer v0.0.3
 
 This requires GitHub release write access. It uploads only `install.sh`, refuses
 to overwrite an existing asset, and verifies the uploaded copy. Existing archives
-and checksums remain unchanged. If GitHub disallows adding assets to the release,
-publish a new version using the corrected workflow and mark it **Latest**.
+and checksums remain unchanged. This helper does not upload `install.ps1` and
+cannot supply a script absent from the tag. Do not copy a newer installer into an
+older release or overwrite immutable assets. If GitHub disallows adding assets
+to the release, publish a new version using the corrected workflow and mark it
+**Latest**.
 
 Verify the public redirect and installer help without installing a binary:
 
@@ -105,8 +123,14 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh -s -- --help
 ## Dry run
 
 In **Actions → Release → Run workflow**, select the branch to validate. This
-runs checks and builds all archives without publishing or creating a tag.
-Download `release-assets` from the run within seven days.
+runs Linux/macOS checks, builds all archives, and tests the retained Windows
+installer with both PowerShell versions without publishing or creating a tag.
+Confirm both Windows matrix jobs pass. Download `release-assets` from the run
+within seven days; inspect the ten files listed below, including nonempty
+`install.sh` and `install.ps1` matching the selected commit byte for byte. The
+checksum file must still have seven archive entries. A dry run does not exercise
+GitHub draft upload/download; `python3 scripts/test-release.py` exercises that
+publication script with controlled assets and failures.
 
 Locally, run:
 
@@ -129,8 +153,8 @@ None of these commands publish.
 
 ## Release files
 
-Each release has nine files: six binary archives, one source archive, one
-SHA-256 checksum file, and the installer. `<version>` omits the tag's leading `v`.
+Each new release has ten files: six binary archives, one source archive, one
+SHA-256 checksum file, and two installers. `<version>` omits the tag's leading `v`.
 
 | Contents | Filename |
 | --- | --- |
@@ -139,13 +163,14 @@ SHA-256 checksum file, and the installer. `<version>` omits the tag's leading `v
 | Tagged source tree | `delegator_<version>_source.tar.gz` |
 | Checksums for all seven archives | `delegator_<version>_checksums.txt` |
 | Shell installer from the tagged source | `install.sh` |
+| PowerShell installer from the tagged source | `install.ps1` |
 
 `<os>` is `linux` or `darwin`; `<arch>` is `amd64` or `arm64`. Binary archives
 contain exactly `dg` (Windows: `dg.exe`), `LICENSE`, and `TRADEMARKS.md` at their
 root. The source archive includes the tracked source and policy files. Checksum
 lines contain the lowercase digest, whitespace, and filename, sorted by filename.
-The checksum file covers the archives; the workflow verifies the installer
-separately by comparing its bytes before and after upload.
+The checksum file covers the archives; the workflow verifies both installers
+separately by comparing their bytes before and after upload.
 
 Download URLs follow
 `https://github.com/alcubie/delegator/releases/download/<tag>/<filename>`.

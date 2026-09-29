@@ -9,7 +9,8 @@ directory to the user and current process PATH, then prints `dg version` and
 The downstream hosting/docs ticket should publish the script at the URL below.
 **This URL is a future hosting contract, not a currently available installer.**
 The exact command is also recorded in `install.ps1` and executed with controlled
-downloads by the Windows smoke test:
+downloads by the Windows smoke test, alongside the current GitHub release asset
+command from the README:
 
 ```powershell
 & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))

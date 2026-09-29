@@ -1,10 +1,12 @@
 # Runs on Windows, using real dg binaries and isolated filesystem/registry data.
 # Network and user-environment access are redirected below, without Pester.
+param([string] $InstallerPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'install.ps1'))
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Run this smoke test on Windows.' }
 $repo = Split-Path $PSScriptRoot -Parent
-$installer = Join-Path $repo 'install.ps1'
+$installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $root = Join-Path $repo ('.installer-test-' + [guid]::NewGuid().ToString('N'))
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
 $saved = @{}
@@ -44,7 +46,7 @@ function Invoke-WebRequest {
     param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
     Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
     $script:downloads += $Uri
-    if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
+    if ($Uri -in @('https://alcubi.ai/delegator/install.ps1', 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1')) {
         return [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
     }
     if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
@@ -107,6 +109,13 @@ try {
     $env:PATH = $baseProcessPath
     $baseUserPath = '%USERPROFILE%\Existing Tools;C:\Other Tools'
     $null = Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name Path -Value $baseUserPath -PropertyType ExpandString
+
+    # Execute the README's current GitHub command and the future website form.
+    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
+    Assert ($readmeLine.Count -eq 1) 'Missing README download-and-run command'
+    & ([scriptblock]::Create($readmeLine[0]))
+    Assert-Version
+    Assert-CleanStaging
 
     # Execute the exact future download-and-run form recorded in the installer.
     # ScriptBlock invocation stays in this process and bypasses no policy setting.
