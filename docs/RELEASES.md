@@ -120,6 +120,38 @@ Verify the public redirect and installer help without installing a binary:
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh -s -- --help
 ```
 
+For Windows help in the current PowerShell session:
+
+```powershell
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1').Content)) -Help
+```
+
+The bootstrap above fetches the script; its `-Help` path never queries release
+metadata, downloads archives, changes PATH, or starts setup. A saved script's
+`./install.ps1 -Help` needs no network access. Append `-Version v1.2.3`,
+`-InstallDir 'C:\Users\me\Delegator Tools'`, and/or `-NonInteractive` to the
+single-line bootstrap, as shown in README.md. Parameters override `DG_VERSION`,
+`DG_INSTALL_DIR`, and `DG_NON_INTERACTIVE` (0 or 1). Explicit versions accept an
+optional `v` and prerelease/build suffixes. Latest stable remains the default.
+Older releases use `alcubi-delegator_` filenames when their canonical checksum
+file uses that prefix; those releases must actually contain Windows archives.
+
+Windows installation stages and verifies downloads before replacing `dg.exe`.
+Replacement keeps a backup until user PATH persistence succeeds; failures
+restore the previous binary. Close running `dg` processes and check destination
+and user registry permissions if replacement fails. The current session PATH
+is updated only after persistence succeeds. Interactive consoles start `dg init`;
+`-NonInteractive`, a non-interactive host, or redirected console streams skip
+setup and print its command. A setup failure leaves the completed installation
+available and reports how to retry.
+
+`make install-test-windows` and
+`make install-test-windows POWERSHELL=powershell` run the fixture suite locally.
+Both shells run in the existing Windows validation and release workflows;
+Linux Go tests do not require PowerShell. See
+[scripts/windows-installer.md](../scripts/windows-installer.md) for coverage,
+manual console validation, and the native ARM64 limitation.
+
 ## Dry run
 
 In **Actions → Release → Run workflow**, select the branch to validate. This
