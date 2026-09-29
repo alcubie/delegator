@@ -30,11 +30,50 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(WORKFLOW["permissions"], {"contents": "read"})
         publish = WORKFLOW["jobs"]["publish"]
         self.assertEqual(publish["if"], "github.event_name == 'push'")
-        self.assertEqual(publish["needs"], "build")
+        self.assertEqual(publish["needs"], ["build", "windows"])
+        self.assertNotIn("continue-on-error", publish)
+        windows = WORKFLOW["jobs"]["windows"]
+        self.assertEqual(windows["needs"], "build")
+        self.assertEqual(windows["runs-on"], "windows-latest")
+        self.assertEqual(windows["strategy"]["matrix"]["shell"], ["powershell", "pwsh"])
+        self.assertNotIn("if", windows)
+        self.assertNotIn("continue-on-error", windows)
+        download = next(step for step in windows["steps"] if "download-artifact" in step.get("uses", ""))
+        self.assertEqual(download["with"], {"name": "release-assets", "path": "assets"})
+        smoke = windows["steps"][-1]
+        self.assertEqual(windows["defaults"]["run"]["shell"], "${{ matrix.shell }}")
+        self.assertEqual(smoke["run"], "./scripts/test-install.ps1 -InstallerPath ./assets/install.ps1")
+        self.assertFalse(any("continue-on-error" in step for step in windows["steps"]))
         self.assertEqual(publish["environment"], "release")
         build = WORKFLOW["jobs"]["build"]
         self.assertTrue(any("make check" in step.get("run", "") for step in build["steps"]))
         self.assertFalse(any("secrets." in str(step) for step in build["steps"]))
+
+    def test_dry_run_retains_exact_installers(self):
+        build = WORKFLOW["jobs"]["build"]
+        retain = next(step for step in build["steps"] if step.get("id") == "installers")
+        upload = build["steps"][-1]
+        self.assertEqual(upload["with"]["name"], "release-assets")
+        self.assertEqual(set(upload["with"]["path"].splitlines()), {
+            "dist/*.tar.gz", "dist/*.zip", "dist/*_checksums.txt", "dist/install.sh", "dist/install.ps1"})
+        self.assertNotIn("if", retain)
+        self.assertNotIn("if", upload)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "dist").mkdir()
+            for name in ("install.sh", "install.ps1"):
+                (root / name).write_bytes((ROOT / name).read_bytes())
+            output = root / "output"
+            result = subprocess.run(["bash", "-e", "-c", retain["run"]], cwd=root,
+                                    env=dict(os.environ, GITHUB_OUTPUT=str(output)), capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            for name, key in (("install.sh", "shell_sha256"), ("install.ps1", "powershell_sha256")):
+                data = (ROOT / name).read_bytes()
+                self.assertEqual((root / "dist" / name).read_bytes(), data)
+                self.assertIn(f"{key}={hashlib.sha256(data).hexdigest()}", output.read_text())
+                self.assertEqual(build["outputs"][key], "${{ steps.installers.outputs." + key + " }}")
+                self.assertEqual(WORKFLOW["jobs"]["publish"]["steps"][-1]["env"][key.upper()],
+                                 "${{ needs.build.outputs." + key + " }}")
 
     def test_documentation_failures_block_release(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -52,7 +91,8 @@ class ReleaseTests(unittest.TestCase):
             root = Path(directory)
             assets = root / "assets"
             assets.mkdir()
-            (assets / "install.sh").write_bytes((ROOT / "install.sh").read_bytes())
+            for name in ("install.sh", "install.ps1"):
+                (assets / name).write_bytes((ROOT / name).read_bytes())
             checksums = []
             for index in range(7):
                 name = f"archive-{index}.tar.gz"
@@ -66,6 +106,14 @@ class ReleaseTests(unittest.TestCase):
                 (assets / "install.sh").unlink()
             if failure == "empty-installer":
                 (assets / "install.sh").write_text("")
+            if failure == "missing-powershell-installer":
+                (assets / "install.ps1").unlink()
+            if failure == "empty-powershell-installer":
+                (assets / "install.ps1").write_text("")
+            if failure == "local-powershell-corruption":
+                (assets / "install.ps1").write_text("Write-Host 'corrupt'\n")
+            if failure == "local-installer-corruption":
+                (assets / "install.sh").write_text("#!/bin/sh\nexit 1\n")
             mock = root / "gh"
             mock.write_text(r"""#!/usr/bin/env python3
 import os
@@ -93,10 +141,18 @@ if args[:2] == ['release', 'download']:
         (dest / 'install.sh').write_text('#!/bin/sh\nexit 1\n')
     if failure == 'remote-missing-installer':
         (dest / 'install.sh').unlink()
+    if failure == 'remote-powershell-corruption':
+        (dest / 'install.ps1').write_text("Write-Host 'corrupt'\n")
+    if failure == 'remote-missing-powershell-installer':
+        (dest / 'install.ps1').unlink()
+    if failure == 'remote-empty-powershell-installer':
+        (dest / 'install.ps1').write_text('')
 """)
             mock.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", MOCK_ROOT=str(root),
-                       FAILURE=failure, RELEASE_TAG=tag, GH_REPO="example/delegator")
+                       FAILURE=failure, RELEASE_TAG=tag, GH_REPO="example/delegator",
+                       SHELL_SHA256=hashlib.sha256((ROOT / "install.sh").read_bytes()).hexdigest(),
+                       POWERSHELL_SHA256=hashlib.sha256((ROOT / "install.ps1").read_bytes()).hexdigest())
             script = WORKFLOW["jobs"]["publish"]["steps"][-1]["run"]
             result = subprocess.run(["bash", "-c", script], cwd=root, env=env, capture_output=True)
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""
@@ -108,12 +164,17 @@ if args[:2] == ['release', 'download']:
             self.assertEqual(result.returncode, 0, result.stderr.decode())
             self.assertIn("--draft", calls.splitlines()[0])
             self.assertIn("./install.sh", calls.splitlines()[0])
+            self.assertIn("./install.ps1", calls.splitlines()[0])
             self.assertTrue(calls.splitlines()[-1].startswith("release edit"))
             self.assertIn("--prerelease=" + str("-" in tag.split("+")[0]).lower(), calls.splitlines()[-1])
 
     def test_failures_never_publish(self):
         for failure in ("local-corruption", "upload", "existing", "download", "remote-corruption", "missing",
-                        "missing-installer", "empty-installer", "remote-installer-corruption", "remote-missing-installer"):
+                        "missing-installer", "empty-installer", "local-installer-corruption",
+                        "remote-installer-corruption", "remote-missing-installer",
+                        "missing-powershell-installer", "empty-powershell-installer", "local-powershell-corruption",
+                        "remote-powershell-corruption", "remote-missing-powershell-installer",
+                        "remote-empty-powershell-installer"):
             with self.subTest(failure=failure):
                 result, calls = self.run_publication(failure)
                 self.assertNotEqual(result.returncode, 0)

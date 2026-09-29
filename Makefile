@@ -88,7 +88,7 @@ release-verify:
 	sha256sum --check --strict ./*_checksums.txt; \
 	printf 'Verified release files: %s\n' "$$dir"
 
-# Add the missing installer from the release's source without replacing assets.
+# Add only install.sh from a tag that contains it; never replace release assets.
 release-upload-installer:
 	@set -eu; \
 	python3 scripts/check-release-tag.py "$(RELEASE_TAG_ARG)"; \
