@@ -14,6 +14,7 @@ COVER_PKGS := ./internal/...
 DOCS_REFERENCE := docs/public/reference
 MKDOCS ?= mkdocs
 GORELEASER_VERSION := v2.17.1
+POWERSHELL ?= pwsh
 GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
@@ -31,6 +32,10 @@ install:
 
 install-test:
 	./scripts/test-install.sh
+
+.PHONY: install-test-windows
+install-test-windows:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/test-install.ps1
 
 test: install-test
 	go test ./...
