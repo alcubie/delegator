@@ -100,7 +100,7 @@ jobs:
           version_without_metadata=${RELEASE_TAG%%+*}
           if [[ "$version_without_metadata" == *-* ]]; then prerelease=true; fi
           cat > ../notes.md <<EOF
-          Alcubi Delegator $RELEASE_TAG
+          Delegator $RELEASE_TAG
 
           See the generated change list below for this release. Verify downloads
           using the attached SHA-256 checksum file.
@@ -109,7 +109,7 @@ jobs:
           · [Trademark policy](https://github.com/$GH_REPO/blob/$RELEASE_TAG/TRADEMARKS.md)
           EOF
           gh release create "$RELEASE_TAG" ./* --verify-tag --draft \
-            --title "Alcubi Delegator $RELEASE_TAG" --prerelease="$prerelease" \
+            --title "Delegator $RELEASE_TAG" --prerelease="$prerelease" \
             --generate-notes --notes-file ../notes.md
           mkdir ../downloaded
           gh release download "$RELEASE_TAG" --dir ../downloaded
