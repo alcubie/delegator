@@ -1,0 +1,32 @@
+{
+  "requests": [
+    "installation.json",
+    "installation.json",
+    "catch-up.json",
+    "retry-expanded.json",
+    "second-consent-period.json",
+    "catch-up.json",
+    "retry-expanded.json"
+  ],
+  "expected": {
+    "installations": 1,
+    "daily_rows": 5,
+    "totals": {
+      "tickets_created": 3,
+      "tickets_first_ready": 3,
+      "tickets_accepted": 2,
+      "tickets_cancelled": 1,
+      "runs_started": 4,
+      "runs_ended": 4,
+      "runs_ended_unsuccessfully": 2
+    },
+    "settings_generated_at": "2026-09-29T12:00:00.000000000Z",
+    "settings": {
+      "runs": 2,
+      "max_runs_per_project": 0,
+      "timeout_minutes": 60,
+      "done_hours": 24,
+      "default_agent": null
+    }
+  }
+}
