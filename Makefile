@@ -18,7 +18,7 @@ GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 SNAPSHOT_VERSION := 0.0.0-snapshot-$(shell git rev-parse --short=7 HEAD)
 VALIDATION_VERSION ?= 0.0.0-validate
 
-.PHONY: build install install-test test integration release release-prepare release-tag release-verify release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
+.PHONY: build install install-test test integration release release-prepare release-tag release-verify release-upload-installer release-check release-snapshot release-validate release-build vet lint fmt fmtcheck check archivecheck clean watch cover coverhtml covercheck docs docs-build docs-serve docs-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/dg
@@ -54,8 +54,8 @@ release-prepare: docs
 
 # Make treats positional arguments as goals. Consume the version as a no-op
 # target only for these commands, and reject extra goals before doing any work.
-ifneq ($(filter release-tag release-verify,$(MAKECMDGOALS)),)
-RELEASE_COMMAND := $(filter release-tag release-verify,$(MAKECMDGOALS))
+ifneq ($(filter release-tag release-verify release-upload-installer,$(MAKECMDGOALS)),)
+RELEASE_COMMAND := $(filter release-tag release-verify release-upload-installer,$(MAKECMDGOALS))
 RELEASE_TAG_ARG := $(word 2,$(MAKECMDGOALS))
 ifneq ($(MAKECMDGOALS),$(RELEASE_COMMAND) $(RELEASE_TAG_ARG))
 $(error Usage: make $(RELEASE_COMMAND) v1.4.0)
@@ -82,6 +82,19 @@ release-verify:
 	cd "$$dir"; \
 	sha256sum --check --strict ./*_checksums.txt; \
 	printf 'Verified release files: %s\n' "$$dir"
+
+# Add the missing installer from the release's source without replacing assets.
+release-upload-installer:
+	@set -eu; \
+	python3 scripts/check-release-tag.py "$(RELEASE_TAG_ARG)"; \
+	dir=$$(mktemp -d "$${TMPDIR:-/tmp}/delegator-installer.XXXXXX"); \
+	trap 'rm -rf "$$dir"' EXIT HUP INT TERM; \
+	git show "$(RELEASE_TAG_ARG):install.sh" > "$$dir/install.sh"; \
+	test -s "$$dir/install.sh"; \
+	sh -n "$$dir/install.sh"; \
+	gh release upload "$(RELEASE_TAG_ARG)" "$$dir/install.sh" --repo alcubie/delegator; \
+	gh release download "$(RELEASE_TAG_ARG)" --pattern install.sh --dir "$$dir/downloaded" --repo alcubie/delegator; \
+	cmp "$$dir/install.sh" "$$dir/downloaded/install.sh"
 
 # Build an exact tag without giving the builder publication credentials.
 release-build: release-check

@@ -52,6 +52,7 @@ class ReleaseTests(unittest.TestCase):
             root = Path(directory)
             assets = root / "assets"
             assets.mkdir()
+            (assets / "install.sh").write_bytes((ROOT / "install.sh").read_bytes())
             checksums = []
             for index in range(7):
                 name = f"archive-{index}.tar.gz"
@@ -61,6 +62,10 @@ class ReleaseTests(unittest.TestCase):
             (assets / f"delegator_{tag[1:]}_checksums.txt").write_text("".join(checksums))
             if failure == "local-corruption":
                 (assets / "archive-0.tar.gz").write_text("corrupt")
+            if failure == "missing-installer":
+                (assets / "install.sh").unlink()
+            if failure == "empty-installer":
+                (assets / "install.sh").write_text("")
             mock = root / "gh"
             mock.write_text(r"""#!/usr/bin/env python3
 import os
@@ -84,6 +89,10 @@ if args[:2] == ['release', 'download']:
         (dest / 'archive-0.tar.gz').write_text('corrupt')
     if failure == 'missing':
         (dest / 'archive-0.tar.gz').unlink()
+    if failure == 'remote-installer-corruption':
+        (dest / 'install.sh').write_text('#!/bin/sh\nexit 1\n')
+    if failure == 'remote-missing-installer':
+        (dest / 'install.sh').unlink()
 """)
             mock.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", MOCK_ROOT=str(root),
@@ -98,11 +107,13 @@ if args[:2] == ['release', 'download']:
             result, calls = self.run_publication(tag=tag)
             self.assertEqual(result.returncode, 0, result.stderr.decode())
             self.assertIn("--draft", calls.splitlines()[0])
+            self.assertIn("./install.sh", calls.splitlines()[0])
             self.assertTrue(calls.splitlines()[-1].startswith("release edit"))
             self.assertIn("--prerelease=" + str("-" in tag.split("+")[0]).lower(), calls.splitlines()[-1])
 
     def test_failures_never_publish(self):
-        for failure in ("local-corruption", "upload", "existing", "download", "remote-corruption", "missing"):
+        for failure in ("local-corruption", "upload", "existing", "download", "remote-corruption", "missing",
+                        "missing-installer", "empty-installer", "remote-installer-corruption", "remote-missing-installer"):
             with self.subTest(failure=failure):
                 result, calls = self.run_publication(failure)
                 self.assertNotEqual(result.returncode, 0)

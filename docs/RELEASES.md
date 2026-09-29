@@ -52,7 +52,7 @@ for the settings above.
    the `release` environment deployment. The workflow uploads a draft, downloads
    its assets to verify checksums, then publishes it with generated release notes.
 5. On Linux, run this command with the GitHub CLI (`gh`) installed. Replace
-   `v1.4.0` with the release tag. It downloads all eight release assets into a
+   `v1.4.0` with the release tag. It downloads all nine release assets into a
    fresh temporary directory and checks all seven archives against the checksum
    file, including the macOS, Windows, and source archives:
 
@@ -74,6 +74,33 @@ for the settings above.
    installer defaults to the latest stable release.
 
 Never move or reuse a version tag, or replace published assets.
+
+## Public installer URL
+
+The website's `public/_redirects` maps
+`https://alcubi.ai/delegator/install.sh` to
+`https://github.com/alcubie/delegator/releases/latest/download/install.sh`.
+The release workflow attaches the tested `install.sh` from the tagged source and
+compares the downloaded copy before publishing. No website deployment is needed
+for each release. Mark a stable release **Latest** to select it for this URL.
+
+If an older release is missing the installer asset, add it from that exact local
+tag (replace the example tag as needed):
+
+```sh
+make release-upload-installer v0.0.3
+```
+
+This requires GitHub release write access. It uploads only `install.sh`, refuses
+to overwrite an existing asset, and verifies the uploaded copy. Existing archives
+and checksums remain unchanged. If GitHub disallows adding assets to the release,
+publish a new version using the corrected workflow and mark it **Latest**.
+
+Verify the public redirect and installer help without installing a binary:
+
+```sh
+curl -fsSL https://alcubi.ai/delegator/install.sh | sh -s -- --help
+```
 
 ## Dry run
 
@@ -102,8 +129,8 @@ None of these commands publish.
 
 ## Release files
 
-Each release has eight files: six binary archives, one source archive, and one
-SHA-256 checksum file. `<version>` omits the tag's leading `v`.
+Each release has nine files: six binary archives, one source archive, one
+SHA-256 checksum file, and the installer. `<version>` omits the tag's leading `v`.
 
 | Contents | Filename |
 | --- | --- |
@@ -111,11 +138,14 @@ SHA-256 checksum file. `<version>` omits the tag's leading `v`.
 | Windows binary | `delegator_<version>_windows_<arch>.zip` |
 | Tagged source tree | `delegator_<version>_source.tar.gz` |
 | Checksums for all seven archives | `delegator_<version>_checksums.txt` |
+| Shell installer from the tagged source | `install.sh` |
 
 `<os>` is `linux` or `darwin`; `<arch>` is `amd64` or `arm64`. Binary archives
 contain exactly `dg` (Windows: `dg.exe`), `LICENSE`, and `TRADEMARKS.md` at their
 root. The source archive includes the tracked source and policy files. Checksum
 lines contain the lowercase digest, whitespace, and filename, sorted by filename.
+The checksum file covers the archives; the workflow verifies the installer
+separately by comparing its bytes before and after upload.
 
 Download URLs follow
 `https://github.com/alcubie/delegator/releases/download/<tag>/<filename>`.

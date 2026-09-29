@@ -57,8 +57,9 @@ jobs:
           else
             make release-validate VALIDATION_VERSION=0.0.0-rc.${{ github.run_number }}
           fi
+          cp install.sh dist/install.sh
           test -z "$(git status --porcelain --untracked-files=normal)"
-      - name: Keep the validated archives and canonical checksums
+      - name: Keep the validated archives, installer, and canonical checksums
         uses: actions/upload-artifact@v6
         with:
           name: release-assets
@@ -68,6 +69,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/*_checksums.txt
+            dist/install.sh
 
   publish:
     if: github.event_name == 'push'
@@ -91,7 +93,9 @@ jobs:
           set -euo pipefail
           cd assets
           checksum="delegator_${RELEASE_TAG#v}_checksums.txt"
-          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 8
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 9
+          test -s install.sh
+          sh -n install.sh
           test "$(wc -l < "$checksum")" -eq 7
           sha256sum --check "$checksum"
           # Existing releases, including partial drafts, require explicit recovery.
@@ -114,7 +118,8 @@ jobs:
           mkdir ../downloaded
           gh release download "$RELEASE_TAG" --dir ../downloaded
           cd ../downloaded
-          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 8
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 9
+          cmp install.sh ../assets/install.sh
           cmp "$checksum" "../assets/$checksum"
           sha256sum --check "$checksum"
           gh release edit "$RELEASE_TAG" --verify-tag --draft=false \
