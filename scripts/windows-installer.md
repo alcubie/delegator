@@ -6,19 +6,18 @@ against `delegator_<version>_checksums.txt` before extraction. It adds that
 directory to the user and current process PATH, then prints `dg version` and
 `dg init`. It does not prompt or start setup.
 
-The downstream hosting/docs ticket should publish the script at the URL below.
-**This URL is a future hosting contract, not a currently available installer.**
-The exact command is also recorded in `install.ps1` and executed with controlled
-downloads by the Windows smoke test, alongside the current GitHub release asset
-command from the README:
+The public URL below redirects to the latest stable GitHub release's
+`install.ps1` asset. The exact README command is also recorded in `install.ps1`
+and executed with controlled downloads by the Windows smoke test:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
-Run it in the existing PowerShell session. ScriptBlock invocation preserves
-current-session environment changes and requires no permanent execution-policy
-change. `-UseBasicParsing` avoids Internet Explorer dependencies and web content
+Run it in the existing PowerShell session. `iwr` and `iex` are aliases for
+`Invoke-WebRequest` and `Invoke-Expression`. This preserves current-session
+environment changes and requires no permanent execution-policy change.
+`-useb` abbreviates `-UseBasicParsing`, avoiding Internet Explorer dependencies and web content
 script prompts in Windows PowerShell 5.1. Do not wrap the command in a child
 `powershell.exe` or `pwsh` process when documenting immediate command discovery.
 

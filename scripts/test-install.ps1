@@ -46,8 +46,9 @@ function Invoke-WebRequest {
     param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
     Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
     $script:downloads += $Uri
-    if ($Uri -in @('https://alcubi.ai/delegator/install.ps1', 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1')) {
-        return [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
+    if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
+        # Match the web response's string conversion used by iwr | iex.
+        return [IO.File]::ReadAllText($installer)
     }
     if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
         return [pscustomobject]@{ Content = '{"tag_name":"v1.2.3","draft":false,"prerelease":false}' }
@@ -110,18 +111,15 @@ try {
     $baseUserPath = '%USERPROFILE%\Existing Tools;C:\Other Tools'
     $null = Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name Path -Value $baseUserPath -PropertyType ExpandString
 
-    # Execute the README's current GitHub command and the future website form.
-    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
+    # Execute the exact README command with controlled public-URL downloads.
+    # iwr | iex stays in this process and bypasses no policy setting.
+    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('iwr ') })
     Assert ($readmeLine.Count -eq 1) 'Missing README download-and-run command'
-    & ([scriptblock]::Create($readmeLine[0]))
-    Assert-Version
-    Assert-CleanStaging
-
-    # Execute the exact future download-and-run form recorded in the installer.
-    # ScriptBlock invocation stays in this process and bypasses no policy setting.
-    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# & ([scriptblock]') })
+    # Keep the installer's documented invocation identical to the README.
+    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# iwr ') })
     Assert (@($line).Count -eq 1) 'Missing download-and-run contract'
-    $bootstrap = [scriptblock]::Create($line.Substring(2))
+    Assert ($readmeLine[0] -ceq $line.Substring(2)) 'README command differs from the installer contract'
+    $bootstrap = [scriptblock]::Create($readmeLine[0])
     & $bootstrap
     Assert-Version
     Assert ((Read-UserPath) -ceq "$baseUserPath;$installDir") 'Existing user PATH entries changed'
