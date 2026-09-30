@@ -90,7 +90,7 @@ func TestMapPrintsSharedBlockerOnce(t *testing.T) {
 	}
 }
 
-func TestMapMovesTicketUpAfterRemovingItsCurrentParent(t *testing.T) {
+func TestMapReparentsTicketAfterRemovingItsCurrentParent(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	root, branch := twoTickets(t, dataDir, repo)
@@ -126,9 +126,46 @@ func TestMapMovesTicketUpAfterRemovingItsCurrentParent(t *testing.T) {
 	}
 
 	out := mapIn(t, dataDir, repo, dependent)
-	want := fmt.Sprintf("\n  ○ #%d Later work (waits on #%d)\n", dependent, branch)
+	want := fmt.Sprintf("\n    ○ #%d Later work (waits on #%d)\n", dependent, root)
 	if !strings.Contains(out, want) {
-		t.Errorf("ticket did not move back under its open parent after removal:\n%s\nwant line:%s", out, want)
+		t.Errorf("ticket did not move back under its deepest remaining parent after removal:\n%s\nwant line:%s", out, want)
+	}
+}
+
+func TestMapKeepsDependentsUnderEarlierBranches(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	// Reproduce tickets 298-307 from the report as IDs 1-10. Ticket 9 must
+	// remain a child of ticket 6 even when another branch intervenes.
+	dependencies := [][]int64{
+		nil, {1}, {2}, {1}, {3, 4}, {5}, {4}, {6, 7}, {6}, {7, 8, 9},
+	}
+	s := testfix.OpenStore(t, dataDir)
+	for i, blockers := range dependencies {
+		id, err := ticketIn(t, dataDir, repo, fmt.Sprintf("Task %d", i+1), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AddDependencies(id, blockers...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := "0 of 10 done\n" +
+		"○ #1 Task 1\n" +
+		"  ○ #2 Task 2\n" +
+		"    ○ #3 Task 3\n" +
+		"      ○ #5 Task 5 (waits on #4)\n" +
+		"        ○ #6 Task 6\n" +
+		"          ○ #8 Task 8 (waits on #7)\n" +
+		"          ○ #9 Task 9\n" +
+		"            ○ #10 Task 10 (waits on #7 #8)\n" +
+		"  ○ #4 Task 4\n" +
+		"    ○ #7 Task 7\n"
+	for _, id := range []int64{1, 6, 9, 10} {
+		if got := mapIn(t, dataDir, repo, id); got != want {
+			t.Errorf("dg map %d wrote:\n%s\nwant:\n%s", id, got, want)
+		}
 	}
 }
 
