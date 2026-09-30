@@ -55,6 +55,7 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 // make check. XDG_DATA_HOME and PATH direct agent commands to this test's
 // database and binary.
 func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
+	t.Setenv("PATH", filepath.Dir(testfix.DG(t))+string(os.PathListSeparator)+os.Getenv("PATH"))
 	dataDir := testfix.XDGDataDir(t)
 	s := testfix.OpenStore(t, dataDir)
 	// Fresh databases intentionally have no default until onboarding selects
@@ -71,7 +72,7 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	}
 
 	useLaunch(t, func() *exec.Cmd {
-		return exec.Command("dg", "run")
+		return exec.Command(testfix.DG(t), "run")
 	})
 
 	repo := testfix.Repo(t, repoBranch)

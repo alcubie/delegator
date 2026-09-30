@@ -19,7 +19,7 @@ import (
 // its default timeout.
 func acpConfig(t *testing.T, dataDir string, lines ...string) config.Config {
 	t.Helper()
-	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t), testfix.Script(t, lines...))
 	return config.Config{Runs: 2, TimeoutMinutes: 60, DoneHours: 24, DefaultAgent: "fake"}
 }
 
@@ -267,7 +267,7 @@ func TestRestartLoadsTheExistingSessionWithItsOriginalAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	replacementRan := filepath.Join(t.TempDir(), "replacement-ran")
-	testfix.UseAgent(t, dataDir, "replacement", testfix.FakeAgentPath,
+	testfix.UseAgent(t, dataDir, "replacement", testfix.FakeAgent(t),
 		testfix.Script(t, "write "+replacementRan+" replacement", "stop end_turn"))
 	cfg.DefaultAgent = "replacement"
 
@@ -312,7 +312,7 @@ func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
 	if err := s.SetSession(id, session); err != nil {
 		t.Fatal(err)
 	}
-	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath,
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 		testfix.Script(t, "stop end_turn", "history:", "no-such-action"))
 
 	if err := Restart(s, id, cfg); err == nil {

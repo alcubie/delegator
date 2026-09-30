@@ -140,7 +140,7 @@ func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
 	saved := chat
 	chat = func(argv []string, dir string) *exec.Cmd {
 		record = started{argv: argv, dir: dir}
-		cmd := exec.Command("dg", "finish", fmt.Sprint(ticketID), commit, "--data-dir", dataDir)
+		cmd := exec.Command(testfix.DG(t), "finish", fmt.Sprint(ticketID), commit, "--data-dir", dataDir)
 		cmd.Dir = dir
 		return cmd
 	}

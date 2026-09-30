@@ -91,7 +91,7 @@ func TestRestartSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 
 	saved := restartLaunch
 	restartLaunch = func(id int64) *exec.Cmd {
-		return exec.Command("dg", "run", "--restart", fmt.Sprint(id))
+		return exec.Command(testfix.DG(t), "run", "--restart", fmt.Sprint(id))
 	}
 	t.Cleanup(func() { restartLaunch = saved })
 
