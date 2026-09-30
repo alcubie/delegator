@@ -3,12 +3,11 @@ param([string] $Installer, [string] $Root, [string] $Case)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
-$script:architecture = 9
-$script:failure = if ($Case -in @('checksum', 'download')) { $Case } else { '' }
-$script:legacy = $false
-$script:pathWrites = 0
-$script:downloads = @()
-$script:stages = @()
+$fixture = @{
+    architecture = 9
+    failure = $(if ($Case -in @('checksum', 'download')) { $Case } else { '' })
+    legacy = $false; pathWrites = 0; downloads = @(); stages = @()
+}
 . (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
 $originalUserPath = Read-RealUserPath
 $ProgressPreference = 'SilentlyContinue'
