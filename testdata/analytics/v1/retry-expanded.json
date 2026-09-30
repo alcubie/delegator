@@ -1,89 +1,88 @@
 {
-  "schema_version": 1,
-  "consent_notice_version": 1,
+  "format": 1,
   "instance_id": "11111111-1111-4111-8111-111111111111",
-  "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "consent_started_at": "2026-09-25T12:00:00.000000000Z",
-  "generated_at": "2026-09-28T12:00:00.000000000Z",
-  "version": "1.2.3",
-  "os": "linux",
-  "installation": {
-    "first_consent_at": "2026-09-25T12:00:00.000000000Z"
-  },
-  "daily": {
-    "from": "2026-09-25T12:00:00.000000000Z",
-    "through": "2026-09-28T00:00:00.000000000Z",
-    "days": [
-      {
-        "date": "2026-09-25",
-        "tickets_created": 1,
+  "reports": [
+    {
+      "id": "b5fc6b96-2d2d-5d0a-aafa-9942bbdca2e3",
+      "kind": "daily",
+      "date": "2026-09-26",
+      "data": {
+        "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": "1.2.3",
+        "os": "linux",
+        "consent_notice_version": 1,
+        "tickets_created": 2,
         "tickets_first_ready": 1,
         "tickets_accepted": 0,
         "tickets_cancelled": 0,
-        "runs_started": 1,
-        "runs_ended": 0,
+        "runs_started": 2,
+        "runs_ended": 1,
         "runs_ended_unsuccessfully": 0,
         "runs_started_by_agent": {
-          "claude": 0,
-          "codex": 1,
-          "gemini": 0,
-          "opencode": 0,
-          "goose": 0,
-          "github-copilot": 0,
-          "cursor": 0,
-          "pi": 0,
-          "custom": 0
+          "codex": 2
+        },
+        "settings": {
+          "runs": 3,
+          "max_runs_per_project": 0,
+          "timeout_minutes": 60,
+          "done_hours": 24,
+          "default_agent": "codex"
         }
-      },
-      {
-        "date": "2026-09-26",
+      }
+    },
+    {
+      "id": "1cbc5f1d-9fa1-5e87-b024-c26540f184d8",
+      "kind": "daily",
+      "date": "2026-09-27",
+      "data": {
+        "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": "1.2.3",
+        "os": "linux",
+        "consent_notice_version": 1,
         "tickets_created": 0,
         "tickets_first_ready": 0,
-        "tickets_accepted": 1,
+        "tickets_accepted": 0,
         "tickets_cancelled": 0,
+        "runs_started": 0,
+        "runs_ended": 0,
+        "runs_ended_unsuccessfully": 0,
+        "runs_started_by_agent": {},
+        "settings": {
+          "runs": 3,
+          "max_runs_per_project": 0,
+          "timeout_minutes": 60,
+          "done_hours": 24,
+          "default_agent": "codex"
+        }
+      }
+    },
+    {
+      "id": "d54efb6b-4593-5dfd-a10e-5bdca6664e61",
+      "kind": "daily",
+      "date": "2026-09-28",
+      "data": {
+        "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": "1.2.3",
+        "os": "linux",
+        "consent_notice_version": 1,
+        "tickets_created": 1,
+        "tickets_first_ready": 1,
+        "tickets_accepted": 1,
+        "tickets_cancelled": 1,
         "runs_started": 1,
         "runs_ended": 2,
         "runs_ended_unsuccessfully": 1,
         "runs_started_by_agent": {
-          "claude": 0,
-          "codex": 0,
-          "gemini": 0,
-          "opencode": 0,
-          "goose": 0,
-          "github-copilot": 0,
-          "cursor": 0,
-          "pi": 0,
           "custom": 1
-        }
-      },
-      {
-        "date": "2026-09-27",
-        "tickets_created": 1,
-        "tickets_first_ready": 1,
-        "tickets_accepted": 0,
-        "tickets_cancelled": 1,
-        "runs_started": 1,
-        "runs_ended": 1,
-        "runs_ended_unsuccessfully": 1,
-        "runs_started_by_agent": {
-          "claude": 0,
-          "codex": 0,
-          "gemini": 0,
-          "opencode": 0,
-          "goose": 0,
-          "github-copilot": 0,
-          "cursor": 0,
-          "pi": 0,
-          "custom": 1
+        },
+        "settings": {
+          "runs": 3,
+          "max_runs_per_project": 0,
+          "timeout_minutes": 60,
+          "done_hours": 24,
+          "default_agent": "codex"
         }
       }
-    ],
-    "settings": {
-      "runs": 6,
-      "max_runs_per_project": 0,
-      "timeout_minutes": 60,
-      "done_hours": 24,
-      "default_agent": "custom"
     }
-  }
+  ]
 }
