@@ -61,7 +61,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
-		Long:  "Write the current value of one supported instance setting. Analytics is true, false, or null (disabled because unanswered).",
+		Long:  "Write the current value of one supported instance setting.",
 		Example: `  dg config get done_hours
   dg config get default_agent`,
 		Args: cobra.ExactArgs(1),
@@ -80,7 +80,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "set <name> <value>",
 		Short: "Change one instance setting.",
 		Long: "Validate and store a new value for one instance setting. The change applies " +
-			"to subsequent commands and agent runs. Set analytics to true or false to submit a consent choice.",
+			"to subsequent commands and agent runs.",
 		Example: `  dg config set runs 2
   dg config set default_agent codex`,
 		Args: cobra.ExactArgs(2),

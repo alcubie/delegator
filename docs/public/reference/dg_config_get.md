@@ -6,7 +6,7 @@ Show one instance setting.
 
 ### Synopsis
 
-Write the current value of one supported instance setting. Analytics is true, false, or null (disabled because unanswered).
+Write the current value of one supported instance setting.
 
 ```
 dg config get <name> [flags]
