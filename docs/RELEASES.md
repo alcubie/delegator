@@ -77,6 +77,7 @@ for the settings above.
 6. For a stable release intended for default installation, edit the GitHub release
    and mark it **Latest**. The workflow does not do this automatically; the
    installer defaults to the latest stable release.
+7. (Optional) Publish a new version of the website docs for minor version changes.
 
 Never move or reuse a version tag, or replace published assets.
 
