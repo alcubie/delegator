@@ -1,6 +1,6 @@
 # Windows PowerShell 5.1 and PowerShell 7. Run in the current process so PATH
-# is immediately available. The future hosted download-and-run contract is:
-# & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+# is immediately available. The public download-and-run command is:
+# iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 & {
     $ErrorActionPreference = 'Stop'
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {

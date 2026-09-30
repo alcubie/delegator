@@ -47,7 +47,8 @@ function Invoke-WebRequest {
     Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
     $script:downloads += $Uri
     if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
-        return [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
+        # Match the web response's string conversion used by iwr | iex.
+        return [IO.File]::ReadAllText($installer)
     }
     if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
         return [pscustomobject]@{ Content = '{"tag_name":"v1.2.3","draft":false,"prerelease":false}' }
@@ -111,11 +112,11 @@ try {
     $null = Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name Path -Value $baseUserPath -PropertyType ExpandString
 
     # Execute the exact README command with controlled public-URL downloads.
-    # ScriptBlock invocation stays in this process and bypasses no policy setting.
-    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
+    # iwr | iex stays in this process and bypasses no policy setting.
+    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('iwr ') })
     Assert ($readmeLine.Count -eq 1) 'Missing README download-and-run command'
     # Keep the installer's documented invocation identical to the README.
-    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# & ([scriptblock]') })
+    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# iwr ') })
     Assert (@($line).Count -eq 1) 'Missing download-and-run contract'
     Assert ($readmeLine[0] -ceq $line.Substring(2)) 'README command differs from the installer contract'
     $bootstrap = [scriptblock]::Create($readmeLine[0])

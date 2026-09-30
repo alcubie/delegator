@@ -39,7 +39,7 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 On Windows, run in your current Windows PowerShell 5.1 or PowerShell 7 session:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
 You'll need Git and an installed, authenticated coding agent. See the

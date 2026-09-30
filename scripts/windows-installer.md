@@ -11,12 +11,13 @@ The public URL below redirects to the latest stable GitHub release's
 and executed with controlled downloads by the Windows smoke test:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
-Run it in the existing PowerShell session. ScriptBlock invocation preserves
-current-session environment changes and requires no permanent execution-policy
-change. `-UseBasicParsing` avoids Internet Explorer dependencies and web content
+Run it in the existing PowerShell session. `iwr` and `iex` are aliases for
+`Invoke-WebRequest` and `Invoke-Expression`. This preserves current-session
+environment changes and requires no permanent execution-policy change.
+`-useb` abbreviates `-UseBasicParsing`, avoiding Internet Explorer dependencies and web content
 script prompts in Windows PowerShell 5.1. Do not wrap the command in a child
 `powershell.exe` or `pwsh` process when documenting immediate command discovery.
 
