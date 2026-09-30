@@ -159,48 +159,48 @@ func mapMark(status store.TicketStatus) string {
 	}
 }
 
-// writeMap writes a component once. A ticket with more than one blocker is
-// under its deepest blocker that is still an ancestor of the preceding row;
-// the other blockers remain on its row. Restricting the parent to that open
-// branch keeps indentation from making the ticket look like a child of an
-// unrelated row printed since one of its blockers.
+// writeMap builds a tree from topologically ordered tickets, then writes each
+// branch together. Each ticket goes under its deepest blocker, breaking ties
+// by higher id; the other blockers remain on its row.
 func writeMap(out io.Writer, tickets []mappedTicket) {
 	done := 0
+	depths := make(map[int64]int, len(tickets))
+	children := make(map[int64][]mappedTicket)
 	for _, ticket := range tickets {
 		if ticket.Status == store.Done {
 			done++
 		}
+		depth := 0
+		parent := int64(0)
+		for _, dependency := range ticket.DependsOn {
+			if blockerDepth, found := depths[dependency]; found {
+				if candidateDepth := blockerDepth + 1; candidateDepth > depth ||
+					(candidateDepth == depth && dependency > parent) {
+					parent, depth = dependency, candidateDepth
+				}
+			}
+		}
+		depths[ticket.ID] = depth
+		children[parent] = append(children[parent], ticket)
 	}
 	fmt.Fprintf(out, "%d of %d done\n", done, len(tickets))
 
-	var ancestors []int64
-	for _, ticket := range tickets {
-		parentDepth := -1
-		parent := int64(0)
-		for d := len(ancestors) - 1; d >= 0; d-- {
+	var writeBranch func(int64, int)
+	writeBranch = func(parent int64, depth int) {
+		for _, ticket := range children[parent] {
+			var others []int64
 			for _, dependency := range ticket.DependsOn {
-				if dependency == ancestors[d] {
-					parent, parentDepth = dependency, d
-					break
+				if dependency != parent {
+					others = append(others, dependency)
 				}
 			}
-			if parentDepth >= 0 {
-				break
+			line := fmt.Sprintf("%s%s #%d %s", strings.Repeat("  ", depth), mapMark(ticket.Status), ticket.ID, ticket.Title)
+			if len(others) > 0 {
+				line += " (waits on " + ticketNames(others) + ")"
 			}
+			fmt.Fprintln(out, line)
+			writeBranch(ticket.ID, depth+1)
 		}
-		depth := parentDepth + 1
-		ancestors = append(ancestors[:depth], ticket.ID)
-
-		var others []int64
-		for _, dependency := range ticket.DependsOn {
-			if dependency != parent {
-				others = append(others, dependency)
-			}
-		}
-		line := fmt.Sprintf("%s%s #%d %s", strings.Repeat("  ", depth), mapMark(ticket.Status), ticket.ID, ticket.Title)
-		if len(others) > 0 {
-			line += " (waits on " + ticketNames(others) + ")"
-		}
-		fmt.Fprintln(out, line)
 	}
+	writeBranch(0, 0)
 }
