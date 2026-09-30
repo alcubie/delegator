@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -258,7 +260,19 @@ func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice,
 			choice.NeedsAdapter = false
 			return true, nil
 		}
-		fmt.Fprintf(out, "%s was installed but is not on PATH.\n", choice.Adapter.Executable)
+		path, err := installedAdapterPath(cmd, choice.Adapter)
+		if err == nil {
+			choice.Agent.Argv[0] = path
+			choice.Agent.InstallHint = ""
+			if err := s.SaveAgent(choice.Agent); err != nil {
+				return false, err
+			}
+			fmt.Fprintf(out, "Using installed ACP command: %s\n", path)
+			choice.NeedsAdapter = false
+			return true, nil
+		}
+		fmt.Fprintf(out, "npm completed, but Delegator could not locate %s: %v\n", choice.Adapter.Executable, err)
+		fmt.Fprintln(out, "Check npm prefix -g for the global install directory. Add that directory (bin on Unix) to PATH and restart your terminal, or enter the full ACP command path below.")
 	}
 
 	command, read, err := prompt.line("ACP command or absolute path (leave blank to cancel): ")
@@ -275,6 +289,29 @@ func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice,
 	}
 	choice.NeedsAdapter = false
 	return true, nil
+}
+
+// npm can install successfully outside the current process's PATH. Persist the
+// resolved command so future runs do not depend on a terminal PATH refresh.
+func installedAdapterPath(cmd *cobra.Command, spec adapterSpec) (string, error) {
+	query := exec.CommandContext(cmd.Context(), "npm", "prefix", "-g")
+	query.Stderr = cmd.ErrOrStderr()
+	output, err := query.Output()
+	if err != nil {
+		return "", fmt.Errorf("query npm global prefix: %w", err)
+	}
+	return adapterPathAtPrefix(strings.TrimSpace(string(output)), spec.Executable, runtime.GOOS)
+}
+
+func adapterPathAtPrefix(prefix, executable, goos string) (string, error) {
+	if !filepath.IsAbs(prefix) {
+		return "", fmt.Errorf("npm returned an invalid global prefix %q", prefix)
+	}
+	bin := prefix
+	if goos != "windows" {
+		bin = filepath.Join(prefix, "bin")
+	}
+	return exec.LookPath(filepath.Join(bin, executable))
 }
 
 func runAdapterInstaller(cmd *cobra.Command, spec adapterSpec) error {
