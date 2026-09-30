@@ -25,7 +25,6 @@ Close running dg processes before upgrading. Failed installation preserves an ex
 '@
     return
 }
-$pipelineInput = $MyInvocation.ExpectingInput
 if (-not $PSBoundParameters.ContainsKey('Version')) { $Version = $env:DG_VERSION }
 if (-not $PSBoundParameters.ContainsKey('InstallDir')) { $InstallDir = $env:DG_INSTALL_DIR }
 if (-not $PSBoundParameters.ContainsKey('NonInteractive')) {
@@ -200,24 +199,51 @@ namespace Delegator {
             $null = [Delegator.InstallerEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x001a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
         } catch { Write-Warning "PATH was saved, but Windows could not be notified. Open a new terminal if needed. $($_.Exception.Message)" }
         Write-Host "Installed Delegator v$version at $destination"
-        $interactive = -not $NonInteractive -and -not $pipelineInput -and
-            $Host.Name -eq 'ConsoleHost' -and -not [Console]::IsInputRedirected -and
-            -not [Console]::IsOutputRedirected -and -not [Console]::IsErrorRedirected -and
-            -not (@([Environment]::GetCommandLineArgs() | Where-Object { $_ -match '^-(NonI(nteractive)?|noni.*)$' }).Count)
-        if ($interactive) {
-            try {
-                & $destination init
-                if ($LASTEXITCODE -ne 0) { throw "dg init exited with code $LASTEXITCODE." }
-            } catch {
-                Write-Host 'To set up Delegator later, run: dg init'
-                throw "Delegator was installed, but setup did not complete. $($_.Exception.Message)"
-            }
-        } else { Write-Host 'To set up Delegator later, run: dg init' }
     } finally {
         [Net.ServicePointManager]::SecurityProtocol = $previousProtocol
         if (Test-Path -LiteralPath $stage) {
             try { Remove-Item -LiteralPath $stage -Recurse -Force }
             catch { Write-Warning "Could not remove installer temporary files at $stage. $($_.Exception.Message)" }
         }
+    }
+
+    # The web response is PowerShell pipeline input, not keyboard input. Require
+    # a console on all OS streams and respect the shell's unattended mode too.
+    $unattendedShell = @([Environment]::GetCommandLineArgs() | Where-Object {
+        $_ -match '^-noni'
+    }).Count -gt 0
+    if ($NonInteractive -or $unattendedShell -or
+        -not [Environment]::UserInteractive -or $Host.Name -ne 'ConsoleHost' -or
+        [Console]::IsInputRedirected -or [Console]::IsOutputRedirected -or [Console]::IsErrorRedirected) {
+        Write-Host 'To set up Alcubi Delegator later, run:'
+        Write-Host '    dg init'
+        return
+    }
+
+    $setup = $null
+    $setupExited = $false
+    try {
+        # Inherit the console directly, bypassing native-command pipeline input
+        # from iwr | iex. FileName is a resolved path, not a quoted command line.
+        $start = New-Object System.Diagnostics.ProcessStartInfo
+        $start.FileName = $destination
+        $start.Arguments = 'init'
+        $start.WorkingDirectory = $PWD.Path
+        $start.UseShellExecute = $false
+        $setup = [Diagnostics.Process]::Start($start)
+        $setup.WaitForExit()
+        $setupExited = $setup.ExitCode -eq 0
+        if (-not $setupExited) {
+            Write-Host "Setup exited with code $($setup.ExitCode)."
+        }
+    } catch {
+        Write-Host "Could not complete setup: $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $setup) { $setup.Dispose() }
+        if (-not $setupExited) {
+            Write-Host 'Delegator is installed, but setup is incomplete.'
+        }
+        # dg init also reports voluntary cancellation (which exits successfully).
+        Write-Host 'To run setup again later: dg init'
     }
 }

@@ -6,6 +6,10 @@
 - When breaking work into tickets, use `dg ticket` to create them and supply `--project` when the current working directory is not the target project directory.
 - Use `--after` or `dg depend` to link dependencies so work is processed in the intended order.
 
+## Documentation
+
+- Keep the README to only necessary information. Put detailed installation, configuration, and usage guidance in `docs/`.
+
 ## Documented commands
 
 - Move multi-line shell commands in documentation into a Makefile target (or a script called by that target).

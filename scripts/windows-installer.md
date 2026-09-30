@@ -32,9 +32,12 @@ prerelease suffix, and build metadata are accepted. The historical
 `alcubi-delegator_` asset prefix is supported when that release has Windows ZIPs.
 `-Help` returns before platform checks, downloads, installation, or setup.
 
-An interactive console starts `dg init`. Non-interactive mode, a non-interactive
-PowerShell host, or redirected console input/output prints the command instead.
-Setup failure reports how to retry and keeps the completed installation.
+An interactive console starts the resolved installed `dg init` in the same
+terminal, inheriting keyboard input and output directly even through `iwr | iex`.
+Onboarding owns all setup prompts. Non-interactive mode, a non-interactive
+PowerShell host, or redirected console input/output/error prints the command
+instead. Cancellation or setup failure reports how to retry and keeps the
+completed installation. Failed downloads or checksums never launch setup.
 Downloads and extraction finish before installation. An adjacent staged file
 replaces the binary with a backup; failed user PATH persistence restores that
 backup. Locked binaries and unwritable directories produce actionable errors.
@@ -57,11 +60,17 @@ They build real binaries for two versions and check:
   console, plus switch/environment/host suppression and redirected input. Each
   child has a 30-second timeout and records whether `init` actually ran.
 
-All downloads and registry writes use isolated fixtures; onboarding never runs
-real user setup. ARM64 asset selection and extraction are checked on x64;
+- Real onboarding in a ConPTY console, using the exact README command and
+  keyboard input to check selection, cancellation, setup failure, opt-out,
+  unattended execution, and failed downloads/checksums. Each session has a
+  90-second timeout and isolates application data, home, and agent discovery.
+
+All downloads and registry writes use isolated fixtures; no real agent or user
+configuration is used. ARM64 asset selection and extraction are checked on x64;
 **native ARM64 execution is not tested**. The tests do not contact mutable releases
 or verify live hosting. Run `make install-test-windows` for PowerShell 7 or
 `make install-test-windows POWERSHELL=powershell` for Windows PowerShell 5.1.
+The ConPTY test harness requires Windows 10 version 1809 or later.
 Linux Go tests do not require either shell.
 
 For optional manual validation of the actual setup UI, use a disposable Windows
@@ -69,5 +78,4 @@ account with Git and an authenticated agent. In each supported shell, run the
 README bootstrap without options and complete `dg init`; verify `dg version`
 works in that session and a new terminal. Repeat using the ScriptBlock form with `-NonInteractive` and confirm only the setup command is printed. Keep `dg` running and attempt an
 upgrade, then stop it and retry; verify the installed version after each attempt.
-This manual UI exercise and native Windows runs were not available on the Linux
-ticket host; the automated native checks must pass in CI before release.
+The automated native checks must pass in CI before release.

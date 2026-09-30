@@ -11,9 +11,11 @@ arm64 and installs to `%LOCALAPPDATA%\Programs\Delegator\bin`. It updates your
 user and current-session PATH without administrator permissions. You'll need
 Git and an installed, authenticated coding agent for setup.
 
-On an interactive console, the installer starts `dg init`. Non-interactive
-hosts and redirected console streams skip setup and print its command. If setup
-fails, the completed installation remains available; run `dg init` to retry.
+On an interactive console, the installer starts `dg init` automatically in the
+same terminal. For unattended installation, set `$env:DG_NON_INTERACTIVE = '1'`
+before running the command. Non-interactive hosts and redirected console streams
+also skip setup and print its command. Cancellation or setup failure leaves `dg`
+installed and usable; run `dg init` to retry.
 
 ## Options
 

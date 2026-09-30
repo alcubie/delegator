@@ -15,98 +15,16 @@ $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $root = if ($Scenario) { $FixtureRoot } else { Join-Path $repo ('.installer-test-' + [guid]::NewGuid().ToString('N')) }
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
 $saved = @{}
-foreach ($name in @('LOCALAPPDATA', 'PATH', 'TEMP', 'TMP', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'DG_VERSION', 'DG_INSTALL_DIR', 'DG_NON_INTERACTIVE', 'DG_TEST_INIT_LOG')) {
+foreach ($name in @('LOCALAPPDATA', 'PATH', 'TEMP', 'TMP', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'DG_VERSION', 'DG_INSTALL_DIR', 'DG_NON_INTERACTIVE', 'DG_TEST_INIT_LOG', 'XDG_DATA_HOME')) {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
-$originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-$script:architecture = $null
-$script:failure = ''
-$script:legacy = $false
-$script:pathWrites = 0
-$script:downloads = @()
-$script:stages = @()
-
-function Assert($condition, [string] $message) {
-    if (-not $condition) { throw $message }
+$fixture = @{
+    architecture = $null; failure = ''; legacy = $false; pathWrites = 0
+    downloads = @(); stages = @()
 }
 
-# These proxies allow the actual installer to read and write a real registry
-# value, but never the developer's HKCU:\Environment or application directory.
-function Get-Item {
-    param([string] $LiteralPath)
-    Assert ($LiteralPath -eq 'HKCU:\Environment') "Unexpected registry read: $LiteralPath"
-    Microsoft.PowerShell.Management\Get-Item -LiteralPath $registryPath
-}
-function New-ItemProperty {
-    param([string] $LiteralPath, [string] $Name, [string] $Value, [string] $PropertyType, [switch] $Force)
-    Assert ($LiteralPath -eq 'HKCU:\Environment' -and $Name -eq 'Path') 'Unexpected registry write'
-    $script:pathWrites++
-    if ($script:failure -eq 'path' -and $script:pathWrites -eq 1) { throw 'Fixture PATH persistence denied' }
-    if ($script:failure -eq 'path-silent' -and $script:pathWrites -eq 1) { return }
-    Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name $Name -Value $Value -PropertyType $PropertyType -Force
-    if ($script:failure -eq 'path-partial' -and $script:pathWrites -eq 1) { throw 'Fixture PATH partial failure' }
-}
-function Remove-ItemProperty {
-    param([string] $LiteralPath, [string] $Name)
-    Assert ($LiteralPath -eq 'HKCU:\Environment' -and $Name -eq 'Path') 'Unexpected registry removal'
-    Microsoft.PowerShell.Management\Remove-ItemProperty -LiteralPath $registryPath -Name $Name
-}
-function Get-CimInstance {
-    param([string] $ClassName)
-    Assert ($ClassName -eq 'Win32_Processor') 'Unexpected CIM query'
-    if ($null -ne $script:architecture) { return [pscustomobject]@{ Architecture = $script:architecture } }
-    CimCmdlets\Get-CimInstance -ClassName $ClassName
-}
-function Invoke-WebRequest {
-    param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
-    Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
-    $script:downloads += $Uri
-    if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
-        # Support both the response Content property and iwr | iex conversion.
-        $response = [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
-        $response | Add-Member -MemberType ScriptMethod -Name ToString -Value { $this.Content } -Force
-        return $response
-    }
-    if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
-        if ($script:failure -eq 'api') { throw 'Fixture API failure' }
-        if ($script:failure -eq 'metadata') { return [pscustomobject]@{ Content = '{"tag_name":"v1.2.3-rc.1","draft":false,"prerelease":true}' } }
-        return [pscustomobject]@{ Content = '{"tag_name":"v1.2.3","draft":false,"prerelease":false}' }
-    }
-    Assert ($Uri -match '^https://github.com/alcubie/delegator/releases/download/v1\.2\.[34](-rc\.1%2Bbuild\.7)?/') "Unexpected release URL: $Uri"
-    $script:stages += Split-Path $OutFile -Parent
-    if ($script:failure -eq 'download') { throw 'Fixture download failure' }
-    $name = ($Uri -split '/')[-1]
-    if ($script:legacy -and $name.StartsWith('delegator_')) { throw 'Fixture modern filename not found' }
-    if ($name.EndsWith('_checksums.txt')) {
-        switch ($script:failure) {
-            'missing-checksum' { throw 'Fixture checksum file not found' }
-            'checksum' { Set-Content -LiteralPath $OutFile -Value (('0' * 64) + '  delegator_1.2.3_windows_amd64.zip'); return }
-            'malformed' { Set-Content -LiteralPath $OutFile -Value 'invalid  delegator_1.2.3_windows_amd64.zip'; return }
-            'duplicate' {
-                $lines = Get-Content -LiteralPath (Join-Path $root $name)
-                Set-Content -LiteralPath $OutFile -Value ($lines + $lines)
-                return
-            }
-            'missing-binary' {
-                $hash = (Get-FileHash -LiteralPath (Join-Path $root 'empty.zip')).Hash
-                Set-Content -LiteralPath $OutFile -Value "$hash  delegator_1.2.3_windows_amd64.zip"
-                return
-            }
-        }
-    } elseif ($script:failure -eq 'missing-binary') {
-        Copy-Item -LiteralPath (Join-Path $root 'empty.zip') -Destination $OutFile
-        return
-    } elseif ($script:failure -eq 'archive') { throw 'Fixture archive unavailable' }
-    Copy-Item -LiteralPath (Join-Path $root $name) -Destination $OutFile
-}
-function Read-UserPath {
-    $key = Microsoft.PowerShell.Management\Get-Item -LiteralPath $registryPath
-    try { $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
-    finally { $key.Close() }
-}
-function Assert-CleanStaging {
-    foreach ($stage in $script:stages) { Assert (-not (Test-Path -LiteralPath $stage)) "Staging directory leaked: $stage" }
-}
+. (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
+$originalUserPath = Read-RealUserPath
 function Assert-Version([string] $Expected = 'dg v1.2.3') {
     $command = Get-Command dg -CommandType Application
     Assert ($command.Source -eq $destination) "Resolved the wrong dg: $($command.Source)"
@@ -131,7 +49,7 @@ if ($Scenario) {
         if ($Scenario -eq 'switch') { $parameters.NonInteractive = $true }
         $output = & $installer @parameters 6>&1 | Out-String
         Assert ((Test-Path -LiteralPath $env:DG_TEST_INIT_LOG) -eq ($Scenario -eq 'interactive')) "Unexpected setup behavior for $Scenario"
-        if ($Scenario -ne 'interactive') { Assert ($output -like '*run: dg init*') 'Missing setup command' }
+        if ($Scenario -ne 'interactive') { Assert ($output -match 'dg init') 'Missing setup command' }
         Assert-CleanStaging
         Set-Content -LiteralPath (Join-Path $root "$Scenario.result") -Value 'passed'
     } catch {
@@ -139,7 +57,7 @@ if ($Scenario) {
         throw
     } finally {
         if (Test-Path -LiteralPath $registryPath) { Remove-Item -LiteralPath $registryPath -Recurse -Force }
-        Assert ([Environment]::GetEnvironmentVariable('Path', 'User') -ceq $originalUserPath) 'Child changed real user PATH'
+        Assert ((Read-RealUserPath) -ceq $originalUserPath) 'Child changed real user PATH'
     }
     return
 }
@@ -147,10 +65,18 @@ if ($Scenario) {
 try {
     $null = New-Item -ItemType Directory -Path $root
     $null = New-Item -Path $registryPath -Force
+    $shellPath = (Get-Process -Id $PID).Path
+    $consoleRunner = Join-Path $root 'console-check.exe'
+    $env:XDG_DATA_HOME = Join-Path $root 'data'
     Push-Location $repo
     try {
         $env:GOOS = 'windows'
         $env:CGO_ENABLED = '0'
+        $env:GOARCH = 'amd64'
+        go test ./internal/store -run '^TestDSNWindowsDrivePath$'
+        Assert ($LASTEXITCODE -eq 0) 'Windows database URL regression check failed'
+        go build -o $consoleRunner ./scripts/windows-installer-console
+        Assert ($LASTEXITCODE -eq 0) 'Could not build console test runner'
         foreach ($fixtureVersion in @('1.2.3', '1.2.4')) {
             $checksums = @()
             foreach ($arch in @('amd64', 'arm64')) {
@@ -187,6 +113,8 @@ func main() {
         Compress-Archive -LiteralPath (Join-Path $consoleRoot 'dg.exe') -DestinationPath $consoleZip
         Set-Content -LiteralPath (Join-Path $consoleRoot 'delegator_1.2.3_checksums.txt') -Value ((Get-FileHash -LiteralPath $consoleZip).Hash + '  delegator_1.2.3_windows_amd64.zip')
     } finally { Pop-Location }
+    & $consoleRunner $shellPath (Join-Path $PSScriptRoot 'test-install-session.ps1') $installer $root
+    Assert ($LASTEXITCODE -eq 0) 'Console installer checks failed'
     # Historical names refer to the exact same controlled payload bytes.
     foreach ($arch in @('amd64', 'arm64')) {
         Copy-Item -LiteralPath (Join-Path $root "delegator_1.2.3_windows_$arch.zip") -Destination (Join-Path $root "alcubi-delegator_1.2.3_windows_$arch.zip")
@@ -250,8 +178,8 @@ func main() {
     $beforeUserPath = Read-UserPath
     $beforeProcessPath = $env:PATH
     foreach ($failure in @('checksum', 'download', 'api', 'metadata', 'archive', 'missing-checksum', 'malformed', 'duplicate', 'missing-binary', 'locked', 'path', 'path-silent', 'path-partial')) {
-        $script:failure = $failure
-        $script:pathWrites = 0
+        $fixture.failure = $failure
+        $fixture.pathWrites = 0
         $expected = switch ($failure) {
             'checksum' { '*Checksum verification failed*' }
             'download' { '*Fixture download failure*' }
@@ -287,20 +215,20 @@ func main() {
         Assert-CleanStaging
         Assert (@(Get-ChildItem -LiteralPath $installDir -Filter '.dg-*').Count -eq 0) "$failure leaked replacement files"
     }
-    $script:failure = ''
+    $fixture.failure = ''
 
     # Local help and invalid settings must never call a download function.
-    $script:downloads = @()
+    $fixture.downloads = @()
     $env:DG_NON_INTERACTIVE = 'invalid'
     $help = & $installer -Help
     Assert (($help -join "`n") -like '*-Version*') 'Help omitted options'
-    Assert ($script:downloads.Count -eq 0) 'Help downloaded a release'
+    Assert ($fixture.downloads.Count -eq 0) 'Help downloaded a release'
     foreach ($argsToTry in @(@{ Version = '../bad' ; NonInteractive = $true }, @{ Version = '01.2.3'; NonInteractive = $true }, @{})) {
         $message = ''
         try { & $installer @argsToTry } catch { $message = $_.Exception.Message }
         Assert ($message -match 'Invalid version|DG_NON_INTERACTIVE must be 0 or 1') "Invalid option accepted: $message"
     }
-    Assert ($script:downloads.Count -eq 0) 'Invalid options downloaded a release'
+    Assert ($fixture.downloads.Count -eq 0) 'Invalid options downloaded a release'
 
     # Execute the guide's help bootstrap; only the script itself is downloaded.
     $guide = Get-Content -LiteralPath (Join-Path $repo 'docs/WINDOWS_INSTALLATION.md')
@@ -308,8 +236,8 @@ func main() {
     Assert ($helpLine.Count -eq 1) 'Missing Windows installation guide help command'
     $help = & ([scriptblock]::Create($helpLine[0]))
     Assert (($help -join "`n") -like '*-Version*') 'Documented help omitted options'
-    Assert ($script:downloads.Count -eq 1 -and $script:downloads[0] -eq 'https://alcubi.ai/delegator/install.ps1') 'Documented help downloaded a release'
-    $script:downloads = @()
+    Assert ($fixture.downloads.Count -eq 1 -and $fixture.downloads[0] -eq 'https://alcubi.ai/delegator/install.ps1') 'Documented help downloaded a release'
+    $fixture.downloads = @()
 
     # Run the documented options form exactly, overriding all three env defaults.
     $env:DG_VERSION = 'invalid'
@@ -321,7 +249,7 @@ func main() {
     & ([scriptblock]::Create($optionsLine[0]))
     Assert-Version
     Assert (-not (Test-Path -LiteralPath $env:DG_INSTALL_DIR)) 'Environment overrode explicit directory'
-    Assert (-not ($script:downloads -contains 'https://api.github.com/repos/alcubie/delegator/releases/latest')) 'Explicit version used latest API'
+    Assert (-not ($fixture.downloads -contains 'https://api.github.com/repos/alcubie/delegator/releases/latest')) 'Explicit version used latest API'
     $env:DG_NON_INTERACTIVE = '1'
     $env:DG_VERSION = 'v1.2.4'
     $env:DG_INSTALL_DIR = Split-Path $destination -Parent
@@ -331,12 +259,12 @@ func main() {
     & $installer -Version '1.2.3' -NonInteractive
     Assert-Version
     & $installer -Version 'v1.2.3-rc.1+build.7'
-    Assert ($script:downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3-rc.1%2Bbuild.7/delegator_1.2.3-rc.1+build.7_windows_amd64.zip') 'Explicit prerelease/build version was not selected'
-    $script:legacy = $true
+    Assert ($fixture.downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3-rc.1%2Bbuild.7/delegator_1.2.3-rc.1+build.7_windows_amd64.zip') 'Explicit prerelease/build version was not selected'
+    $fixture.legacy = $true
     & $installer -Version 'v1.2.3'
     Assert-Version
-    Assert ($script:downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3/alcubi-delegator_1.2.3_windows_amd64.zip') 'Historical prefix was not used'
-    $script:legacy = $false
+    Assert ($fixture.downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3/alcubi-delegator_1.2.3_windows_amd64.zip') 'Historical prefix was not used'
+    $fixture.legacy = $false
     Assert-CleanStaging
 
     # An existing file cannot be used as a directory (even under elevated CI).
@@ -368,8 +296,8 @@ func main() {
     $previousPath = Read-UserPath
     $freshDir = Join-Path $root 'fresh failure'
     Microsoft.PowerShell.Management\Remove-ItemProperty -LiteralPath $registryPath -Name Path
-    $script:failure = 'path-partial'
-    $script:pathWrites = 0
+    $fixture.failure = 'path-partial'
+    $fixture.pathWrites = 0
     try {
         $message = ''
         try { & $installer -InstallDir $freshDir } catch { $message = $_.Exception.Message }
@@ -381,7 +309,7 @@ func main() {
         Assert (@(Get-ChildItem -LiteralPath $freshDir -Filter '.dg-*').Count -eq 0) 'Failed fresh install leaked files'
         Assert-CleanStaging
     } finally {
-        $script:failure = ''
+        $fixture.failure = ''
         $null = Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name Path -Value $previousPath -PropertyType ExpandString
     }
 
@@ -413,12 +341,12 @@ func main() {
     }
 
     # ARM selection/extraction only: this x64 runner never executes the ARM EXE.
-    $script:architecture = 12
+    $fixture.architecture = 12
     & $bootstrap
-    Assert ($script:downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3/delegator_1.2.3_windows_arm64.zip') 'ARM64 asset was not selected'
+    Assert ($fixture.downloads -contains 'https://github.com/alcubie/delegator/releases/download/v1.2.3/delegator_1.2.3_windows_arm64.zip') 'ARM64 asset was not selected'
     Assert ((Get-FileHash -LiteralPath $destination).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root '1.2.3-arm64\dg.exe')).Hash) 'ARM64 payload was not installed'
     Assert-CleanStaging
-    $script:architecture = 0
+    $fixture.architecture = 0
     $message = ''
     try { & $bootstrap } catch { $message = $_.Exception.Message }
     Assert ($message -like '*Unsupported Windows architecture*') 'Unsupported architecture was not rejected'
@@ -427,5 +355,5 @@ func main() {
     foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
     if (Test-Path -LiteralPath $registryPath) { Remove-Item -LiteralPath $registryPath -Recurse -Force }
-    Assert ([Environment]::GetEnvironmentVariable('Path', 'User') -ceq $originalUserPath) 'The real user PATH changed'
+    Assert ((Read-RealUserPath) -ceq $originalUserPath) 'The real user PATH changed'
 }
