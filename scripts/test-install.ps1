@@ -13,7 +13,6 @@ $saved = @{}
 foreach ($name in @('LOCALAPPDATA', 'PATH', 'TEMP', 'TMP', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'DG_NON_INTERACTIVE', 'XDG_DATA_HOME')) {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
-$originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $script:architecture = $null
 $script:badChecksum = $false
 $script:failDownload = $false
@@ -21,6 +20,7 @@ $script:downloads = @()
 $script:stages = @()
 
 . (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
+$originalUserPath = Read-RealUserPath
 function Assert-Version {
     $command = Get-Command dg -CommandType Application
     Assert ($command.Source -eq $destination) "Resolved the wrong dg: $($command.Source)"
@@ -41,6 +41,8 @@ try {
         $env:GOOS = 'windows'
         $env:CGO_ENABLED = '0'
         $env:GOARCH = 'amd64'
+        go test ./internal/store -run '^TestDSNWindowsDrivePath$'
+        Assert ($LASTEXITCODE -eq 0) 'Windows database URL regression check failed'
         go build -o $consoleRunner ./scripts/windows-installer-console
         Assert ($LASTEXITCODE -eq 0) 'Could not build console test runner'
         foreach ($arch in @('amd64', 'arm64')) {
@@ -132,5 +134,5 @@ try {
     foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
     if (Test-Path -LiteralPath $registryPath) { Remove-Item -LiteralPath $registryPath -Recurse -Force }
-    Assert ([Environment]::GetEnvironmentVariable('Path', 'User') -ceq $originalUserPath) 'The real user PATH changed'
+    Assert ((Read-RealUserPath) -ceq $originalUserPath) 'The real user PATH changed'
 }

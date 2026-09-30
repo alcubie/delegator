@@ -51,9 +51,15 @@ const busyTimeout = 5000
 // transaction to a write can fail with SQLITE_BUSY without waiting for
 // busy_timeout. Read-only transactions still use a plain BEGIN.
 func dsn(dataDir string) string {
+	dbPath := filepath.ToSlash(filepath.Join(dataDir, dbFile))
+	// A Windows drive is part of the URL path, not its authority. Backslashes
+	// must also become separators before URL escaping (file:///C:/Users/...).
+	if filepath.VolumeName(dbPath) != "" && !strings.HasPrefix(dbPath, "/") {
+		dbPath = "/" + dbPath
+	}
 	u := url.URL{
 		Scheme: "file",
-		Path:   filepath.Join(dataDir, dbFile),
+		Path:   dbPath,
 		RawQuery: fmt.Sprintf(
 			"_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)&_pragma=foreign_keys(on)&_txlock=immediate",
 			busyTimeout,

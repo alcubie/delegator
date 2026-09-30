@@ -3,13 +3,14 @@ param([string] $Installer, [string] $Root, [string] $Case)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
-$originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $script:architecture = 9
 $script:badChecksum = $Case -eq 'checksum'
 $script:failDownload = $Case -eq 'download'
 $script:downloads = @()
 $script:stages = @()
 . (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
+$originalUserPath = Read-RealUserPath
+$ProgressPreference = 'SilentlyContinue'
 $caseRoot = Join-Path $Root $Case
 try {
     $null = New-Item -ItemType Directory -Path $caseRoot
@@ -59,5 +60,5 @@ try {
     Write-Host "SESSION PASS: $Case"
 } finally {
     if (Test-Path -LiteralPath $registryPath) { Remove-Item -LiteralPath $registryPath -Recurse -Force }
-    Assert ([Environment]::GetEnvironmentVariable('Path', 'User') -ceq $originalUserPath) 'Real user PATH changed'
+    Assert ((Read-RealUserPath) -ceq $originalUserPath) 'Real user PATH changed'
 }

@@ -48,6 +48,11 @@ function Read-UserPath {
     try { $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
     finally { $key.Close() }
 }
+function Read-RealUserPath {
+    $key = Microsoft.PowerShell.Management\Get-Item -LiteralPath 'HKCU:\Environment'
+    try { $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
+    finally { $key.Close() }
+}
 function Assert-CleanStaging {
     foreach ($stage in $script:stages) { Assert (-not (Test-Path -LiteralPath $stage)) "Staging directory leaked: $stage" }
 }

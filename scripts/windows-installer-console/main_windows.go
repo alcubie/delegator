@@ -72,6 +72,9 @@ func terminal(args []string, answer string) (string, error) {
 	}
 	startup := windows.StartupInfoEx{ProcThreadAttributeList: attributes.List()}
 	startup.Cb = uint32(unsafe.Sizeof(startup))
+	// Null handles with this flag request ConPTY's console handles instead of
+	// inheriting the CI runner's redirected standard streams.
+	startup.Flags = windows.STARTF_USESTDHANDLES
 	command, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(args))
 	if err != nil {
 		return "", err
