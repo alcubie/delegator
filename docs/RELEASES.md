@@ -120,6 +120,9 @@ Verify the public redirect and installer help without installing a binary:
 curl -fsSL https://alcubi.ai/delegator/install.sh | sh -s -- --help
 ```
 
+See [Windows installation](WINDOWS_INSTALLATION.md) for installer options, help,
+upgrade behavior, and validation commands.
+
 ## Dry run
 
 In **Actions → Release → Run workflow**, select the branch to validate. This
