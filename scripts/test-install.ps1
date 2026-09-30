@@ -10,7 +10,7 @@ $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $root = Join-Path $repo ('.installer-test-' + [guid]::NewGuid().ToString('N'))
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
 $saved = @{}
-foreach ($name in @('LOCALAPPDATA', 'PATH', 'TEMP', 'TMP', 'GOOS', 'GOARCH', 'CGO_ENABLED')) {
+foreach ($name in @('LOCALAPPDATA', 'PATH', 'TEMP', 'TMP', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'DG_NON_INTERACTIVE', 'XDG_DATA_HOME')) {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -20,58 +20,7 @@ $script:failDownload = $false
 $script:downloads = @()
 $script:stages = @()
 
-function Assert($condition, [string] $message) {
-    if (-not $condition) { throw $message }
-}
-
-# These proxies allow the actual installer to read and write a real registry
-# value, but never the developer's HKCU:\Environment or application directory.
-function Get-Item {
-    param([string] $LiteralPath)
-    Assert ($LiteralPath -eq 'HKCU:\Environment') "Unexpected registry read: $LiteralPath"
-    Microsoft.PowerShell.Management\Get-Item -LiteralPath $registryPath
-}
-function New-ItemProperty {
-    param([string] $LiteralPath, [string] $Name, [string] $Value, [string] $PropertyType, [switch] $Force)
-    Assert ($LiteralPath -eq 'HKCU:\Environment' -and $Name -eq 'Path') 'Unexpected registry write'
-    Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name $Name -Value $Value -PropertyType $PropertyType -Force
-}
-function Get-CimInstance {
-    param([string] $ClassName)
-    Assert ($ClassName -eq 'Win32_Processor') 'Unexpected CIM query'
-    if ($null -ne $script:architecture) { return [pscustomobject]@{ Architecture = $script:architecture } }
-    CimCmdlets\Get-CimInstance -ClassName $ClassName
-}
-function Invoke-WebRequest {
-    param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
-    Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
-    $script:downloads += $Uri
-    if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
-        # Match the web response's string conversion used by iwr | iex.
-        return [IO.File]::ReadAllText($installer)
-    }
-    if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
-        return [pscustomobject]@{ Content = '{"tag_name":"v1.2.3","draft":false,"prerelease":false}' }
-    }
-    Assert ($Uri.StartsWith('https://github.com/alcubie/delegator/releases/download/v1.2.3/')) "Unexpected release URL: $Uri"
-    $script:stages += Split-Path $OutFile -Parent
-    if ($script:failDownload) { throw 'Fixture download failure' }
-    $name = ($Uri -split '/')[-1]
-    if ($script:badChecksum -and $name -eq 'delegator_1.2.3_checksums.txt') {
-        $invalid = @('amd64', 'arm64') | ForEach-Object { ('0' * 64) + "  delegator_1.2.3_windows_$_.zip" }
-        Set-Content -LiteralPath $OutFile -Value $invalid
-    } else {
-        Copy-Item -LiteralPath (Join-Path $root $name) -Destination $OutFile
-    }
-}
-function Read-UserPath {
-    $key = Microsoft.PowerShell.Management\Get-Item -LiteralPath $registryPath
-    try { $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
-    finally { $key.Close() }
-}
-function Assert-CleanStaging {
-    foreach ($stage in $script:stages) { Assert (-not (Test-Path -LiteralPath $stage)) "Staging directory leaked: $stage" }
-}
+. (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
 function Assert-Version {
     $command = Get-Command dg -CommandType Application
     Assert ($command.Source -eq $destination) "Resolved the wrong dg: $($command.Source)"
@@ -82,11 +31,18 @@ function Assert-Version {
 try {
     $null = New-Item -ItemType Directory -Path $root
     $null = New-Item -Path $registryPath -Force
+    $env:DG_NON_INTERACTIVE = '1'
+    $env:XDG_DATA_HOME = Join-Path $root 'data'
+    $shellPath = (Get-Process -Id $PID).Path
+    $consoleRunner = Join-Path $root 'console-check.exe'
     $checksums = @()
     Push-Location $repo
     try {
         $env:GOOS = 'windows'
         $env:CGO_ENABLED = '0'
+        $env:GOARCH = 'amd64'
+        go build -o $consoleRunner ./scripts/windows-installer-console
+        Assert ($LASTEXITCODE -eq 0) 'Could not build console test runner'
         foreach ($arch in @('amd64', 'arm64')) {
             $env:GOARCH = $arch
             $payload = Join-Path $root $arch
@@ -100,6 +56,8 @@ try {
         }
     } finally { Pop-Location }
     Set-Content -LiteralPath (Join-Path $root 'delegator_1.2.3_checksums.txt') -Value $checksums
+    & $consoleRunner $shellPath (Join-Path $PSScriptRoot 'test-install-session.ps1') $installer $root
+    Assert ($LASTEXITCODE -eq 0) 'Console installer checks failed'
     $env:LOCALAPPDATA = Join-Path $root 'Local App Data'
     $env:TEMP = $root
     $env:TMP = $root

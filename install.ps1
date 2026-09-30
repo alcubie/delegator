@@ -6,6 +6,9 @@
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         throw 'The Delegator PowerShell installer requires Windows.'
     }
+    if ($env:DG_NON_INTERACTIVE -and $env:DG_NON_INTERACTIVE -notin @('0', '1')) {
+        throw 'DG_NON_INTERACTIVE must be 0 or 1.'
+    }
 
     # Query the platform, not the architecture of an emulated shell process.
     $processor = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
@@ -94,9 +97,48 @@ namespace Delegator {
         $result = [UIntPtr]::Zero
         $null = [Delegator.InstallerEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x001a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
         Write-Host "Installed Delegator v$version at $destination"
-        Write-Host 'Next commands: dg version; dg init'
     } finally {
         [Net.ServicePointManager]::SecurityProtocol = $previousProtocol
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    }
+
+    # The web response is PowerShell pipeline input, not keyboard input. Require
+    # a console on all OS streams and respect the shell's unattended mode too.
+    $unattendedShell = @([Environment]::GetCommandLineArgs() | Where-Object {
+        $_ -match '^-noni'
+    }).Count -gt 0
+    if ($env:DG_NON_INTERACTIVE -eq '1' -or $unattendedShell -or
+        -not [Environment]::UserInteractive -or $Host.Name -ne 'ConsoleHost' -or
+        [Console]::IsInputRedirected -or [Console]::IsOutputRedirected -or [Console]::IsErrorRedirected) {
+        Write-Host 'To set up Alcubi Delegator later, run:'
+        Write-Host '    dg init'
+        return
+    }
+
+    $setup = $null
+    $setupExited = $false
+    try {
+        # Inherit the console directly, bypassing native-command pipeline input
+        # from iwr | iex. FileName is a resolved path, not a quoted command line.
+        $start = New-Object System.Diagnostics.ProcessStartInfo
+        $start.FileName = $destination
+        $start.Arguments = 'init'
+        $start.WorkingDirectory = $PWD.Path
+        $start.UseShellExecute = $false
+        $setup = [Diagnostics.Process]::Start($start)
+        $setup.WaitForExit()
+        $setupExited = $setup.ExitCode -eq 0
+        if (-not $setupExited) {
+            Write-Host "Setup exited with code $($setup.ExitCode)."
+        }
+    } catch {
+        Write-Host "Could not complete setup: $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $setup) { $setup.Dispose() }
+        if (-not $setupExited) {
+            Write-Host 'Delegator is installed, but setup is incomplete.'
+        }
+        # dg init also reports voluntary cancellation (which exits successfully).
+        Write-Host 'To run setup again later: dg init'
     }
 }
