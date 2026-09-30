@@ -302,13 +302,22 @@ func main() {
     }
     Assert ($script:downloads.Count -eq 0) 'Invalid options downloaded a release'
 
+    # Execute the guide's help bootstrap; only the script itself is downloaded.
+    $guide = Get-Content -LiteralPath (Join-Path $repo 'docs/WINDOWS_INSTALLATION.md')
+    $helpLine = @($guide | Where-Object { $_.StartsWith('& ([scriptblock]') -and $_.EndsWith(' -Help') })
+    Assert ($helpLine.Count -eq 1) 'Missing Windows installation guide help command'
+    $help = & ([scriptblock]::Create($helpLine[0]))
+    Assert (($help -join "`n") -like '*-Version*') 'Documented help omitted options'
+    Assert ($script:downloads.Count -eq 1 -and $script:downloads[0] -eq 'https://alcubi.ai/delegator/install.ps1') 'Documented help downloaded a release'
+    $script:downloads = @()
+
     # Run the documented options form exactly, overriding all three env defaults.
     $env:DG_VERSION = 'invalid'
     $env:DG_INSTALL_DIR = Join-Path $root 'wrong directory'
     $destination = Join-Path $env:LOCALAPPDATA 'Delegator Tools\dg.exe'
     $env:PATH = $baseProcessPath
-    $optionsLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
-    Assert ($optionsLine.Count -eq 1) 'Missing README options command'
+    $optionsLine = @($guide | Where-Object { $_.StartsWith('& ([scriptblock]') -and -not $_.EndsWith(' -Help') })
+    Assert ($optionsLine.Count -eq 1) 'Missing Windows installation guide options command'
     & ([scriptblock]::Create($optionsLine[0]))
     Assert-Version
     Assert (-not (Test-Path -LiteralPath $env:DG_INSTALL_DIR)) 'Environment overrode explicit directory'

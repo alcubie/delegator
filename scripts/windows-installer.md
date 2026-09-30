@@ -21,10 +21,11 @@ environment changes and requires no permanent execution-policy change.
 and web content script prompts in Windows PowerShell 5.1. Do not wrap the command in a child
 `powershell.exe` or `pwsh` process when documenting immediate command discovery.
 
-Use the ScriptBlock invocation with options shown in the README to select a
-release and directory and skip setup. The `iwr | iex` form uses
+Use the ScriptBlock invocation in the [Windows installation guide](../docs/WINDOWS_INSTALLATION.md)
+to select a release and directory and skip setup. The `iwr | iex` form uses
 environment defaults; parameters must be passed to the ScriptBlock form.
-Both README bootstrap forms are executed against fixture downloads by the tests. `DG_VERSION`,
+The README bootstrap and the guide's options and help commands are executed
+against fixture downloads by the tests. `DG_VERSION`,
 `DG_INSTALL_DIR`, and `DG_NON_INTERACTIVE` (0 or 1) supply defaults; explicit
 parameters win, including `-NonInteractive:$false`. An optional leading `v`,
 prerelease suffix, and build metadata are accepted. The historical

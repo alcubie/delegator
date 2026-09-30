@@ -42,24 +42,6 @@ On Windows, run in your current Windows PowerShell 5.1 or PowerShell 7 session:
 iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
-The Windows installer defaults to the latest stable release and
-`%LOCALAPPDATA%\Programs\Delegator\bin`, updating your user and current-session
-PATH without administrator permissions. On an interactive console it starts
-`dg init`; unattended runs print the setup command. To select a release and a
-path containing spaces, or to skip setup (replace the example version):
-
-```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content)) -Version v1.2.3 -InstallDir "$env:LOCALAPPDATA\Delegator Tools" -NonInteractive
-```
-
-Use `-Help` with the ScriptBlock form above for help without installing, or run
-a downloaded script with
-`./install.ps1 -Help`. `DG_VERSION`, `DG_INSTALL_DIR`, and
-`DG_NON_INTERACTIVE=1` provide defaults; explicit parameters take precedence.
-`-NonInteractive:$false` overrides that environment setting. Close running
-`dg` processes before upgrading. Failed downloads, checksum checks, binary
-replacement, or PATH persistence preserve the previous binary.
-
 You'll need Git and an installed, authenticated coding agent. See the
 [documentation](https://alcubi.ai/delegator/docs/) for setup and agent
 configuration.
