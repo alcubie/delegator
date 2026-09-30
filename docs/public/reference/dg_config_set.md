@@ -6,7 +6,7 @@ Change one instance setting.
 
 ### Synopsis
 
-Validate and store a new value for one instance setting. The change applies to subsequent commands and agent runs.
+Validate and store a new value for one instance setting. The change applies to subsequent commands and agent runs. Set analytics to true or false to submit a consent choice.
 
 ```
 dg config set <name> <value> [flags]

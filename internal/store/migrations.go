@@ -15,7 +15,29 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema}
+var migrations = []string{initialSchema, analyticsConsentSchema}
+
+const analyticsConsentSchema = `
+ALTER TABLE settings ADD COLUMN analytics INTEGER CHECK (analytics IN (0, 1));
+
+CREATE TABLE analytics_state (
+  id                       INTEGER PRIMARY KEY CHECK (id = 1) REFERENCES settings(id),
+  instance_id              TEXT NOT NULL,
+  first_consent_date       TEXT,
+  consent_start            TEXT,
+  installation_acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (installation_acknowledged IN (0, 1)),
+  reported_through         TEXT,
+  last_attempt             TEXT
+) STRICT;
+
+-- Generate a random UUID v4 once, inside the migration transaction. Copies of
+-- the database intentionally retain the same identity.
+INSERT INTO analytics_state (id, instance_id)
+VALUES (1, lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+  substr(hex(randomblob(2)), 2) || '-' ||
+  substr('89ab', 1 + (random() & 3), 1) || substr(hex(randomblob(2)), 2) || '-' ||
+  hex(randomblob(6))));
+`
 
 // initialSchema creates the complete database and seeds the built-in agents
 // and instance settings. Ticket IDs are unique across projects.

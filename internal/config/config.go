@@ -21,6 +21,8 @@ type Config struct {
 	// DefaultAgent is the registry name used for new runs. It is stored in
 	// SQLite as a reference to the agent registry.
 	DefaultAgent string
+	// Analytics is nil until answered. Only an explicit true permits reporting.
+	Analytics *bool
 }
 
 // Definition describes a setting and its help text. Definitions belong to the
@@ -37,6 +39,7 @@ var Definitions = []Definition{
 	{"done_hours", "the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty."},
 	{"max_runs_per_project", "the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit."},
 	{"default_agent", "the registered agent used for new runs."},
+	{"analytics", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},
 }
 
 // ProjectRuns returns the per-project limit, falling back to Runs when

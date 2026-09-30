@@ -14,7 +14,7 @@ import (
 
 type setting struct {
 	Name        string `json:"name"`
-	Value       string `json:"value"`
+	Value       any    `json:"value"`
 	Description string `json:"description"`
 }
 
@@ -34,7 +34,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					if i > 0 {
 						fmt.Fprintln(out)
 					}
-					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, setting.Value, setting.Description)
+					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, settingText(setting.Value), setting.Description)
 				}
 			})
 		})
@@ -61,7 +61,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
-		Long:  "Write the current value of one supported instance setting.",
+		Long:  "Write the current value of one supported instance setting. Analytics is true, false, or null (disabled because unanswered).",
 		Example: `  dg config get done_hours
   dg config get default_agent`,
 		Args: cobra.ExactArgs(1),
@@ -71,7 +71,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			}
 			return withStore(*dataDir, cfg, func(*store.Store) error {
 				return writeValue(cmd.OutOrStdout(), settingValue(*cfg, args[0]), false, func(out io.Writer) {
-					fmt.Fprintln(out, settingValue(*cfg, args[0]))
+					fmt.Fprintln(out, settingText(settingValue(*cfg, args[0])))
 				})
 			})
 		},
@@ -80,7 +80,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "set <name> <value>",
 		Short: "Change one instance setting.",
 		Long: "Validate and store a new value for one instance setting. The change applies " +
-			"to subsequent commands and agent runs.",
+			"to subsequent commands and agent runs. Set analytics to true or false to submit a consent choice.",
 		Example: `  dg config set runs 2
   dg config set default_agent codex`,
 		Args: cobra.ExactArgs(2),
@@ -125,8 +125,20 @@ func knownSetting(name string) bool {
 	return false
 }
 
-func settingValue(cfg config.Config, name string) string {
+func settingText(value any) string {
+	if value == nil {
+		return "null"
+	}
+	return fmt.Sprint(value)
+}
+
+func settingValue(cfg config.Config, name string) any {
 	switch name {
+	case "analytics":
+		if cfg.Analytics == nil {
+			return nil
+		}
+		return *cfg.Analytics
 	case "runs":
 		return strconv.Itoa(cfg.Runs)
 	case "timeout_minutes":

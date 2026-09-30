@@ -356,8 +356,8 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 		t.Error(err)
 	}
 
-	if got := userVersion(t, s.db); got != 1 {
-		t.Errorf("user_version = %d, want 1", got)
+	if got := userVersion(t, s.db); got != len(migrations) {
+		t.Errorf("user_version = %d, want %d", got, len(migrations))
 	}
 
 	for _, name := range []string{"projects", "tickets", "queue_state", "agents", "runs", "ticket_deps", "transitions", "settings", "run_usage"} {
@@ -908,8 +908,8 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	setMigrations(t, append(migrations,
 		"CREATE TABLE later (id INTEGER PRIMARY KEY);"))
 
-	if got := userVersion(t, openRaw(t, dataDir)); got != 1 {
-		t.Fatalf("the old database is at version %d, want 1", got)
+	if got := userVersion(t, openRaw(t, dataDir)); got != len(migrations)-1 {
+		t.Fatalf("the old database is at version %d, want %d", got, len(migrations)-1)
 	}
 
 	second, err := Open(dataDir)
