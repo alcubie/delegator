@@ -33,7 +33,7 @@ PRAGMA user_version = 1;`); err != nil {
 	}
 	defer s.Close()
 	cfg, err := s.Settings()
-	if err != nil || cfg.Analytics != nil || cfg.Runs != 7 || cfg.DefaultAgent != "codex" {
+	if err != nil || cfg.Telemetry != nil || cfg.Runs != 7 || cfg.DefaultAgent != "codex" {
 		t.Fatalf("migrated settings = %+v, %v", cfg, err)
 	}
 	state := analyticsState(t, s)
@@ -62,7 +62,7 @@ PRAGMA user_version = 1;`); err != nil {
 func TestAnalyticsConsentTransitionsPreserveIdentityAndCooldown(t *testing.T) {
 	s, _ := emptyStore(t)
 	first := time.Date(2026, 9, 25, 17, 0, 0, 123, time.FixedZone("west", -7*3600))
-	if err := s.setAnalytics(true, func() time.Time { return first }); err != nil {
+	if err := s.setTelemetry(true, func() time.Time { return first }); err != nil {
 		t.Fatal(err)
 	}
 	initial := analyticsState(t, s)
@@ -74,13 +74,13 @@ reported_through = '2026-09-28T00:00:00Z', last_attempt = '2026-09-28T12:00:00Z'
 		t.Fatal(err)
 	}
 	before := analyticsState(t, s)
-	if err := s.SetSetting("analytics", "true"); err != nil {
+	if err := s.SetSetting("telemetry", "true"); err != nil {
 		t.Fatal(err)
 	}
 	if got := analyticsState(t, s); !reflect.DeepEqual(got, before) {
 		t.Fatalf("repeated true changed state: %+v", got)
 	}
-	if err := s.SetSetting("analytics", "false"); err != nil {
+	if err := s.SetSetting("telemetry", "false"); err != nil {
 		t.Fatal(err)
 	}
 	disabled := analyticsState(t, s)
@@ -92,7 +92,7 @@ reported_through = '2026-09-28T00:00:00Z', last_attempt = '2026-09-28T12:00:00Z'
 		t.Fatal("disable changed bookkeeping")
 	}
 	reenabled := first.Add(72 * time.Hour)
-	if err := s.setAnalytics(true, func() time.Time { return reenabled }); err != nil {
+	if err := s.setTelemetry(true, func() time.Time { return reenabled }); err != nil {
 		t.Fatal(err)
 	}
 	after := analyticsState(t, s)
@@ -107,11 +107,11 @@ reported_through = '2026-09-28T00:00:00Z', last_attempt = '2026-09-28T12:00:00Z'
 func TestAnalyticsFalseAndInvalidValuesDoNotStartConsent(t *testing.T) {
 	s, _ := emptyStore(t)
 	for _, value := range []string{"null", "yes", "1", "", "TRUE"} {
-		if err := s.SetSetting("analytics", value); err == nil {
+		if err := s.SetSetting("telemetry", value); err == nil {
 			t.Fatalf("accepted %q", value)
 		}
 	}
-	if err := s.SetSetting("analytics", "false"); err != nil {
+	if err := s.SetSetting("telemetry", "false"); err != nil {
 		t.Fatal(err)
 	}
 	state := analyticsState(t, s)
@@ -119,20 +119,20 @@ func TestAnalyticsFalseAndInvalidValuesDoNotStartConsent(t *testing.T) {
 		t.Fatalf("false started consent: %+v", state)
 	}
 	for _, value := range []any{2, -1, "yes"} {
-		if _, err := s.db.Exec("UPDATE settings SET analytics = ?", value); err == nil {
-			t.Fatalf("database accepted analytics %v", value)
+		if _, err := s.db.Exec("UPDATE settings SET telemetry = ?", value); err == nil {
+			t.Fatalf("database accepted telemetry %v", value)
 		}
 	}
 }
 
 func TestAnalyticsConsentAndBookkeepingAreAtomic(t *testing.T) {
 	s, _ := emptyStore(t)
-	if _, err := s.db.Exec(`CREATE TRIGGER reject_consent BEFORE UPDATE OF analytics ON settings
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_consent BEFORE UPDATE OF telemetry ON settings
 BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	before := analyticsState(t, s)
-	if err := s.SetSetting("analytics", "true"); err == nil {
+	if err := s.SetSetting("telemetry", "true"); err == nil {
 		t.Fatal("expected write failure")
 	}
 	if after := analyticsState(t, s); !reflect.DeepEqual(before, after) {
@@ -155,17 +155,67 @@ func TestConcurrentAnalyticsEnableKeepsOneConsentPeriod(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, s := range []*Store{first, second} {
 		wg.Go(func() {
-			if err := s.SetSetting("analytics", "true"); err != nil {
+			if err := s.SetSetting("telemetry", "true"); err != nil {
 				t.Error(err)
 			}
 		})
 	}
 	wg.Wait()
 	before := analyticsState(t, first)
-	if err := second.SetSetting("analytics", "true"); err != nil {
+	if err := second.SetSetting("telemetry", "true"); err != nil {
 		t.Fatal(err)
 	}
 	if after := analyticsState(t, second); !reflect.DeepEqual(before, after) {
 		t.Fatal("concurrent instances changed the consent period")
+	}
+}
+
+func TestTelemetryRenamePreservesConsentAndReportingState(t *testing.T) {
+	for _, consent := range []any{nil, false, true} {
+		dir := t.TempDir()
+		db := openRaw(t, dir)
+		if _, err := db.Exec(initialSchema + analyticsConsentSchema + `PRAGMA user_version = 2;`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("UPDATE settings SET analytics = ?", consent); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE analytics_state SET
+instance_id = '6fb76b4d-bb1f-461e-87fd-b6f16f69c4ed',
+first_consent_date = '2026-09-25', consent_start = '2026-09-25T12:00:00.123Z',
+installation_acknowledged = 1, reported_through = '2026-09-28T00:00:00Z',
+last_attempt = '2026-09-28T12:00:00Z'`); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+		s, err := Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		cfg, err := s.Settings()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wantConsent *bool
+		if value, ok := consent.(bool); ok {
+			wantConsent = &value
+		}
+		if !reflect.DeepEqual(cfg.Telemetry, wantConsent) {
+			t.Fatalf("renamed consent = %v, want %v", cfg.Telemetry, wantConsent)
+		}
+		date, start := "2026-09-25", "2026-09-25T12:00:00.123Z"
+		cutoff, attempt := "2026-09-28T00:00:00Z", "2026-09-28T12:00:00Z"
+		want := AnalyticsState{
+			Consent: wantConsent, InstanceID: "6fb76b4d-bb1f-461e-87fd-b6f16f69c4ed",
+			FirstConsentDate: &date, ConsentStart: &start, InstallationAcknowledged: true,
+			ReportedThrough: &cutoff, LastAttempt: &attempt,
+		}
+		if got := analyticsState(t, s); !reflect.DeepEqual(got, want) {
+			t.Fatalf("rename changed reporting state: %+v", got)
+		}
+		if err := s.SetSetting("analytics", "true"); err == nil {
+			t.Fatal("old public setting name is still accepted")
+		}
 	}
 }

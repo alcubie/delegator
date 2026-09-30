@@ -9,11 +9,11 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-func TestConfigAnalyticsPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
+func TestConfigTelemetryPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
 	dir, work := t.TempDir(), t.TempDir()
 	for _, choice := range []string{"null", "false", "true", "true", "false", "true"} {
 		if choice != "null" {
-			out, err := rpcIn(t, dir, work, fmt.Sprintf(`{"jsonrpc":"2.0","method":"config.set","params":{"args":["analytics",%s]},"id":1}`, choice))
+			out, err := rpcIn(t, dir, work, fmt.Sprintf(`{"jsonrpc":"2.0","method":"config.set","params":{"args":["telemetry",%s]},"id":1}`, choice))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -22,19 +22,19 @@ func TestConfigAnalyticsPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
 				t.Fatalf("config.set failed: %s", out)
 			}
 		}
-		out, err := runIn(t, dir, work, "config", "get", "analytics")
+		out, err := runIn(t, dir, work, "config", "get", "telemetry")
 		if err != nil || out != choice+"\n" {
 			t.Fatalf("CLI get = %q, %v, want %s", out, err, choice)
 		}
 		out, err = runIn(t, dir, work, "config", "list")
-		if err != nil || !strings.Contains(out, "analytics = "+choice+"  #") {
+		if err != nil || !strings.Contains(out, "telemetry = "+choice+"  #") {
 			t.Fatalf("CLI list = %q, %v", out, err)
 		}
 		var want any
 		if choice != "null" {
 			want = choice == "true"
 		}
-		out, err = rpcIn(t, dir, work, `{"jsonrpc":"2.0","method":"config.get","params":{"args":["analytics"]},"id":1}`)
+		out, err = rpcIn(t, dir, work, `{"jsonrpc":"2.0","method":"config.get","params":{"args":["telemetry"]},"id":1}`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,15 +54,15 @@ func TestConfigAnalyticsPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
 		found := false
 		for _, item := range settings {
 			setting := item.(map[string]any)
-			if setting["name"] == "analytics" {
+			if setting["name"] == "telemetry" {
 				found = true
 				if value, ok := setting["value"]; !ok || value != want {
-					t.Fatalf("RPC list analytics = %v, want %v", setting, want)
+					t.Fatalf("RPC list telemetry = %v, want %v", setting, want)
 				}
 			}
 		}
 		if !found {
-			t.Fatal("RPC list omitted analytics")
+			t.Fatal("RPC list omitted telemetry")
 		}
 		for _, hidden := range []string{"instance_id", "consent_start", "last_attempt", "reported_through", "first_consent_date", "installation_acknowledged"} {
 			if strings.Contains(out, hidden) {
@@ -72,7 +72,7 @@ func TestConfigAnalyticsPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
 	}
 }
 
-func TestConfigAnalyticsUsesSharedTransitionsAndRejectsNull(t *testing.T) {
+func TestConfigTelemetryUsesSharedTransitionsAndRejectsNull(t *testing.T) {
 	dir, work := t.TempDir(), t.TempDir()
 	s := testfix.OpenStore(t, dir)
 	for _, choice := range []string{"true", "true", "false", "true"} {
@@ -80,7 +80,7 @@ func TestConfigAnalyticsUsesSharedTransitionsAndRejectsNull(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runIn(t, dir, work, "config", "set", "analytics", choice); err != nil {
+		if _, err := runIn(t, dir, work, "config", "set", "telemetry", choice); err != nil {
 			t.Fatal(err)
 		}
 		after, err := s.AnalyticsState()
@@ -95,7 +95,7 @@ func TestConfigAnalyticsUsesSharedTransitionsAndRejectsNull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runIn(t, dir, work, "config", "set", "analytics", "null"); err == nil {
+	if _, err := runIn(t, dir, work, "config", "set", "telemetry", "null"); err == nil {
 		t.Fatal("config accepted null submission")
 	}
 	after, err := s.AnalyticsState()

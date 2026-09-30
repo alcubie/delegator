@@ -58,7 +58,7 @@ func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
 		"done_hours = 6  # the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty.\n\n" +
 		"max_runs_per_project = 2  # the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit.\n\n" +
 		"default_agent = codex  # the registered agent used for new runs.\n\n" +
-		"analytics = null  # share usage statistics; null means disabled because unanswered. Set true or false to choose.\n"
+		"telemetry = null  # share usage statistics; null means disabled because unanswered. Set true or false to choose.\n"
 	if listed != want {
 		t.Errorf("dg config list output = %q, want %q", listed, want)
 	}

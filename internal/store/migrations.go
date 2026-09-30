@@ -15,7 +15,11 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, analyticsConsentSchema}
+var migrations = []string{
+	initialSchema,
+	analyticsConsentSchema,
+	`ALTER TABLE settings RENAME COLUMN analytics TO telemetry;`,
+}
 
 const analyticsConsentSchema = `
 ALTER TABLE settings ADD COLUMN analytics INTEGER CHECK (analytics IN (0, 1));

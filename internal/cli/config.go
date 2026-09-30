@@ -134,11 +134,11 @@ func settingText(value any) string {
 
 func settingValue(cfg config.Config, name string) any {
 	switch name {
-	case "analytics":
-		if cfg.Analytics == nil {
+	case "telemetry":
+		if cfg.Telemetry == nil {
 			return nil
 		}
-		return *cfg.Analytics
+		return *cfg.Telemetry
 	case "runs":
 		return strconv.Itoa(cfg.Runs)
 	case "timeout_minutes":

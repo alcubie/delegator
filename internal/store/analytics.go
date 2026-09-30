@@ -23,7 +23,7 @@ type AnalyticsState struct {
 // builders and senders. Only Consent == true permits machine ID derivation.
 func (s *Store) AnalyticsState() (AnalyticsState, error) {
 	var state AnalyticsState
-	err := s.db.QueryRow(`SELECT settings.analytics, state.instance_id,
+	err := s.db.QueryRow(`SELECT settings.telemetry, state.instance_id,
 state.first_consent_date, state.consent_start, state.installation_acknowledged,
 state.reported_through, state.last_attempt
 FROM analytics_state AS state JOIN settings ON settings.id = state.id
@@ -33,14 +33,14 @@ WHERE state.id = 1`).Scan(&state.Consent, &state.InstanceID,
 	return state, err
 }
 
-func (s *Store) setAnalytics(enabled bool, clock func() time.Time) error {
+func (s *Store) setTelemetry(enabled bool, clock func() time.Time) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var previous sql.NullBool
-	if err := tx.QueryRow("SELECT analytics FROM settings WHERE id = 1").Scan(&previous); err != nil {
+	if err := tx.QueryRow("SELECT telemetry FROM settings WHERE id = 1").Scan(&previous); err != nil {
 		return err
 	}
 	if enabled && (!previous.Valid || !previous.Bool) {
@@ -54,7 +54,7 @@ WHERE id = 1`, now.UTC().Format(time.DateOnly), now.UTC().Format(time.RFC3339Nan
 			return err
 		}
 	}
-	if _, err := tx.Exec("UPDATE settings SET analytics = ? WHERE id = 1", enabled); err != nil {
+	if _, err := tx.Exec("UPDATE settings SET telemetry = ? WHERE id = 1", enabled); err != nil {
 		return err
 	}
 	return tx.Commit()
