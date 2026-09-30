@@ -39,7 +39,7 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh
 On Windows, run in your current Windows PowerShell 5.1 or PowerShell 7 session:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1').Content))
+iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
 The Windows installer defaults to the latest stable release and
@@ -49,10 +49,11 @@ PATH without administrator permissions. On an interactive console it starts
 path containing spaces, or to skip setup (replace the example version):
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1').Content)) -Version v1.2.3 -InstallDir "$env:LOCALAPPDATA\Delegator Tools" -NonInteractive
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content)) -Version v1.2.3 -InstallDir "$env:LOCALAPPDATA\Delegator Tools" -NonInteractive
 ```
 
-Append `-Help` for help without installing, or run a downloaded script with
+Use `-Help` with the ScriptBlock form above for help without installing, or run
+a downloaded script with
 `./install.ps1 -Help`. `DG_VERSION`, `DG_INSTALL_DIR`, and
 `DG_NON_INTERACTIVE=1` provide defaults; explicit parameters take precedence.
 `-NonInteractive:$false` overrides that environment setting. Close running

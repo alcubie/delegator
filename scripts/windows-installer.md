@@ -6,18 +6,25 @@ amd64 or arm64. It defaults to the latest stable release and
 SHA-256 checksum file, and updates only the user and current process PATH.
 Existing PATH entries, including unexpanded variables, are preserved.
 
-Run the bootstrap in the existing PowerShell session for immediate command
-availability. The downstream website ticket owns the public redirect and guide;
-the README retains the direct GitHub asset URL until that deployment is verified.
-The website contract is:
+The public URL below redirects to the latest stable GitHub release's
+`install.ps1` asset. The exact README command is also recorded in `install.ps1`
+and executed with controlled downloads by the Windows smoke test:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 ```
 
-Append `-Version v1.2.3 -InstallDir "$env:LOCALAPPDATA\Delegator Tools" -NonInteractive`
-to select a release and directory and skip setup. Both README bootstrap forms
-are executed against fixture downloads by the tests. `DG_VERSION`,
+Run it in the existing PowerShell session. `iwr` and `iex` are aliases for
+`Invoke-WebRequest` and `Invoke-Expression`. This preserves current-session
+environment changes and requires no permanent execution-policy change.
+`-useb` abbreviates `-UseBasicParsing`, avoiding Internet Explorer dependencies
+and web content script prompts in Windows PowerShell 5.1. Do not wrap the command in a child
+`powershell.exe` or `pwsh` process when documenting immediate command discovery.
+
+Use the ScriptBlock invocation with options shown in the README to select a
+release and directory and skip setup. The `iwr | iex` form uses
+environment defaults; parameters must be passed to the ScriptBlock form.
+Both README bootstrap forms are executed against fixture downloads by the tests. `DG_VERSION`,
 `DG_INSTALL_DIR`, and `DG_NON_INTERACTIVE` (0 or 1) supply defaults; explicit
 parameters win, including `-NonInteractive:$false`. An optional leading `v`,
 prerelease suffix, and build metadata are accepted. The historical
@@ -59,8 +66,7 @@ Linux Go tests do not require either shell.
 For optional manual validation of the actual setup UI, use a disposable Windows
 account with Git and an authenticated agent. In each supported shell, run the
 README bootstrap without options and complete `dg init`; verify `dg version`
-works in that session and a new terminal. Repeat with `-NonInteractive` and
-confirm only the setup command is printed. Keep `dg` running and attempt an
+works in that session and a new terminal. Repeat using the ScriptBlock form with `-NonInteractive` and confirm only the setup command is printed. Keep `dg` running and attempt an
 upgrade, then stop it and retry; verify the installed version after each attempt.
 This manual UI exercise and native Windows runs were not available on the Linux
 ticket host; the automated native checks must pass in CI before release.

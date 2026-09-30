@@ -1,5 +1,5 @@
 # Windows PowerShell 5.1 and PowerShell 7; run in the current session.
-# & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content))
+# iwr -useb https://alcubi.ai/delegator/install.ps1 | iex
 [CmdletBinding()]
 param(
     [string] $Version,

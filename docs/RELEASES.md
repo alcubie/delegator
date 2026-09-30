@@ -89,14 +89,14 @@ The release workflow attaches the tested `install.sh` and `install.ps1` from
 the tagged source and compares both downloaded copies before publishing. No
 website deployment is needed for each subsequent release. Mark a stable release **Latest** to select it for this URL.
 
-The planned Windows public URL is `https://alcubi.ai/delegator/install.ps1`,
+The Windows public URL is `https://alcubi.ai/delegator/install.ps1`,
 redirecting to
 `https://github.com/alcubie/delegator/releases/latest/download/install.ps1`.
-The README uses this GitHub asset URL directly until the website redirect ships.
-First publish a new stable version through the normal approved release process,
-verify it contains `install.ps1`, and mark it **Latest**. Only then deploy and
-verify the redirect and advertise the website command. Neither URL can serve the
-Windows installer while the selected latest release lacks the asset.
+The README uses this live public URL. Before marking a stable release **Latest**,
+verify it contains both installer assets published through the normal approved
+release process. After changing **Latest**, verify that each public URL resolves
+to the corresponding release asset. The Windows URL cannot serve the installer
+if the selected latest release lacks `install.ps1`.
 
 If an older release is missing the shell installer asset and its source tag
 contains `install.sh`, add it from that exact local tag (replace the example tag
@@ -123,7 +123,7 @@ curl -fsSL https://alcubi.ai/delegator/install.sh | sh -s -- --help
 For Windows help in the current PowerShell session:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1').Content)) -Help
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing -Uri 'https://alcubi.ai/delegator/install.ps1').Content)) -Help
 ```
 
 The bootstrap above fetches the script; its `-Help` path never queries release

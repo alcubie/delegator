@@ -61,8 +61,11 @@ function Invoke-WebRequest {
     param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
     Assert $UseBasicParsing 'Downloads must use basic parsing on Windows PowerShell'
     $script:downloads += $Uri
-    if ($Uri -in @('https://alcubi.ai/delegator/install.ps1', 'https://github.com/alcubie/delegator/releases/latest/download/install.ps1')) {
-        return [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
+    if ($Uri -eq 'https://alcubi.ai/delegator/install.ps1') {
+        # Support both the response Content property and iwr | iex conversion.
+        $response = [pscustomobject]@{ Content = [IO.File]::ReadAllText($installer) }
+        $response | Add-Member -MemberType ScriptMethod -Name ToString -Value { $this.Content } -Force
+        return $response
     }
     if ($Uri -eq 'https://api.github.com/repos/alcubie/delegator/releases/latest') {
         if ($script:failure -eq 'api') { throw 'Fixture API failure' }
@@ -211,18 +214,15 @@ func main() {
     $baseUserPath = '%USERPROFILE%\Existing Tools;C:\Other Tools'
     $null = Microsoft.PowerShell.Management\New-ItemProperty -LiteralPath $registryPath -Name Path -Value $baseUserPath -PropertyType ExpandString
 
-    # Execute the README's current GitHub command and the future website form.
-    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
-    Assert ($readmeLine.Count -eq 2) 'Missing README default/options download-and-run commands'
-    & ([scriptblock]::Create($readmeLine[0]))
-    Assert-Version
-    Assert-CleanStaging
-
-    # Execute the exact future download-and-run form recorded in the installer.
-    # ScriptBlock invocation stays in this process and bypasses no policy setting.
-    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# & ([scriptblock]') })
+    # Execute the exact README command with controlled public-URL downloads.
+    # iwr | iex stays in this process and bypasses no policy setting.
+    $readmeLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('iwr ') })
+    Assert ($readmeLine.Count -eq 1) 'Missing README download-and-run command'
+    # Keep the installer's documented invocation identical to the README.
+    $line = (Get-Content -LiteralPath $installer | Where-Object { $_.StartsWith('# iwr ') })
     Assert (@($line).Count -eq 1) 'Missing download-and-run contract'
-    $bootstrap = [scriptblock]::Create($line.Substring(2))
+    Assert ($readmeLine[0] -ceq $line.Substring(2)) 'README command differs from the installer contract'
+    $bootstrap = [scriptblock]::Create($readmeLine[0])
     & $bootstrap
     Assert-Version
     Assert ((Read-UserPath) -ceq "$baseUserPath;$installDir") 'Existing user PATH entries changed'
@@ -307,7 +307,9 @@ func main() {
     $env:DG_INSTALL_DIR = Join-Path $root 'wrong directory'
     $destination = Join-Path $env:LOCALAPPDATA 'Delegator Tools\dg.exe'
     $env:PATH = $baseProcessPath
-    & ([scriptblock]::Create($readmeLine[1]))
+    $optionsLine = @(Get-Content -LiteralPath (Join-Path $repo 'README.md') | Where-Object { $_.StartsWith('& ([scriptblock]') })
+    Assert ($optionsLine.Count -eq 1) 'Missing README options command'
+    & ([scriptblock]::Create($optionsLine[0]))
     Assert-Version
     Assert (-not (Test-Path -LiteralPath $env:DG_INSTALL_DIR)) 'Environment overrode explicit directory'
     Assert (-not ($script:downloads -contains 'https://api.github.com/repos/alcubie/delegator/releases/latest')) 'Explicit version used latest API'
