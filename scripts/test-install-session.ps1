@@ -4,8 +4,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $registryPath = 'HKCU:\Software\DelegatorInstallerTest-' + [guid]::NewGuid().ToString('N')
 $script:architecture = 9
-$script:badChecksum = $Case -eq 'checksum'
-$script:failDownload = $Case -eq 'download'
+$script:failure = if ($Case -in @('checksum', 'download')) { $Case } else { '' }
+$script:legacy = $false
+$script:pathWrites = 0
 $script:downloads = @()
 $script:stages = @()
 . (Join-Path $PSScriptRoot 'test-install-fixtures.ps1')
@@ -22,6 +23,8 @@ try {
     $env:APPDATA = Join-Path $caseRoot 'App Data'
     $env:TEMP = $caseRoot
     $env:TMP = $caseRoot
+    $env:DG_VERSION = ''
+    $env:DG_INSTALL_DIR = ''
     $env:DG_NON_INTERACTIVE = if ($Case -eq 'optout') { '1' } else { '0' }
     $env:PATH = "$caseRoot;$env:SystemRoot\System32;$env:SystemRoot"
     # Only discover this inert agent; never execute a real agent or use its state.

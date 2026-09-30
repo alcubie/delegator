@@ -37,8 +37,12 @@ install-test:
 install-test-windows:
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/test-install.ps1
 
-test: install-test
+test: install-test analytics-contract-check
 	go test ./...
+
+.PHONY: analytics-contract-check
+analytics-contract-check:
+	python3 scripts/check-analytics-contract.py
 
 # Run only tagged TestIntegration tests. These use real agents and cost time
 # and money; check compiles them without execution, while release runs them.
@@ -212,7 +216,7 @@ coverhtml: cover
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "open coverage.html"
 
-check: install-test archivecheck fmtcheck vet lint covercheck docs-check
+check: install-test archivecheck fmtcheck vet lint covercheck docs-check analytics-contract-check
 	python3 scripts/test-integration-output.py
 
 clean:

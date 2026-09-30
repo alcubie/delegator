@@ -82,6 +82,7 @@ jobs:
   windows:
     needs: build
     runs-on: windows-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
