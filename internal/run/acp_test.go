@@ -70,7 +70,10 @@ const acpSaid = "the work is done"
 
 func TestSessionOptionsGiveOnlyTheProjectCacheToTheAgent(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
-	options := sessionOptions(cacheDir)
+	options := sessionOptions(cacheDir, "model-v1")
+	if options.Model != "model-v1" {
+		t.Errorf("model = %q, want model-v1", options.Model)
+	}
 	if !slices.Equal(options.AdditionalDirectories, []string{cacheDir}) {
 		t.Errorf("additional directories = %v, want only %q", options.AdditionalDirectories, cacheDir)
 	}

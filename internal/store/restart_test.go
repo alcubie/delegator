@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"slices"
 	"strings"
@@ -25,7 +26,7 @@ func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 	s, id := failedTicket(t)
 	waiting := queuedTickets(t, s, mustProject(t, s), "the second")
 
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,7 +52,7 @@ func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +79,7 @@ func TestRestartRefusesEveryStatusButFailed(t *testing.T) {
 			}
 			before := steps(t, s, id)
 
-			_, err := s.Restart(id, testAgentID)
+			_, err := s.Restart(id, testAgentID, sql.Null[int64]{})
 
 			if !errors.Is(err, ErrInvalidTicketStateChange) {
 				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
@@ -101,7 +102,7 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 	s, id := oneTicket(t)
 	setStatus(t, s, id, Done)
 
-	_, err := s.Restart(id, testAgentID)
+	_, err := s.Restart(id, testAgentID, sql.Null[int64]{})
 
 	if err == nil || !strings.Contains(err.Error(), string(Done)) {
 		t.Errorf("err = %v, want it to name %q", err, Done)
@@ -111,7 +112,7 @@ func TestRestartNamesTheStatusItRefused(t *testing.T) {
 func TestRestartWithNoSuchTicket(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	if _, err := s.Restart(404, testAgentID); !errors.Is(err, ErrNoTicket) {
+	if _, err := s.Restart(404, testAgentID, sql.Null[int64]{}); !errors.Is(err, ErrNoTicket) {
 		t.Errorf("err = %v, want ErrNoTicket", err)
 	}
 }
@@ -121,7 +122,7 @@ func TestRestartGivesTheTicketASecondRun(t *testing.T) {
 	s, id := failedTicket(t)
 	first := runRows(t, s, id)
 
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -146,7 +147,7 @@ func TestRestartRecordsTheAgentOnTheNewRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id, agent.ID); err != nil {
+	if _, err := s.Restart(id, agent.ID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 	run, err := s.Run(id)
@@ -160,7 +161,7 @@ func TestRestartRecordsTheAgentOnTheNewRun(t *testing.T) {
 
 func TestRestartWithNoSuchAgentKeepsTheTicketFailed(t *testing.T) {
 	s, id := failedTicket(t)
-	if _, err := s.Restart(id, 404); err == nil {
+	if _, err := s.Restart(id, 404, sql.Null[int64]{}); err == nil {
 		t.Fatal("Restart accepted an id that no agent has")
 	}
 	ticket, err := s.Ticket(id)

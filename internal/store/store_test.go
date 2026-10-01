@@ -1366,7 +1366,7 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2350,7 +2350,7 @@ func TestRunGivesTheLastRunOfATicket(t *testing.T) {
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 	rows := runRows(t, s, id)
@@ -2437,7 +2437,7 @@ func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2790,7 +2790,7 @@ func TestReconcileAsksAboutTheLastRunOfATicket(t *testing.T) {
 	if err := s.ChangeStatus(id, Failed); err != nil {
 		t.Fatal(err)
 	}
-	last, err := s.Restart(id, testAgentID)
+	last, err := s.Restart(id, testAgentID, sql.Null[int64]{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2920,7 +2920,7 @@ func TestCancelWritesTheEndOfTheRunItIsGiven(t *testing.T) {
 	if err := s.FailUnfinished(stopped); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(id, testAgentID); err != nil {
+	if _, err := s.Restart(id, testAgentID, sql.Null[int64]{}); err != nil {
 		t.Fatal(err)
 	}
 	// Reopen the old run to prove cancellation updates it rather than the

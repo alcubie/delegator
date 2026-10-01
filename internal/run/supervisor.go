@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -33,7 +34,7 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel)
 }
 
 // Restart starts a failed ticket again. Restart writes the running state and
@@ -45,6 +46,8 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 		return err
 	}
 	var agent store.Agent
+	var modelID sql.Null[int64]
+	var model string
 	if ticket.Session != "" {
 		prior, err := s.Run(id)
 		if err != nil {
@@ -54,20 +57,23 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 		if err != nil {
 			return err
 		}
-		// Even an unknown prior model must override today's default: leave
-		// the loaded session unchanged when no model was recorded.
-		cfg.DefaultModel = prior.Model
+		// An unknown prior model leaves the loaded session unchanged.
+		model = prior.Model
+		modelID = prior.ModelID
 	} else {
+		// The previous attempt failed before saving a session, so start a
+		// new session with the current defaults in the existing worktree.
+		model = cfg.DefaultModel
 		agent, err = s.Agent(cfg.DefaultAgent)
 		if err != nil {
 			return err
 		}
 	}
-	runID, err := s.Restart(id, agent.ID)
+	runID, err := s.Restart(id, agent.ID, modelID)
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent)
+	return supervise(s, cfg, ticket, runID, agent, model)
 }
 
 // StartNext claims and runs the first eligible queued ticket under cfg
@@ -96,7 +102,7 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID, agent)
+	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel)
 }
 
 // noExitCode marks a run without a reported exit code, matching os/exec for a
@@ -148,7 +154,7 @@ func (t *supervisorTimer) Close() error {
 // use the claimed runID, since a restart may create a newer run. Setup
 // failures close the run and mark the ticket failed so it does not keep
 // occupying capacity.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent, model string) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// Any return without dg finish must fail the claimed ticket.
@@ -174,7 +180,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, cfg.DefaultModel, log)
+	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, model, log)
 }
 
 // logTime uses RFC 3339 with filename-safe separators and millisecond

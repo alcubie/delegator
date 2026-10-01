@@ -115,7 +115,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if err := s.FailUnfinished(firstRun); err != nil {
 		t.Fatal(err)
 	}
-	secondRun, err := s.Restart(id, testAgentID)
+	secondRun, err := s.Restart(id, testAgentID, sql.Null[int64]{})
 	if err != nil {
 		t.Fatal(err)
 	}

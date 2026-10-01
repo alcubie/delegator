@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestRecordSessionRegistersModelsPerAgent(t *testing.T) {
 		t.Fatalf("model was not recorded: %+v", first)
 	}
 	for range 2 {
-		runID, err := s.Restart(id, testAgentID)
+		runID, err := s.Restart(id, testAgentID, first.ModelID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +47,7 @@ func TestRecordSessionRegistersModelsPerAgent(t *testing.T) {
 	if _, err := s.db.Exec("UPDATE tickets SET session = NULL WHERE id = ?", id); err != nil {
 		t.Fatal(err)
 	}
-	runID, err := s.Restart(id, agent.ID)
+	runID, err := s.Restart(id, agent.ID, sql.Null[int64]{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ PRAGMA user_version = 3;`); err != nil {
 	if err := s.RecordSession(1, "old-session", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Restart(1, 1); err != nil {
+	if _, err := s.Restart(1, 1, run.ModelID); err != nil {
 		t.Fatal(err)
 	}
 	run, err = s.Run(1)

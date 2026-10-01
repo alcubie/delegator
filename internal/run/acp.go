@@ -25,8 +25,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
 	id := ticket.ID
 
-	options := sessionOptions(cacheDir)
-	options.Model = model
+	options := sessionOptions(cacheDir, model)
 	var session *handler.Session
 	if ticket.Session == "" {
 		session, err = handler.Start(ctx, agent.Name, agent.Argv, handler.AllowAll(), worktree, options, log)
@@ -57,11 +56,13 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 }
 
 // sessionOptions gives an agent access to only this project's cache and names
-// it without choosing a cache convention for any particular ecosystem.
-func sessionOptions(cacheDir string) handler.SessionOptions {
+// it without choosing a cache convention for any particular ecosystem. It
+// also supplies the model selected for this run.
+func sessionOptions(cacheDir, model string) handler.SessionOptions {
 	return handler.SessionOptions{
 		AdditionalDirectories: []string{cacheDir},
 		Environment:           []string{ProjectCacheEnvironment + "=" + cacheDir},
+		Model:                 model,
 	}
 }
 
