@@ -15,6 +15,16 @@ import (
 // always has an agent and supervisor PID. The caller supplies the prior
 // session's modelID, or NULL when there is no recorded model to inherit.
 func (s *Store) Restart(id, agentID int64, modelID sql.Null[int64]) (int64, error) {
+	return s.restart(id, agentID, modelID, "")
+}
+
+// RestartWithModel records the requested model on the new run before agent
+// setup. The agent's confirmed selection may replace it during setup.
+func (s *Store) RestartWithModel(id, agentID int64, model string) (int64, error) {
+	return s.restart(id, agentID, sql.Null[int64]{}, model)
+}
+
+func (s *Store) restart(id, agentID int64, modelID sql.Null[int64], model string) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -28,6 +38,12 @@ func (s *Store) Restart(id, agentID int64, modelID sql.Null[int64]) (int64, erro
 	if from != Failed {
 		return 0, fmt.Errorf("%w: the ticket is %s, and only a failed ticket restarts",
 			ErrInvalidTicketStateChange, from)
+	}
+	if model != "" {
+		modelID, err = registerModel(tx, agentID, model)
+		if err != nil {
+			return 0, err
+		}
 	}
 	started := time.Now()
 	if err := changeStatus(tx, id, Running, started); err != nil {

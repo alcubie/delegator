@@ -39,8 +39,9 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 
 // Restart starts a failed ticket again. Restart writes the running state and
 // the run row in the transaction that gives this supervisor the ticket, so a
-// restarted ticket never waits behind the queue.
-func Restart(s *store.Store, id int64, cfg config.Config) error {
+// restarted ticket never waits behind the queue. A nonempty modelOverride
+// selects and records a model for this run before session setup.
+func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) error {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return err
@@ -69,7 +70,13 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 			return err
 		}
 	}
-	runID, err := s.Restart(id, agent.ID, modelID)
+	var runID int64
+	if modelOverride != "" {
+		model = modelOverride
+		runID, err = s.RestartWithModel(id, agent.ID, modelOverride)
+	} else {
+		runID, err = s.Restart(id, agent.ID, modelID)
+	}
 	if err != nil {
 		return err
 	}

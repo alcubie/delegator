@@ -28,8 +28,12 @@ func dgRun() *exec.Cmd {
 	return dgRunArgs()
 }
 
-func dgRestart(id int64) *exec.Cmd {
-	return dgRunArgs("--restart", strconv.FormatInt(id, 10))
+func dgRestart(id int64, model string) *exec.Cmd {
+	args := []string{"--restart", strconv.FormatInt(id, 10)}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	return dgRunArgs(args...)
 }
 
 func dgRunArgs(args ...string) *exec.Cmd {
@@ -56,12 +60,16 @@ func launchFrom(dataDir string, next func() *exec.Cmd) func() *exec.Cmd {
 // it automatically, but it can also be invoked manually.
 func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var restart bool
+	var model string
 	cmd := &cobra.Command{
 		Use:    "run [id]",
 		Short:  "Run a ticket: make its worktree, start the agent, and wait.",
 		Hidden: true,
 		Args:   cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("model") && (!restart || model == "") {
+				return fmt.Errorf("--model needs --restart and a model ID")
+			}
 			if restart && len(args) != 1 {
 				return fmt.Errorf("dg run --restart needs a ticket id")
 			}
@@ -75,7 +83,7 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				}
 				start = func(s *store.Store) (bool, error) { return true, run.Start(s, id, *cfg) }
 				if restart {
-					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg) }
+					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg, model) }
 				}
 			}
 			// Only a supervisor that claimed and successfully ran
@@ -96,5 +104,6 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&restart, "restart", false, "resume a failed ticket")
+	cmd.Flags().StringVar(&model, "model", "", "model ID for the restarted run")
 	return cmd
 }

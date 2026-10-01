@@ -275,7 +275,7 @@ func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
 	if err := Start(s, id, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if err := Restart(s, id, cfg); err != nil {
+	if err := Restart(s, id, cfg, ""); err != nil {
 		t.Fatal(err)
 	}
 	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))

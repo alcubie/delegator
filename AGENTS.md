@@ -9,6 +9,7 @@
 ## Documentation
 
 - Keep the README to only necessary information. Put detailed installation, configuration, and usage guidance in `docs/`.
+- When changing CLI commands or flags, run `make docs` to regenerate the checked-in command reference.
 
 ## Documented commands
 

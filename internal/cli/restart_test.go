@@ -62,7 +62,7 @@ func TestRestartStartsTheRun(t *testing.T) {
 	useLaunch(t, l)
 	var launched int64
 	saved := restartLaunch
-	restartLaunch = func(id int64) *exec.Cmd {
+	restartLaunch = func(id int64, _ string) *exec.Cmd {
 		launched = id
 		return l()
 	}
@@ -90,8 +90,11 @@ func TestRestartSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	}
 
 	saved := restartLaunch
-	restartLaunch = func(id int64) *exec.Cmd {
-		return exec.Command(testfix.DG(t), "run", "--restart", fmt.Sprint(id))
+	restartLaunch = func(id int64, model string) *exec.Cmd {
+		cmd := dgRestart(id, model)
+		cmd.Path = testfix.DG(t)
+		cmd.Args[0] = cmd.Path
+		return cmd
 	}
 	t.Cleanup(func() { restartLaunch = saved })
 
@@ -101,6 +104,47 @@ func TestRestartSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 		t.Errorf("status = %q, want %q", got, store.Failed)
 	}
 	assertDefaultDataDirUnused(t, defaultDir)
+}
+
+func TestRestartModelReachesDetachedSupervisor(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := queuedTicket(t, dataDir)
+	selected := filepath.Join(t.TempDir(), "selected-model")
+	useFakeAgent(t, dataDir, "models: model-v1 model-v2", "stop refusal")
+	if _, err := runIn(t, dataDir, repo, "run", fmt.Sprint(ticketID)); err == nil {
+		t.Fatal("expected the first run to refuse")
+	}
+	first, err := s.Run(ticketID)
+	if err != nil || first.Model != "model-v1" {
+		t.Fatalf("first model = %+v, %v", first, err)
+	}
+	useFakeAgent(t, dataDir, "models: model-v2", "selected-model "+selected, "stop end_turn")
+	saved := restartLaunch
+	restartLaunch = func(id int64, model string) *exec.Cmd {
+		cmd := dgRestart(id, model)
+		cmd.Path = testfix.DG(t)
+		cmd.Args[0] = cmd.Path
+		return cmd
+	}
+	t.Cleanup(func() { restartLaunch = saved })
+
+	if _, err := runIn(t, dataDir, repo, "restart", fmt.Sprint(ticketID), "--model", "model-v2"); err != nil {
+		t.Fatal(err)
+	}
+	second := waitForCompletedRun(t, s, ticketID, first.ID)
+	if got, err := os.ReadFile(selected); err != nil || string(got) != "model-v2" {
+		t.Fatalf("selected model = %q, %v", got, err)
+	}
+	if second.Model != "model-v2" {
+		t.Errorf("recorded model = %q, want model-v2", second.Model)
+	}
+}
+
+func TestRestartRejectsEmptyModel(t *testing.T) {
+	_, err := runIn(t, t.TempDir(), t.TempDir(), "restart", "42", "--model=")
+	if err == nil || !strings.Contains(err.Error(), "--model must be a model ID") {
+		t.Errorf("error = %v, want a model ID error", err)
+	}
 }
 
 // Restart must preserve uncommitted files in the existing worktree.

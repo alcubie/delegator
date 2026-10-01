@@ -38,7 +38,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 	defer session.Close()
 
 	// Save the confirmed model and session atomically before any prompt.
-	// Failed setup leaves a restarted ticket's prior selection intact.
+	// Failed setup leaves the model recorded at restart intact.
 	if err := s.RecordSession(runID, session.ID(), session.Model()); err != nil {
 		return err
 	}

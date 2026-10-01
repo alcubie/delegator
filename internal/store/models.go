@@ -9,7 +9,7 @@ import (
 // RecordSession saves successful ACP setup before prompting. A model name is
 // the exact value ID confirmed by the agent, including a reported default.
 // Empty means the agent did not identify its model. Registry entries record
-// past acceptance, not a guarantee of continued availability.
+// selections, including explicit restart requests, not a guarantee of availability.
 func (s *Store) RecordSession(runID int64, session, model string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -25,10 +25,8 @@ func (s *Store) RecordSession(runID int64, session, model string) error {
 	}
 	var modelID sql.Null[int64]
 	if model != "" {
-		if _, err := tx.Exec("INSERT INTO models (agent_id, name) VALUES (?, ?) ON CONFLICT (agent_id, name) DO NOTHING", agentID, model); err != nil {
-			return err
-		}
-		if err := tx.QueryRow("SELECT id FROM models WHERE agent_id = ? AND name = ?", agentID, model).Scan(&modelID); err != nil {
+		modelID, err = registerModel(tx, agentID, model)
+		if err != nil {
 			return err
 		}
 	}
@@ -39,4 +37,13 @@ func (s *Store) RecordSession(runID int64, session, model string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func registerModel(tx *sql.Tx, agentID int64, model string) (sql.Null[int64], error) {
+	if _, err := tx.Exec("INSERT INTO models (agent_id, name) VALUES (?, ?) ON CONFLICT (agent_id, name) DO NOTHING", agentID, model); err != nil {
+		return sql.Null[int64]{}, err
+	}
+	var modelID sql.Null[int64]
+	err := tx.QueryRow("SELECT id FROM models WHERE agent_id = ? AND name = ?", agentID, model).Scan(&modelID)
+	return modelID, err
 }

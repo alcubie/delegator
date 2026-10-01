@@ -38,7 +38,7 @@ func useLaunch(t *testing.T, l func() *exec.Cmd) {
 	saved := launch
 	savedRestart := restartLaunch
 	launch = l
-	restartLaunch = func(int64) *exec.Cmd { return l() }
+	restartLaunch = func(int64, string) *exec.Cmd { return l() }
 	t.Cleanup(func() {
 		launch = saved
 		restartLaunch = savedRestart

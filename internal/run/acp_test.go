@@ -295,7 +295,7 @@ func TestRestartLoadsTheExistingSessionWithItsOriginalAgent(t *testing.T) {
 	cfg.DefaultAgent = "replacement"
 	cfg.DefaultModel = "unavailable-new-default"
 
-	if err := Restart(s, id, cfg); err == nil {
+	if err := Restart(s, id, cfg, ""); err == nil {
 		t.Fatal("err = nil, want the loaded session's prompt to fail")
 	}
 	if got := testfix.WaitFor(t, loaded); got != "replayed" {
@@ -346,7 +346,7 @@ func TestRestartPreservesConfirmedModelAcrossFailedLoads(t *testing.T) {
 			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 				testfix.Script(t, "models: model-v1 model-v2", "stop end_turn", "history:", "no-such-action"))
 			for range 2 {
-				if err := Restart(s, id, cfg); err == nil {
+				if err := Restart(s, id, cfg, ""); err == nil {
 					t.Fatal("expected load failure")
 				}
 				latest, err := s.Run(id)
@@ -360,7 +360,7 @@ func TestRestartPreservesConfirmedModelAcrossFailedLoads(t *testing.T) {
 			}
 			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 				testfix.Script(t, "models: new-default", "selected-model "+selected, "stop end_turn"))
-			if err := Restart(s, id, cfg); err == nil || !strings.Contains(err.Error(), "unavailable") {
+			if err := Restart(s, id, cfg, ""); err == nil || !strings.Contains(err.Error(), "unavailable") {
 				t.Fatalf("unavailable model error = %v", err)
 			}
 			if _, err := os.Stat(selected); !os.IsNotExist(err) {
@@ -370,7 +370,7 @@ func TestRestartPreservesConfirmedModelAcrossFailedLoads(t *testing.T) {
 			// select the original model before its prompt runs.
 			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 				testfix.Script(t, "models: new-default model-v1 model-v2", "selected-model "+selected, "stop end_turn"))
-			if err := Restart(s, id, cfg); err != nil {
+			if err := Restart(s, id, cfg, ""); err != nil {
 				t.Fatal(err)
 			}
 			if got, err := os.ReadFile(selected); err != nil || string(got) != want {
@@ -381,6 +381,28 @@ func TestRestartPreservesConfirmedModelAcrossFailedLoads(t *testing.T) {
 				t.Fatalf("restart model = %+v, %v", latest, err)
 			}
 		})
+	}
+}
+
+func TestRestartRecordsOverriddenModelBeforeSessionSetup(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Switch models on restart")
+	cfg := acpConfig(t, dataDir, "models: model-v1 model-v2", "stop refusal")
+	s := testfix.OpenStore(t, dataDir)
+	if err := Start(s, id, cfg); err == nil {
+		t.Fatal("expected the first run to refuse")
+	}
+	first, err := s.Run(id)
+	if err != nil || first.Model != "model-v1" {
+		t.Fatalf("first run model = %+v, %v", first, err)
+	}
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
+		testfix.Script(t, "models: model-v2", "history:", "no-such-action"))
+	if err := Restart(s, id, cfg, "model-v2"); err == nil {
+		t.Fatal("expected session setup to fail")
+	}
+	second, err := s.Run(id)
+	if err != nil || second.ID == first.ID || !second.ModelID.Valid || second.ModelID == first.ModelID || second.Model != "model-v2" {
+		t.Fatalf("failed restart model = %+v, %v", second, err)
 	}
 }
 
@@ -399,7 +421,7 @@ func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
 	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 		testfix.Script(t, "stop end_turn", "history:", "no-such-action"))
 
-	if err := Restart(s, id, cfg); err == nil {
+	if err := Restart(s, id, cfg, ""); err == nil {
 		t.Fatal("err = nil, want loading the session to fail")
 	}
 	if got := testfix.ReadTicket(t, dataDir, id).Session; got != session {
