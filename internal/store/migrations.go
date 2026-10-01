@@ -19,6 +19,7 @@ var migrations = []string{
 	initialSchema,
 	analyticsConsentSchema,
 	`ALTER TABLE settings RENAME COLUMN analytics TO telemetry;`,
+	`ALTER TABLE analytics_state RENAME TO telemetry_state;`,
 }
 
 const analyticsConsentSchema = `

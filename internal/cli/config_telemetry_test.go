@@ -76,14 +76,14 @@ func TestConfigTelemetryUsesSharedTransitionsAndRejectsNull(t *testing.T) {
 	dir, work := t.TempDir(), t.TempDir()
 	s := testfix.OpenStore(t, dir)
 	for _, choice := range []string{"true", "true", "false", "true"} {
-		before, err := s.AnalyticsState()
+		before, err := s.TelemetryState()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := runIn(t, dir, work, "config", "set", "telemetry", choice); err != nil {
 			t.Fatal(err)
 		}
-		after, err := s.AnalyticsState()
+		after, err := s.TelemetryState()
 		if err != nil || after.Consent == nil || *after.Consent != (choice == "true") {
 			t.Fatalf("config choice not persisted: %+v, %v", after, err)
 		}
@@ -91,14 +91,14 @@ func TestConfigTelemetryUsesSharedTransitionsAndRejectsNull(t *testing.T) {
 			t.Fatal("repeated config true reset state")
 		}
 	}
-	before, err := s.AnalyticsState()
+	before, err := s.TelemetryState()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runIn(t, dir, work, "config", "set", "telemetry", "null"); err == nil {
 		t.Fatal("config accepted null submission")
 	}
-	after, err := s.AnalyticsState()
+	after, err := s.TelemetryState()
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("invalid config submission changed state")
 	}
