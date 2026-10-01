@@ -53,7 +53,7 @@ func TestInitShowsNumberedAgentNamesInTheSelector(t *testing.T) {
 	executable(t, bin, "opencode")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\n\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestInitSelectsAndPersistsAnAvailableAgent(t *testing.T) {
 	executable(t, bin, "codex-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\n\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestInitCancellationDoesNotDescribeARun(t *testing.T) {
 	executable(t, bin, "goose")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "q\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\nq\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestInitWithoutAKnownAgentExplainsHowToRegisterOne(t *testing.T) {
 	bin := t.TempDir()
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestInitPromptsToInstallAMissingCodexAdapter(t *testing.T) {
 		return nil
 	}
 
-	out, err := runInteractiveInit(t, dataDir, "1\ny\n", initOptions{}, install)
+	out, err := runInteractiveInit(t, dataDir, "s\n1\ny\n", initOptions{}, install)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestInitAcceptsAManualPathForADeclinedAdapterInstall(t *testing.T) {
 	adapter := executable(t, t.TempDir(), "my-claude-acp")
 	t.Setenv("PATH", bin)
 
-	out, err := runInteractiveInit(t, dataDir, "1\nn\n"+adapter+"\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\n1\nn\n"+adapter+"\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestInitRerunStartsOnTheCurrentDefaultAndCanKeepIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runInteractiveInit(t, dataDir, "\n", initOptions{}, nil)
+	out, err := runInteractiveInit(t, dataDir, "s\n\n", initOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,8 @@ import (
 )
 
 type initOptions struct {
-	agent string
+	agent     string
+	telemetry *bool
 }
 
 type adapterSpec struct {
@@ -43,15 +44,21 @@ type adapterInstaller func(*cobra.Command, adapterSpec) error
 // add work: which registered agent executes their tickets.
 func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var options initOptions
+	var telemetry bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Set up Alcubi Delegator for a first run.",
 		Long: "Discover installed agents, select or configure the default agent, and explain " +
-			"how to view the inbox and create the first ticket.",
+			"how to view the inbox and create the first ticket. Interactive setup asks whether to share " +
+			"telemetry if unanswered. Yes is selected, but only confirmation enables it; skip or cancel " +
+			"leaves it unanswered. Scripted setup preserves consent unless --telemetry=true|false is supplied.",
 		Example: `  dg init
   dg init --agent codex`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed("telemetry") {
+				options.telemetry = &telemetry
+			}
 			selector := agentSelectorFor(cmd.InOrStdin(), cmd.OutOrStdout())
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				return runInit(cmd, s, cfg, options, selector, runAdapterInstaller)
@@ -60,6 +67,8 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&options.agent, "agent", "",
 		"select this available registered agent as the default without prompting")
+	cmd.Flags().BoolVar(&telemetry, "telemetry", false, "submit a telemetry choice (`true|false`)")
+	cmd.Flags().Lookup("telemetry").NoOptDefVal = ""
 	return cmd
 }
 
@@ -168,12 +177,20 @@ func choiceNamed(choices []initAgentChoice, name string) (initAgentChoice, bool)
 }
 
 func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, selector agentSelector, install adapterInstaller) error {
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
+	proceed, err := initTelemetry(cmd, s, cfg, options, selector != nil && options.agent == "")
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		fmt.Fprintln(out, "Setup cancelled.")
+		return nil
+	}
 	if options.agent == "" && selector == nil {
 		return errors.New("dg init requires an interactive terminal; use dg init --agent NAME for scripted setup")
 	}
 
-	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
 	if cfg.DefaultAgent == "" {
 		fmt.Fprintln(out, "Current default agent: none")
 	} else {

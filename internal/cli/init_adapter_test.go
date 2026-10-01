@@ -108,7 +108,7 @@ func TestInitPersistsInstalledAdapterOutsidePATH(t *testing.T) {
 	var out bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
-	cmd.SetIn(strings.NewReader("1\ny\n"))
+	cmd.SetIn(strings.NewReader("s\n1\ny\n"))
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	if err := runInit(cmd, s, &cfg, initOptions{}, readAgentSelection, install); err != nil {
