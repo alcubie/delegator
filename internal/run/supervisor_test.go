@@ -17,7 +17,11 @@ import (
 
 const testAgentID int64 = 1
 
-func TestMain(m *testing.M) { os.Exit(testfix.RunTests(m, false)) }
+func TestMain(m *testing.M) {
+	code := m.Run()
+	testfix.CleanupBinaries()
+	os.Exit(code)
+}
 
 func queuedTicket(t *testing.T, title string) (string, int64) {
 	t.Helper()

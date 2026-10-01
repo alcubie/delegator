@@ -27,7 +27,9 @@ func TestMain(m *testing.M) {
 	// values.
 	os.Unsetenv("NO_COLOR")
 	os.Unsetenv("CLICOLOR_FORCE")
-	os.Exit(testfix.RunTests(m, true))
+	code := m.Run()
+	testfix.CleanupBinaries()
+	os.Exit(code)
 }
 
 // useLaunch replaces the supervisor launcher until test cleanup.
@@ -88,7 +90,7 @@ func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	testfix.CommitIn(t, repo, "first")
 	promptPath := filepath.Join(t.TempDir(), "prompt")
 	useFakeAgent(t, dataDir, "prompt "+promptPath, "stop end_turn")
-	useLaunch(t, func() *exec.Cmd { return exec.Command("dg", "run") })
+	useLaunch(t, func() *exec.Cmd { return exec.Command(testfix.DG(t), "run") })
 
 	out, err := runIn(t, dataDir, repo, "ticket", "Run in the selected instance", "--no-body")
 	if err != nil {
@@ -118,7 +120,7 @@ func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 // useFakeAgent makes the ACP fake the default registry agent for one test.
 func useFakeAgent(t *testing.T, dataDir string, lines ...string) {
 	t.Helper()
-	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgentPath, testfix.Script(t, lines...))
+	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t), testfix.Script(t, lines...))
 }
 
 // The worktree marker proves the agent ran in that directory and was awaited.
@@ -251,7 +253,7 @@ func TestNextSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	s, _, repo := queuedTicket(t, dataDir)
 	second := testfix.SecondTicket(t, dataDir)
 	useFakeAgent(t, dataDir, "stop end_turn")
-	useLaunch(t, func() *exec.Cmd { return exec.Command("dg", "run") })
+	useLaunch(t, func() *exec.Cmd { return exec.Command(testfix.DG(t), "run") })
 
 	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
 		t.Fatal(err)
