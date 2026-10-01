@@ -311,8 +311,8 @@ func TestAcceptWithNoIDClosesTheHeadOfReady(t *testing.T) {
 	later := queuedIn(t, s, repo, "the ticket that finished last")
 	head := queuedIn(t, s, repo, "the ticket that finished first")
 	finishIn(t, s, head)
-	nextSecond(t)
 	finishIn(t, s, later)
+	assertReadyOrder(t, s, head, later)
 
 	out, err := runIn(t, dataDir, repo, "accept")
 	if err != nil {

@@ -342,8 +342,8 @@ func TestChatWithNoIDContinuesTheHeadOfReady(t *testing.T) {
 
 	later := queuedIn(t, s, repo, "the ticket that finished last")
 	head := chattableIn(t, s, dataDir, repo, "the ticket that finished first", "session-of-the-head")
-	nextSecond(t)
 	finishIn(t, s, later)
+	assertReadyOrder(t, s, head, later)
 
 	if _, err := runIn(t, dataDir, repo, "chat"); err != nil {
 		t.Fatal(err)

@@ -57,13 +57,23 @@ func finishIn(t *testing.T, s *store.Store, id int64) string {
 	return branch
 }
 
-// nextSecond waits for distinct second-precision timestamps so ordering tests
-// do not fall back to ID ties.
-func nextSecond(t *testing.T) {
+// assertReadyOrder verifies the fixture's ready positions in head-first order.
+func assertReadyOrder(t *testing.T, s *store.Store, ids ...int64) {
 	t.Helper()
-	start := time.Now().Truncate(time.Second)
-	for time.Now().Truncate(time.Second).Equal(start) {
-		time.Sleep(time.Millisecond)
+	tickets, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := make(map[int64]int, len(tickets))
+	for _, ticket := range tickets {
+		if ticket.Status == store.Ready {
+			positions[ticket.ID] = ticket.Position
+		}
+	}
+	for position, id := range ids {
+		if got := positions[id]; got != position+1 {
+			t.Errorf("ticket %d ready position = %d, want %d", id, got, position+1)
+		}
 	}
 }
 
@@ -743,8 +753,8 @@ func TestRunShowWithNoIDTakesTheHeadOfReady(t *testing.T) {
 	later := queuedIn(t, s, repo, "the ticket that finished last")
 	head := queuedIn(t, s, repo, "the ticket that finished first")
 	branch := finishIn(t, s, head)
-	nextSecond(t)
 	finishIn(t, s, later)
+	assertReadyOrder(t, s, head, later)
 
 	out, err := runIn(t, dataDir, repo, "show")
 	if err != nil {
