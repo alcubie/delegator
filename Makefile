@@ -38,7 +38,7 @@ install-test-windows:
 	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/test-install.ps1
 
 test: install-test analytics-contract-check
-	go test ./...
+	./scripts/test-go.sh
 
 .PHONY: analytics-contract-check
 analytics-contract-check:
@@ -155,7 +155,7 @@ fmtcheck:
 # measures executed statements, not assertion quality; use it to find untested
 # code.
 covercheck:
-	go test -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) ./...
+	./scripts/test-go.sh -coverprofile=coverage.out -coverpkg=$(COVER_PKGS)
 	@go tool cover -func=coverage.out | awk -v min=$(COVER_MIN) '\
 		/^total:/ { seen = 1; got = $$3 + 0 } \
 		END { \
@@ -207,7 +207,7 @@ docs-check:
 # Show statement coverage per function. Execution does not prove assertions
 # checked the behavior.
 cover:
-	go test -coverprofile=coverage.out ./...
+	./scripts/test-go.sh -coverprofile=coverage.out
 	go tool cover -func=coverage.out
 
 # Show line coverage in a browser: green for executed lines, red for
