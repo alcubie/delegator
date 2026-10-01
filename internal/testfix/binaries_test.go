@@ -11,6 +11,8 @@ import (
 // Record helper builds without compiling commands or relying on Go's cache.
 func recordBuilds(t *testing.T, fail bool) string {
 	t.Helper()
+	t.Setenv(fakeAgentEnv, "")
+	t.Setenv(dgEnv, "")
 	dir := t.TempDir()
 	log := filepath.Join(dir, "builds")
 	script := "#!/bin/sh\necho \"$4\" >> \"$BUILD_LOG\"\n"
@@ -95,5 +97,45 @@ func TestHelperBinaryCachesBuildFailureWithDiagnostics(t *testing.T) {
 	binary.cleanup()
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("failed build directory survived cleanup: %v", err)
+	}
+}
+
+func TestHelperBinaryUsesSuppliedExecutableWithoutOwningIt(t *testing.T) {
+	log := recordBuilds(t, false)
+	path := filepath.Join(t.TempDir(), "dg-fake-agent")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(fakeAgentEnv, path)
+	var binary helperBinary
+	if got := binary.get(t, "dg-fake-agent"); got != path {
+		t.Fatalf("helper = %q, want %q", got, path)
+	}
+	if binary.dir != "" {
+		t.Fatalf("supplied helper claimed owned directory %q", binary.dir)
+	}
+	binary.cleanup()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("cleanup removed supplied helper: %v", err)
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatalf("supplied helper ran a build: %v", err)
+	}
+}
+
+func TestHelperBinaryRejectsInvalidSuppliedPathWithoutFallingBack(t *testing.T) {
+	log := recordBuilds(t, false)
+	path := filepath.Join(t.TempDir(), "missing-dg")
+	t.Setenv(dgEnv, path)
+	var binary helperBinary
+	f := &fakeT{}
+	if got := binary.get(f, "dg"); got != "" || !f.failed {
+		t.Fatalf("invalid supplied helper returned %q, failed = %v", got, f.failed)
+	}
+	if binary.err == nil || !strings.Contains(binary.err.Error(), dgEnv+"=\""+path+"\"") || !strings.Contains(binary.err.Error(), "no such file") {
+		t.Fatalf("invalid supplied helper error = %v", binary.err)
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatalf("invalid supplied helper silently fell back to a build: %v", err)
 	}
 }
