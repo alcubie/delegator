@@ -54,6 +54,9 @@ func Restart(s *store.Store, id int64, cfg config.Config) error {
 		if err != nil {
 			return err
 		}
+		// Even an unknown prior model must override today's default: leave
+		// the loaded session unchanged when no model was recorded.
+		cfg.DefaultModel = prior.Model
 	} else {
 		agent, err = s.Agent(cfg.DefaultAgent)
 		if err != nil {

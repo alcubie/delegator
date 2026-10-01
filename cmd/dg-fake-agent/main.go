@@ -9,6 +9,7 @@
 //	permission <title> <kind>   ask to run a tool and record the answer
 //	write <path> <content>    write the file through the client
 //	prompt <path>             write the prompt to a file
+//	selected-model <path>     write the selected model to a file
 //	wait <duration>           wait that long, or until the client cancels
 //	usage <json>              return that standard ACP Usage object
 //	stop <reason>             end the turn with that reason
@@ -16,6 +17,7 @@
 // Cancelling a wait ends the turn with the cancelled reason and skips the
 // remaining actions. A "history:" line starts replay actions, which run when
 // a client loads a session instead of sending a prompt.
+// A "models: <id> ..." line advertises selectable models; the first is the default.
 //
 // Permission answers are recorded beside the script, one option ID per line,
 // so tests can inspect them without accessing the protocol pipes.

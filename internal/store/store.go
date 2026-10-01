@@ -1144,12 +1144,16 @@ var ErrNoRun = errors.New("the ticket has no run")
 
 // Run records an agent, supervisor PID, and claim time. EndedAt is zero until
 // the run ends. ExitCode is nullable because zero is a valid exit code, and a
-// crashed supervisor may never report one.
+// crashed supervisor may never report one. Model records the selection at
+// session setup; an invalid ModelID means no model was recorded. A restart
+// inherits that selection even if setup subsequently fails.
 type Run struct {
 	ID        int64
 	TicketID  int64
 	AgentID   int64
 	Agent     string
+	ModelID   sql.Null[int64]
+	Model     string
 	PID       int
 	StartedAt time.Time
 	EndedAt   time.Time
@@ -1161,13 +1165,15 @@ func (s *Store) Run(ticketID int64) (Run, error) {
 	var r Run
 	err := s.db.QueryRow(`
 		SELECT runs.id, runs.ticket_id, COALESCE(runs.agent_id, 0), COALESCE(agents.name, ''),
-		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code
+		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code,
+		       runs.model_id, COALESCE(models.name, '')
 		FROM runs LEFT JOIN agents ON agents.id = runs.agent_id
+		LEFT JOIN models ON models.id = runs.model_id
 		WHERE runs.ticket_id = ?
 		ORDER BY runs.id DESC
 		LIMIT 1`, ticketID).Scan(
 		&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
-		timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode)
+		timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
 	}
@@ -1391,23 +1397,6 @@ func (s *Store) ChangeStatusWith(id int64, status TicketStatus, work func() erro
 		return err
 	}
 	return tx.Commit()
-}
-
-// SetSession records the agent session ID on a ticket so the conversation can
-// be reopened later.
-func (s *Store) SetSession(id int64, session string) error {
-	result, err := s.db.Exec("UPDATE tickets SET session = ? WHERE id = ?", session, id)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return fmt.Errorf("%w: %d", ErrNoTicket, id)
-	}
-	return nil
 }
 
 // SetTitle updates the ticket title, which is stored separately from its

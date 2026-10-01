@@ -18,7 +18,10 @@ func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "restart <id>",
 		Short: "Start a failed ticket again.",
 		Long: "Return a failed ticket to execution, reusing its branch, worktree, and agent " +
-			"session so work can continue where the failed run stopped.",
+			"session so work can continue where the failed run stopped. A saved session " +
+			"uses its previous agent and recorded model, even if the defaults have changed. " +
+			"If the model is unknown, the loaded session's selection is left unchanged. " +
+			"If a recorded model is unavailable, the run fails before prompting.",
 		Example: `  dg restart 42`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

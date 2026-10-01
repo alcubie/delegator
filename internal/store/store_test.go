@@ -360,7 +360,7 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 		t.Errorf("user_version = %d, want %d", got, len(migrations))
 	}
 
-	for _, name := range []string{"projects", "tickets", "queue_state", "agents", "runs", "ticket_deps", "transitions", "settings", "run_usage"} {
+	for _, name := range []string{"projects", "tickets", "queue_state", "agents", "models", "runs", "ticket_deps", "transitions", "settings", "run_usage"} {
 		var got string
 		err := s.db.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", name).Scan(&got)
@@ -375,7 +375,7 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id"}
+	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id", "model_id"}
 	if got := columnsOf(t, s.db, "runs"); !slices.Equal(got, want) {
 		t.Errorf("the columns of runs = %v, want %v", got, want)
 	}

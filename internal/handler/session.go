@@ -58,6 +58,7 @@ type Session struct {
 	conn   *acp.ClientSideConnection
 	caps   acp.AgentCapabilities
 	id     acp.SessionId
+	model  string
 	loaded bool
 	replay []Event
 	events chan Event

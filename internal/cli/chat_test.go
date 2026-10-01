@@ -53,9 +53,7 @@ func chattableTicketWithAgent(t *testing.T, dataDir, agent string) (int64, strin
 	t.Helper()
 	s, ticketID, repo, commit := runningTicketWithAgent(t, dataDir, agent)
 	const session = "session-of-the-run"
-	if err := s.SetSession(ticketID, session); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), ticketID, session)
 	if err := s.FinishTicket(ticketID, commit); err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +69,7 @@ func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session str
 	t.Helper()
 	id := queuedIn(t, s, repo, title)
 	finishIn(t, s, id)
-	if err := s.SetSession(id, session); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), id, session)
 	if err := os.MkdirAll(run.WorktreePath(dataDir, id), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -118,9 +114,7 @@ func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
 	const session = "session-of-the-failed-run"
-	if err := s.SetSession(ticketID, session); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), ticketID, session)
 	held, err := s.Run(ticketID)
 	if err != nil {
 		t.Fatal(err)
@@ -254,9 +248,7 @@ func TestChatStartsInTheWorktreeOfTheTicket(t *testing.T) {
 func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
-	if err := s.SetSession(ticketID, "session-of-the-run"); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), ticketID, "session-of-the-run")
 	record := useChat(t, "true")
 
 	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
@@ -457,9 +449,7 @@ func TestChatRefusesSessionWithoutRun(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	repo := testfix.Repo(t, repoBranch)
 	id := queuedIn(t, s, repo, "session without run")
-	if err := s.SetSession(id, "orphan-session"); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), id, "orphan-session")
 	if err := os.MkdirAll(run.WorktreePath(dataDir, id), 0o700); err != nil {
 		t.Fatal(err)
 	}

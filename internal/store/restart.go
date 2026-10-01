@@ -35,6 +35,17 @@ func (s *Store) Restart(id, agentID int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Carry the prior selection forward before attempting ACP setup, so a
+	// failed load does not erase it on a subsequent restart.
+	if _, err := tx.Exec(`UPDATE runs SET model_id = (
+SELECT model_id FROM runs WHERE ticket_id = ? AND id < ? ORDER BY id DESC LIMIT 1
+) WHERE id = ? AND EXISTS (
+SELECT 1 FROM tickets WHERE id = ? AND COALESCE(session, '') <> ''
+) AND agent_id = (
+SELECT agent_id FROM runs WHERE ticket_id = ? AND id < ? ORDER BY id DESC LIMIT 1
+)`, id, runID, runID, id, id, runID); err != nil {
+		return 0, err
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}

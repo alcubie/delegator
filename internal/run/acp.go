@@ -38,12 +38,10 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 	}
 	defer session.Close()
 
-	// Save only newly created sessions. A failed load or prompt must leave a
-	// restarted ticket's existing session available for another attempt.
-	if ticket.Session == "" {
-		if err := s.SetSession(id, session.ID()); err != nil {
-			return err
-		}
+	// Save the confirmed model and session atomically before any prompt.
+	// Failed setup leaves a restarted ticket's prior selection intact.
+	if err := s.RecordSession(runID, session.ID(), session.Model()); err != nil {
+		return err
 	}
 
 	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir)), log)

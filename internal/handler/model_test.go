@@ -18,6 +18,8 @@ func TestSessionModelSelection(t *testing.T) {
 			{"model-unconfirmed", "model-v2", "did not confirm"},
 			{stubFullOptions, "", ""},
 			{stubFullOptions, "null", ""},
+			{"model-flat", "", ""},
+			{"model-grouped", "null", ""},
 			{"model-flat", "default", "model \"default\" is unavailable"},
 		} {
 			t.Run(tc.options+"/"+tc.model+map[bool]string{true: "/load", false: "/start"}[loaded], func(t *testing.T) {
@@ -43,6 +45,15 @@ func TestSessionModelSelection(t *testing.T) {
 					t.Fatal(err)
 				}
 				requests := readRecord(t, record).ModelRequests
+				wantModel := ""
+				if tc.model == "model-v2" {
+					wantModel = "model-v2"
+				} else if strings.HasPrefix(tc.options, "model-") {
+					wantModel = "model-v1"
+				}
+				if session.Model() != wantModel {
+					t.Fatalf("session model = %q, want %q", session.Model(), wantModel)
+				}
 				if tc.model == "model-v2" {
 					if len(requests) != 1 || requests[0].ValueId == nil {
 						t.Fatalf("model requests = %+v", requests)

@@ -38,6 +38,7 @@ type fakeAgent struct {
 	tools    int
 	asks     int
 	answers  []string
+	model    string
 }
 
 var (
@@ -55,14 +56,14 @@ func (a *fakeAgent) Initialize(context.Context, acp.InitializeRequest) (acp.Init
 // NewSession issues the next id of this process.
 func (a *fakeAgent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	a.sessions++
-	return acp.NewSessionResponse{SessionId: acp.SessionId("fake-" + strconv.Itoa(a.sessions))}, nil
+	return acp.NewSessionResponse{SessionId: acp.SessionId("fake-" + strconv.Itoa(a.sessions)), ConfigOptions: a.modelOptions()}, nil
 }
 
 // LoadSession replays history before replying, as ACP requires. It accepts
 // any session ID because the process that created it may already have exited.
 func (a *fakeAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
 	_, _, err := a.take(ctx, p.SessionId, a.script.history, "")
-	return acp.LoadSessionResponse{}, err
+	return acp.LoadSessionResponse{ConfigOptions: a.modelOptions()}, err
 }
 
 // Prompt replays the scripted turn for every prompt.
@@ -102,6 +103,8 @@ func (a *fakeAgent) take(ctx context.Context, id acp.SessionId, actions []string
 			_, err = a.conn.WriteTextFile(ctx, acp.WriteTextFileRequest{SessionId: id, Path: path, Content: content})
 		case "prompt":
 			err = os.WriteFile(rest, []byte(prompt), recordPerm)
+		case "selected-model":
+			err = os.WriteFile(rest, []byte(a.model), recordPerm)
 		case "wait":
 			cancelled, bad := wait(ctx, rest)
 			if cancelled {
@@ -234,8 +237,33 @@ func (a *fakeAgent) ListSessions(context.Context, acp.ListSessionsRequest) (acp.
 func (a *fakeAgent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
 	return acp.ResumeSessionResponse{}, nil
 }
-func (a *fakeAgent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
-	return acp.SetSessionConfigOptionResponse{}, nil
+func (a *fakeAgent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	if p.ValueId != nil && p.ValueId.ConfigId == "model" {
+		for _, model := range a.script.models {
+			if string(p.ValueId.Value) == model {
+				a.model = model
+				return acp.SetSessionConfigOptionResponse{ConfigOptions: a.modelOptions()}, nil
+			}
+		}
+	}
+	return acp.SetSessionConfigOptionResponse{}, fmt.Errorf("unknown model selection")
+}
+
+func (a *fakeAgent) modelOptions() []acp.SessionConfigOption {
+	if len(a.script.models) == 0 {
+		return nil
+	}
+	if a.model == "" {
+		a.model = a.script.models[0]
+	}
+	var values acp.SessionConfigSelectOptionsUngrouped
+	for _, model := range a.script.models {
+		values = append(values, acp.SessionConfigSelectOption{Value: acp.SessionConfigValueId(model), Name: model})
+	}
+	return []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
+		Id: "model", Name: "Model", Type: "select", CurrentValue: acp.SessionConfigValueId(a.model),
+		Category: acp.Ptr(acp.SessionConfigOptionCategoryModel), Options: acp.SessionConfigSelectOptions{Ungrouped: &values},
+	}}}
 }
 func (a *fakeAgent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	return acp.SetSessionModeResponse{}, nil

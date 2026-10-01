@@ -238,6 +238,15 @@ func setRunColumn(t *testing.T, dataDir string, ticketID int64, column string, v
 	}
 }
 
+// SetSession sets fixture session state, including intentionally orphaned
+// sessions. Production records sessions together with their run's model.
+func SetSession(t *testing.T, dataDir string, ticketID int64, session string) {
+	t.Helper()
+	if _, err := openDB(t, dataDir).Exec("UPDATE tickets SET session = ? WHERE id = ?", session, ticketID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // openDB opens a separate connection for fixture-only database changes and
 // registers cleanup. Store intentionally exposes no raw database connection.
 func openDB(t *testing.T, dataDir string) *sql.DB {

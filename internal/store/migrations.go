@@ -15,7 +15,17 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema}
+
+const runModelSchema = `
+CREATE TABLE models (
+  id       INTEGER PRIMARY KEY,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  name     TEXT NOT NULL CHECK (name <> ''),
+  UNIQUE (agent_id, name)
+) STRICT;
+ALTER TABLE runs ADD COLUMN model_id INTEGER REFERENCES models(id);
+`
 
 const defaultModelSchema = `ALTER TABLE settings ADD COLUMN default_model TEXT;`
 

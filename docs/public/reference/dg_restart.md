@@ -6,7 +6,7 @@ Start a failed ticket again.
 
 ### Synopsis
 
-Return a failed ticket to execution, reusing its branch, worktree, and agent session so work can continue where the failed run stopped.
+Return a failed ticket to execution, reusing its branch, worktree, and agent session so work can continue where the failed run stopped. A saved session uses its previous agent and recorded model, even if the defaults have changed. If the model is unknown, the loaded session's selection is left unchanged. If a recorded model is unavailable, the run fails before prompting.
 
 ```
 dg restart <id> [flags]

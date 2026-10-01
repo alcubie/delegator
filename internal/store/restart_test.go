@@ -47,7 +47,7 @@ func TestRestartMakesAFailedTicketRunning(t *testing.T) {
 // Preserve the branch and session to continue the failed run's work.
 func TestRestartKeepsTheBranchAndTheSession(t *testing.T) {
 	s, id := failedTicket(t)
-	if err := s.SetSession(id, "s-1"); err != nil {
+	if _, err := s.db.Exec("UPDATE tickets SET session = ? WHERE id = ?", "s-1", id); err != nil {
 		t.Fatal(err)
 	}
 

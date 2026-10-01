@@ -863,9 +863,7 @@ func TestRunShowWithAnIDTakesATicketOfAnotherProject(t *testing.T) {
 func TestRunShowJSONHoldsEachField(t *testing.T) {
 	dataDir := t.TempDir()
 	s, id, repo := readyTicket(t, dataDir)
-	if err := s.SetSession(id, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a"); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), id, "e55e382e-2c88-4de7-a31d-ab8763a0fb5a")
 	const prose = "Remove the app, the volume and the records of the DNS."
 	if err := os.WriteFile(proseFile(dataDir, id), []byte(prose+"\n"), 0o644); err != nil {
 		t.Fatal(err)

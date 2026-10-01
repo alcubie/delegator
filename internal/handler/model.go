@@ -8,13 +8,15 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
+// Model returns the model selected during session setup, or empty when the
+// agent did not report one. It does not track switches during a prompt.
+func (s *Session) Model() string { return s.model }
+
 // setModel uses the agent's advertised selector and value IDs, including
 // grouped model lists. Never silently fall back when a model was requested.
 func (s *Session) setModel(ctx context.Context, model string, options []acp.SessionConfigOption) error {
 	model = strings.TrimSpace(model)
-	if model == "" || model == "null" {
-		return nil
-	}
+	useDefault := model == "" || model == "null"
 	for _, option := range options {
 		selectOption := option.Select
 		if selectOption == nil {
@@ -26,6 +28,10 @@ func (s *Session) setModel(ctx context.Context, model string, options []acp.Sess
 			}
 		} else if selectOption.Id != "model" {
 			continue
+		}
+		if useDefault {
+			s.model = string(selectOption.CurrentValue)
+			return nil
 		}
 		var available []string
 		if selectOption.Options.Ungrouped != nil {
@@ -66,9 +72,13 @@ func (s *Session) setModel(ctx context.Context, model string, options []acp.Sess
 			if err != nil {
 				return fmt.Errorf("set model %q: %w", model, err)
 			}
+			s.model = model
 			return nil
 		}
 		return fmt.Errorf("model %q is unavailable; available model IDs: %s", model, strings.Join(available, ", "))
+	}
+	if useDefault {
+		return nil
 	}
 	return fmt.Errorf("cannot set model %q: agent does not expose an ACP model config option", model)
 }

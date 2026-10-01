@@ -290,6 +290,7 @@ func TestRestartLoadsTheExistingSessionWithItsOriginalAgent(t *testing.T) {
 	testfix.UseAgent(t, dataDir, "replacement", testfix.FakeAgent(t),
 		testfix.Script(t, "write "+replacementRan+" replacement", "stop end_turn"))
 	cfg.DefaultAgent = "replacement"
+	cfg.DefaultModel = "unavailable-new-default"
 
 	if err := Restart(s, id, cfg); err == nil {
 		t.Fatal("err = nil, want the loaded session's prompt to fail")
@@ -318,6 +319,68 @@ func TestRestartLoadsTheExistingSessionWithItsOriginalAgent(t *testing.T) {
 	}
 }
 
+func TestRestartPreservesConfirmedModelAcrossFailedLoads(t *testing.T) {
+	for _, requested := range []string{"", "model-v2"} {
+		t.Run("requested="+requested, func(t *testing.T) {
+			dataDir, id := queuedTicket(t, "Keep the original model")
+			selected := filepath.Join(t.TempDir(), "model")
+			cfg := acpConfig(t, dataDir, "models: model-v1 model-v2", "selected-model "+selected, "stop refusal")
+			cfg.DefaultModel = requested
+			s := testfix.OpenStore(t, dataDir)
+			if err := Start(s, id, cfg); err == nil {
+				t.Fatal("expected refusal")
+			}
+			first, err := s.Run(id)
+			want := requested
+			if want == "" {
+				want = "model-v1"
+			}
+			if err != nil || !first.ModelID.Valid || first.Model != want {
+				t.Fatalf("first model = %+v, %v", first, err)
+			}
+			cfg.DefaultModel = "new-default"
+			// The prior model must survive multiple failed setup attempts.
+			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
+				testfix.Script(t, "models: model-v1 model-v2", "stop end_turn", "history:", "no-such-action"))
+			for range 2 {
+				if err := Restart(s, id, cfg); err == nil {
+					t.Fatal("expected load failure")
+				}
+				latest, err := s.Run(id)
+				if err != nil || latest.ModelID != first.ModelID {
+					t.Fatalf("failed load lost model: %+v, %v", latest, err)
+				}
+			}
+			// A now-unavailable prior model must fail before prompting.
+			if err := os.Remove(selected); err != nil {
+				t.Fatal(err)
+			}
+			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
+				testfix.Script(t, "models: new-default", "selected-model "+selected, "stop end_turn"))
+			if err := Restart(s, id, cfg); err == nil || !strings.Contains(err.Error(), "unavailable") {
+				t.Fatalf("unavailable model error = %v", err)
+			}
+			if _, err := os.Stat(selected); !os.IsNotExist(err) {
+				t.Fatalf("prompt ran with unavailable model: %v", err)
+			}
+			// The fake's own default also changes; restart must explicitly
+			// select the original model before its prompt runs.
+			testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
+				testfix.Script(t, "models: new-default model-v1 model-v2", "selected-model "+selected, "stop end_turn"))
+			if err := Restart(s, id, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(selected); err != nil || string(got) != want {
+				t.Fatalf("prompt model = %q, %v; want %q", got, err, want)
+			}
+			latest, err := s.Run(id)
+			if err != nil || latest.ModelID != first.ModelID {
+				t.Fatalf("restart model = %+v, %v", latest, err)
+			}
+		})
+	}
+}
+
 func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "stop end_turn")
@@ -329,9 +392,7 @@ func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
 		t.Fatal("the first run did not record its new session")
 	}
 	const session = "existing-session"
-	if err := s.SetSession(id, session); err != nil {
-		t.Fatal(err)
-	}
+	testfix.SetSession(t, s.DataDir(), id, session)
 	testfix.UseAgent(t, dataDir, "fake", testfix.FakeAgent(t),
 		testfix.Script(t, "stop end_turn", "history:", "no-such-action"))
 
