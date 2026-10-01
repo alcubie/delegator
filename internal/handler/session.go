@@ -24,6 +24,8 @@ type Policy struct {
 type SessionOptions struct {
 	AdditionalDirectories []string
 	Environment           []string
+	// Model is an advertised ACP model ID. Empty or null leaves it unchanged.
+	Model string
 }
 
 // AllowAll permits every tool for unattended ticket runs, where no user is
@@ -130,6 +132,10 @@ func Start(ctx context.Context, name string, argv []string, policy Policy, cwd s
 		return nil, fmt.Errorf("open a session of agent %q in %s: %w", name, cwd, err)
 	}
 	s.id = r.SessionId
+	if err := s.setModel(ctx, options.Model, r.ConfigOptions); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("configure agent %q: %w", name, err)
+	}
 	return s, nil
 }
 
@@ -147,8 +153,10 @@ func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, i
 		_ = s.Close()
 		return nil, fmt.Errorf("agent %q cannot load a session", name)
 	}
+	var response acp.LoadSessionResponse
 	replay, err := s.collect(func() error {
-		_, err := s.conn.LoadSession(ctx, acp.LoadSessionRequest{
+		var err error
+		response, err = s.conn.LoadSession(ctx, acp.LoadSessionRequest{
 			Cwd:                   cwd,
 			McpServers:            []acp.McpServer{},
 			SessionId:             acp.SessionId(id),
@@ -161,6 +169,10 @@ func Load(ctx context.Context, name string, argv []string, policy Policy, cwd, i
 		return nil, fmt.Errorf("load session %s of agent %q in %s: %w", id, name, cwd, err)
 	}
 	s.replay, s.id, s.loaded = replay, acp.SessionId(id), true
+	if err := s.setModel(ctx, options.Model, response.ConfigOptions); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("configure agent %q: %w", name, err)
+	}
 	return s, nil
 }
 

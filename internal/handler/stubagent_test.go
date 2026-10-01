@@ -91,12 +91,13 @@ const (
 // stubRecord captures initialization capabilities, session directory, and
 // permission decisions in request order.
 type stubRecord struct {
-	Fs                    acp.FileSystemCapabilities `json:"fs"`
-	Terminal              bool                       `json:"terminal"`
-	Cwd                   string                     `json:"cwd"`
-	AdditionalDirectories []string                   `json:"additionalDirectories"`
-	Environment           string                     `json:"environment"`
-	Decisions             []string                   `json:"decisions"`
+	ModelRequests         []acp.SetSessionConfigOptionRequest `json:"modelRequests"`
+	Fs                    acp.FileSystemCapabilities          `json:"fs"`
+	Terminal              bool                                `json:"terminal"`
+	Cwd                   string                              `json:"cwd"`
+	AdditionalDirectories []string                            `json:"additionalDirectories"`
+	Environment           string                              `json:"environment"`
+	Decisions             []string                            `json:"decisions"`
 }
 
 // stubLaunch returns the configured stub command and its record path.
@@ -141,16 +142,17 @@ func TestStubAgent(t *testing.T) {
 }
 
 type stubAgent struct {
-	record      string
-	options     string
-	turn        string
-	loading     string
-	conn        *acp.AgentSideConnection
-	fs          acp.FileSystemCapabilities
-	term        bool
-	cwd         string
-	directories []string
-	decisions   []string
+	modelRequests []acp.SetSessionConfigOptionRequest
+	record        string
+	options       string
+	turn          string
+	loading       string
+	conn          *acp.AgentSideConnection
+	fs            acp.FileSystemCapabilities
+	term          bool
+	cwd           string
+	directories   []string
+	decisions     []string
 }
 
 var (
@@ -171,7 +173,7 @@ func (a *stubAgent) NewSession(_ context.Context, p acp.NewSessionRequest) (acp.
 	if err := a.write(); err != nil {
 		return acp.NewSessionResponse{}, err
 	}
-	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID)}, nil
+	return acp.NewSessionResponse{SessionId: acp.SessionId(stubSessionID), ConfigOptions: a.modelOptions()}, nil
 }
 
 // LoadSession records the requested directory, rejects unknown IDs, and
@@ -191,7 +193,7 @@ func (a *stubAgent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (
 			return acp.LoadSessionResponse{}, err
 		}
 	}
-	return acp.LoadSessionResponse{}, nil
+	return acp.LoadSessionResponse{ConfigOptions: a.modelOptions()}, nil
 }
 
 // history replays either two updates or a history larger than the event
@@ -323,6 +325,7 @@ func (a *stubAgent) permissionOptions() []acp.PermissionOption {
 // write puts everything the stub agent has seen into its record file.
 func (a *stubAgent) write() error {
 	b, err := json.Marshal(stubRecord{
+		ModelRequests:         a.modelRequests,
 		Fs:                    a.fs,
 		Terminal:              a.term,
 		Cwd:                   a.cwd,
@@ -352,8 +355,34 @@ func (a *stubAgent) ListSessions(context.Context, acp.ListSessionsRequest) (acp.
 func (a *stubAgent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
 	return acp.ResumeSessionResponse{}, nil
 }
-func (a *stubAgent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
-	return acp.SetSessionConfigOptionResponse{}, nil
+func (a *stubAgent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	a.modelRequests = append(a.modelRequests, p)
+	if err := a.write(); err != nil {
+		return acp.SetSessionConfigOptionResponse{}, err
+	}
+	if a.options == "model-rejected" {
+		return acp.SetSessionConfigOptionResponse{}, errors.New("model rejected")
+	}
+	options := a.modelOptions()
+	if a.options != "model-unconfirmed" {
+		options[0].Select.CurrentValue = p.ValueId.Value
+	}
+	return acp.SetSessionConfigOptionResponse{ConfigOptions: options}, nil
+}
+
+func (a *stubAgent) modelOptions() []acp.SessionConfigOption {
+	if a.options != "model-flat" && a.options != "model-grouped" && a.options != "model-no-category" && a.options != "model-rejected" && a.options != "model-unconfirmed" {
+		return nil
+	}
+	values := acp.SessionConfigSelectOptionsUngrouped{{Value: "model-v1", Name: "First"}, {Value: "model-v2", Name: "Second"}}
+	option := &acp.SessionConfigOptionSelect{Id: "agent-model", Name: "Model", Type: "select", Category: acp.Ptr(acp.SessionConfigOptionCategoryModel), CurrentValue: "model-v1", Options: acp.SessionConfigSelectOptions{Ungrouped: &values}}
+	if a.options == "model-no-category" {
+		option.Id, option.Category = "model", nil
+	}
+	if a.options == "model-grouped" {
+		option.Options = acp.SessionConfigSelectOptions{Grouped: acp.Ptr(acp.SessionConfigSelectOptionsGrouped{{Group: "models", Name: "Models", Options: values}})}
+	}
+	return []acp.SessionConfigOption{{Select: option}}
 }
 func (a *stubAgent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	return acp.SetSessionModeResponse{}, nil

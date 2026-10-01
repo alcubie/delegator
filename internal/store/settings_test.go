@@ -27,6 +27,36 @@ func TestSettingsMigrationSeedsDefaults(t *testing.T) {
 	}
 }
 
+func TestDefaultModelMigrationPreservesExistingSettings(t *testing.T) {
+	dir := t.TempDir()
+	db := openRaw(t, dir)
+	if _, err := db.Exec(initialSchema + telemetryConsentSchema + `
+UPDATE settings SET runs = 7, default_agent_id = (SELECT id FROM agents WHERE name = 'codex');
+PRAGMA user_version = 2;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	cfg, err := s.Settings()
+	if err != nil || cfg.DefaultModel != "" || cfg.Runs != 7 || cfg.DefaultAgent != "codex" {
+		t.Fatalf("migrated settings = %+v, %v", cfg, err)
+	}
+	if err := s.SetSetting("default_model", "model-v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSetting("default_model", "null"); err != nil {
+		t.Fatal(err)
+	}
+	var model any
+	if err := s.db.QueryRow("SELECT default_model FROM settings WHERE id = 1").Scan(&model); err != nil || model != nil {
+		t.Fatalf("reset to null: stored model = %v, %v", model, err)
+	}
+}
+
 func TestSettingsTableEnforcesItsConstraints(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -56,13 +86,14 @@ func TestSettingUpdatesPersistAcrossOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Config{Runs: 3, TimeoutMinutes: 90, DoneHours: 72, MaxRunsPerProject: 2, DefaultAgent: "gemini"}
+	want := config.Config{Runs: 3, TimeoutMinutes: 90, DoneHours: 72, MaxRunsPerProject: 2, DefaultAgent: "gemini", DefaultModel: "provider/model-v1"}
 	for _, set := range []func() error{
 		func() error { return s.SetSetting("runs", "3") },
 		func() error { return s.SetSetting("timeout_minutes", "90") },
 		func() error { return s.SetSetting("done_hours", "72") },
 		func() error { return s.SetSetting("max_runs_per_project", "2") },
 		func() error { return s.SetSetting("default_agent", "gemini") },
+		func() error { return s.SetSetting("default_model", "provider/model-v1") },
 	} {
 		if err := set(); err != nil {
 			t.Fatal(err)

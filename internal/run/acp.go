@@ -18,7 +18,7 @@ import (
 // A completed turn records exit code zero; other outcomes record failure
 // details. The supervisor context cancels the turn on timeout, alongside
 // process-group termination.
-func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket store.Ticket, runID int64, worktree, cacheDir string, log io.Writer) (err error) {
+func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket store.Ticket, runID int64, worktree, cacheDir, model string, log io.Writer) (err error) {
 	// Always close the claimed run. Use noExitCode unless the turn
 	// completes normally.
 	code := noExitCode
@@ -26,6 +26,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 	id := ticket.ID
 
 	options := sessionOptions(cacheDir)
+	options.Model = model
 	var session *handler.Session
 	if ticket.Session == "" {
 		session, err = handler.Start(ctx, agent.Name, agent.Argv, handler.AllowAll(), worktree, options, log)

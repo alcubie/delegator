@@ -171,7 +171,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, log)
+	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, cfg.DefaultModel, log)
 }
 
 // logTime uses RFC 3339 with filename-safe separators and millisecond

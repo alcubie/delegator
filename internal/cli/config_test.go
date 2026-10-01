@@ -58,6 +58,7 @@ func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
 		"done_hours = 6  # the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty.\n\n" +
 		"max_runs_per_project = 2  # the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit.\n\n" +
 		"default_agent = codex  # the registered agent used for new runs.\n\n" +
+		"default_model = null  # the ACP model ID used for runs. null uses the agent's default model.\n\n" +
 		"telemetry = null  # share usage statistics; null means disabled because unanswered. Set true or false to choose.\n"
 	if listed != want {
 		t.Errorf("dg config list output = %q, want %q", listed, want)
@@ -192,6 +193,43 @@ func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
 		_, err := runIn(t, dataDir, t.TempDir(), tc.args...)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("dg %v error = %v, want it to contain %q", tc.args, err, tc.want)
+		}
+	}
+}
+
+func TestConfigDefaultModelPersistsAndResets(t *testing.T) {
+	dataDir := t.TempDir()
+	for _, value := range []string{"provider/model-v1", "null", "provider/model-v2", "default", "null"} {
+		if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", value); err != nil {
+			t.Fatal(err)
+		}
+		got, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_model")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := value
+		if value == "null" {
+			want = "null"
+		}
+		if got != want+"\n" {
+			t.Fatalf("after setting %q: got %q, want %q", value, got, want)
+		}
+	}
+}
+
+func TestConfigDefaultModelRejectsEmptyInput(t *testing.T) {
+	dataDir := t.TempDir()
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "model-v1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"", "   "} {
+		_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", value)
+		if err == nil || !strings.Contains(err.Error(), "must be a model ID or null") {
+			t.Fatalf("setting %q: error = %v", value, err)
+		}
+		got, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_model")
+		if err != nil || got != "model-v1\n" {
+			t.Fatalf("rejected input changed model: %q, %v", got, err)
 		}
 	}
 }

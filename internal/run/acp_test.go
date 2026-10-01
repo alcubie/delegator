@@ -223,6 +223,26 @@ func TestTheACPRunnerUsesTheDefaultAgentFromItsSnapshot(t *testing.T) {
 	}
 }
 
+func TestTheACPRunnerFailsWhenItsConfiguredModelCannotBeSelected(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Select the model")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
+	cfg.DefaultModel = "model-v1"
+	s := testfix.OpenStore(t, dataDir)
+	// The fake advertises no model selector. The snapshot must still be
+	// honored even though the stored default_model remains unset.
+	err := Start(s, id, cfg)
+	if err == nil || !strings.Contains(err.Error(), "cannot set model \"model-v1\"") {
+		t.Fatalf("Start error = %v", err)
+	}
+	if ticket := testfix.ReadTicket(t, dataDir, id); ticket.Status != store.Failed || ticket.Session != "" {
+		t.Fatalf("failed setup ticket = %+v", ticket)
+	}
+	run, err := s.Run(id)
+	if err != nil || run.EndedAt.IsZero() {
+		t.Fatalf("run was not closed: %+v, %v", run, err)
+	}
+}
+
 // Use the ACP session ID rather than parsing agent output.
 func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")

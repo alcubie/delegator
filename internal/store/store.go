@@ -1070,10 +1070,11 @@ FROM agents WHERE settings.id = 1 AND agents.name = ?`, name)
 func (s *Store) Settings() (config.Config, error) {
 	var cfg config.Config
 	err := s.db.QueryRow(`SELECT settings.runs, settings.timeout_minutes,
-settings.done_hours, settings.max_runs_per_project, COALESCE(agents.name, ''), settings.telemetry
+settings.done_hours, settings.max_runs_per_project, COALESCE(agents.name, ''), settings.telemetry,
+COALESCE(settings.default_model, '')
 FROM settings LEFT JOIN agents ON agents.id = settings.default_agent_id
 WHERE settings.id = 1`).Scan(&cfg.Runs, &cfg.TimeoutMinutes, &cfg.DoneHours,
-		&cfg.MaxRunsPerProject, &cfg.DefaultAgent, &cfg.Telemetry)
+		&cfg.MaxRunsPerProject, &cfg.DefaultAgent, &cfg.Telemetry, &cfg.DefaultModel)
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -1094,6 +1095,18 @@ var integerSettingColumns = map[string]string{
 // is special because its public value is a registry name while SQLite stores
 // the referenced agent id.
 func (s *Store) SetSetting(name, value string) error {
+	if name == "default_model" {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return errors.New("setting default_model must be a model ID or null")
+		}
+		var model any = value
+		if value == "null" {
+			model = nil
+		}
+		_, err := s.db.Exec("UPDATE settings SET default_model = ? WHERE id = 1", model)
+		return err
+	}
 	if name == "telemetry" {
 		if value != "true" && value != "false" {
 			return errors.New("setting telemetry must be true or false")

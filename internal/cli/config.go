@@ -149,6 +149,11 @@ func settingValue(cfg config.Config, name string) any {
 		return strconv.Itoa(cfg.MaxRunsPerProject)
 	case "default_agent":
 		return cfg.DefaultAgent
+	case "default_model":
+		if cfg.DefaultModel == "" {
+			return nil
+		}
+		return cfg.DefaultModel
 	default:
 		panic("settingValue called with unknown setting " + name)
 	}

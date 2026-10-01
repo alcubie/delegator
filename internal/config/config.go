@@ -21,6 +21,8 @@ type Config struct {
 	// DefaultAgent is the registry name used for new runs. It is stored in
 	// SQLite as a reference to the agent registry.
 	DefaultAgent string
+	// DefaultModel selects an ACP model for runs. Empty uses the agent default.
+	DefaultModel string
 	// Telemetry is nil until answered. Only an explicit true permits reporting.
 	Telemetry *bool
 }
@@ -39,6 +41,7 @@ var Definitions = []Definition{
 	{"done_hours", "the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty."},
 	{"max_runs_per_project", "the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit."},
 	{"default_agent", "the registered agent used for new runs."},
+	{"default_model", "the ACP model ID used for runs. null uses the agent's default model."},
 	{"telemetry", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},
 }
 
