@@ -15,17 +15,12 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{
-	initialSchema,
-	analyticsConsentSchema,
-	`ALTER TABLE settings RENAME COLUMN analytics TO telemetry;`,
-	`ALTER TABLE analytics_state RENAME TO telemetry_state;`,
-}
+var migrations = []string{initialSchema, telemetryConsentSchema}
 
-const analyticsConsentSchema = `
-ALTER TABLE settings ADD COLUMN analytics INTEGER CHECK (analytics IN (0, 1));
+const telemetryConsentSchema = `
+ALTER TABLE settings ADD COLUMN telemetry INTEGER CHECK (telemetry IN (0, 1));
 
-CREATE TABLE analytics_state (
+CREATE TABLE telemetry_state (
   id                       INTEGER PRIMARY KEY CHECK (id = 1) REFERENCES settings(id),
   instance_id              TEXT NOT NULL,
   first_consent_date       TEXT,
@@ -37,7 +32,7 @@ CREATE TABLE analytics_state (
 
 -- Generate a random UUID v4 once, inside the migration transaction. Copies of
 -- the database intentionally retain the same identity.
-INSERT INTO analytics_state (id, instance_id)
+INSERT INTO telemetry_state (id, instance_id)
 VALUES (1, lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
   substr(hex(randomblob(2)), 2) || '-' ||
   substr('89ab', 1 + (random() & 3), 1) || substr(hex(randomblob(2)), 2) || '-' ||
