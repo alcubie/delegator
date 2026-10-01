@@ -14,7 +14,7 @@ import (
 
 type setting struct {
 	Name        string `json:"name"`
-	Value       string `json:"value"`
+	Value       any    `json:"value"`
 	Description string `json:"description"`
 }
 
@@ -34,7 +34,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					if i > 0 {
 						fmt.Fprintln(out)
 					}
-					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, setting.Value, setting.Description)
+					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, settingText(setting.Value), setting.Description)
 				}
 			})
 		})
@@ -71,7 +71,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			}
 			return withStore(*dataDir, cfg, func(*store.Store) error {
 				return writeValue(cmd.OutOrStdout(), settingValue(*cfg, args[0]), false, func(out io.Writer) {
-					fmt.Fprintln(out, settingValue(*cfg, args[0]))
+					fmt.Fprintln(out, settingText(settingValue(*cfg, args[0])))
 				})
 			})
 		},
@@ -125,8 +125,20 @@ func knownSetting(name string) bool {
 	return false
 }
 
-func settingValue(cfg config.Config, name string) string {
+func settingText(value any) string {
+	if value == nil {
+		return "null"
+	}
+	return fmt.Sprint(value)
+}
+
+func settingValue(cfg config.Config, name string) any {
 	switch name {
+	case "telemetry":
+		if cfg.Telemetry == nil {
+			return nil
+		}
+		return *cfg.Telemetry
 	case "runs":
 		return strconv.Itoa(cfg.Runs)
 	case "timeout_minutes":

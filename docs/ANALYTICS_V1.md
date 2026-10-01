@@ -143,7 +143,7 @@ Machine hash may be omitted/null when unavailable; CPU architecture is excluded.
 Return a non-204 status for rejected requests or failures; never echo private
 input. A revoked instance receives 410 and must stop automatic attempts without
 silently rotating identity. Operator deletion/retention remains separate from
-the client protocol: no public deletion route, credential, or analytics command.
+the client protocol: no public deletion route, credential, or telemetry command.
 Retain minimal revoked-ID suppression separately from expiring usage so delayed
 installation retries cannot recreate deleted data. Document that retention.
 
