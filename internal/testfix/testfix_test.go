@@ -65,15 +65,3 @@ func TestWaitForFailsAtDefaultTimeout(t *testing.T) {
 		t.Errorf("waitFor expired after %v, want %v", got, waitTimeout)
 	}
 }
-
-func TestWaitForStartsSettlesForFiftyMilliseconds(t *testing.T) {
-	_, marker := RecordingLaunch(t)
-
-	start := time.Now()
-	WaitForStarts(t, marker, 0)
-	elapsed := time.Since(start)
-
-	if elapsed < 50*time.Millisecond || elapsed >= 100*time.Millisecond {
-		t.Errorf("WaitForStarts waited %v for a start that nothing makes, want a wait of 50ms", elapsed)
-	}
-}

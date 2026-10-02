@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -280,36 +281,45 @@ func Script(t *testing.T, lines ...string) string {
 	return path
 }
 
+// LaunchRecord observes both requests for supervisor commands and commands
+// that execute far enough to write their subprocess marker.
+type LaunchRecord struct {
+	marker   string
+	attempts atomic.Int64
+}
+
 // RecordingLaunch returns a supervisor command that appends to a marker file,
-// plus the marker path. Tests count launches without starting real
+// plus its launch record. Tests count launches without starting real
 // supervisors. No ticket ID is recorded because supervisors select their own
 // tickets.
-func RecordingLaunch(t *testing.T) (func() *exec.Cmd, string) {
+func RecordingLaunch(t *testing.T) (func() *exec.Cmd, *LaunchRecord) {
 	t.Helper()
-	marker := filepath.Join(t.TempDir(), "started")
+	record := &LaunchRecord{marker: filepath.Join(t.TempDir(), "started")}
 	return func() *exec.Cmd {
-		return exec.Command("sh", "-c", `echo started >> "$1"`, "--", marker)
-	}, marker
+		record.attempts.Add(1)
+		return exec.Command("sh", "-c", `echo started >> "$1"`, "--", record.marker)
+	}, record
 }
 
 // waitTimeout bounds how long tests wait for subprocess markers. Successful
 // waits return as soon as the marker appears.
 const waitTimeout = 2 * time.Second
 
-// settle is the extra wait used to detect unexpected launches after the
-// expected count has arrived.
-const settle = 50 * time.Millisecond
-
-// WaitForStarts waits for exactly want launch records, then waits briefly for
-// unexpected extra launches. It fails on either too few or too many.
-func WaitForStarts(t *testing.T, marker string, want int) {
+// WaitForStarts verifies the exact number of synchronous launch attempts, then
+// waits for every expected subprocess to write its marker. Launch attempts are
+// known when the scheduling call returns, so unexpected launches need no
+// settling delay; subprocess failures remain bounded by waitTimeout.
+func WaitForStarts(t *testing.T, record *LaunchRecord, want int) {
 	t.Helper()
+	if got := int(record.attempts.Load()); got != want {
+		t.Errorf("%d supervisor launches were attempted, want %d", got, want)
+		return
+	}
 	deadline := time.Now().Add(waitTimeout)
-	for starts(t, marker) < want && time.Now().Before(deadline) {
+	for starts(t, record.marker) < want && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	time.Sleep(settle)
-	if got := starts(t, marker); got != want {
+	if got := starts(t, record.marker); got != want {
 		t.Errorf("%d supervisors were started, want %d", got, want)
 	}
 }

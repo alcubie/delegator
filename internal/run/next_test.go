@@ -65,13 +65,13 @@ func dependentQueue(t *testing.T) string {
 func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
@@ -80,38 +80,38 @@ func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 	if err := s.PauseQueue(); err != nil {
 		t.Fatal(err)
 	}
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 // Next decides the number of supervisors; each supervisor selects its own
 // ticket.
 func TestNextStartsASupervisorForEachFreeSlot(t *testing.T) {
 	dataDir, _ := queueOf(t, 3)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 3)
+	testfix.WaitForStarts(t, record, 3)
 }
 
 // Do not launch more supervisors than there are eligible tickets.
 func TestNextStartsNoMoreSupervisorsThanTheQueueHasTickets(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 2)
+	testfix.WaitForStarts(t, record, 2)
 }
 
 func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
@@ -120,13 +120,13 @@ func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
 	if _, err := s.Claim(ids[0], "delegator/1-the-first", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 3}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 2)
+	testfix.WaitForStarts(t, record, 2)
 }
 
 // Ready work still consumes capacity, regardless of queue length.
@@ -141,13 +141,13 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	if err := s.FinishTicket(ids[0], "abc123"); err != nil {
 		t.Fatal(err)
 	}
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 2}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 // A failed run frees a slot without disturbing other active runs.
@@ -162,13 +162,13 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	if err := s.ChangeStatus(ids[0], store.Failed); err != nil {
 		t.Fatal(err)
 	}
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 2}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // Regression: counting global slots while every project was full once
@@ -180,49 +180,49 @@ func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
 	if _, err := s.Claim(ids[0], fmt.Sprintf("delegator/%d-ticket", ids[0]), testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(s, config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 // A queue blocked entirely by dependencies must start no supervisors.
 func TestNextWithEveryTicketWaitingOnALinkStartsNothing(t *testing.T) {
 	dataDir := dependentQueue(t)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 // Count one supervisor when only one project slot remains, even if two
 // tickets are individually eligible.
 func TestNextStartsOneSupervisorForAProjectWithOnePlace(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 func TestNextStartsOneSupervisorForEachProjectWithAPlace(t *testing.T) {
 	dataDir := twoProjectQueue(t)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 2)
+	testfix.WaitForStarts(t, record, 2)
 }
 
 // Read the child's session and group to verify isolation from the launching

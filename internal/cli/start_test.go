@@ -37,7 +37,7 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 	if err := s.PauseQueue(); err != nil {
 		t.Fatal(err)
 	}
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	_, err := runIn(t, dataDir, repo, "start")
@@ -45,7 +45,7 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // Supervisor count must use capacity from stored settings.
@@ -59,14 +59,14 @@ func TestStartStartsARunForEachSlotTheConfigGives(t *testing.T) {
 	if err := s.PauseQueue(); err != nil {
 		t.Fatal(err)
 	}
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	if _, err := runIn(t, dataDir, repo, "start"); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 2)
+	testfix.WaitForStarts(t, record, 2)
 }
 
 func TestStartNoChangeWhenAlreadyRunning(t *testing.T) {

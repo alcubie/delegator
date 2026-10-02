@@ -101,10 +101,11 @@ func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	}
 	testfix.AgeRun(t, dataDir, id, 2*time.Minute)
 
-	launch, _ := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
 		t.Fatal(err)
 	}
+	testfix.WaitForStarts(t, record, 0)
 
 	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Failed {
 		t.Errorf("status = %q, want %q", got.Status, store.Failed)
@@ -125,10 +126,11 @@ func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	launch, _ := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
 		t.Fatal(err)
 	}
+	testfix.WaitForStarts(t, record, 0)
 
 	if got := testfix.ReadTicket(t, dataDir, id); got.Status != store.Running {
 		t.Errorf("status = %q, want %q", got.Status, store.Running)
@@ -145,13 +147,13 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 		t.Fatal(err)
 	}
 	testfix.AgeRun(t, dataDir, first, 2*time.Minute)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // Do not trigger extra supervisors when reconciliation changes nothing.
@@ -159,11 +161,11 @@ func TestReconcileThatMarksNothingStartsNothing(t *testing.T) {
 	dataDir, _ := queuedTicket(t, "the first")
 	testfix.SecondTicket(t, dataDir)
 	s := testfix.OpenStore(t, dataDir)
-	launch, marker := testfix.RecordingLaunch(t)
+	launch, record := testfix.RecordingLaunch(t)
 
 	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }

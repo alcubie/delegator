@@ -214,7 +214,7 @@ func TestRunWithNoIDThatClaimsNothingStartsNothing(t *testing.T) {
 	if err := s.ChangeStatus(first, store.Cancelled); err != nil {
 		t.Fatal(err)
 	}
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	out, err := runIn(t, dataDir, repo, "run")
@@ -225,7 +225,7 @@ func TestRunWithNoIDThatClaimsNothingStartsNothing(t *testing.T) {
 		t.Errorf("dg run wrote %q, want nothing", out)
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
 
 // A completed run must trigger more work after freeing its capacity.
@@ -234,14 +234,14 @@ func TestRunWithNoIDStartsTheNextWhenItsRunEnds(t *testing.T) {
 	_, _, repo := queuedTicket(t, dataDir)
 	testfix.SecondTicket(t, dataDir)
 	useFakeAgent(t, dataDir, "stop end_turn")
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	if _, err := runIn(t, dataDir, repo, "run"); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // The next supervisor starts after the first one has finished, in a process
@@ -273,12 +273,12 @@ func TestRunThatFailsToStartStartsNothing(t *testing.T) {
 	if err := os.RemoveAll(repo); err != nil {
 		t.Fatal(err)
 	}
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	if _, err := runIn(t, dataDir, t.TempDir(), "run", fmt.Sprint(id)); err == nil {
 		t.Fatal("err = nil, want the failure to make the worktree")
 	}
 
-	testfix.WaitForStarts(t, marker, 0)
+	testfix.WaitForStarts(t, record, 0)
 }
