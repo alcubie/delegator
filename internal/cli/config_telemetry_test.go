@@ -27,7 +27,7 @@ func TestConfigTelemetryPreservesNullableValuesThroughCLIAndRPC(t *testing.T) {
 			t.Fatalf("CLI get = %q, %v, want %s", out, err, choice)
 		}
 		out, err = runIn(t, dir, work, "config", "list")
-		if err != nil || !strings.Contains(out, "telemetry = "+choice+"  #") {
+		if err != nil || !strings.Contains(out, "│ telemetry            │ "+choice) {
 			t.Fatalf("CLI list = %q, %v", out, err)
 		}
 		var want any
