@@ -1,6 +1,8 @@
 package testfix
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,24 +10,59 @@ import (
 
 // fakeT records expected fixture failures without failing or terminating the
 // enclosing test.
-type fakeT struct{ failed bool }
+type fakeT struct {
+	failed  bool
+	failure string
+}
 
 func (f *fakeT) Helper() {}
 
-func (f *fakeT) Fatalf(format string, args ...any) { f.failed = true }
+func (f *fakeT) Fatalf(format string, args ...any) {
+	f.failed = true
+	f.failure = fmt.Sprintf(format, args...)
+}
 
-func TestWaitForFailsAfterTwoSeconds(t *testing.T) {
-	f := &fakeT{}
+type fakeWaitClock struct{ now time.Time }
 
-	start := time.Now()
-	WaitFor(f, filepath.Join(t.TempDir(), "never"))
-	elapsed := time.Since(start)
+func (c *fakeWaitClock) Now() time.Time { return c.now }
 
-	if !f.failed {
-		t.Fatal("WaitFor did not fail for a path that nothing writes")
+func (c *fakeWaitClock) Sleep(duration time.Duration) { c.now = c.now.Add(duration) }
+
+func TestWaitForReturnsExistingMarkerWithoutWaiting(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "ready")
+	if err := os.WriteFile(marker, []byte(" ready\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if elapsed < 2*time.Second || elapsed >= 3*time.Second {
-		t.Errorf("WaitFor failed after %v, want a failure after 2s", elapsed)
+	f := &fakeT{}
+	clock := &fakeWaitClock{}
+
+	if got := waitFor(f, marker, waitTimeout, clock); got != "ready" {
+		t.Errorf("waitFor returned %q, want %q", got, "ready")
+	}
+	if !clock.now.IsZero() {
+		t.Errorf("waitFor advanced clock to %v for an existing marker", clock.now)
+	}
+	if f.failure != "" {
+		t.Errorf("waitFor reported unexpected failure: %s", f.failure)
+	}
+}
+
+func TestWaitForFailsAtDefaultTimeout(t *testing.T) {
+	if waitTimeout != 2*time.Second {
+		t.Fatalf("waitTimeout = %v, want 2s", waitTimeout)
+	}
+	marker := filepath.Join(t.TempDir(), "never")
+	f := &fakeT{}
+	clock := &fakeWaitClock{}
+
+	wantFailure := fmt.Sprintf("%s was not written", marker)
+	waitFor(f, marker, waitTimeout, clock)
+
+	if f.failure != wantFailure {
+		t.Errorf("waitFor failure = %q, want %q", f.failure, wantFailure)
+	}
+	if got := clock.now.Sub(time.Time{}); got != waitTimeout {
+		t.Errorf("waitFor expired after %v, want %v", got, waitTimeout)
 	}
 }
 

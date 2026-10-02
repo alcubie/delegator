@@ -334,16 +334,31 @@ type failing interface {
 	Fatalf(format string, args ...any)
 }
 
+type waitClock interface {
+	Now() time.Time
+	Sleep(time.Duration)
+}
+
+type realWaitClock struct{}
+
+func (realWaitClock) Now() time.Time { return time.Now() }
+
+func (realWaitClock) Sleep(duration time.Duration) { time.Sleep(duration) }
+
 // WaitFor waits for path to exist and returns its contents, failing after a
 // short timeout.
 func WaitFor(t failing, path string) string {
+	return waitFor(t, path, waitTimeout, realWaitClock{})
+}
+
+func waitFor(t failing, path string, timeout time.Duration, clock waitClock) string {
 	t.Helper()
-	deadline := time.Now().Add(waitTimeout)
-	for time.Now().Before(deadline) {
+	deadline := clock.Now().Add(timeout)
+	for clock.Now().Before(deadline) {
 		if data, err := os.ReadFile(path); err == nil {
 			return strings.TrimSpace(string(data))
 		}
-		time.Sleep(10 * time.Millisecond)
+		clock.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s was not written", path)
 	return ""
