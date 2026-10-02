@@ -15,7 +15,7 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema}
 
 const runModelSchema = `
 CREATE TABLE models (
@@ -49,6 +49,11 @@ VALUES (1, lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
   substr(hex(randomblob(2)), 2) || '-' ||
   substr('89ab', 1 + (random() & 3), 1) || substr(hex(randomblob(2)), 2) || '-' ||
   hex(randomblob(6))));
+`
+
+const telemetryDeliverySchema = `
+ALTER TABLE telemetry_state ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0
+  CHECK (revoked IN (0, 1));
 `
 
 // initialSchema creates the complete database and seeds the built-in agents

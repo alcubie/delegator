@@ -151,7 +151,11 @@ func setSetting(s *store.Store, name, value string) error {
 			return fmt.Errorf("agent %q uses executable %q, but it was not found on PATH.\nInstall it or configure its executable with:\n    %s", agent.Name, agent.Argv[0], configure)
 		}
 	}
-	return s.SetSetting(name, value)
+	err := s.SetSetting(name, value)
+	if err == nil && name == "telemetry" && value == "true" {
+		attemptTelemetry(s)
+	}
+	return err
 }
 
 func knownSetting(name string) bool {

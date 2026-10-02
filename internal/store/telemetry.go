@@ -19,6 +19,7 @@ type TelemetryState struct {
 	InstallationAcknowledged bool
 	ReportedThrough          *string
 	LastAttempt              *string
+	Revoked                  bool
 }
 
 // TelemetrySnapshot is the read-only input to the telemetry report builder.
@@ -55,11 +56,11 @@ func (s *Store) TelemetryState() (TelemetryState, error) {
 	var state TelemetryState
 	err := s.db.QueryRow(`SELECT settings.telemetry, state.instance_id,
 state.first_consent_date, state.consent_start, state.installation_acknowledged,
-state.reported_through, state.last_attempt
+state.reported_through, state.last_attempt, state.revoked
 FROM telemetry_state AS state JOIN settings ON settings.id = state.id
 WHERE state.id = 1`).Scan(&state.Consent, &state.InstanceID,
 		&state.FirstConsentDate, &state.ConsentStart, &state.InstallationAcknowledged,
-		&state.ReportedThrough, &state.LastAttempt)
+		&state.ReportedThrough, &state.LastAttempt, &state.Revoked)
 	return state, err
 }
 
@@ -75,14 +76,14 @@ func (s *Store) TelemetrySnapshot(start, end string) (TelemetrySnapshot, error) 
 	var out TelemetrySnapshot
 	err = tx.QueryRow(`SELECT settings.telemetry, state.instance_id,
 state.first_consent_date, state.consent_start, state.installation_acknowledged,
-state.reported_through, state.last_attempt, settings.runs, settings.timeout_minutes,
+state.reported_through, state.last_attempt, state.revoked, settings.runs, settings.timeout_minutes,
 settings.done_hours, settings.max_runs_per_project, COALESCE(agents.name, ''),
 COALESCE(agents.argv, ''), COALESCE(settings.default_model, '')
 FROM telemetry_state AS state JOIN settings ON settings.id = state.id
 LEFT JOIN agents ON agents.id = settings.default_agent_id WHERE state.id = 1`).Scan(
 		&out.State.Consent, &out.State.InstanceID, &out.State.FirstConsentDate,
 		&out.State.ConsentStart, &out.State.InstallationAcknowledged,
-		&out.State.ReportedThrough, &out.State.LastAttempt, &out.Settings.Runs,
+		&out.State.ReportedThrough, &out.State.LastAttempt, &out.State.Revoked, &out.Settings.Runs,
 		&out.Settings.TimeoutMinutes, &out.Settings.DoneHours,
 		&out.Settings.MaxRunsPerProject, &out.Settings.DefaultAgent,
 		&out.DefaultAgentArgv, &out.Settings.DefaultModel)
@@ -157,6 +158,51 @@ SELECT day, metric, agent, argv, n FROM activity WHERE day >= ? AND day < ? ORDE
 		day = t.AddDate(0, 0, 1).Format(time.DateOnly)
 	}
 	return out, tx.Commit()
+}
+
+// ReserveTelemetryAttempt prevents concurrent processes and rapid retries from
+// sending the same batch. expectedConsent identifies the period used to build
+// the payload; a disable/re-enable race makes the reservation fail.
+func (s *Store) ReserveTelemetryAttempt(now time.Time, expectedConsent string) (bool, error) {
+	threshold := now.UTC().Add(-15 * time.Minute).Format(time.RFC3339Nano)
+	result, err := s.db.Exec(`UPDATE telemetry_state SET last_attempt = ?
+WHERE id = 1 AND revoked = 0 AND consent_start = ?
+  AND EXISTS (SELECT 1 FROM settings WHERE id = 1 AND telemetry = 1)
+  AND (last_attempt IS NULL OR julianday(last_attempt) <= julianday(?))`,
+		now.UTC().Format(time.RFC3339Nano), expectedConsent, threshold)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	return changed == 1, err
+}
+
+// DeferTelemetryAttempt honors a server delay longer than the ordinary
+// cooldown. Storing retryAt-minus-cooldown preserves the one timestamp model.
+func (s *Store) DeferTelemetryAttempt(retryAt time.Time) error {
+	value := retryAt.UTC().Add(-15 * time.Minute).Format(time.RFC3339Nano)
+	_, err := s.db.Exec(`UPDATE telemetry_state SET last_attempt = ?
+WHERE id = 1 AND (last_attempt IS NULL OR julianday(last_attempt) < julianday(?))`, value, value)
+	return err
+}
+
+// AcknowledgeTelemetry records a whole successful request only while its
+// original consent period is still active.
+func (s *Store) AcknowledgeTelemetry(consentStart, cutoff string, installation bool) error {
+	_, err := s.db.Exec(`UPDATE telemetry_state SET
+installation_acknowledged = CASE WHEN ? THEN 1 ELSE installation_acknowledged END,
+reported_through = ?
+WHERE id = 1 AND consent_start = ?
+  AND EXISTS (SELECT 1 FROM settings WHERE id = 1 AND telemetry = 1)`,
+		installation, cutoff, consentStart)
+	return err
+}
+
+// RevokeTelemetry permanently suppresses this instance after the collector
+// rejects its stable identity. Re-enabling consent does not rotate that ID.
+func (s *Store) RevokeTelemetry() error {
+	_, err := s.db.Exec(`UPDATE telemetry_state SET revoked = 1 WHERE id = 1`)
+	return err
 }
 
 func (s *Store) setTelemetry(enabled bool, clock func() time.Time) error {
