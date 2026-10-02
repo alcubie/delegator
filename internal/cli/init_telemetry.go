@@ -34,14 +34,6 @@ func initTelemetry(cmd *cobra.Command, s *store.Store, cfg *config.Config, inter
 	return nil
 }
 
-func writeTelemetryStatus(out io.Writer, cfg config.Config) {
-	changeTo := "true"
-	if cfg.Telemetry != nil && *cfg.Telemetry {
-		changeTo = "false"
-	}
-	fmt.Fprintf(out, "Usage data sharing: %s. Change with dg config set telemetry %s.\n", settingText(settingValue(cfg, "telemetry")), changeTo)
-}
-
 func promptTelemetry(in io.Reader, out io.Writer) (*bool, error) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator?")

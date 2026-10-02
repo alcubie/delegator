@@ -49,23 +49,21 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if cfg.DefaultAgent != "goose" {
 				t.Fatalf("agent setup changed: agent = %q", cfg.DefaultAgent)
 			}
-			changeTo := "true"
-			if tt.want == "true" {
-				changeTo = "false"
-			}
 			prompt := "Would you like to share your usage data to help improve Delegator?\n" +
 				"This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared.\n" +
 				"See https://alcubi.ai/delegator/privacy/ for details."
-			for _, want := range []string{prompt, "Share data? [Y/n]", "Usage data sharing: " + tt.want, "dg config set telemetry " + changeTo + "."} {
+			for _, want := range []string{prompt, "Share data? [Y/n]"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q: %s", want, out)
 				}
 			}
 			promptAt := strings.Index(out, "Share data? [Y/n]")
 			completeAt := strings.Index(out, "Setup complete.")
-			statusAt := strings.Index(out, "Usage data sharing:")
-			if promptAt > completeAt || completeAt > statusAt {
+			if promptAt > completeAt {
 				t.Errorf("usage-data question was not immediately before setup completion: %s", out)
+			}
+			if strings.Contains(out, "Usage data sharing:") || strings.Contains(out, "dg config set telemetry") {
+				t.Errorf("setup output includes an unnecessary usage-data reminder: %s", out)
 			}
 			if !strings.Contains(out, "Welcome to Alcubi Delegator.\n\nCurrent default agent:") || !strings.Contains(out, "Selection [1] (q to cancel): \nWould you like") {
 				t.Errorf("setup sections are not separated by blank lines: %s", out)
