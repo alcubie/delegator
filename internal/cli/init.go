@@ -17,7 +17,8 @@ import (
 )
 
 type initOptions struct {
-	agent string
+	agent     string
+	telemetry *bool
 }
 
 type adapterSpec struct {
@@ -43,15 +44,21 @@ type adapterInstaller func(*cobra.Command, adapterSpec) error
 // add work: which registered agent executes their tickets.
 func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	var options initOptions
+	var telemetry bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Set up Alcubi Delegator for a first run.",
 		Long: "Discover installed agents, select or configure the default agent, and explain " +
-			"how to view the inbox and create the first ticket.",
+			"how to view the inbox and create the first ticket. At the end, interactive setup asks whether " +
+			"to share usage data if unanswered. Scripted setup preserves the saved choice unless " +
+			"--telemetry=true|false is supplied.",
 		Example: `  dg init
   dg init --agent codex`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed("telemetry") {
+				options.telemetry = &telemetry
+			}
 			selector := agentSelectorFor(cmd.InOrStdin(), cmd.OutOrStdout())
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				return runInit(cmd, s, cfg, options, selector, runAdapterInstaller)
@@ -60,6 +67,8 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&options.agent, "agent", "",
 		"select this available registered agent as the default without prompting")
+	cmd.Flags().BoolVar(&telemetry, "telemetry", false, "submit a usage-data sharing choice (`true|false`)")
+	cmd.Flags().Lookup("telemetry").NoOptDefVal = ""
 	return cmd
 }
 
@@ -168,12 +177,16 @@ func choiceNamed(choices []initAgentChoice, name string) (initAgentChoice, bool)
 }
 
 func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, selector agentSelector, install adapterInstaller) error {
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
+	fmt.Fprintln(out)
+	if err := setInitTelemetry(s, cfg, options.telemetry); err != nil {
+		return err
+	}
 	if options.agent == "" && selector == nil {
 		return errors.New("dg init requires an interactive terminal; use dg init --agent NAME for scripted setup")
 	}
 
-	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
 	if cfg.DefaultAgent == "" {
 		fmt.Fprintln(out, "Current default agent: none")
 	} else {
@@ -201,7 +214,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 			return err
 		}
 		cfg.DefaultAgent = options.agent
-		return writeCompletedInit(out, cfg.DefaultAgent)
+		return completeInit(cmd, s, cfg, false)
 	}
 
 	if len(choices) == 0 {
@@ -219,7 +232,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 	if !chose {
 		if choice, found := choiceNamed(choices, cfg.DefaultAgent); found && !choice.NeedsAdapter {
 			fmt.Fprintln(out, "Default agent was not changed.")
-			return writeCompletedInit(out, cfg.DefaultAgent)
+			return completeInit(cmd, s, cfg, true)
 		}
 		return writeIncompleteInit(out)
 	}
@@ -238,7 +251,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		return err
 	}
 	cfg.DefaultAgent = choice.Agent.Name
-	return writeCompletedInit(out, cfg.DefaultAgent)
+	return completeInit(cmd, s, cfg, true)
 }
 
 func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice, install adapterInstaller) (bool, error) {
@@ -330,6 +343,13 @@ func runAdapterInstaller(cmd *cobra.Command, spec adapterSpec) error {
 func writeIncompleteInit(out io.Writer) error {
 	fmt.Fprintln(out, "\nSetup is incomplete until a default agent is selected.")
 	return nil
+}
+
+func completeInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, interactive bool) error {
+	if err := initTelemetry(cmd, s, cfg, interactive); err != nil {
+		return err
+	}
+	return writeCompletedInit(cmd.OutOrStdout(), cfg.DefaultAgent)
 }
 
 func writeCompletedInit(out io.Writer, agent string) error {

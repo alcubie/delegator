@@ -306,7 +306,7 @@ exit 0
 EOF
 	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	run_piped_installer terminal $'\n'
+	run_piped_installer terminal $'\nn\n'
 	assert_not_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now?'
 	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
@@ -363,7 +363,7 @@ EOF
 
 	# Control-D closes terminal input after selecting Goose. Choosing an agent
 	# during dg init is never consent to create or run a ticket.
-	run_piped_installer terminal $'\n\004'
+	run_piped_installer terminal $'\nn\n\004'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
 	assert_no_tickets
 }
