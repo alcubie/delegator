@@ -53,7 +53,9 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if tt.want == "true" {
 				changeTo = "false"
 			}
-			prompt := "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details."
+			prompt := "Would you like to share your usage data to help improve Delegator?\n" +
+				"This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared.\n" +
+				"See https://alcubi.ai/delegator/privacy/ for details."
 			for _, want := range []string{prompt, "Share data? [Y/n]", "Usage data sharing: " + tt.want, "dg config set telemetry " + changeTo + "."} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q: %s", want, out)

@@ -44,7 +44,9 @@ func writeTelemetryStatus(out io.Writer, cfg config.Config) {
 
 func promptTelemetry(in io.Reader, out io.Writer) (*bool, error) {
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details.")
+	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator?")
+	fmt.Fprintln(out, "This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared.")
+	fmt.Fprintln(out, "See https://alcubi.ai/delegator/privacy/ for details.")
 	for {
 		fmt.Fprint(out, "Share data? [Y/n] ")
 		// Read only through submission; buffering here could swallow agent
