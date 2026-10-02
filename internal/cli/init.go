@@ -345,19 +345,21 @@ func writeIncompleteInit(out io.Writer) error {
 }
 
 func completeInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, interactive bool) error {
-	if err := writeCompletedInit(cmd.OutOrStdout(), cfg.DefaultAgent); err != nil {
+	if err := initTelemetry(cmd, s, cfg, interactive); err != nil {
 		return err
 	}
-	return initTelemetry(cmd, s, cfg, interactive)
+	return writeCompletedInit(cmd.OutOrStdout(), cfg)
 }
 
-func writeCompletedInit(out io.Writer, agent string) error {
+func writeCompletedInit(out io.Writer, cfg *config.Config) error {
 	fmt.Fprintln(out, "\nSetup complete.")
-	fmt.Fprintf(out, "\nDefault agent: %s\n", displayAgentName(agent))
+	fmt.Fprintf(out, "\nDefault agent: %s\n", displayAgentName(cfg.DefaultAgent))
 	fmt.Fprintln(out, "\nThe default agent will be used to execute ticket tasks with your user permissions.")
 	fmt.Fprintln(out, "Agent runs can use tokens from your plan.")
 	fmt.Fprintln(out, "\nNext steps:")
 	fmt.Fprintln(out, "    dg          view the inbox")
 	fmt.Fprintln(out, "    dg ticket   create your first ticket")
+	fmt.Fprintln(out)
+	writeTelemetryStatus(out, *cfg)
 	return nil
 }

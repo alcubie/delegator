@@ -31,18 +31,21 @@ func initTelemetry(cmd *cobra.Command, s *store.Store, cfg *config.Config, inter
 			return err
 		}
 	}
+	return nil
+}
+
+func writeTelemetryStatus(out io.Writer, cfg config.Config) {
 	changeTo := "true"
 	if cfg.Telemetry != nil && *cfg.Telemetry {
 		changeTo = "false"
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Usage data sharing: %s. Change with dg config set telemetry %s.\n", settingText(settingValue(*cfg, "telemetry")), changeTo)
-	return nil
+	fmt.Fprintf(out, "Usage data sharing: %s. Change with dg config set telemetry %s.\n", settingText(settingValue(cfg, "telemetry")), changeTo)
 }
 
 func promptTelemetry(in io.Reader, out io.Writer) (*bool, error) {
 	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details.")
 	for {
-		fmt.Fprint(out, "[Y/n] ")
+		fmt.Fprint(out, "Share data? [Y/n] ")
 		// Read only through submission; buffering here could swallow agent
 		// answers. EOF, even after a partial answer, is not confirmation.
 		var answer strings.Builder

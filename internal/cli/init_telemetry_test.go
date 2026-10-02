@@ -54,13 +54,16 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 				changeTo = "false"
 			}
 			prompt := "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details."
-			for _, want := range []string{prompt, "[Y/n]", "Usage data sharing: " + tt.want, "dg config set telemetry " + changeTo + "."} {
+			for _, want := range []string{prompt, "Share data? [Y/n]", "Usage data sharing: " + tt.want, "dg config set telemetry " + changeTo + "."} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q: %s", want, out)
 				}
 			}
-			if strings.Index(out, "Setup complete.") > strings.Index(out, prompt) {
-				t.Errorf("usage-data question appeared before setup completed: %s", out)
+			promptAt := strings.Index(out, "Share data? [Y/n]")
+			completeAt := strings.Index(out, "Setup complete.")
+			statusAt := strings.Index(out, "Usage data sharing:")
+			if promptAt > completeAt || completeAt > statusAt {
+				t.Errorf("usage-data question was not immediately before setup completion: %s", out)
 			}
 			state, err := s.TelemetryState()
 			if err != nil || (state.ConsentStart != nil) != (tt.want == "true") {
