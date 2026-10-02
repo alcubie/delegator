@@ -149,12 +149,12 @@ func TestCancelStartsTheNextRun(t *testing.T) {
 	_, ticketID, repo, _ := runningTicket(t, dataDir)
 	testfix.LiveRun(t, dataDir, ticketID)
 	testfix.SecondTicket(t, dataDir)
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	cancelIn(t, dataDir, repo, ticketID)
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 func TestCancelWithNoID(t *testing.T) {

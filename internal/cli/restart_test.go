@@ -58,7 +58,7 @@ func TestRestartRefusesATicketThatDidNotFail(t *testing.T) {
 func TestRestartStartsTheRun(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := failedTicket(t, dataDir)
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 	var launched int64
 	saved := restartLaunch
@@ -73,7 +73,7 @@ func TestRestartStartsTheRun(t *testing.T) {
 	if launched != ticketID {
 		t.Errorf("restart launched ticket %d, want %d", launched, ticketID)
 	}
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // A restart is detached just like a new run, but it names the failed ticket

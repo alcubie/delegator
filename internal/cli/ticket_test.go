@@ -390,14 +390,14 @@ func TestTicketWithNoTitle(t *testing.T) {
 func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	dataDir := testfix.XDGDataDir(t)
 	repo := testfix.Repo(t, repoBranch)
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	if _, err := runIn(t, dataDir, repo, "ticket", "Add the thing", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 func TestRunTicketAfterTwoTickets(t *testing.T) {

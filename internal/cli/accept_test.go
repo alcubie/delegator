@@ -291,14 +291,14 @@ func TestAcceptStartsTheNextTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, ticketID, repo := readyTicket(t, dataDir)
 	testfix.SecondTicket(t, dataDir)
-	l, marker := testfix.RecordingLaunch(t)
+	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
 	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
 	}
 
-	testfix.WaitForStarts(t, marker, 1)
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // Implicit acceptance follows ready position, not ID. Finish the second-
