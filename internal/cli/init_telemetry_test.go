@@ -65,6 +65,9 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if promptAt > completeAt || completeAt > statusAt {
 				t.Errorf("usage-data question was not immediately before setup completion: %s", out)
 			}
+			if !strings.Contains(out, "Welcome to Alcubi Delegator.\n\nCurrent default agent:") || !strings.Contains(out, "Selection [1] (q to cancel): \nWould you like") {
+				t.Errorf("setup sections are not separated by blank lines: %s", out)
+			}
 			state, err := s.TelemetryState()
 			if err != nil || (state.ConsentStart != nil) != (tt.want == "true") {
 				t.Fatalf("consent bookkeeping = %+v, %v", state, err)

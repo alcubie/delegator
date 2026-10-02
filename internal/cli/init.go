@@ -179,6 +179,7 @@ func choiceNamed(choices []initAgentChoice, name string) (initAgentChoice, bool)
 func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, selector agentSelector, install adapterInstaller) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
+	fmt.Fprintln(out)
 	if err := setInitTelemetry(s, cfg, options.telemetry); err != nil {
 		return err
 	}
