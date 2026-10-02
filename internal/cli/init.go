@@ -49,9 +49,9 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "init",
 		Short: "Set up Alcubi Delegator for a first run.",
 		Long: "Discover installed agents, select or configure the default agent, and explain " +
-			"how to view the inbox and create the first ticket. Interactive setup asks whether to share " +
-			"telemetry if unanswered. Yes is selected, but only confirmation enables it; skip or cancel " +
-			"leaves it unanswered. Scripted setup preserves consent unless --telemetry=true|false is supplied.",
+			"how to view the inbox and create the first ticket. At the end, interactive setup asks whether " +
+			"to share usage data if unanswered. Scripted setup preserves the saved choice unless " +
+			"--telemetry=true|false is supplied.",
 		Example: `  dg init
   dg init --agent codex`,
 		Args: cobra.NoArgs,
@@ -67,7 +67,7 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&options.agent, "agent", "",
 		"select this available registered agent as the default without prompting")
-	cmd.Flags().BoolVar(&telemetry, "telemetry", false, "submit a telemetry choice (`true|false`)")
+	cmd.Flags().BoolVar(&telemetry, "telemetry", false, "submit a usage-data sharing choice (`true|false`)")
 	cmd.Flags().Lookup("telemetry").NoOptDefVal = ""
 	return cmd
 }
@@ -179,13 +179,8 @@ func choiceNamed(choices []initAgentChoice, name string) (initAgentChoice, bool)
 func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, selector agentSelector, install adapterInstaller) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Welcome to Alcubi Delegator.")
-	proceed, err := initTelemetry(cmd, s, cfg, options, selector != nil && options.agent == "")
-	if err != nil {
+	if err := setInitTelemetry(s, cfg, options.telemetry); err != nil {
 		return err
-	}
-	if !proceed {
-		fmt.Fprintln(out, "Setup cancelled.")
-		return nil
 	}
 	if options.agent == "" && selector == nil {
 		return errors.New("dg init requires an interactive terminal; use dg init --agent NAME for scripted setup")
@@ -218,7 +213,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 			return err
 		}
 		cfg.DefaultAgent = options.agent
-		return writeCompletedInit(out, cfg.DefaultAgent)
+		return completeInit(cmd, s, cfg, false)
 	}
 
 	if len(choices) == 0 {
@@ -236,7 +231,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 	if !chose {
 		if choice, found := choiceNamed(choices, cfg.DefaultAgent); found && !choice.NeedsAdapter {
 			fmt.Fprintln(out, "Default agent was not changed.")
-			return writeCompletedInit(out, cfg.DefaultAgent)
+			return completeInit(cmd, s, cfg, true)
 		}
 		return writeIncompleteInit(out)
 	}
@@ -255,7 +250,7 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 		return err
 	}
 	cfg.DefaultAgent = choice.Agent.Name
-	return writeCompletedInit(out, cfg.DefaultAgent)
+	return completeInit(cmd, s, cfg, true)
 }
 
 func prepareAdapter(cmd *cobra.Command, s *store.Store, choice *initAgentChoice, install adapterInstaller) (bool, error) {
@@ -347,6 +342,13 @@ func runAdapterInstaller(cmd *cobra.Command, spec adapterSpec) error {
 func writeIncompleteInit(out io.Writer) error {
 	fmt.Fprintln(out, "\nSetup is incomplete until a default agent is selected.")
 	return nil
+}
+
+func completeInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, interactive bool) error {
+	if err := writeCompletedInit(cmd.OutOrStdout(), cfg.DefaultAgent); err != nil {
+		return err
+	}
+	return initTelemetry(cmd, s, cfg, interactive)
 }
 
 func writeCompletedInit(out io.Writer, agent string) error {

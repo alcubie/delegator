@@ -11,37 +11,38 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// initTelemetry runs before agent discovery so consent does not depend on
-// successful agent setup. Scripted selection never submits the UI default.
-func initTelemetry(cmd *cobra.Command, s *store.Store, cfg *config.Config, options initOptions, interactive bool) (bool, error) {
-	choice := options.telemetry
-	proceed := true
-	if choice == nil && cfg.Telemetry == nil && interactive {
-		var err error
-		choice, proceed, err = promptTelemetry(cmd.InOrStdin(), cmd.OutOrStdout())
-		if err != nil {
-			return false, err
-		}
-	}
+func setInitTelemetry(s *store.Store, cfg *config.Config, choice *bool) error {
 	if choice != nil {
 		if err := setSetting(s, "telemetry", strconv.FormatBool(*choice)); err != nil {
-			return false, err
+			return err
 		}
 		cfg.Telemetry = choice
+	}
+	return nil
+}
+
+func initTelemetry(cmd *cobra.Command, s *store.Store, cfg *config.Config, interactive bool) error {
+	if cfg.Telemetry == nil && interactive {
+		choice, err := promptTelemetry(cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil {
+			return err
+		}
+		if err := setInitTelemetry(s, cfg, choice); err != nil {
+			return err
+		}
 	}
 	changeTo := "true"
 	if cfg.Telemetry != nil && *cfg.Telemetry {
 		changeTo = "false"
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Telemetry: %s. Change with dg config set telemetry %s.\n", settingText(settingValue(*cfg, "telemetry")), changeTo)
-	return proceed, nil
+	fmt.Fprintf(cmd.OutOrStdout(), "Usage data sharing: %s. Change with dg config set telemetry %s.\n", settingText(settingValue(*cfg, "telemetry")), changeTo)
+	return nil
 }
 
-func promptTelemetry(in io.Reader, out io.Writer) (*bool, bool, error) {
-	fmt.Fprintln(out, "Sends counts, settings, agents used, and identifiers—not ticket text or code.")
-	fmt.Fprintln(out, "Details: https://alcubi.ai/delegator/privacy/")
+func promptTelemetry(in io.Reader, out io.Writer) (*bool, error) {
+	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details.")
 	for {
-		fmt.Fprint(out, "Share telemetry to help improve Delegator? [Y/n] (s to skip, q to cancel): ")
+		fmt.Fprint(out, "[Y/n] ")
 		// Read only through submission; buffering here could swallow agent
 		// answers. EOF, even after a partial answer, is not confirmation.
 		var answer strings.Builder
@@ -50,10 +51,10 @@ func promptTelemetry(in io.Reader, out io.Writer) (*bool, bool, error) {
 			_, err := io.ReadFull(in, next[:])
 			if err == io.EOF || (err == nil && (next[0] == 3 || next[0] == 4 || next[0] == 27)) {
 				fmt.Fprintln(out)
-				return nil, false, nil
+				return nil, nil
 			}
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
 			if next[0] == '\n' {
 				break
@@ -63,16 +64,12 @@ func promptTelemetry(in io.Reader, out io.Writer) (*bool, bool, error) {
 		switch strings.ToLower(strings.TrimSpace(answer.String())) {
 		case "", "y", "yes":
 			choice := true
-			return &choice, true, nil
+			return &choice, nil
 		case "n", "no":
 			choice := false
-			return &choice, true, nil
-		case "s", "skip":
-			return nil, true, nil
-		case "q", "cancel":
-			return nil, false, nil
+			return &choice, nil
 		default:
-			fmt.Fprintln(out, "Please answer yes, no, s to skip, or q to cancel.")
+			fmt.Fprintln(out, "Please answer yes or no.")
 		}
 	}
 }

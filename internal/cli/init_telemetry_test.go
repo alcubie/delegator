@@ -14,32 +14,27 @@ import (
 func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 	for _, tt := range []struct {
 		name, input, want string
-		cancelled         bool
 	}{
-		{"enter", "\n", "true", false},
-		{"yes", "YES\n", "true", false},
-		{"no", "n\n", "false", false},
-		{"skip", "s\n", "null", false},
-		{"cancel", "q\n", "null", true},
-		{"eof", "", "null", true},
-		{"unsubmitted yes", "yes", "null", true},
-		{"unsubmitted no", "n", "null", true},
-		{"interrupt", "\x03", "null", true},
-		{"escape", "\x1b", "null", true},
-		{"control d", "\x04", "null", true},
-		{"invalid then eof", "maybe\n", "null", true},
-		{"invalid then no", "maybe\nno\n", "false", false},
+		{"enter", "\n", "true"},
+		{"yes", "YES\n", "true"},
+		{"no", "n\n", "false"},
+		{"eof", "", "null"},
+		{"unsubmitted yes", "yes", "null"},
+		{"unsubmitted no", "n", "null"},
+		{"interrupt", "\x03", "null"},
+		{"escape", "\x1b", "null"},
+		{"control d", "\x04", "null"},
+		{"skip is invalid", "s\nn\n", "false"},
+		{"cancel is invalid", "q\nyes\n", "true"},
+		{"invalid then eof", "maybe\n", "null"},
+		{"invalid then no", "maybe\nno\n", "false"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			bin := t.TempDir()
 			executable(t, bin, "goose")
 			t.Setenv("PATH", bin)
-			input := tt.input
-			if !tt.cancelled {
-				input += "\n"
-			}
-			out, err := runInteractiveInit(t, dir, input, initOptions{}, nil)
+			out, err := runInteractiveInit(t, dir, "\n"+tt.input, initOptions{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,17 +46,21 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if got := settingText(settingValue(cfg, "telemetry")); got != tt.want {
 				t.Fatalf("telemetry = %s, want %s", got, tt.want)
 			}
-			if (cfg.DefaultAgent == "") != tt.cancelled {
-				t.Fatalf("agent setup changed: agent = %q, cancelled = %v", cfg.DefaultAgent, tt.cancelled)
+			if cfg.DefaultAgent != "goose" {
+				t.Fatalf("agent setup changed: agent = %q", cfg.DefaultAgent)
 			}
 			changeTo := "true"
 			if tt.want == "true" {
 				changeTo = "false"
 			}
-			for _, want := range []string{"[Y/n]", "not ticket text or code", "https://alcubi.ai/delegator/privacy/", "Telemetry: " + tt.want, "dg config set telemetry " + changeTo + "."} {
+			prompt := "Would you like to share your usage data to help improve Delegator? This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared. See https://alcubi.ai/delegator/privacy/ for details."
+			for _, want := range []string{prompt, "[Y/n]", "Usage data sharing: " + tt.want, "dg config set telemetry " + changeTo + "."} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q: %s", want, out)
 				}
+			}
+			if strings.Index(out, "Setup complete.") > strings.Index(out, prompt) {
+				t.Errorf("usage-data question appeared before setup completed: %s", out)
 			}
 			state, err := s.TelemetryState()
 			if err != nil || (state.ConsentStart != nil) != (tt.want == "true") {
@@ -77,23 +76,34 @@ func (telemetryErrorReader) Read([]byte) (int, error) { return 0, io.ErrUnexpect
 
 func TestTelemetryPromptReadFailureDoesNotSubmit(t *testing.T) {
 	var out bytes.Buffer
-	choice, proceed, err := promptTelemetry(telemetryErrorReader{}, &out)
-	if choice != nil || proceed || !errors.Is(err, io.ErrUnexpectedEOF) {
-		t.Fatalf("prompt returned %v, %v, %v", choice, proceed, err)
+	choice, err := promptTelemetry(telemetryErrorReader{}, &out)
+	if choice != nil || !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("prompt returned %v, %v", choice, err)
 	}
 }
 
 func TestInitTelemetryPersistsBeforeAgentSetupFails(t *testing.T) {
-	bin := t.TempDir()
-	t.Setenv("PATH", bin)
 	dir := t.TempDir()
-	out, err := runInteractiveInit(t, dir, "\n", initOptions{}, nil)
-	if err != nil || !strings.Contains(out, "No supported Agent") {
-		t.Fatalf("setup = %s, %v", out, err)
+	if _, err := runIn(t, dir, t.TempDir(), "init", "--agent", "missing", "--telemetry=true"); err == nil {
+		t.Fatal("expected setup error")
 	}
 	cfg, err := testfix.OpenStore(t, dir).Settings()
 	if err != nil || cfg.Telemetry == nil || !*cfg.Telemetry || cfg.DefaultAgent != "" {
 		t.Fatalf("consent lost on incomplete setup: %+v, %v", cfg, err)
+	}
+}
+
+func TestIncompleteInitDoesNotAskToShareUsageData(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	dir := t.TempDir()
+	out, err := runInteractiveInit(t, dir, "", initOptions{}, nil)
+	if err != nil || !strings.Contains(out, "No supported Agent") || strings.Contains(out, "share your usage data") {
+		t.Fatalf("setup = %s, %v", out, err)
+	}
+	cfg, err := testfix.OpenStore(t, dir).Settings()
+	if err != nil || cfg.Telemetry != nil || cfg.DefaultAgent != "" {
+		t.Fatalf("incomplete setup changed settings: %+v, %v", cfg, err)
 	}
 }
 
@@ -122,7 +132,7 @@ func TestScriptedInitTelemetryPreservesOrExplicitlyChangesConsent(t *testing.T) 
 					want = flag
 				}
 				out, err := runIn(t, dir, t.TempDir(), args...)
-				if err != nil || strings.Contains(out, "Share telemetry") {
+				if err != nil || strings.Contains(out, "share your usage data") {
 					t.Fatalf("scripted setup = %s, %v", out, err)
 				}
 				cfg, err := s.Settings()
@@ -157,7 +167,7 @@ func TestInitExistingTelemetryConsentDoesNotPromptOrRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, err := runInteractiveInit(t, dir, "\n", initOptions{}, nil)
-			if err != nil || strings.Contains(out, "Share telemetry") || !strings.Contains(out, "Setup complete.") {
+			if err != nil || strings.Contains(out, "share your usage data") || !strings.Contains(out, "Setup complete.") {
 				t.Fatalf("repeated init = %s, %v", out, err)
 			}
 			after, err := s.TelemetryState()

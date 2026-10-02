@@ -306,7 +306,7 @@ exit 0
 EOF
 	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	run_piped_installer terminal $'s\n\n'
+	run_piped_installer terminal $'\nn\n'
 	assert_not_contains "$CASE_DIR/terminal-output" 'Set up Alcubi Delegator now?'
 	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
@@ -326,7 +326,7 @@ exit 0
 EOF
 	chmod +x "$CASE_DIR/fake-bin/goose"
 
-	run_piped_installer terminal $'s\nq\n'
+	run_piped_installer terminal $'q\n'
 	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
 	assert_contains "$CASE_DIR/terminal-output" 'Choose your default agent:'
 	assert_contains "$CASE_DIR/terminal-output" \
@@ -343,7 +343,7 @@ test_piped_onboarding_reports_a_missing_agent() {
 	setup_case missing-agent
 	make_onboarding_release
 
-	run_piped_installer terminal $'s\n'
+	run_piped_installer terminal ''
 	assert_contains "$CASE_DIR/terminal-output" \
 		'No supported Agent Client Protocol (ACP) command was found.'
 	assert_contains "$CASE_DIR/terminal-output" \
@@ -363,7 +363,7 @@ EOF
 
 	# Control-D closes terminal input after selecting Goose. Choosing an agent
 	# during dg init is never consent to create or run a ticket.
-	run_piped_installer terminal $'s\n\n\004'
+	run_piped_installer terminal $'\nn\n\004'
 	assert_contains "$CASE_DIR/terminal-output" 'Setup complete.'
 	assert_no_tickets
 }
@@ -380,7 +380,7 @@ EOF
 	run_piped_installer terminal $'\004'
 	assert_contains "$CASE_DIR/terminal-output" 'Welcome to Alcubi Delegator.'
 	assert_contains "$CASE_DIR/terminal-output" \
-		'Setup cancelled.'
+		'Setup is incomplete until a default agent is selected.'
 	assert_not_contains "$CASE_DIR/terminal-output" 'Setup complete.'
 	local selected
 	selected=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
