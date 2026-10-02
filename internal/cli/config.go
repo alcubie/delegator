@@ -6,6 +6,8 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
@@ -30,12 +32,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				})
 			}
 			return writeValue(cmd.OutOrStdout(), settings, false, func(out io.Writer) {
-				for i, setting := range settings {
-					if i > 0 {
-						fmt.Fprintln(out)
-					}
-					fmt.Fprintf(out, "%s = %s  # %s\n", setting.Name, settingText(setting.Value), setting.Description)
-				}
+				writeSettings(out, settings, outputWidth(out))
 			})
 		})
 	}
@@ -91,6 +88,47 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+// writeSettings renders descriptions within the available output width and
+// keeps wrapped lines aligned with the description column.
+func writeSettings(out io.Writer, settings []setting, width int) {
+	settingWidth, valueWidth := len("SETTING"), len("VALUE")
+	for _, setting := range settings {
+		settingWidth = max(settingWidth, utf8.RuneCountInString(setting.Name))
+		valueWidth = max(valueWidth, utf8.RuneCountInString(settingText(setting.Value)))
+	}
+	// Ten columns account for the four borders and six padding spaces.
+	descriptionWidth := max(len("DESCRIPTION"), width-settingWidth-valueWidth-10)
+
+	writeRule := func(left, middle, right string) {
+		fmt.Fprintf(out, "%s%s%s%s%s%s%s\n",
+			left, strings.Repeat("─", settingWidth+2),
+			middle, strings.Repeat("─", valueWidth+2),
+			middle, strings.Repeat("─", descriptionWidth+2), right)
+	}
+	writeRow := func(name, value, description string) {
+		fmt.Fprintf(out, "│ %-*s │ %-*s │ %-*s │\n",
+			settingWidth, name, valueWidth, value, descriptionWidth, description)
+	}
+
+	writeRule("┌", "┬", "┐")
+	writeRow("SETTING", "VALUE", "DESCRIPTION")
+	writeRule("├", "┼", "┤")
+	for i, setting := range settings {
+		lines := wrap(setting.Description, descriptionWidth)
+		if len(lines) == 0 {
+			lines = []string{""}
+		}
+		writeRow(setting.Name, settingText(setting.Value), lines[0])
+		for _, line := range lines[1:] {
+			writeRow("", "", line)
+		}
+		if i < len(settings)-1 {
+			writeRule("├", "┼", "┤")
+		}
+	}
+	writeRule("└", "┴", "┘")
 }
 
 // setSetting is the validation path shared by dg config set and guided
