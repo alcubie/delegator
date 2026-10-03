@@ -42,7 +42,7 @@ var Definitions = []Definition{
 	{"max_runs_per_project", "the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit."},
 	{"default_agent", "the registered agent used for new runs."},
 	{"default_model", "the ACP model ID used for runs. null uses the agent's default model."},
-	{"telemetry", "share telemetry; null means disabled because unanswered. Set true or false to choose. False stops future reports but does not delete reports already received."},
+	{"telemetry", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},
 }
 
 // ProjectRuns returns the per-project limit, falling back to Runs when
