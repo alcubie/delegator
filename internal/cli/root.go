@@ -113,6 +113,15 @@ func Root(workDir string) *cobra.Command {
 				return err
 			})
 		},
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			switch cmd.Name() {
+			case "version", "rpc", "run", "telemetry-send":
+				return
+			}
+			if cfg.Telemetry != nil && *cfg.Telemetry {
+				triggerTelemetry(selectedDir)
+			}
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			box, err := showInbox(selectedDir, &cfg)
 			if err != nil {
@@ -148,5 +157,6 @@ func Root(workDir string) *cobra.Command {
 	root.AddCommand(agentsCommand(&selectedDir, &cfg))
 	root.AddCommand(versionCommand())
 	root.AddCommand(rpcCommand(&selectedDir, workDir))
+	root.AddCommand(telemetryCommand(&selectedDir))
 	return root
 }

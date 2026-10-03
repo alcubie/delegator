@@ -20,6 +20,8 @@ func TestMain(m *testing.M) {
 	// Disable real launches: under go test the current executable is the
 	// test binary, which would recursively spawn this suite.
 	launch = func() *exec.Cmd { return exec.Command("true") }
+	launchTelemetry = func(string) *exec.Cmd { return exec.Command("true") }
+	sendTelemetry = func(*store.Store, time.Time, string) error { return nil }
 	// Disable interactive agent launches; tests install observable
 	// substitutes.
 	chat = func([]string, string) *exec.Cmd { return exec.Command("true") }

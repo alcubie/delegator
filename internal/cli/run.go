@@ -67,6 +67,11 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Hidden: true,
 		Args:   cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer func() {
+				if cfg.Telemetry != nil && *cfg.Telemetry {
+					triggerTelemetry(*dataDir)
+				}
+			}()
 			if cmd.Flags().Changed("model") && (!restart || model == "") {
 				return fmt.Errorf("--model needs --restart and a model ID")
 			}

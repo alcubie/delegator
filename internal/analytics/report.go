@@ -27,6 +27,41 @@ type DailyReport struct {
 	Data DailyData `json:"data"`
 }
 
+type InstallationReport struct {
+	ID   string           `json:"id"`
+	Kind string           `json:"kind"`
+	Date string           `json:"date"`
+	Data InstallationData `json:"data"`
+}
+
+type InstallationData struct {
+	MachineID            *string `json:"machine_id,omitempty"`
+	Version              string  `json:"version"`
+	OS                   string  `json:"os"`
+	ConsentNoticeVersion int     `json:"consent_notice_version"`
+}
+
+// BuildInstallation returns the stable installation report while it remains
+// pending. The first consent date and instance identity survive re-enablement.
+func BuildInstallation(state store.TelemetryState, metadata Metadata) (*InstallationReport, error) {
+	if state.Consent == nil || !*state.Consent || state.InstallationAcknowledged || state.FirstConsentDate == nil {
+		return nil, nil
+	}
+	namespace, err := uuid.Parse(state.InstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("parse telemetry instance ID: %w", err)
+	}
+	var machineID *string
+	if hex64.MatchString(metadata.MachineID) {
+		machineID = &metadata.MachineID
+	}
+	return &InstallationReport{
+		ID: uuid.NewSHA1(namespace, []byte("installation")).String(), Kind: "installation", Date: *state.FirstConsentDate,
+		Data: InstallationData{MachineID: machineID, Version: normalizedVersion(metadata.Version),
+			OS: normalizedOS(metadata.OS), ConsentNoticeVersion: ConsentNoticeVersion},
+	}, nil
+}
+
 type DailyData struct {
 	MachineID               *string        `json:"machine_id,omitempty"`
 	Version                 string         `json:"version"`
