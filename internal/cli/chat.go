@@ -52,13 +52,13 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var argv []string
-			var worktree string
+			var worktree, cacheDir string
 			err := withStore(*dataDir, cfg, func(s *store.Store) error {
 				id, err := resolveTicketID(s, cfg, args, workDir, projectDir)
 				if err != nil {
 					return err
 				}
-				argv, worktree, err = resumeOf(s, *dataDir, id)
+				argv, worktree, cacheDir, err = resumeOf(s, *dataDir, id)
 				return err
 			})
 			if err != nil {
@@ -66,7 +66,9 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			}
 			// Close the store before the interactive
 			// conversation, which may run indefinitely.
-			return waitForChat(chat(argv, worktree))
+			interactive := chat(argv, worktree)
+			interactive.Env = cacheEnvironment(os.Environ(), cacheDir)
+			return waitForChat(interactive)
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
@@ -74,49 +76,65 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	return cmd
 }
 
-// resumeOf returns resume arguments and the worktree path, rejecting tickets
-// without a resumable conversation. Running tickets are refused to avoid two
-// agents writing the same session; reconciliation has already identified
-// stale runs.
-func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, error) {
+// resumeOf returns resume arguments, the worktree, and the project cache,
+// rejecting tickets without a resumable conversation. Running tickets are
+// refused to avoid two agents writing the same session; reconciliation has
+// already identified stale runs.
+func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, string, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if ticket.Status == store.Running {
 		r, err := s.Run(id)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
-		return nil, "", fmt.Errorf(
+		return nil, "", "", fmt.Errorf(
 			"ticket %d is running: process %d is on its session", id, r.PID)
 	}
 	if ticket.Session == "" {
-		return nil, "", fmt.Errorf("ticket %d has no session: it has not run yet", id)
+		return nil, "", "", fmt.Errorf("ticket %d has no session: it has not run yet", id)
 	}
 	// Require the original worktree: agents may locate session history by
 	// working directory.
 	worktree := run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(worktree); err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, "", "", fmt.Errorf(
 			"the worktree of ticket %d is gone: %s", id, worktree)
 	}
 	r, err := s.Run(id)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	agent, err := s.Agent(r.Agent)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if len(agent.Resume) == 0 {
-		return nil, "", fmt.Errorf("agent %q has no command that opens a session", r.Agent)
+		return nil, "", "", fmt.Errorf("agent %q has no command that opens a session", r.Agent)
+	}
+	cacheDir, err := run.ProjectCache(dataDir, ticket.Project.ID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("prepare the project cache: %w", err)
 	}
 	argv := make([]string, 0, len(agent.Resume))
 	for _, arg := range agent.Resume {
-		argv = append(argv, strings.ReplaceAll(arg, "{session}", ticket.Session))
+		arg = strings.ReplaceAll(arg, "{session}", ticket.Session)
+		argv = append(argv, strings.ReplaceAll(arg, "{project_cache}", cacheDir))
 	}
-	return argv, worktree, nil
+	return argv, worktree, cacheDir, nil
+}
+
+func cacheEnvironment(environ []string, cacheDir string) []string {
+	prefix := run.ProjectCacheEnvironment + "="
+	result := make([]string, 0, len(environ)+1)
+	for _, entry := range environ {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+cacheDir)
 }
 
 // waitForChat waits for the interactive agent and propagates its exit status.
