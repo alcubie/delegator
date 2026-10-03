@@ -939,6 +939,55 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	reopened.Close()
 }
 
+func TestProjectCacheResumeMigrationPreservesCustomCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		old  string
+		want []string
+	}{
+		{
+			name: "stock Codex command",
+			old:  `["codex","resume","{session}"]`,
+			want: []string{"codex", "resume", "--add-dir", "{project_cache}", "{session}"},
+		},
+		{
+			name: "custom command",
+			old:  `["my-codex","continue","{session}"]`,
+			want: []string{"my-codex", "continue", "{session}"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, err := Open(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+			db := openRaw(t, dataDir)
+			if _, err := db.Exec("UPDATE agents SET resume_argv = ? WHERE name = 'codex'", tc.old); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(migrations)-1)); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+
+			migrated, err := Open(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer migrated.Close()
+			agent, err := migrated.Agent("codex")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(agent.Resume, tc.want) {
+				t.Errorf("resume argv = %v, want %v", agent.Resume, tc.want)
+			}
+		})
+	}
+}
+
 func TestAddTicketPutsTheTicketAtTheEndOfTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
 

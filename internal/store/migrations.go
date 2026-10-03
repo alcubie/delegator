@@ -15,7 +15,15 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema}
+
+// Update only the stock command. A user may have replaced the command of the
+// built-in entry, and migrations must not overwrite that customization.
+const projectCacheResumeSchema = `
+UPDATE agents
+SET resume_argv = '["codex","resume","--add-dir","{project_cache}","{session}"]'
+WHERE name = 'codex' AND resume_argv = '["codex","resume","{session}"]';
+`
 
 const runModelSchema = `
 CREATE TABLE models (

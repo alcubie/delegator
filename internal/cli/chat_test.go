@@ -21,6 +21,7 @@ import (
 type started struct {
 	argv []string
 	dir  string
+	cmd  *exec.Cmd
 }
 
 // useChat records the requested launch and substitutes a harmless program so
@@ -30,8 +31,9 @@ func useChat(t *testing.T, program string) *started {
 	var record started
 	saved := chat
 	chat = func(argv []string, dir string) *exec.Cmd {
-		record = started{argv: argv, dir: dir}
-		return exec.Command(program)
+		cmd := exec.Command(program)
+		record = started{argv: argv, dir: dir, cmd: cmd}
+		return cmd
 	}
 	t.Cleanup(func() { chat = saved })
 	return &record
@@ -179,10 +181,70 @@ func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"codex", "resume", session}
+	cacheDir := run.ProjectCachePath(dataDir, testfix.ReadTicket(t, dataDir, ticketID).Project.ID)
+	want := []string{"codex", "resume", "--add-dir", cacheDir, session}
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
 	}
+}
+
+func TestChatRestoresTheSelectedProjectsCacheContext(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "nondefault data with spaces")
+	ticketID, _, session := chattableTicketWithAgent(t, dataDir, "codex")
+	ticket := testfix.ReadTicket(t, dataDir, ticketID)
+	cacheDir := run.ProjectCachePath(dataDir, ticket.Project.ID)
+	if err := os.RemoveAll(cacheDir); err != nil {
+		t.Fatal(err)
+	}
+	record := useChat(t, "true")
+
+	// An explicit ID must use its stored project even when invoked elsewhere.
+	if _, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "chat", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"codex", "resume", "--add-dir", cacheDir, session}
+	if !slices.Equal(record.argv, want) {
+		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+	if got := envValue(record.cmd.Env, run.ProjectCacheEnvironment); got != cacheDir {
+		t.Errorf("%s = %q, want %q", run.ProjectCacheEnvironment, got, cacheDir)
+	}
+	if info, err := os.Stat(cacheDir); err != nil || !info.IsDir() {
+		t.Errorf("project cache was not recreated at %q: %v", cacheDir, err)
+	}
+}
+
+func TestChatReportsAProjectCacheSetupError(t *testing.T) {
+	dataDir := t.TempDir()
+	ticketID, repo, _ := chattableTicketWithAgent(t, dataDir, "codex")
+	ticket := testfix.ReadTicket(t, dataDir, ticketID)
+	cacheDir := run.ProjectCachePath(dataDir, ticket.Project.ID)
+	if err := os.MkdirAll(filepath.Dir(cacheDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cacheDir, []byte("blocks the cache directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	record := useChat(t, "true")
+
+	_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
+	if err == nil || !strings.Contains(err.Error(), "prepare the project cache") {
+		t.Fatalf("error = %v, want a project cache setup error", err)
+	}
+	if record.argv != nil {
+		t.Errorf("dg chat started %v after cache setup failed", record.argv)
+	}
+}
+
+func envValue(environ []string, name string) string {
+	prefix := name + "="
+	for _, entry := range environ {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
 }
 
 // The registry supplies the resume command for an existing session.
@@ -202,6 +264,11 @@ func TestChatTakesTheResumeOfTheRegistry(t *testing.T) {
 	want := []string{"my-claude", "--continue", session}
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+	ticket := testfix.ReadTicket(t, dataDir, ticketID)
+	wantCache := run.ProjectCachePath(dataDir, ticket.Project.ID)
+	if got := envValue(record.cmd.Env, run.ProjectCacheEnvironment); got != wantCache {
+		t.Errorf("%s = %q, want %q", run.ProjectCacheEnvironment, got, wantCache)
 	}
 }
 
