@@ -59,13 +59,6 @@ Delegator starts the task automatically when capacity is available. Run `dg`
 to check your inbox. Review and merge the completed changes, then accept the
 ticket with `dg accept ID`.
 
-During interactive setup, Delegator asks whether to enable optional telemetry.
-Nothing is sent until you submit a choice, and scripted setup preserves an
-unanswered choice unless you pass `--telemetry=true|false`. Inspect or change the
-setting with `dg config get telemetry` and `dg config set telemetry true|false`.
-See the [privacy notice](PRIVACY.md) for the exact fields, reporting schedule,
-identifiers, retention, and deletion process.
-
 ## Documentation
 
 - [Documentation and CLI reference](https://alcubi.ai/delegator/docs/)
