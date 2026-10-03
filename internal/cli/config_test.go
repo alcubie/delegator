@@ -151,6 +151,23 @@ func TestConfigSetPersistsOneSetting(t *testing.T) {
 	}
 }
 
+func TestConfigSetStartsQueuedWorkWhenCapacityIncreases(t *testing.T) {
+	dataDir := t.TempDir()
+	s, first, repo := queuedTicket(t, dataDir)
+	if _, err := s.Claim(first, "delegator/1-first", testAgentID); err != nil {
+		t.Fatal(err)
+	}
+	testfix.SecondTicket(t, dataDir)
+	launch, record := testfix.RecordingLaunch(t)
+	useLaunch(t, launch)
+
+	if _, err := runIn(t, dataDir, repo, "config", "set", "runs", "2"); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, record, 1)
+}
+
 func TestConfigSetSelectsAnAvailableCustomDefaultAgent(t *testing.T) {
 	dataDir := t.TempDir()
 	command := executable(t, t.TempDir(), "mine-acp")

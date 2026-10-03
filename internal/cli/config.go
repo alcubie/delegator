@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -83,7 +84,15 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
-				return setSetting(s, args[0], args[1])
+				if err := setSetting(s, args[0], args[1]); err != nil {
+					return err
+				}
+				updated, err := s.Settings()
+				if err != nil {
+					return err
+				}
+				*cfg = updated
+				return run.Next(s, updated, launchFrom(*dataDir, launch))
 			})
 		},
 	})
