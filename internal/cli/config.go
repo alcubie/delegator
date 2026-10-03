@@ -58,8 +58,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
-		Long: "Write the current value of one supported instance setting. For telemetry, " +
-			"null means unanswered and disabled; true or false is an explicitly submitted choice.",
+		Long:  "Write the current value of one supported instance setting.",
 		Example: `  dg config get done_hours
   dg config get default_agent
   dg config get telemetry`,
@@ -79,9 +78,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "set <name> <value>",
 		Short: "Change one instance setting.",
 		Long: "Validate and store a new value for one instance setting. The change applies " +
-			"to subsequent commands and agent runs. Setting telemetry true submits consent and " +
-			"attempts an installation report. Setting it false stops future reports but does not " +
-			"delete reports already received.",
+			"to subsequent commands and agent runs.",
 		Example: `  dg config set runs 2
   dg config set default_agent codex
   dg config set telemetry false`,
