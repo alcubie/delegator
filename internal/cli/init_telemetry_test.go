@@ -49,15 +49,15 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if cfg.DefaultAgent != "goose" {
 				t.Fatalf("agent setup changed: agent = %q", cfg.DefaultAgent)
 			}
-			prompt := "Would you like to share your usage data to help improve Delegator?\n" +
-				"This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared.\n" +
-				"See https://alcubi.ai/delegator/privacy/ for details."
-			for _, want := range []string{prompt, "Share data? [Y/n]"} {
+			prompt := "Share telemetry to help improve Delegator?\n" +
+				"Sends counts, settings, agents used, and identifiers—not ticket text or code.\n" +
+				"Details: https://alcubi.ai/delegator/privacy/"
+			for _, want := range []string{prompt, "Share telemetry? [Y/n]"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q: %s", want, out)
 				}
 			}
-			promptAt := strings.Index(out, "Share data? [Y/n]")
+			promptAt := strings.Index(out, "Share telemetry? [Y/n]")
 			completeAt := strings.Index(out, "Setup complete.")
 			if promptAt > completeAt {
 				t.Errorf("usage-data question was not immediately before setup completion: %s", out)
@@ -65,7 +65,7 @@ func TestInitTelemetryPromptSubmissionAndExits(t *testing.T) {
 			if strings.Contains(out, "Usage data sharing:") || strings.Contains(out, "dg config set telemetry") {
 				t.Errorf("setup output includes an unnecessary usage-data reminder: %s", out)
 			}
-			if !strings.Contains(out, "Welcome to Alcubi Delegator.\n\nCurrent default agent:") || !strings.Contains(out, "Selection [1] (q to cancel): \nWould you like") {
+			if !strings.Contains(out, "Welcome to Alcubi Delegator.\n\nCurrent default agent:") || !strings.Contains(out, "Selection [1] (q to cancel): \nShare telemetry") {
 				t.Errorf("setup sections are not separated by blank lines: %s", out)
 			}
 			state, err := s.TelemetryState()
@@ -104,7 +104,7 @@ func TestIncompleteInitDoesNotAskToShareUsageData(t *testing.T) {
 	t.Setenv("PATH", bin)
 	dir := t.TempDir()
 	out, err := runInteractiveInit(t, dir, "", initOptions{}, nil)
-	if err != nil || !strings.Contains(out, "No supported Agent") || strings.Contains(out, "share your usage data") {
+	if err != nil || !strings.Contains(out, "No supported Agent") || strings.Contains(out, "Share telemetry") {
 		t.Fatalf("setup = %s, %v", out, err)
 	}
 	cfg, err := testfix.OpenStore(t, dir).Settings()
@@ -138,7 +138,7 @@ func TestScriptedInitTelemetryPreservesOrExplicitlyChangesConsent(t *testing.T) 
 					want = flag
 				}
 				out, err := runIn(t, dir, t.TempDir(), args...)
-				if err != nil || strings.Contains(out, "share your usage data") {
+				if err != nil || strings.Contains(out, "Share telemetry") {
 					t.Fatalf("scripted setup = %s, %v", out, err)
 				}
 				cfg, err := s.Settings()
@@ -173,7 +173,7 @@ func TestInitExistingTelemetryConsentDoesNotPromptOrRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, err := runInteractiveInit(t, dir, "\n", initOptions{}, nil)
-			if err != nil || strings.Contains(out, "share your usage data") || !strings.Contains(out, "Setup complete.") {
+			if err != nil || strings.Contains(out, "Share telemetry") || !strings.Contains(out, "Setup complete.") {
 				t.Fatalf("repeated init = %s, %v", out, err)
 			}
 			after, err := s.TelemetryState()

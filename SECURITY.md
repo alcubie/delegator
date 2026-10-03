@@ -2,12 +2,13 @@
 
 ## Supported versions
 
-Alcubi Delegator is in development and has no published release. No version is
-currently supported as stable or production-ready.
+Alcubi Delegator is in pre-1.0 development. Published releases are available,
+but no version is considered stable or production-ready.
 
 | Version | Security support |
 | --- | --- |
-| Public releases | None exist yet |
+| Latest published release | Best-effort security fixes |
+| Older public releases | No security fixes; upgrade to the latest release |
 | `main` and other development builds | No release support; fixes are made on a best-effort basis |
 
 When pre-1.0 releases begin, only the latest published release will be eligible
@@ -70,6 +71,8 @@ Report here when the security impact comes from:
 - code bundled into an official Delegator artifact;
 - an official Alcubi Delegator installer, release artifact, or publishing
   configuration when one exists; or
+- the first-party telemetry collector, its validation and retention behavior,
+  and protected administrative access to telemetry data; or
 - Delegator's use or configuration of a dependency or integration.
 
 The following boundaries determine where other reports belong:
@@ -83,11 +86,15 @@ The following boundaries determine where other reports belong:
   integration code here. Report a defect wholly within GitHub, a package host,
   an email provider, or another external service to that service's security
   team.
-- **Installers and distribution.** There is currently no published Delegator
-  release or active Alcubi installer. Official distribution code and artifacts
-  are in scope when they exist; unrelated packages, mirrors, websites, and
-  installers that claim to distribute Delegator are not controlled by the
-  maintainer.
+- **Telemetry collector.** Report bypasses of consent, field allowlists,
+  retention, deletion, or instance revocation here. Do not probe the live
+  collector, attempt to access another instance's data, or include captured
+  telemetry in a report. The collector has no public administrative route;
+  queries and deletion use protected Cloudflare access.
+- **Installers and distribution.** Official distribution code, public Alcubi
+  installer redirects, and GitHub release artifacts are in scope. Unrelated
+  packages, mirrors, websites, and installers that claim to distribute Delegator
+  are not controlled by the maintainer.
 - **Dependencies and bundled code.** Report an issue caused by Delegator's use
   of a dependency here. A defect solely in an upstream dependency should also
   go to its maintainer. The Delegator maintainer can update, remove, or mitigate

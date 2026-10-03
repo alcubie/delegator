@@ -141,7 +141,7 @@ push is a message that arrives at a moment that the source selects.
 |---|---|
 | Without a daemon | A poll. A timer runs `dg pull`, a command that reads the source, makes a ticket for each new item, and stops. The command does not exist today. |
 | What it costs | One unit, one command, and the delay of the interval. A poll each 5 minutes gives a ticket up to 5 minutes after the source made it. |
-| What a daemon adds | A push. The daemon listens on a port, and the ticket exists at the moment the message arrives. A push from GitHub must reach the computer from the internet, which a port on the loopback does not permit. That needs a public address or a tunnel, and section 11 of the technical document says that delegator has no network interface. |
+| What a daemon adds | A push. The daemon listens on a port, and the ticket exists at the moment the message arrives. A push from GitHub must reach the computer from the internet, which a port on the loopback does not permit. That needs a public address or a tunnel, and section 11 of the technical document says that Delegator has no inbound network interface. |
 | The signal for a daemon | A source that pushes and that cannot be polled, or a person for whom the delay of the poll is a problem. Both belong to the parent product today. |
 
 ### 3.6 A page that is always open

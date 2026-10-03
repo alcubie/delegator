@@ -144,7 +144,12 @@ jobs:
           See the generated change list below for this release. Verify downloads
           using the attached SHA-256 checksum file.
 
+          Telemetry is optional and remains disabled until an explicit choice is
+          submitted. See the privacy notice for fields, controls, and retention.
+
           [FSL-1.1-ALv2 license](https://github.com/$GH_REPO/blob/$RELEASE_TAG/LICENSE)
+          · [Privacy notice](https://github.com/$GH_REPO/blob/$RELEASE_TAG/PRIVACY.md)
+          · [Security policy](https://github.com/$GH_REPO/blob/$RELEASE_TAG/SECURITY.md)
           · [Trademark policy](https://github.com/$GH_REPO/blob/$RELEASE_TAG/TRADEMARKS.md)
           EOF
           gh release create "$RELEASE_TAG" ./* --verify-tag --draft \

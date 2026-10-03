@@ -6,7 +6,7 @@ Change one instance setting.
 
 ### Synopsis
 
-Validate and store a new value for one instance setting. The change applies to subsequent commands and agent runs.
+Validate and store a new value for one instance setting. The change applies to subsequent commands and agent runs. Setting telemetry true submits consent and attempts an installation report. Setting it false stops future reports but does not delete reports already received.
 
 ```
 dg config set <name> <value> [flags]
@@ -17,6 +17,7 @@ dg config set <name> <value> [flags]
 ```
   dg config set runs 2
   dg config set default_agent codex
+  dg config set telemetry false
 ```
 
 ### Options

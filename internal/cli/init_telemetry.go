@@ -36,11 +36,11 @@ func initTelemetry(cmd *cobra.Command, s *store.Store, cfg *config.Config, inter
 
 func promptTelemetry(in io.Reader, out io.Writer) (*bool, error) {
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Would you like to share your usage data to help improve Delegator?")
-	fmt.Fprintln(out, "This will only share number of actions taken and configuration information. Your specific tickets and files will never be shared.")
-	fmt.Fprintln(out, "See https://alcubi.ai/delegator/privacy/ for details.")
+	fmt.Fprintln(out, "Share telemetry to help improve Delegator?")
+	fmt.Fprintln(out, "Sends counts, settings, agents used, and identifiers—not ticket text or code.")
+	fmt.Fprintln(out, "Details: https://alcubi.ai/delegator/privacy/")
 	for {
-		fmt.Fprint(out, "Share data? [Y/n] ")
+		fmt.Fprint(out, "Share telemetry? [Y/n] ")
 		// Read only through submission; buffering here could swallow agent
 		// answers. EOF, even after a partial answer, is not confirmation.
 		var answer strings.Builder

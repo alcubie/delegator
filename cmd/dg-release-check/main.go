@@ -24,6 +24,8 @@ import (
 
 const product = "delegator"
 
+var noticeFiles = []string{"LICENSE", "PRIVACY.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "TRADEMARKS.md"}
+
 type target struct {
 	os, arch, extension, binary string
 }
@@ -143,7 +145,9 @@ func checkChecksums(dist, checksumName string, want []string) error {
 }
 
 func checkBinaryArchive(name string, target target, members map[string]member, version string) error {
-	want := []string{"LICENSE", "TRADEMARKS.md", target.binary}
+	want := append([]string{}, noticeFiles...)
+	want = append(want, target.binary)
+	sort.Strings(want)
 	var got []string
 	for memberName := range members {
 		got = append(got, memberName)
@@ -152,12 +156,20 @@ func checkBinaryArchive(name string, target target, members map[string]member, v
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		return fmt.Errorf("%s contains %v, want %v", name, got, want)
 	}
-	if members[target.binary].mode.Perm() != 0755 || members["LICENSE"].mode.Perm() != 0644 || members["TRADEMARKS.md"].mode.Perm() != 0644 {
+	if members[target.binary].mode.Perm() != 0755 {
 		return fmt.Errorf("%s has unexpected file modes", name)
 	}
 	stamp := members[target.binary].modTime.Unix()
-	if stamp <= 0 || members["LICENSE"].modTime.Unix() != stamp || members["TRADEMARKS.md"].modTime.Unix() != stamp {
+	if stamp <= 0 {
 		return fmt.Errorf("%s does not give every member the source timestamp", name)
+	}
+	for _, notice := range noticeFiles {
+		if members[notice].mode.Perm() != 0644 {
+			return fmt.Errorf("%s has unexpected file modes", name)
+		}
+		if members[notice].modTime.Unix() != stamp {
+			return fmt.Errorf("%s does not give every member the source timestamp", name)
+		}
 	}
 	if err := checkEmbeddedVersion(members[target.binary].data, version); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
@@ -211,7 +223,7 @@ func checkSourceArchive(path, version string) error {
 		return err
 	}
 	prefix := fmt.Sprintf("%s_%s/", product, version)
-	for _, required := range []string{"LICENSE", "TRADEMARKS.md"} {
+	for _, required := range noticeFiles {
 		if _, ok := members[prefix+required]; !ok {
 			return fmt.Errorf("source archive has no %s", required)
 		}

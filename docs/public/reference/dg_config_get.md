@@ -6,7 +6,7 @@ Show one instance setting.
 
 ### Synopsis
 
-Write the current value of one supported instance setting.
+Write the current value of one supported instance setting. For telemetry, null means unanswered and disabled; true or false is an explicitly submitted choice.
 
 ```
 dg config get <name> [flags]
@@ -17,6 +17,7 @@ dg config get <name> [flags]
 ```
   dg config get done_hours
   dg config get default_agent
+  dg config get telemetry
 ```
 
 ### Options
