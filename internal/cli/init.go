@@ -49,9 +49,7 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "init",
 		Short: "Set up Alcubi Delegator for a first run.",
 		Long: "Discover installed agents, select or configure the default agent, and explain " +
-			"how to view the inbox and create the first ticket. At the end, interactive setup asks whether " +
-			"to share usage data if unanswered. Scripted setup preserves the saved choice unless " +
-			"--telemetry=true|false is supplied.",
+			"how to view the inbox and create the first ticket.",
 		Example: `  dg init
   dg init --agent codex`,
 		Args: cobra.NoArgs,

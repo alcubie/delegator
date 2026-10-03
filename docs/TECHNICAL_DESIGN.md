@@ -842,7 +842,9 @@ the date and the symptom. Do this before the correction goes in.
 
 ## 11. Security
 
-- Delegator has no server, no port and no token. There is no network interface.
+- Delegator has no inbound server, listening port or authentication token. With
+  explicit consent, it makes bounded outbound requests to the telemetry collector;
+  the [privacy notice](../PRIVACY.md) describes the fields and controls.
 - The agent operates with its permission questions off. The area of effect is the
   worktree, and all data that the agent can get to. A worktree gives isolation, but it is
   not a sandbox. This document says so directly, and version 1 does not pretend to have a
@@ -894,8 +896,8 @@ each library inside the binary. Go is also good at the control of programs that 
 the same time, which is the main work of the supervisor.
 
 **Installation.** goreleaser makes the binary for Linux and macOS, for x86-64 and for
-arm64. The [privacy notice](../PRIVACY.md) describes the network request made by the
-planned installer and the data handling of Delegator and its agents. One command installs
+arm64. The [privacy notice](../PRIVACY.md) describes the installer and telemetry
+network requests and the data handling of Delegator and its agents. One command installs
 it:
 
 ```

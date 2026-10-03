@@ -44,7 +44,25 @@ archives:
           group: root
           mode: 0644
           mtime: "{{ .CommitDate }}"
+      - src: PRIVACY.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: SECURITY.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
       - src: TRADEMARKS.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: THIRD_PARTY_NOTICES.md
         info:
           owner: root
           group: root

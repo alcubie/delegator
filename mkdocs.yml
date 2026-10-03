@@ -15,6 +15,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Telemetry and privacy: telemetry.md
   - Command reference:
       - dg: reference/dg.md
       - accept: reference/dg_accept.md

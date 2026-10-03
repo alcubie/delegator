@@ -17,6 +17,7 @@ dg config set <name> <value> [flags]
 ```
   dg config set runs 2
   dg config set default_agent codex
+  dg config set telemetry false
 ```
 
 ### Options

@@ -17,6 +17,7 @@ dg config get <name> [flags]
 ```
   dg config get done_hours
   dg config get default_agent
+  dg config get telemetry
 ```
 
 ### Options

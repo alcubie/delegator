@@ -35,7 +35,10 @@ for the settings above.
 ## Release checklist
 
 1. Run `make release-prepare`. If it changes the CLI reference, review and commit
-   those changes, then rerun it.
+   those changes, then rerun it. Confirm the privacy notice describes the shipped
+   telemetry behavior before distributing a telemetry-capable binary; generated
+   release notes link the notice and state that telemetry requires an explicit
+   choice.
 2. Run `make check`. For the full local gate, use `make release` instead: it also
    runs [live-agent integration tests](INTEGRATION_TESTS.md) and validates release
    artifacts. Those tests require authenticated agents and can incur charges;

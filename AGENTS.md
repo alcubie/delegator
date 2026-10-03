@@ -10,6 +10,7 @@
 
 - Keep the README to only necessary information. Put detailed installation, configuration, and usage guidance in `docs/`.
 - When changing CLI commands or flags, run `make docs` to regenerate the checked-in command reference.
+- Write command descriptions to describe the command generally. Avoid details about individual settings, flags, or special cases unless they are necessary to understand the command.
 
 ## Documented commands
 
