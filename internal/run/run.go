@@ -89,8 +89,7 @@ const (
 // ValidateAcceptanceWorktree determines whether acceptance may proceed and
 // whether cleanup is safe. A leftover directory without a .git entry is
 // preserved because its contents cannot be classified reliably.
-func ValidateAcceptanceWorktree(dataDir string, ticket store.Ticket, force bool) (AcceptanceWorktree, error) {
-	path := WorktreePath(dataDir, ticket.ID)
+func ValidateAcceptanceWorktree(path string, force bool) (AcceptanceWorktree, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return WorktreeAbsent, nil

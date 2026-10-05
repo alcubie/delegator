@@ -41,6 +41,7 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 				if err != nil {
 					return err
 				}
+				path := run.WorktreePath(*dataDir, id)
 				var worktree run.AcceptanceWorktree
 				err = s.ChangeStatusWith(id, store.Done, func() error {
 					if !force {
@@ -49,13 +50,12 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 						}
 					}
 					var err error
-					worktree, err = run.ValidateAcceptanceWorktree(*dataDir, ticket, force)
+					worktree, err = run.ValidateAcceptanceWorktree(path, force)
 					return err
 				})
 				if err != nil {
 					return err
 				}
-				path := run.WorktreePath(*dataDir, id)
 				switch worktree {
 				case run.WorktreeRegistered:
 					if err := run.RemoveWorktree(*dataDir, ticket, force); err != nil {
