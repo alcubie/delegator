@@ -6,7 +6,7 @@ Close a ready ticket.
 
 ### Synopsis
 
-Accept a ready ticket after its branch has been merged, mark it done, remove its worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project.
+Accept a ready ticket after its branch has been merged, mark it done, attempt to remove its worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project.
 
 ```
 dg accept [id] [flags]

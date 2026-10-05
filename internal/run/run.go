@@ -76,6 +76,45 @@ func Worktree(dataDir string, ticket store.Ticket) (string, error) {
 	return path, nil
 }
 
+// AcceptanceWorktree describes what acceptance found at a ticket's worktree
+// path. Only a registered worktree is safe to pass to Git for removal.
+type AcceptanceWorktree int
+
+const (
+	WorktreeAbsent AcceptanceWorktree = iota
+	WorktreeRegistered
+	WorktreeUnregistered
+)
+
+// ValidateAcceptanceWorktree determines whether acceptance may proceed and
+// whether cleanup is safe. A leftover directory without a .git entry is
+// preserved because its contents cannot be classified reliably.
+func ValidateAcceptanceWorktree(dataDir string, ticket store.Ticket, force bool) (AcceptanceWorktree, error) {
+	path := WorktreePath(dataDir, ticket.ID)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return WorktreeAbsent, nil
+	}
+	if err != nil {
+		return WorktreeAbsent, err
+	}
+	if !info.IsDir() {
+		return WorktreeAbsent, fmt.Errorf("worktree path %s is not a directory", path)
+	}
+
+	if _, err := os.Lstat(filepath.Join(path, ".git")); os.IsNotExist(err) {
+		return WorktreeUnregistered, nil
+	} else if err != nil {
+		return WorktreeAbsent, err
+	}
+	if !force {
+		if err := project.RequireCleanWorktree(path); err != nil {
+			return WorktreeAbsent, err
+		}
+	}
+	return WorktreeRegistered, nil
+}
+
 // RemoveWorktree removes the worktree of one run. A worktree that is not there
 // is not an error: a command that failed after the removal can then run again.
 // force removes a worktree holding changes that are not committed.

@@ -10,16 +10,18 @@ This document records future work only; it does not change current behavior.
 
 ## Current behavior and failure
 
-`dg accept` checks that the ticket branch is merged and removes its worktree
-inside the callback of a database status transaction. A removal error rolls the
-ticket back to READY, but the database cannot undo filesystem deletion or restore
-Git's worktree registration. A retry tolerates an absent directory, but an existing
-directory without Git registration causes Git to report "not a working tree".
+`dg accept` validates the merge and checks a registered worktree for staged,
+unstaged, and non-ignored untracked changes before committing DONE. It then attempts
+immediate removal outside the database transaction. Removal errors produce a warning,
+but the ticket stays DONE and queue progression continues. An absent directory needs
+no cleanup. An existing directory without a `.git` entry is accepted but preserved
+with a warning because its cleanliness cannot be verified safely.
 
 Ticket 296 exposed this state: shell history line 2814 contained `dg accept`, the
-ticket remained READY, its branch was merged, and Git no longer listed its
-worktree. Only `.astro` and `node_modules/.vite` artifacts remained. An earlier
-`npm run dev` may have recreated files during removal; the original command's
+ticket remained READY under the earlier acceptance flow, its branch was merged,
+and Git no longer listed its worktree. Only `.astro` and `node_modules/.vite`
+artifacts remained. An earlier `npm run dev` may have recreated files during
+removal; the original command's
 error was unavailable, so that cause remains unconfirmed.
 
 `dg cancel` intentionally retains worktrees so unfinished changes remain available
@@ -32,11 +34,11 @@ The relevant code is in [accept.go](../../internal/cli/accept.go),
 
 ## Proposed lifecycle
 
-Acceptance should validate merge status and uncommitted changes, then durably
-mark the ticket DONE. Cancellation should stop the running agent when necessary,
-then durably mark the ticket CANCELLED. Both should retain their worktrees for a
-configured period. Ticket closure should release queue capacity independently of
-cleanup success.
+The scheduled lifecycle would replace acceptance's immediate best-effort removal
+with retention after the ticket is durably DONE. Cancellation should stop the
+running agent when necessary, then durably mark the ticket CANCELLED. Both terminal
+states should retain their worktrees for a configured period. Ticket closure already
+releases queue capacity independently of cleanup success.
 
 Use the recorded transition into DONE or CANCELLED to calculate expiry. Reboots
 must not reset retention. Keep retention separate from `done_hours`, which only
@@ -112,12 +114,9 @@ remain visible while the queue continues normally.
 
 ## Current workaround limits
 
-`dg accept --force` skips the merge check and permits removal of uncommitted
-changes. It still invokes Git's worktree removal, so it does not bypass the
-"not a working tree" error when only an unregistered directory remains.
-
-For the observed ticket 296 state, stop any remaining dev server and preserve the
-leftover directory by moving it aside before retrying `dg accept 296`. The current
-implementation already tolerates an absent worktree directory. This is a manual
-recovery note, not a change to the deferred design or an action performed as part
-of documenting it.
+`dg accept --force` skips merge and cleanliness checks and permits removal of a
+dirty registered worktree. It does not delete an unregistered directory. For the
+observed ticket 296 state, retrying acceptance now closes the ticket, preserves the
+leftover directory, and warns that manual inspection is needed. The person must
+still stop any remaining development server and decide what to do with those files.
+Scheduled retention and automatic retry remain unavailable.

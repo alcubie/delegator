@@ -295,9 +295,9 @@ Delegator accepts a ticket only if the directory is in a git repository. This co
 operates from version 1. It prevents work on files that no version control protects.
 
 Each run gets one worktree, and one branch `delegator/<id>-<slug>`. The branch comes from
-the default branch of the repository. Delegator removes the worktree at closure, but it
-never removes the branch. The person can therefore open the branch later. The prototype
-confirmed this behaviour.
+the default branch of the repository. At acceptance, Delegator attempts to remove a
+validated worktree, but it never removes the branch. The person can therefore open the
+branch later. A cleanup failure is a warning and does not reverse ticket closure.
 
 `dg accept` first asks Git whether the ticket branch is an ancestor of `HEAD` in the
 stored project checkout. If it is not, Delegator compares the stable patch of the complete
@@ -305,8 +305,12 @@ branch change with each non-merge commit in `HEAD` after the common base. An equ
 accepts a squash merge. A partial change, or the ticket change in a commit that also holds
 other work, is not equal and the ticket stays ready. The named error tells the person that
 `--force` is available. An explicit ticket id can belong to a different project, so this
-check never uses `HEAD` from the directory of the caller. `--force` bypasses this check and
-also permits removal of a worktree with uncommitted changes.
+check never uses `HEAD` from the directory of the caller. Before committing DONE,
+Delegator also asks Git for staged, unstaged, and non-ignored untracked changes. Any of
+them leaves the ticket ready. `--force` bypasses both checks and permits removal of a
+dirty Git worktree. An absent worktree is already cleanly removed. A remaining directory
+without a `.git` entry cannot be verified, so acceptance preserves it and warns the
+person to inspect it manually, including with `--force`.
 
 ### 6.6 The seam for other agents
 
@@ -571,7 +575,7 @@ Each change of state is in the table below.
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
 | `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
 | `failed` | `ready` | `dg finish`, after the agent completes the work interactively through `dg chat`. |
-| `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD. Delegator removes the worktree and keeps the branch. |
+| `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD and its registered worktree is clean. Delegator then attempts to remove the worktree and keeps the branch. |
 | each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
 
 **Only an agent gives the state `ready`.** The command `dg finish` is one of the two
@@ -917,7 +921,7 @@ Each milestone uses the fake agent, includes tests, and is usable at its end.
 2. **Work.** The supervisor, the worktree, the git boundary, the timeout, `start`,
    `pause`, `cancel` and `restart`. The claude adapter. The commands `read` and `finish`,
    with their limits.
-3. **Closure.** The command `accept`, the removal of a worktree, and the
+3. **Closure.** The command `accept`, best-effort removal of a worktree, and the
    commit of each run on the ticket.
 4. **Commands of the person.** The config, the variables, `dg open` and the new window.
 5. **Installation.** goreleaser, the installer for Linux and macOS, and `dg doctor`.

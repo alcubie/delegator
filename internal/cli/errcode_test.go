@@ -38,6 +38,7 @@ var namedErrors = map[string]error{
 	"ErrUnknownCommit":            project.ErrUnknownCommit,
 	"ErrCommitNotOnBranch":        project.ErrCommitNotOnBranch,
 	"ErrBranchNotMerged":          project.ErrBranchNotMerged,
+	"ErrWorktreeDirty":            project.ErrWorktreeDirty,
 	"ErrNotARepository":           project.ErrNotARepository,
 	"ErrNewerDatabase":            store.ErrNewerDatabase,
 	"ErrInvalidAgent":             store.ErrInvalidAgent,
