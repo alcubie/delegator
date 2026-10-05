@@ -31,6 +31,10 @@ var ErrCommitNotOnBranch = errors.New("the ticket branch does not hold the commi
 // equivalent squash of all its changes.
 var ErrBranchNotMerged = errors.New("the ticket branch is not merged into HEAD")
 
+// ErrWorktreeDirty shows that a worktree has staged, unstaged, or untracked
+// changes which acceptance would discard.
+var ErrWorktreeDirty = errors.New("the worktree has uncommitted changes")
+
 // ErrNotARepository shows that the path is not under git version control.
 var ErrNotARepository = errors.New("the directory is not under git version control")
 
@@ -241,6 +245,19 @@ func RequireBranchMerged(root, branch string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s; use dg accept --force to accept it anyway", ErrBranchNotMerged, branch)
+}
+
+// RequireCleanWorktree checks tracked changes and all non-ignored untracked
+// files. Git reports inspection failures separately from a dirty result.
+func RequireCleanWorktree(path string) error {
+	status, err := gitOutput(path, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		return fmt.Errorf("%w; use dg accept --force to accept it anyway", ErrWorktreeDirty)
+	}
+	return nil
 }
 
 // isAncestor gives exit status 1 its documented meaning and preserves every

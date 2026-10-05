@@ -184,27 +184,74 @@ func TestAcceptRemovesTheWorktree(t *testing.T) {
 	}
 }
 
-// Uncommitted changes must leave both ticket and worktree available for
-// retry.
-func TestAcceptWithAWorktreeGitWillNotRemove(t *testing.T) {
+// Every kind of user-visible work must leave both ticket and worktree
+// available for retry.
+func TestAcceptRefusesDirtyWorktrees(t *testing.T) {
+	tests := map[string]func(*testing.T, string){
+		"staged": func(t *testing.T, worktree string) {
+			if err := os.WriteFile(filepath.Join(worktree, "ticket-work.txt"), []byte("staged\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			testfix.GitIn(t, worktree, "add", "ticket-work.txt")
+		},
+		"unstaged": func(t *testing.T, worktree string) {
+			if err := os.WriteFile(filepath.Join(worktree, "ticket-work.txt"), []byte("unstaged\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"untracked": func(t *testing.T, worktree string) {
+			if err := os.WriteFile(filepath.Join(worktree, "not-committed.txt"), []byte("untracked\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, dirty := range tests {
+		t.Run(name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, ticketID, repo := readyTicket(t, dataDir)
+			ticket := commitReadyWork(t, s, dataDir, ticketID)
+			testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
+			worktree := run.WorktreePath(dataDir, ticketID)
+			dirty(t, worktree)
+
+			_, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID))
+			if !errors.Is(err, project.ErrWorktreeDirty) {
+				t.Fatalf("err = %v, want ErrWorktreeDirty", err)
+			}
+			if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Ready {
+				t.Errorf("status = %q, want %q", got, store.Ready)
+			}
+			if _, err := os.Stat(worktree); err != nil {
+				t.Errorf("the dirty worktree is gone: %v", err)
+			}
+		})
+	}
+}
+
+func TestAcceptIgnoresIgnoredArtifacts(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
-
-	stray := filepath.Join(run.WorktreePath(dataDir, ticketID), "not-committed.txt")
-	if err := os.WriteFile(stray, []byte("work the agent left"), 0o600); err != nil {
+	worktree := run.WorktreePath(dataDir, ticketID)
+	if err := os.WriteFile(filepath.Join(worktree, ".gitignore"), []byte("artifact.log\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testfix.GitIn(t, worktree, "add", ".gitignore")
+	testfix.CommitIn(t, worktree, "ignore build artifact")
+	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
+	if err := s.FinishTicket(ticketID, commit); err != nil {
+		t.Fatal(err)
+	}
+	ticket := testfix.ReadTicket(t, dataDir, ticketID)
+	testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
+	if err := os.WriteFile(filepath.Join(worktree, "artifact.log"), []byte("ignored\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err == nil {
-		t.Fatal("err = nil, want the refusal from git")
-	}
-
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
 	}
-	if ticket.Status != store.Ready {
-		t.Errorf("status = %q, want %q", ticket.Status, store.Ready)
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+		t.Errorf("status = %q, want %q", got, store.Done)
 	}
 }
 
@@ -236,6 +283,144 @@ func TestAcceptWithForceRemovesAWorktreeGitRefuses(t *testing.T) {
 	if out := testfix.GitOut(t, repo, "worktree", "list"); strings.Contains(out, worktree) {
 		t.Errorf("git still lists the worktree:\n%s", out)
 	}
+}
+
+func TestAcceptPreservesAnUnregisteredWorktree(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%t", force), func(t *testing.T) {
+			dataDir := t.TempDir()
+			_, ticketID, repo := readyTicket(t, dataDir)
+			testfix.SecondTicket(t, dataDir)
+			l, record := testfix.RecordingLaunch(t)
+			useLaunch(t, l)
+
+			worktree := run.WorktreePath(dataDir, ticketID)
+			if err := os.Remove(filepath.Join(worktree, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			leftover := filepath.Join(worktree, "leftover.txt")
+			if err := os.WriteFile(leftover, []byte("preserve me\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"accept"}
+			if force {
+				args = append(args, "--force")
+			}
+			out, errOut, err := runInOutputs(t, dataDir, repo, "", args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := fmt.Sprintf("%d\n", ticketID); out != want {
+				t.Errorf("ordinary output = %q, want %q", out, want)
+			}
+			for _, want := range []string{"warning:", fmt.Sprint(ticketID), worktree, "no .git", "inspect it manually"} {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("warning = %q, want it to contain %q", errOut, want)
+				}
+			}
+			if got, err := os.ReadFile(leftover); err != nil || string(got) != "preserve me\n" {
+				t.Errorf("leftover = %q, %v; want preserved contents", got, err)
+			}
+			if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+				t.Errorf("status = %q, want %q", got, store.Done)
+			}
+			testfix.WaitForStarts(t, record, 1)
+		})
+	}
+}
+
+func TestAcceptAllowsAnAbsentWorktree(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ticketID, repo := readyTicket(t, dataDir)
+	ticket := testfix.ReadTicket(t, dataDir, ticketID)
+	if err := run.RemoveWorktree(dataDir, ticket, false); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errOut, err := runInOutputs(t, dataDir, repo, "", "accept", fmt.Sprint(ticketID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errOut != "" {
+		t.Errorf("error output = %q, want no warning", errOut)
+	}
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+		t.Errorf("status = %q, want %q", got, store.Done)
+	}
+}
+
+func TestAcceptStillChecksMergeWithoutARegisteredWorktree(t *testing.T) {
+	for _, state := range []string{"absent", "unregistered"} {
+		t.Run(state, func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, ticketID, repo := readyTicket(t, dataDir)
+			commitReadyWork(t, s, dataDir, ticketID)
+			worktree := run.WorktreePath(dataDir, ticketID)
+			if state == "absent" {
+				if err := run.RemoveWorktree(dataDir, testfix.ReadTicket(t, dataDir, ticketID), false); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.Remove(filepath.Join(worktree, ".git")); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); !errors.Is(err, project.ErrBranchNotMerged) {
+				t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+			}
+			if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Ready {
+				t.Errorf("status = %q, want %q", got, store.Ready)
+			}
+		})
+	}
+}
+
+func TestAcceptRefusesAWorktreeItCannotInspect(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ticketID, repo := readyTicket(t, dataDir)
+	worktree := run.WorktreePath(dataDir, ticketID)
+	if err := os.Chmod(worktree, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(worktree, 0o700) })
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err == nil {
+		t.Fatal("err = nil, want the worktree inspection error")
+	}
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Ready {
+		t.Errorf("status = %q, want %q", got, store.Ready)
+	}
+}
+
+func TestAcceptContinuesAfterCleanupFails(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ticketID, repo := readyTicket(t, dataDir)
+	testfix.SecondTicket(t, dataDir)
+	l, record := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	worktree := run.WorktreePath(dataDir, ticketID)
+	worktreesDir := filepath.Dir(worktree)
+	if err := os.Chmod(worktreesDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(worktreesDir, 0o700) })
+
+	out, errOut, err := runInOutputs(t, dataDir, repo, "", "accept", fmt.Sprint(ticketID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("ordinary output = %q, want nothing", out)
+	}
+	for _, want := range []string{"warning:", fmt.Sprint(ticketID), worktree} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("warning = %q, want it to contain %q", errOut, want)
+		}
+	}
+	if got := testfix.ReadTicket(t, dataDir, ticketID).Status; got != store.Done {
+		t.Errorf("status = %q, want %q", got, store.Done)
+	}
+	testfix.WaitForStarts(t, record, 1)
 }
 
 // RPC is the boundary used by programs and the GUI. It receives the stable

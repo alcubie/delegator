@@ -1379,8 +1379,8 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 }
 
 // ChangeStatusWith applies a status change and calls work before committing.
-// If work fails, the database change rolls back. For example, dg accept must
-// leave a ticket ready when removing its worktree fails.
+// If work fails, the database change rolls back. For example, dg accept uses
+// work for validation that must leave a ticket ready when it fails.
 //
 // The callback holds SQLite's writer lock, so keep it brief. External side
 // effects cannot be rolled back by the database.

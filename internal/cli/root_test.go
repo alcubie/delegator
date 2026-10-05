@@ -15,12 +15,21 @@ import (
 // runIn executes a command with separate output and error buffers.
 func runIn(t *testing.T, dataDir, workDir string, args ...string) (string, error) {
 	t.Helper()
-	return runInWithStdin(t, dataDir, workDir, "", args...)
+	out, _, err := runInOutputs(t, dataDir, workDir, "", args...)
+	return out, err
 }
 
 // runInWithStdin runs one command with text on its standard input, for a
 // command that reads it.
 func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string) (string, error) {
+	t.Helper()
+	out, _, err := runInOutputs(t, dataDir, workDir, stdin, args...)
+	return out, err
+}
+
+// runInOutputs keeps ordinary output separate from warnings written to the
+// error stream.
+func runInOutputs(t *testing.T, dataDir, workDir, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	root := Root(workDir)
@@ -38,7 +47,7 @@ func runInWithStdin(t *testing.T, dataDir, workDir, stdin string, args ...string
 	root.SetArgs(args)
 
 	err := root.Execute()
-	return out.String(), err
+	return out.String(), errOut.String(), err
 }
 
 func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
