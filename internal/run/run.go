@@ -81,7 +81,9 @@ func Worktree(dataDir string, ticket store.Ticket) (string, error) {
 type AcceptanceWorktree int
 
 const (
-	WorktreeAbsent AcceptanceWorktree = iota
+	// WorktreeUnknown is the zero value returned when inspection fails.
+	WorktreeUnknown AcceptanceWorktree = iota
+	WorktreeAbsent
 	WorktreeRegistered
 	WorktreeUnregistered
 )
@@ -95,20 +97,20 @@ func ValidateAcceptanceWorktree(path string, force bool) (AcceptanceWorktree, er
 		return WorktreeAbsent, nil
 	}
 	if err != nil {
-		return WorktreeAbsent, err
+		return WorktreeUnknown, err
 	}
 	if !info.IsDir() {
-		return WorktreeAbsent, fmt.Errorf("worktree path %s is not a directory", path)
+		return WorktreeUnknown, fmt.Errorf("worktree path %s is not a directory", path)
 	}
 
 	if _, err := os.Lstat(filepath.Join(path, ".git")); os.IsNotExist(err) {
 		return WorktreeUnregistered, nil
 	} else if err != nil {
-		return WorktreeAbsent, err
+		return WorktreeUnknown, err
 	}
 	if !force {
 		if err := project.RequireCleanWorktree(path); err != nil {
-			return WorktreeAbsent, err
+			return WorktreeUnknown, err
 		}
 	}
 	return WorktreeRegistered, nil
