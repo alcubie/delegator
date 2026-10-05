@@ -1,13 +1,6 @@
 # Privacy notice
 
-**Effective date: October 3, 2026**
-
-Alcubi Delegator is software published and operated by **Matthew McCormick**,
-an individual. Alcubi is a brand name used for the project; this notice does
-not describe a separate company.
-
-Questions, privacy requests, and deletion requests may be sent to
-[support@alcubi.ai](mailto:support@alcubi.ai).
+**Effective date: October 5, 2026**
 
 ## The short version
 
@@ -238,6 +231,12 @@ paths that are not needed. A request to delete a support conversation can be sen
 to the same address; the mailbox copy will be deleted unless retention is required
 for one of the reasons above. Sending a request necessarily reveals the email and
 routing data needed to receive and answer it.
+
+## Who is responsible
+
+Matthew McCormick operates Delegator and its telemetry service under the Alcubi
+name. Questions, privacy requests, and deletion requests may be sent to
+[support@alcubi.ai](mailto:support@alcubi.ai).
 
 ## Changes to this notice
 
