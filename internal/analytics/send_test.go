@@ -69,6 +69,17 @@ func TestSendRequiresConsentAndAcknowledgesInstallation(t *testing.T) {
 	if err := localSend(unanswered, now, server); err != nil {
 		t.Fatal(err)
 	}
+	declined, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer declined.Close()
+	if err := declined.SetSetting("telemetry", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if err := localSend(declined, now, server); err != nil {
+		t.Fatal(err)
+	}
 	s, db := reportStore(t, "2026-09-25T12:00:00Z")
 	if _, err := db.Exec(`UPDATE telemetry_state SET last_attempt = NULL`); err != nil {
 		t.Fatal(err)
