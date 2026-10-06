@@ -95,6 +95,7 @@ func terminal(args []string, answer string) (string, error) {
 	}()
 	deadline := time.Now().Add(90 * time.Second)
 	sent := false
+	telemetrySent := false
 	var runErr error
 	for {
 		if !sent && answer != "" && strings.Contains(output.text(), "(q to cancel):") {
@@ -103,6 +104,15 @@ func terminal(args []string, answer string) (string, error) {
 				break
 			}
 			sent = true
+		}
+		// Wait for the second prompt so the agent selector cannot consume the
+		// telemetry answer. Decline sharing in the installer test fixture.
+		if sent && answer == "1\r" && !telemetrySent && strings.Contains(output.text(), "Share data? [Y/n]") {
+			if _, err := io.WriteString(inWrite, "n\r"); err != nil {
+				runErr = err
+				break
+			}
+			telemetrySent = true
 		}
 		status, err := windows.WaitForSingleObject(process.Process, 50)
 		if err != nil {

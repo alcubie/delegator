@@ -52,7 +52,12 @@ try {
         if ($Case -in @('select', 'cancel')) {
             $selected = & $destination config get default_agent
             Assert ($LASTEXITCODE -eq 0) 'Cannot read onboarding configuration'
-            if ($Case -eq 'select') { Assert ($selected -eq 'goose') 'Keyboard selection was not saved' }
+            if ($Case -eq 'select') {
+                Assert ($selected -eq 'goose') 'Keyboard selection was not saved'
+                $telemetry = & $destination config get telemetry
+                Assert ($LASTEXITCODE -eq 0) 'Cannot read telemetry configuration'
+                Assert ($telemetry -eq 'false') 'Keyboard telemetry opt-out was not saved'
+            }
             else { Assert ([string]::IsNullOrEmpty($selected)) 'Cancellation selected an agent' }
         }
     }
