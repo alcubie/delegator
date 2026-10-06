@@ -231,6 +231,61 @@ stage_file=
 
 printf '%s\n' "Installed Alcubi Delegator ($reported_version) at $destination"
 
+configure_path() {
+	case :${PATH:-}: in
+		*:"$install_dir":*) return ;;
+	esac
+
+	# Quote the directory as shell data, including spaces and single quotes.
+	quoted_dir=$(printf '%s' "$install_dir" | sed "s/'/'\\\\''/g")
+	path_command="export PATH='$quoted_dir':\"\$PATH\""
+	profile=
+	if [ -n "${HOME:-}" ]; then
+		case ${SHELL##*/} in
+			bash)
+				if [ "$os" = darwin ]; then
+					# Bash reads only the first existing login profile.
+					profile=$HOME/.bash_profile
+					if [ ! -f "$profile" ]; then
+						if [ -f "$HOME/.bash_login" ]; then
+							profile=$HOME/.bash_login
+						elif [ -f "$HOME/.profile" ]; then
+							profile=$HOME/.profile
+						fi
+					fi
+				else
+					profile=$HOME/.bashrc
+				fi
+				;;
+			zsh) profile=${ZDOTDIR:-$HOME}/.zshrc ;;
+		esac
+	fi
+
+	printf '\n'
+	if [ -n "$profile" ]; then
+		if grep -Fqx "$path_command" "$profile" 2>/dev/null; then
+			printf '%s\n' "PATH is already configured in $profile."
+		elif (printf '\n# Added by Alcubi Delegator.\n%s\n' "$path_command" >> "$profile") 2>/dev/null; then
+			printf '%s\n' "Added $install_dir to PATH in $profile."
+		else
+			printf '%s\n' "Could not update $profile. Add this command to your shell configuration:"
+			printf '    %s\n' "$path_command"
+			profile=
+		fi
+	else
+		printf '%s\n' 'Add this command to your shell configuration for future terminals:'
+		printf '    %s\n' "$path_command"
+	fi
+	if [ -n "$profile" ]; then
+		printf '%s\n' 'New terminal windows will pick this up automatically.'
+	fi
+	printf '\n%s\n\n    %s\n\n' 'To use dg in this terminal now, run:' "$path_command"
+}
+
+# SHELL identifies the user's shell, not the sh running this piped installer.
+SHELL=${SHELL:-}
+configure_path
+
 show_init_command() {
 	printf '%s\n' "To set up Alcubi Delegator later, run:" "    dg init"
 }

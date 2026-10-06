@@ -108,7 +108,8 @@ EOF
 	export FAKE_LATEST_VERSION=1.2.3
 	export FAKE_UNAME_SYSTEM=Linux
 	export FAKE_UNAME_MACHINE=x86_64
-	unset FAKE_CURL_MODE
+	unset FAKE_CURL_MODE ZDOTDIR INSTALLER_TEST_PATH
+	export SHELL=/bin/bash
 }
 
 sha256() {
@@ -141,7 +142,7 @@ EOF
 }
 
 run_installer() {
-	cat "$ROOT/install.sh" | PATH="$CASE_DIR/fake-bin:$ORIGINAL_PATH" \
+	cat "$ROOT/install.sh" | PATH="${INSTALLER_TEST_PATH:-$CASE_DIR/fake-bin:$ORIGINAL_PATH}" \
 		HOME="$CASE_DIR/home" TMPDIR="$CASE_DIR/tmp" \
 		DG_INSTALL_DIR="$CASE_DIR/bin" DG_NON_INTERACTIVE=1 \
 		sh -s -- "$@" > "$CASE_DIR/stdout" 2> "$CASE_DIR/stderr"
@@ -241,6 +242,74 @@ test_macos_arm64_install() {
 	run_installer --version 2.0.0
 	[[ $("$CASE_DIR/bin/dg" version) == 'dg v2.0.0' ]]
 	assert_contains "$CURL_LOG" 'delegator_2.0.0_darwin_arm64.tar.gz'
+}
+
+test_shell_path_configuration() {
+	setup_case bash-path
+	export FAKE_UNAME_SYSTEM=Darwin
+	make_release 1.2.3 darwin
+	run_installer
+	assert_contains "$CASE_DIR/stdout" "Added $CASE_DIR/bin to PATH in $CASE_DIR/home/.bash_profile"
+	assert_contains "$CASE_DIR/stdout" 'To use dg in this terminal now, run:'
+	local resolved
+	resolved=$(HOME="$CASE_DIR/home" bash --noprofile --norc -c '. "$HOME/.bash_profile"; command -v dg')
+	[[ $resolved == "$CASE_DIR/bin/dg" ]]
+	run_installer
+	[[ $(grep -c '^export PATH=' "$CASE_DIR/home/.bash_profile") == 1 ]]
+	assert_contains "$CASE_DIR/stdout" 'PATH is already configured'
+
+	setup_case existing-profile
+	export FAKE_UNAME_SYSTEM=Darwin
+	printf '# Existing settings' > "$CASE_DIR/home/.profile"
+	make_release 1.2.3 darwin
+	run_installer
+	[[ ! -e $CASE_DIR/home/.bash_profile ]]
+	assert_line "$CASE_DIR/home/.profile" '# Existing settings'
+	assert_contains "$CASE_DIR/home/.profile" 'export PATH='
+
+	setup_case zsh-path
+	export SHELL=/bin/zsh ZDOTDIR="$CASE_DIR/zsh-config"
+	mkdir "$ZDOTDIR"
+	make_release 1.2.3
+	run_installer
+	assert_contains "$ZDOTDIR/.zshrc" 'export PATH='
+	[[ ! -e $CASE_DIR/home/.bashrc ]]
+
+	setup_case already-on-path
+	export INSTALLER_TEST_PATH="$CASE_DIR/fake-bin:$CASE_DIR/bin:$ORIGINAL_PATH"
+	make_release 1.2.3
+	run_installer
+	[[ ! -e $CASE_DIR/home/.bashrc ]]
+	assert_not_contains "$CASE_DIR/stdout" 'To use dg in this terminal now'
+}
+
+test_path_configuration_fallbacks() {
+	setup_case unsupported-shell
+	export SHELL=/bin/fish
+	make_release 1.2.3
+	run_installer
+	[[ ! -e $CASE_DIR/home/.bashrc ]]
+	assert_contains "$CASE_DIR/stdout" 'Add this command to your shell configuration'
+	assert_not_contains "$CASE_DIR/stdout" 'New terminal windows will pick this up'
+
+	setup_case unwritable-profile
+	mkdir "$CASE_DIR/home/.bashrc"
+	make_release 1.2.3
+	run_installer
+	assert_contains "$CASE_DIR/stdout" 'Could not update'
+	assert_contains "$CASE_DIR/stdout" 'To use dg in this terminal now'
+	[[ -x $CASE_DIR/bin/dg ]]
+}
+
+test_path_configuration_quotes_directory() {
+	setup_case quoted-path
+	make_release 1.2.3
+	local destination="$CASE_DIR/a space ' and \$(touch unexpected)"
+	run_installer --install-dir "$destination"
+	local resolved
+	resolved=$(HOME="$CASE_DIR/home" bash --noprofile --norc -c '. "$HOME/.bashrc"; command -v dg')
+	[[ $resolved == "$destination/dg" ]]
+	[[ ! -e unexpected ]]
 }
 
 test_unsupported_platform() {
@@ -406,6 +475,9 @@ tests=(
 	test_legacy_release_install
 	test_reinstall_same_and_newer
 	test_macos_arm64_install
+	test_shell_path_configuration
+	test_path_configuration_fallbacks
+	test_path_configuration_quotes_directory
 	test_unsupported_platform
 	test_checksum_failure_preserves_existing_binary
 	test_interrupted_download_leaves_no_binary
