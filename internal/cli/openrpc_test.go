@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/spf13/cobra"
@@ -378,5 +380,129 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 				t.Error("result unexpectedly satisfies the advertised schema")
 			}
 		})
+	}
+}
+
+func TestRPCDiscoverListResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "list")
+	resultFor := func(t *testing.T, dataDir, workDir string, params map[string]any) any {
+		t.Helper()
+		request, err := json.Marshal(map[string]any{
+			"jsonrpc": "2.0", "method": "list", "params": params, "id": 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := rpcIn(t, dataDir, workDir, string(request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := rpcObject(t, out)
+		if response["error"] != nil {
+			t.Fatalf("list response = %#v, want a result", response)
+		}
+		return response["result"]
+	}
+
+	empty := resultFor(t, t.TempDir(), t.TempDir(), map[string]any{})
+	if empty != nil {
+		t.Fatalf("empty list result = %#v, want null", empty)
+	}
+	if err := validator.Validate(empty); err != nil {
+		t.Fatalf("empty handler result does not satisfy the advertised schema: %v", err)
+	}
+
+	dataDir := t.TempDir()
+	repo, ids := eachStatus(t, dataDir)
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(ids[store.Queued], ids[store.Cancelled]); err != nil {
+		t.Fatal(err)
+	}
+	other := testfix.Repo(t, "release")
+	if _, err := ticketIn(t, dataDir, other, "ticket in another project", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	all, ok := resultFor(t, dataDir, repo, map[string]any{}).([]any)
+	if !ok || len(all) != len(ids)+1 {
+		t.Fatalf("unfiltered list result = %#v, want every project", all)
+	}
+	if err := validator.Validate(all); err != nil {
+		t.Fatalf("populated handler result does not satisfy the advertised schema: %v", err)
+	}
+	filtered, ok := resultFor(t, dataDir, repo, map[string]any{"project": repo}).([]any)
+	if !ok || len(filtered) != len(ids) {
+		t.Fatalf("filtered list result = %#v, want the six tickets in %s", filtered, repo)
+	}
+	if err := validator.Validate(filtered); err != nil {
+		t.Fatalf("project-filtered result does not satisfy the advertised schema: %v", err)
+	}
+
+	byStatus := map[string]map[string]any{}
+	for _, value := range filtered {
+		row, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("list row = %#v, want an object", value)
+		}
+		byStatus[row["Status"].(string)] = row
+	}
+	for status := range ids {
+		if byStatus[string(status)] == nil {
+			t.Errorf("filtered result omitted status %q", status)
+		}
+	}
+	queued := byStatus[string(store.Queued)]
+	if queued["Accepted"] != "0001-01-01T00:00:00Z" || queued["Started"] != "0001-01-01T00:00:00Z" {
+		t.Errorf("queued zero times = Accepted %#v, Started %#v", queued["Accepted"], queued["Started"])
+	}
+	if got := queued["DependsOn"]; !slices.Equal(got.([]any), []any{float64(ids[store.Cancelled])}) {
+		t.Errorf("queued DependsOn = %#v, want cancelled ticket %d", got, ids[store.Cancelled])
+	}
+	if byStatus[string(store.Running)]["Position"] != float64(0) || queued["Position"] == float64(0) {
+		t.Errorf("positions do not preserve list membership: queued %#v, running %#v", queued["Position"], byStatus[string(store.Running)]["Position"])
+	}
+
+	valid := maps.Clone(queued)
+	valid["future"] = true
+	if err := validator.Validate([]any{valid}); err != nil {
+		t.Errorf("additive ticket field does not satisfy the advertised schema: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{"missing exported field", func(row map[string]any) { delete(row, "Project") }},
+		{"wrong position type", func(row map[string]any) { row["Position"] = "first" }},
+		{"invalid status", func(row map[string]any) { row["Status"] = "waiting" }},
+		{"null timestamp", func(row map[string]any) { row["Accepted"] = nil }},
+		{"wrong dependency type", func(row map[string]any) { row["DependsOn"] = []any{"2"} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := maps.Clone(queued)
+			test.change(row)
+			if err := validator.Validate([]any{row}); err == nil {
+				t.Error("result unexpectedly satisfies the advertised schema")
+			}
+		})
+	}
+
+	request, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "method": "list",
+		"params": map[string]any{"project": filepath.Join(t.TempDir(), "missing")}, "id": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := rpcIn(t, dataDir, repo, string(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	errorResponse := rpcObject(t, out)
+	if _, ok := errorResponse["error"].(map[string]any); !ok {
+		t.Fatalf("failed list response = %#v, want an error envelope", errorResponse)
+	}
+	if _, ok := errorResponse["result"]; ok {
+		t.Fatalf("failed list response has a successful result: %#v", errorResponse)
 	}
 }
