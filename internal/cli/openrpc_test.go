@@ -81,6 +81,152 @@ func openRPCResultValidator(t *testing.T, document openRPCDocument, method strin
 	return validator
 }
 
+func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir, method string, params map[string]any) {
+	t.Helper()
+	request, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "method": method, "params": params, "id": method,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := rpcIn(t, dataDir, workDir, string(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, present := response["result"]
+	if !present || result != nil || response["error"] != nil {
+		t.Fatalf("%s response = %#v, want a present null result", method, response)
+	}
+	if err := validator.Validate(result); err != nil {
+		t.Fatalf("%s handler result does not satisfy the advertised schema: %v", method, err)
+	}
+}
+
+func TestRPCDiscoverNullResultContracts(t *testing.T) {
+	document := rpcDiscover(t)
+	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start"}
+	validators := make(map[string]*jsonschema.Schema, len(methods))
+	for _, method := range methods {
+		validators[method] = openRPCResultValidator(t, document, method)
+		for _, invalid := range []any{false, float64(0), "", []any{}, map[string]any{}} {
+			if err := validators[method].Validate(invalid); err == nil {
+				t.Errorf("%s schema accepts non-null result %#v", method, invalid)
+			}
+		}
+	}
+
+	t.Run("edit non-editor forms", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, id, repo := queuedTicket(t, dataDir)
+		bodyFile := filepath.Join(t.TempDir(), "body.md")
+		if err := os.WriteFile(bodyFile, []byte("body from file\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, params := range []map[string]any{
+			{"args": []any{id}, "title": "Changed title"},
+			{"args": []any{id}, "body": "inline body"},
+			{"args": []any{id}, "body-file": bodyFile},
+		} {
+			rpcNullResult(t, validators["edit"], dataDir, repo, "edit", params)
+		}
+	})
+
+	t.Run("move", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, _, repo := queuedTicket(t, dataDir)
+		id := testfix.SecondTicket(t, dataDir)
+		rpcNullResult(t, validators["move"], dataDir, repo, "move", map[string]any{"args": []any{id, "top"}})
+	})
+
+	t.Run("depend add and remove", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, first, repo := queuedTicket(t, dataDir)
+		dependent := testfix.SecondTicket(t, dataDir)
+		params := map[string]any{"args": []any{dependent}, "after": []any{first}}
+		rpcNullResult(t, validators["depend"], dataDir, repo, "depend", params)
+		params["remove"] = true
+		rpcNullResult(t, validators["depend"], dataDir, repo, "depend", params)
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		dataDir := t.TempDir()
+		s, id, repo := queuedTicket(t, dataDir)
+		if err := s.PauseQueue(); err != nil {
+			t.Fatal(err)
+		}
+		rpcNullResult(t, validators["cancel"], dataDir, repo, "cancel", map[string]any{"args": []any{id}})
+	})
+
+	t.Run("restart", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, id, repo := failedTicket(t, dataDir)
+		launch, record := testfix.RecordingLaunch(t)
+		useLaunch(t, launch)
+		rpcNullResult(t, validators["restart"], dataDir, repo, "restart", map[string]any{"args": []any{id}})
+		testfix.WaitForStarts(t, record, 1)
+	})
+
+	t.Run("finish", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, id, repo, commit := runningTicket(t, dataDir)
+		rpcNullResult(t, validators["finish"], dataDir, repo, "finish", map[string]any{"args": []any{id, commit}})
+	})
+
+	t.Run("pause and start", func(t *testing.T) {
+		dataDir := t.TempDir()
+		workDir := t.TempDir()
+		rpcNullResult(t, validators["pause"], dataDir, workDir, "pause", map[string]any{})
+		rpcNullResult(t, validators["start"], dataDir, workDir, "start", map[string]any{})
+	})
+
+	t.Run("agents add", func(t *testing.T) {
+		dataDir := t.TempDir()
+		command := executable(t, t.TempDir(), "local-agent")
+		rpcNullResult(t, validators["agents.add"], dataDir, t.TempDir(), "agents.add", map[string]any{
+			"args": []any{"local"}, "command": command,
+		})
+	})
+
+	t.Run("config set schedules newly admitted work", func(t *testing.T) {
+		dataDir := t.TempDir()
+		s, first, repo := queuedTicket(t, dataDir)
+		if _, err := s.Claim(first, "delegator/1-first", testAgentID); err != nil {
+			t.Fatal(err)
+		}
+		testfix.SecondTicket(t, dataDir)
+		launch, record := testfix.RecordingLaunch(t)
+		useLaunch(t, launch)
+		rpcNullResult(t, validators["config.set"], dataDir, repo, "config.set", map[string]any{
+			"args": []any{"runs", 2},
+		})
+		testfix.WaitForStarts(t, record, 1)
+	})
+}
+
+func TestRPCNullResultCommandErrorsRemainErrorEnvelopes(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+	requests := []string{
+		fmt.Sprintf(`{"jsonrpc":"2.0","method":"edit","params":{"args":[%d]},"id":"edit"}`, id),
+		`{"jsonrpc":"2.0","method":"pause","params":{"args":[1]},"id":"pause"}`,
+		`{"jsonrpc":"2.0","method":"config.set","params":{"args":["runs",0]},"id":"config"}`,
+	}
+	for _, request := range requests {
+		out, err := rpcIn(t, dataDir, repo, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := rpcObject(t, out)
+		if _, ok := response["error"].(map[string]any); !ok {
+			t.Errorf("response = %#v, want an error envelope", response)
+		}
+		if _, ok := response["result"]; ok {
+			t.Errorf("error response has a successful result: %#v", response)
+		}
+	}
+}
+
 func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	document := rpcDiscover(t)
 	if document.OpenRPC != openRPCVersion {
