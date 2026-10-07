@@ -68,6 +68,39 @@ func listTickets(dataDir, workDir string, cfg *config.Config, projectDir string)
 	return tickets, err
 }
 
+// listResultSchema describes the serialized []store.OpenTicket returned by
+// list. Its legacy field names retain Go's exported-field casing; aligning
+// them with the lowercase inbox rows is a future compatibility change. A query
+// with no tickets is null because AllTickets returns a nil slice.
+func listResultSchema() map[string]any {
+	timestamp := map[string]any{"type": "string", "format": "date-time"}
+	ticket := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ID":        map[string]any{"type": "integer", "minimum": 1},
+			"Project":   map[string]any{"type": "string"},
+			"Title":     map[string]any{"type": "string"},
+			"Status":    map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"Position":  map[string]any{"type": "integer", "minimum": 0},
+			"Created":   timestamp,
+			"Accepted":  timestamp,
+			"Started":   timestamp,
+			"Changed":   timestamp,
+			"DependsOn": map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "integer", "minimum": 1}},
+		},
+		"required": []string{
+			"ID", "Project", "Title", "Status", "Position", "Created",
+			"Accepted", "Started", "Changed", "DependsOn",
+		},
+		"additionalProperties": true,
+	}
+	return map[string]any{
+		"type":        []string{"array", "null"},
+		"items":       map[string]any{"$ref": "#/definitions/ticket"},
+		"definitions": map[string]any{"ticket": ticket},
+	}
+}
+
 // writeList renders tickets in the supplied order, sharing inbox columns and
 // showing status at the right. An empty list writes nothing.
 func writeList(out io.Writer, tickets []store.OpenTicket) {
