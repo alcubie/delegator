@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"maps"
 	"slices"
 	"testing"
 
@@ -63,6 +64,7 @@ func openRPCResultValidator(t *testing.T, document openRPCDocument, method strin
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft7)
+	compiler.AssertFormat()
 	if err := compiler.AddResource("result-schema.json", schema); err != nil {
 		t.Fatalf("add %s result schema: %v", method, err)
 	}
@@ -216,6 +218,80 @@ func TestRPCDiscoverVersionResultContract(t *testing.T) {
 			}
 			if !test.invalid && err != nil {
 				t.Errorf("result does not satisfy the advertised schema: %v", err)
+			}
+		})
+	}
+}
+
+func TestRPCDiscoverInboxResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "inbox")
+
+	emptyDataDir := t.TempDir()
+	testfix.OpenStore(t, emptyDataDir)
+	empty := rpcDocument(t, emptyDataDir, t.TempDir(), "inbox")
+	if err := validator.Validate(empty); err != nil {
+		t.Fatalf("empty handler result does not satisfy the advertised schema: %v", err)
+	}
+
+	dataDir := t.TempDir()
+	_, repo, _ := eachGroup(t, dataDir)
+	actual := rpcDocument(t, dataDir, repo, "inbox")
+	if err := validator.Validate(actual); err != nil {
+		t.Fatalf("populated handler result does not satisfy the advertised schema: %v", err)
+	}
+	if _, err := runIn(t, dataDir, repo, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	paused := rpcDocument(t, dataDir, repo, "inbox")
+	if err := validator.Validate(paused); err != nil {
+		t.Fatalf("paused handler result does not satisfy the advertised schema: %v", err)
+	}
+
+	queued := one(t, actual, "queued")
+	validTicket := maps.Clone(queued)
+	validTicket["id"] = float64(1 << 62)
+	validTicket["future"] = true
+	additive := maps.Clone(empty)
+	additive["future"] = true
+	additive["queued"] = []any{validTicket}
+	if err := validator.Validate(additive); err != nil {
+		t.Errorf("additive fields or null timestamps do not satisfy the advertised schema: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{"missing queue", func(result map[string]any) { delete(result, "queue") }},
+		{"group is not an array", func(result map[string]any) { result["done"] = map[string]any{} }},
+		{"invalid queue", func(result map[string]any) { result["queue"] = "stopped" }},
+		{"missing nullable ticket field", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "accepted")
+			result["queued"] = []any{row}
+		}},
+		{"wrong ticket field type", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["id"] = "1"
+			result["queued"] = []any{row}
+		}},
+		{"invalid status", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["status"] = "waiting"
+			result["queued"] = []any{row}
+		}},
+		{"malformed timestamp", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["created"] = "yesterday"
+			result["queued"] = []any{row}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := maps.Clone(empty)
+			test.change(result)
+			if err := validator.Validate(result); err == nil {
+				t.Error("result unexpectedly satisfies the advertised schema")
 			}
 		})
 	}
