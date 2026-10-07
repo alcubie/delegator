@@ -348,6 +348,9 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 		change func(map[string]any)
 	}{
 		{"missing queue", func(result map[string]any) { delete(result, "queue") }},
+		{"missing done hours", func(result map[string]any) { delete(result, "done_hours") }},
+		{"negative done hours", func(result map[string]any) { result["done_hours"] = -1.0 }},
+		{"fractional done hours", func(result map[string]any) { result["done_hours"] = 1.5 }},
 		{"group is not an array", func(result map[string]any) { result["done"] = map[string]any{} }},
 		{"invalid queue", func(result map[string]any) { result["queue"] = "stopped" }},
 		{"missing nullable ticket field", func(result map[string]any) {

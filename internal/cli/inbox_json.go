@@ -18,12 +18,13 @@ const (
 
 // inboxJSON holds queue state and the same groups as terminal output.
 type inboxJSON struct {
-	Queue   string            `json:"queue"`
-	Done    []inboxTicketJSON `json:"done"`
-	Ready   []inboxTicketJSON `json:"ready"`
-	Running []inboxTicketJSON `json:"running"`
-	Failed  []inboxTicketJSON `json:"failed"`
-	Queued  []inboxTicketJSON `json:"queued"`
+	Queue     string            `json:"queue"`
+	DoneHours int               `json:"done_hours"`
+	Done      []inboxTicketJSON `json:"done"`
+	Ready     []inboxTicketJSON `json:"ready"`
+	Running   []inboxTicketJSON `json:"running"`
+	Failed    []inboxTicketJSON `json:"failed"`
+	Queued    []inboxTicketJSON `json:"queued"`
 
 	box  inbox.Inbox
 	now  time.Time
@@ -76,10 +77,11 @@ func inboxResultSchema() map[string]any {
 		}
 	}
 	groups["queue"] = map[string]any{"type": "string", "enum": []string{queueRunning, queuePaused}}
+	groups["done_hours"] = map[string]any{"type": "integer", "minimum": 0}
 	return map[string]any{
 		"type":                 "object",
 		"properties":           groups,
-		"required":             []string{"queue", "done", "ready", "running", "failed", "queued"},
+		"required":             []string{"queue", "done_hours", "done", "ready", "running", "failed", "queued"},
 		"additionalProperties": true,
 		"definitions":          map[string]any{"ticket": ticket},
 	}
@@ -115,14 +117,15 @@ func queueState(running bool) string {
 // fields hold the values the text renderer needs alongside the JSON form.
 func inboxValue(box inbox.Inbox, now time.Time, done time.Duration) inboxJSON {
 	return inboxJSON{
-		Queue:   queueState(box.QueueRunning),
-		Done:    inboxTickets(box.Done),
-		Ready:   inboxTickets(box.Ready),
-		Running: inboxTickets(box.Running),
-		Failed:  inboxTickets(box.Failed),
-		Queued:  inboxTickets(box.Queued),
-		box:     box,
-		now:     now,
-		done:    done,
+		Queue:     queueState(box.QueueRunning),
+		DoneHours: int(done / time.Hour),
+		Done:      inboxTickets(box.Done),
+		Ready:     inboxTickets(box.Ready),
+		Running:   inboxTickets(box.Running),
+		Failed:    inboxTickets(box.Failed),
+		Queued:    inboxTickets(box.Queued),
+		box:       box,
+		now:       now,
+		done:      done,
 	}
 }
