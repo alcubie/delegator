@@ -793,6 +793,11 @@ when a key of that JSON changes its name, or changes its type, or goes away. A n
 does not change it, because a reader ignores a key that it does not know. A program that
 starts `dg` reads the two values first, and then decides if it can read the data.
 
+To publish another command's result contract, keep its Draft 7 JSON Schema beside the
+response type and add it to `rpcResultSchema`. Contract tests compile the schema returned
+by `rpc.discover` and validate a result from the request handler, including incompatible
+and additive examples, so discovery and serialization cannot drift unnoticed.
+
 The agent uses two commands only, and one of them is a command of the person:
 
 | Command | Function |

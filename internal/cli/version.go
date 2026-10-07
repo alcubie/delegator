@@ -27,6 +27,20 @@ type versionJSON struct {
 	Schema  int    `json:"schema"`
 }
 
+// versionResultSchema describes versionJSON for RPC discovery. Additional
+// properties stay valid because adding fields does not change jsonSchema.
+func versionResultSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"version": map[string]any{"type": "string"},
+			"schema":  map[string]any{"type": "integer"},
+		},
+		"required":             []string{"version", "schema"},
+		"additionalProperties": true,
+	}
+}
+
 // versionCommand returns the command for dg version.
 func versionCommand() *cobra.Command {
 	cmd := &cobra.Command{

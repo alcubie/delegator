@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alcubie/delegator/internal/testfix"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/spf13/cobra"
 )
 
@@ -50,6 +51,26 @@ func openRPCParamNamed(t *testing.T, method openRPCMethod, name string) openRPCC
 	}
 	t.Fatalf("OpenRPC method %q has no parameter %q", method.Name, name)
 	return openRPCContentDescriptor{}
+}
+
+// openRPCResultValidator compiles the result schema returned by discovery
+// using the JSON Schema draft required by OpenRPC 1.4.1.
+func openRPCResultValidator(t *testing.T, document openRPCDocument, method string) *jsonschema.Schema {
+	t.Helper()
+	schema := openRPCMethodNamed(t, document, method).Result.Schema
+	if len(schema) == 0 {
+		t.Fatalf("OpenRPC method %q has an empty result schema", method)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.DefaultDraft(jsonschema.Draft7)
+	if err := compiler.AddResource("result-schema.json", schema); err != nil {
+		t.Fatalf("add %s result schema: %v", method, err)
+	}
+	validator, err := compiler.Compile("result-schema.json")
+	if err != nil {
+		t.Fatalf("compile %s result schema: %v", method, err)
+	}
+	return validator
 }
 
 func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
@@ -167,5 +188,35 @@ func TestRPCDiscoverRefusesParameters(t *testing.T) {
 	got := rpcObject(t, out)
 	if got["id"] != float64(2) || got["result"] == nil {
 		t.Errorf("empty positional params response = %#v, want the discovery document", got)
+	}
+}
+
+func TestRPCDiscoverVersionResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	if schema := openRPCMethodNamed(t, document, "show").Result.Schema; len(schema) != 0 {
+		t.Errorf("show result schema = %#v, want unpublished results unchanged", schema)
+	}
+	validator := openRPCResultValidator(t, document, "version")
+	actual := rpcDocument(t, t.TempDir(), t.TempDir(), "version")
+
+	for _, test := range []struct {
+		name    string
+		result  any
+		invalid bool
+	}{
+		{"actual handler result", actual, false},
+		{"additive field", map[string]any{"version": "v1.2.3", "schema": float64(1), "future": true}, false},
+		{"missing version", map[string]any{"schema": float64(1)}, true},
+		{"wrong schema type", map[string]any{"version": "v1.2.3", "schema": "1"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validator.Validate(test.result)
+			if test.invalid && err == nil {
+				t.Error("result unexpectedly satisfies the advertised schema")
+			}
+			if !test.invalid && err != nil {
+				t.Errorf("result does not satisfy the advertised schema: %v", err)
+			}
+		})
 	}
 }

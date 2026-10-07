@@ -78,7 +78,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		Params:         []openRPCContentDescriptor{},
 		Result: openRPCContentDescriptor{
 			Name:   "result",
-			Schema: map[string]any{},
+			Schema: rpcResultSchema(name),
 		},
 	}
 
@@ -134,6 +134,17 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		method.Params = append(method.Params, optional...)
 	}
 	return method
+}
+
+// rpcResultSchema is the explicit list of command results described by
+// discovery. Commands without a published contract retain the empty schema.
+func rpcResultSchema(name string) map[string]any {
+	switch name {
+	case "version":
+		return versionResultSchema()
+	default:
+		return map[string]any{}
+	}
 }
 
 // rpcArgumentBounds reads Cobra's conventional Use form. The JSON-RPC API
