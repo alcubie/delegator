@@ -195,8 +195,10 @@ func resumeArgv(t *testing.T, name, id string) []string {
 		t.Fatalf("agent %q has no terminal resume command", name)
 	}
 	argv := make([]string, 0, len(resume))
+	cache := t.TempDir()
 	for _, arg := range resume {
-		argv = append(argv, strings.ReplaceAll(arg, "{session}", id))
+		arg = strings.ReplaceAll(arg, "{session}", id)
+		argv = append(argv, strings.ReplaceAll(arg, "{project_cache}", cache))
 	}
 	return argv
 }

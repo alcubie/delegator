@@ -182,7 +182,7 @@ func TestChatStartsTheResumeOfTheRecordedAgent(t *testing.T) {
 	}
 
 	cacheDir := run.ProjectCachePath(dataDir, testfix.ReadTicket(t, dataDir, ticketID).Project.ID)
-	want := []string{"codex", "resume", "--add-dir", cacheDir, session}
+	want := []string{"codex", "resume", "--sandbox", "workspace-write", "--add-dir", cacheDir, session}
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
 	}
@@ -203,7 +203,7 @@ func TestChatRestoresTheSelectedProjectsCacheContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"codex", "resume", "--add-dir", cacheDir, session}
+	want := []string{"codex", "resume", "--sandbox", "workspace-write", "--add-dir", cacheDir, session}
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
 	}

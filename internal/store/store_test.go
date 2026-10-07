@@ -939,21 +939,30 @@ func TestOpenAppliesANewStepToAnOldDatabase(t *testing.T) {
 	reopened.Close()
 }
 
-func TestProjectCacheResumeMigrationPreservesCustomCommands(t *testing.T) {
+func TestCodexResumeMigrationsPreserveCustomCommands(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		old  string
-		want []string
+		name    string
+		version int
+		old     string
+		want    []string
 	}{
 		{
-			name: "stock Codex command",
-			old:  `["codex","resume","{session}"]`,
-			want: []string{"codex", "resume", "--add-dir", "{project_cache}", "{session}"},
+			name:    "stock Codex command",
+			version: 5,
+			old:     `["codex","resume","{session}"]`,
+			want:    []string{"codex", "resume", "--sandbox", "workspace-write", "--add-dir", "{project_cache}", "{session}"},
 		},
 		{
-			name: "custom command",
-			old:  `["my-codex","continue","{session}"]`,
-			want: []string{"my-codex", "continue", "{session}"},
+			name:    "stock command with cache",
+			version: 6,
+			old:     `["codex","resume","--add-dir","{project_cache}","{session}"]`,
+			want:    []string{"codex", "resume", "--sandbox", "workspace-write", "--add-dir", "{project_cache}", "{session}"},
+		},
+		{
+			name:    "custom command",
+			version: 6,
+			old:     `["my-codex","continue","{session}"]`,
+			want:    []string{"my-codex", "continue", "{session}"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -967,7 +976,7 @@ func TestProjectCacheResumeMigrationPreservesCustomCommands(t *testing.T) {
 			if _, err := db.Exec("UPDATE agents SET resume_argv = ? WHERE name = 'codex'", tc.old); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(migrations)-1)); err != nil {
+			if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", tc.version)); err != nil {
 				t.Fatal(err)
 			}
 			db.Close()
