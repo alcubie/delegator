@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -19,6 +20,55 @@ type setting struct {
 	Name        string `json:"name"`
 	Value       any    `json:"value"`
 	Description string `json:"description"`
+}
+
+// configListResultSchema describes the settings serialized by config and
+// config.list. Build the alternatives from Definitions and observe their
+// values through settingValue so discovery cannot omit a registered setting
+// or disagree with its wire type.
+func configListResultSchema() map[string]any {
+	enabled := true
+	populated := config.Config{
+		Runs: 1, TimeoutMinutes: 1, DoneHours: 1, MaxRunsPerProject: 1,
+		DefaultAgent: "agent", DefaultModel: "model", Telemetry: &enabled,
+	}
+	settings := make([]any, 0, len(config.Definitions))
+	for _, definition := range config.Definitions {
+		types := []string{}
+		for _, cfg := range []config.Config{{}, populated} {
+			valueType := settingJSONType(settingValue(cfg, definition.Name))
+			if !slices.Contains(types, valueType) {
+				types = append(types, valueType)
+			}
+		}
+		settings = append(settings, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"const": definition.Name},
+				"value":       map[string]any{"type": types},
+				"description": map[string]any{"type": "string"},
+			},
+			"required":             []string{"name", "value", "description"},
+			"additionalProperties": true,
+		})
+	}
+	return map[string]any{
+		"type":  "array",
+		"items": map[string]any{"oneOf": settings},
+	}
+}
+
+func settingJSONType(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return "boolean"
+	case string:
+		return "string"
+	default:
+		panic(fmt.Sprintf("unsupported setting result type %T", value))
+	}
 }
 
 // configCommand returns the commands that inspect and change the settings in

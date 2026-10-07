@@ -142,6 +142,8 @@ func rpcResultSchema(name string) map[string]any {
 	switch name {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
+	case "config", "config.list":
+		return configListResultSchema()
 	case "inbox":
 		return inboxResultSchema()
 	case "list":

@@ -6,9 +6,11 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -222,6 +224,94 @@ func TestRPCDiscoverVersionResultContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRPCDiscoverConfigListResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	configValidator := openRPCResultValidator(t, document, "config")
+	listValidator := openRPCResultValidator(t, document, "config.list")
+	if !reflect.DeepEqual(
+		openRPCMethodNamed(t, document, "config").Result.Schema,
+		openRPCMethodNamed(t, document, "config.list").Result.Schema,
+	) {
+		t.Fatal("config and config.list advertise different result schemas")
+	}
+
+	resultFor := func(t *testing.T, dataDir, method string) []any {
+		t.Helper()
+		request, err := json.Marshal(map[string]any{
+			"jsonrpc": "2.0", "method": method, "params": map[string]any{}, "id": 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := rpcIn(t, dataDir, t.TempDir(), string(request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, ok := rpcObject(t, out)["result"].([]any)
+		if !ok {
+			t.Fatalf("%s result is not an array", method)
+		}
+		return result
+	}
+	validateBoth := func(t *testing.T, dataDir string) []any {
+		t.Helper()
+		var result []any
+		for _, method := range []string{"config", "config.list"} {
+			result = resultFor(t, dataDir, method)
+			for _, validator := range []*jsonschema.Schema{configValidator, listValidator} {
+				if err := validator.Validate(result); err != nil {
+					t.Fatalf("%s result does not satisfy the advertised schema: %v", method, err)
+				}
+			}
+		}
+		return result
+	}
+
+	dataDir := t.TempDir()
+	actual := validateBoth(t, dataDir)
+	if len(actual) != len(config.Definitions) {
+		t.Fatalf("config returned %d settings, want %d", len(actual), len(config.Definitions))
+	}
+	for i, definition := range config.Definitions {
+		setting := actual[i].(map[string]any)
+		if setting["name"] != definition.Name {
+			t.Errorf("setting %d = %v, want %q", i, setting["name"], definition.Name)
+		}
+	}
+
+	s := testfix.OpenStore(t, dataDir)
+	for _, telemetry := range []string{"false", "true"} {
+		if err := s.SetSetting("telemetry", telemetry); err != nil {
+			t.Fatal(err)
+		}
+		validateBoth(t, dataDir)
+	}
+	if err := s.SetSetting("default_model", "provider/model-v1"); err != nil {
+		t.Fatal(err)
+	}
+	validateBoth(t, dataDir)
+
+	for _, invalid := range []any{
+		[]any{map[string]any{"name": "runs", "value": float64(2), "description": "numeric strings stay strings"}},
+		[]any{map[string]any{"name": "telemetry", "value": "true", "description": "booleans stay booleans"}},
+		[]any{map[string]any{"name": "default_model", "value": true, "description": "model"}},
+		[]any{map[string]any{"value": "2", "description": "missing name"}},
+		[]any{map[string]any{"name": "runs", "value": "2"}},
+		[]any{map[string]any{"name": "runs", "description": "missing value"}},
+	} {
+		if err := configValidator.Validate(invalid); err == nil {
+			t.Errorf("invalid result %#v unexpectedly satisfies the advertised schema", invalid)
+		}
+	}
+
+	out, err := rpcIn(t, t.TempDir(), t.TempDir(),
+		`{"jsonrpc":"2.0","method":"config.list","params":{"args":["extra"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, 1, `unknown command "extra" for "dg config list"`)
 }
 
 func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
