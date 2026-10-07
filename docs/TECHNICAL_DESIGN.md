@@ -785,7 +785,9 @@ test walks the tree to say so.
 A program uses `dg rpc`, not a flag on each command. Its JSON-RPC result gives the
 command's document, so a different interface or a script reads data and not terminal
 text. The method `inbox` gives the root command's document; `show` and `version` give
-the documents of those commands. Section 12 shows why.
+the documents of those commands. The inbox document includes `done_hours`, the
+nonnegative configured window used to select its DONE tickets, even when DONE is empty.
+Section 12 shows why.
 
 The `version` result of `dg rpc` writes a second value beside the version. `schema` is a
 number, and it is the version of the documents that `dg rpc` writes. It goes up by one

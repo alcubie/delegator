@@ -11,6 +11,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/inbox"
 	"github.com/alcubie/delegator/internal/store"
+	"github.com/alcubie/delegator/internal/testfix"
 )
 
 // jsonGroups is every group that RPC inbox result writes, in the order that the text
@@ -110,7 +111,7 @@ func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 	got := readInboxJSON(t, dataDir, repo)
 
 	keys := slices.Sorted(maps.Keys(got))
-	want := slices.Sorted(slices.Values(append([]string{"queue"}, jsonGroups...)))
+	want := slices.Sorted(slices.Values(append([]string{"queue", "done_hours"}, jsonGroups...)))
 	if !slices.Equal(keys, want) {
 		t.Errorf("RPC inbox result holds the keys %v, want %v", keys, want)
 	}
@@ -118,6 +119,62 @@ func TestRunJSONHoldsTheQueueAndEachGroup(t *testing.T) {
 		if held := jsonGroupIDs(t, got, name); !slices.Equal(held, []int64{ids[name]}) {
 			t.Errorf("the group %q holds %v, want [%d]", name, held, ids[name])
 		}
+	}
+}
+
+func TestRunJSONGivesTheDefaultDoneWindowWhenDoneIsEmpty(t *testing.T) {
+	dataDir := t.TempDir()
+	_, _, repo := queuedTicket(t, dataDir)
+
+	got := readInboxJSON(t, dataDir, repo)
+
+	if got["done_hours"] != float64(24) {
+		t.Errorf("done_hours = %v, want 24", got["done_hours"])
+	}
+	if tickets := jsonGroup(t, got, "done"); len(tickets) != 0 {
+		t.Errorf("done = %v, want no ticket", tickets)
+	}
+}
+
+func TestRunJSONDoneWindowAgreesWithDoneFiltering(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		doneHours int
+		age       time.Duration
+		wantDone  bool
+	}{
+		{"custom window includes recent acceptance", 6, 5 * time.Hour, true},
+		{"custom window excludes old acceptance", 6, 7 * time.Hour, false},
+		{"zero excludes recent acceptance", 0, 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, _, repo := queuedTicket(t, dataDir)
+			id := queuedIn(t, s, repo, "accepted ticket")
+			finishIn(t, s, id)
+			if err := s.ChangeStatus(id, store.Done); err != nil {
+				t.Fatal(err)
+			}
+			if test.age > 0 {
+				testfix.AgeAcceptance(t, dataDir, id, test.age)
+			}
+			if err := s.SetSetting("done_hours", fmt.Sprint(test.doneHours)); err != nil {
+				t.Fatal(err)
+			}
+
+			got := readInboxJSON(t, dataDir, repo)
+
+			if got["done_hours"] != float64(test.doneHours) {
+				t.Errorf("done_hours = %v, want %d", got["done_hours"], test.doneHours)
+			}
+			ids := jsonGroupIDs(t, got, "done")
+			if test.wantDone && !slices.Equal(ids, []int64{id}) {
+				t.Errorf("done = %v, want [%d]", ids, id)
+			}
+			if !test.wantDone && len(ids) != 0 {
+				t.Errorf("done = %v, want no ticket", ids)
+			}
+		})
 	}
 }
 
