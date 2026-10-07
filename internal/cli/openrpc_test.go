@@ -224,6 +224,83 @@ func TestRPCDiscoverVersionResultContract(t *testing.T) {
 	}
 }
 
+func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	ticketValidator := openRPCResultValidator(t, document, "ticket")
+	acceptValidator := openRPCResultValidator(t, document, "accept")
+
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	if _, err := runIn(t, dataDir, repo, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	ticketRequest, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "method": "ticket", "id": "ticket",
+		"params": map[string]any{
+			"args":    []any{"Publish a contract", "Describe the result."},
+			"project": repo,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketOut, err := rpcIn(t, dataDir, t.TempDir(), string(ticketRequest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketResult, ok := rpcObject(t, ticketOut)["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("ticket response = %s, want an object result", ticketOut)
+	}
+	if err := ticketValidator.Validate(ticketResult); err != nil {
+		t.Fatalf("ticket handler result does not satisfy the advertised schema: %v", err)
+	}
+
+	acceptDataDir := t.TempDir()
+	s, id, acceptRepo := readyTicket(t, acceptDataDir)
+	accepted := commitReadyWork(t, s, acceptDataDir, id)
+	testfix.GitIn(t, acceptRepo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", accepted.Branch)
+	acceptResult := rpcDocument(t, acceptDataDir, acceptRepo, "accept", fmt.Sprint(id))
+	if err := acceptValidator.Validate(acceptResult); err != nil {
+		t.Fatalf("accept handler result does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, validator := range []*jsonschema.Schema{ticketValidator, acceptValidator} {
+		if err := validator.Validate(map[string]any{"id": float64(1), "future": true}); err != nil {
+			t.Errorf("additive field does not satisfy the advertised schema: %v", err)
+		}
+		for _, invalid := range []any{map[string]any{}, map[string]any{"id": "1"}} {
+			if err := validator.Validate(invalid); err == nil {
+				t.Errorf("invalid result %#v unexpectedly satisfies the advertised schema", invalid)
+			}
+		}
+	}
+
+	errorOut, err := rpcIn(t, t.TempDir(), t.TempDir(),
+		`{"jsonrpc":"2.0","method":"ticket","params":{"args":["Missing project","Fails."]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, errorOut, rpcInvalidParams, "project is required")
+
+	failureDataDir := t.TempDir()
+	failureStore, failureID, failureRepo := readyTicket(t, failureDataDir)
+	commitReadyWork(t, failureStore, failureDataDir, failureID)
+	failureOut, err := rpcIn(t, failureDataDir, failureRepo,
+		fmt.Sprintf(`{"jsonrpc":"2.0","method":"accept","params":{"args":[%d]},"id":2}`, failureID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := rpcObject(t, failureOut)
+	if _, ok := failure["error"].(map[string]any); !ok {
+		t.Fatalf("failed accept response = %#v, want an error envelope", failure)
+	}
+	if _, ok := failure["result"]; ok {
+		t.Fatalf("failed accept response has a successful result: %#v", failure)
+	}
+}
+
 func TestRPCDiscoverShowResultContract(t *testing.T) {
 	document := rpcDiscover(t)
 	validator := openRPCResultValidator(t, document, "show")
