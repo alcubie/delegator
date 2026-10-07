@@ -81,6 +81,9 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 			Schema: rpcResultSchema(name),
 		},
 	}
+	if name == "config.get" {
+		method.Result.Description = "The requested setting value. Its JSON type depends on the setting and is string, boolean, or null."
+	}
 
 	minimum, maximum := rpcArgumentBounds(command.Use)
 	if maximum > 0 {
@@ -144,6 +147,8 @@ func rpcResultSchema(name string) map[string]any {
 		return ticketIDResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
+	case "config.get":
+		return configGetResultSchema()
 	case "inbox":
 		return inboxResultSchema()
 	case "list":

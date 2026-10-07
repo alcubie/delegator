@@ -27,25 +27,13 @@ type setting struct {
 // values through settingValue so discovery cannot omit a registered setting
 // or disagree with its wire type.
 func configListResultSchema() map[string]any {
-	enabled := true
-	populated := config.Config{
-		Runs: 1, TimeoutMinutes: 1, DoneHours: 1, MaxRunsPerProject: 1,
-		DefaultAgent: "agent", DefaultModel: "model", Telemetry: &enabled,
-	}
 	settings := make([]any, 0, len(config.Definitions))
 	for _, definition := range config.Definitions {
-		types := []string{}
-		for _, cfg := range []config.Config{{}, populated} {
-			valueType := settingJSONType(settingValue(cfg, definition.Name))
-			if !slices.Contains(types, valueType) {
-				types = append(types, valueType)
-			}
-		}
 		settings = append(settings, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name":        map[string]any{"const": definition.Name},
-				"value":       map[string]any{"type": types},
+				"value":       map[string]any{"type": settingJSONTypes(definition.Name)},
 				"description": map[string]any{"type": "string"},
 			},
 			"required":             []string{"name", "value", "description"},
@@ -56,6 +44,36 @@ func configListResultSchema() map[string]any {
 		"type":  "array",
 		"items": map[string]any{"oneOf": settings},
 	}
+}
+
+// configGetResultSchema describes the scalar value serialized by config.get.
+// Its alternatives cover every registered setting rather than any one input.
+func configGetResultSchema() map[string]any {
+	types := []string{}
+	for _, definition := range config.Definitions {
+		for _, valueType := range settingJSONTypes(definition.Name) {
+			if !slices.Contains(types, valueType) {
+				types = append(types, valueType)
+			}
+		}
+	}
+	return map[string]any{"type": types}
+}
+
+func settingJSONTypes(name string) []string {
+	enabled := true
+	populated := config.Config{
+		Runs: 1, TimeoutMinutes: 1, DoneHours: 1, MaxRunsPerProject: 1,
+		DefaultAgent: "agent", DefaultModel: "model", Telemetry: &enabled,
+	}
+	types := []string{}
+	for _, cfg := range []config.Config{{}, populated} {
+		valueType := settingJSONType(settingValue(cfg, name))
+		if !slices.Contains(types, valueType) {
+			types = append(types, valueType)
+		}
+	}
+	return types
 }
 
 func settingJSONType(value any) string {

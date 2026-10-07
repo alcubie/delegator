@@ -314,6 +314,77 @@ func TestRPCDiscoverConfigListResultContract(t *testing.T) {
 	rpcProtocolError(t, out, 1, `unknown command "extra" for "dg config list"`)
 }
 
+func TestRPCDiscoverConfigGetResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	method := openRPCMethodNamed(t, document, "config.get")
+	validator := openRPCResultValidator(t, document, method.Name)
+	if method.Result.Description == "" {
+		t.Fatal("config.get result does not explain its parameter-dependent type")
+	}
+
+	dataDir, workDir := t.TempDir(), t.TempDir()
+	resultFor := func(t *testing.T, name string) any {
+		t.Helper()
+		request, err := json.Marshal(map[string]any{
+			"jsonrpc": "2.0", "method": method.Name,
+			"params": map[string]any{"args": []string{name}}, "id": name,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := rpcIn(t, dataDir, workDir, string(request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := rpcObject(t, out)
+		result, present := response["result"]
+		if !present || response["error"] != nil {
+			t.Fatalf("config.get %s response = %#v, want a result", name, response)
+		}
+		if err := validator.Validate(result); err != nil {
+			t.Fatalf("config.get %s result does not satisfy the advertised schema: %v", name, err)
+		}
+		return result
+	}
+
+	for _, definition := range config.Definitions {
+		resultFor(t, definition.Name)
+	}
+	if result := resultFor(t, "default_model"); result != nil {
+		t.Errorf("default_model result = %#v, want nullable result", result)
+	}
+	if result := resultFor(t, "telemetry"); result != nil {
+		t.Errorf("telemetry result = %#v, want nullable result", result)
+	}
+
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SetSetting("telemetry", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if result := resultFor(t, "telemetry"); result != false {
+		t.Errorf("telemetry result = %#v, want false", result)
+	}
+	if err := s.SetSetting("runs", "42"); err != nil {
+		t.Fatal(err)
+	}
+	if result := resultFor(t, "runs"); result != "42" {
+		t.Errorf("runs result = %#v, want numeric-looking string", result)
+	}
+
+	for _, invalid := range []any{float64(42), []any{"42"}, map[string]any{"value": "42"}} {
+		if err := validator.Validate(invalid); err == nil {
+			t.Errorf("invalid result %#v unexpectedly satisfies the advertised schema", invalid)
+		}
+	}
+
+	out, err := rpcIn(t, dataDir, workDir,
+		`{"jsonrpc":"2.0","method":"config.get","params":{"args":["unknown"]},"id":"unknown"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, codeUnknown, `unknown setting "unknown"`)
+}
+
 func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
 	document := rpcDiscover(t)
 	ticketValidator := openRPCResultValidator(t, document, "ticket")
