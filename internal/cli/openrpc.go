@@ -142,6 +142,8 @@ func rpcResultSchema(name string) map[string]any {
 	switch name {
 	case "inbox":
 		return inboxResultSchema()
+	case "show":
+		return showResultSchema()
 	case "version":
 		return versionResultSchema()
 	default:

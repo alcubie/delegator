@@ -798,6 +798,11 @@ response type and add it to `rpcResultSchema`. Contract tests compile the schema
 by `rpc.discover` and validate a result from the request handler, including incompatible
 and additive examples, so discovery and serialization cannot drift unnoticed.
 
+The structured `show` result currently contains the ticket fields and prose needed by
+clients, but omits the agent metadata, dependency links, and run history shown in the
+terminal. Adding those values is follow-up payload work rather than part of publishing
+the existing result contract.
+
 The agent uses two commands only, and one of them is a command of the person:
 
 | Command | Function |

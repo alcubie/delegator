@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"testing"
 
@@ -195,9 +197,6 @@ func TestRPCDiscoverRefusesParameters(t *testing.T) {
 
 func TestRPCDiscoverVersionResultContract(t *testing.T) {
 	document := rpcDiscover(t)
-	if schema := openRPCMethodNamed(t, document, "show").Result.Schema; len(schema) != 0 {
-		t.Errorf("show result schema = %#v, want unpublished results unchanged", schema)
-	}
 	validator := openRPCResultValidator(t, document, "version")
 	actual := rpcDocument(t, t.TempDir(), t.TempDir(), "version")
 
@@ -218,6 +217,91 @@ func TestRPCDiscoverVersionResultContract(t *testing.T) {
 			}
 			if !test.invalid && err != nil {
 				t.Errorf("result does not satisfy the advertised schema: %v", err)
+			}
+		})
+	}
+}
+
+func TestRPCDiscoverShowResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "show")
+
+	queuedDataDir := t.TempDir()
+	_, queuedID, queuedRepo := queuedTicket(t, queuedDataDir)
+	empty := rpcDocument(t, queuedDataDir, queuedRepo, "show", fmt.Sprint(queuedID))
+	if err := validator.Validate(empty); err != nil {
+		t.Fatalf("result with absent optional values does not satisfy the advertised schema: %v", err)
+	}
+
+	dataDir := t.TempDir()
+	s, id, repo := readyTicket(t, dataDir)
+	testfix.SetSession(t, s.DataDir(), id, "agent-session-1")
+	if err := os.WriteFile(proseFile(dataDir, id), []byte("A ticket body.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	actual := rpcDocument(t, dataDir, repo, "show")
+	if err := validator.Validate(actual); err != nil {
+		t.Fatalf("implicitly selected populated result does not satisfy the advertised schema: %v", err)
+	}
+
+	resultFor := func(t *testing.T, params map[string]any) map[string]any {
+		t.Helper()
+		request, err := json.Marshal(map[string]any{
+			"jsonrpc": "2.0", "method": "show", "params": params, "id": 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := rpcIn(t, dataDir, repo, string(request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, ok := rpcObject(t, out)["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("response = %s, want an object result", out)
+		}
+		return result
+	}
+	for _, flag := range []string{"project-only", "ticket-only", "worktree-only", "branch-only", "session-only"} {
+		t.Run(flag, func(t *testing.T) {
+			result := resultFor(t, map[string]any{"args": []any{float64(id)}, flag: true})
+			if err := validator.Validate(result); err != nil {
+				t.Errorf("result captured with %s does not satisfy the advertised schema: %v", flag, err)
+			}
+		})
+	}
+
+	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(id), "--force"); err != nil {
+		t.Fatal(err)
+	}
+	accepted := rpcDocument(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err := validator.Validate(accepted); err != nil {
+		t.Fatalf("result with an acceptance timestamp does not satisfy the advertised schema: %v", err)
+	}
+
+	valid := maps.Clone(actual)
+	valid["id"] = float64(1 << 62)
+	valid["future"] = true
+	if err := validator.Validate(valid); err != nil {
+		t.Errorf("additive field or wide ticket identifier does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{"missing nullable field", func(result map[string]any) { delete(result, "accepted") }},
+		{"wrong ticket identifier type", func(result map[string]any) { result["id"] = "1" }},
+		{"nonpositive ticket identifier", func(result map[string]any) { result["id"] = float64(0) }},
+		{"invalid status", func(result map[string]any) { result["status"] = "waiting" }},
+		{"malformed timestamp", func(result map[string]any) { result["created"] = "yesterday" }},
+		{"wrong nullable field type", func(result map[string]any) { result["session"] = float64(1) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := maps.Clone(actual)
+			test.change(result)
+			if err := validator.Validate(result); err == nil {
+				t.Error("result unexpectedly satisfies the advertised schema")
 			}
 		})
 	}

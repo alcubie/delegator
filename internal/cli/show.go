@@ -243,6 +243,46 @@ type ticketJSON struct {
 	shown shown
 }
 
+// showResultSchema describes ticketJSON for RPC discovery. Nullable fields
+// remain required so consumers can distinguish a known missing value from an
+// older response that does not describe the field. Additional properties stay
+// valid because adding fields does not change jsonSchema.
+func showResultSchema() map[string]any {
+	nullableString := map[string]any{"type": []string{"string", "null"}}
+	timestamp := map[string]any{
+		"type":   []string{"string", "null"},
+		"format": "date-time",
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":       map[string]any{"type": "integer", "minimum": 1},
+			"title":    map[string]any{"type": "string"},
+			"status":   map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"project":  map[string]any{"type": "string"},
+			"ticket":   map[string]any{"type": "string"},
+			"worktree": nullableString,
+			"branch":   nullableString,
+			"session": map[string]any{
+				"type":        []string{"string", "null"},
+				"description": "The opaque session identifier reported by the agent.",
+			},
+			"commit": map[string]any{
+				"type":        []string{"string", "null"},
+				"description": "The full Git object identifier recorded for the finished run.",
+			},
+			"created":  timestamp,
+			"accepted": timestamp,
+			"prose":    nullableString,
+		},
+		"required": []string{
+			"id", "title", "status", "project", "ticket", "worktree",
+			"branch", "session", "commit", "created", "accepted", "prose",
+		},
+		"additionalProperties": true,
+	}
+}
+
 // nullable maps an empty string to nil.
 func nullable(value string) *string {
 	if value == "" {
