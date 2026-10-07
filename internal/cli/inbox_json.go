@@ -46,6 +46,45 @@ type inboxTicketJSON struct {
 	Started  *time.Time `json:"started"`
 }
 
+// inboxResultSchema describes inboxJSON for RPC discovery. References keep the
+// row contract shared by every group, and additional properties remain valid
+// because adding fields does not change jsonSchema.
+func inboxResultSchema() map[string]any {
+	timestamp := map[string]any{
+		"type":   []string{"string", "null"},
+		"format": "date-time",
+	}
+	ticket := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":       map[string]any{"type": "integer"},
+			"title":    map[string]any{"type": "string"},
+			"status":   map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"project":  map[string]any{"type": "string"},
+			"created":  timestamp,
+			"accepted": timestamp,
+			"started":  timestamp,
+		},
+		"required":             []string{"id", "title", "status", "project", "created", "accepted", "started"},
+		"additionalProperties": true,
+	}
+	groups := map[string]any{}
+	for _, name := range []string{"done", "ready", "running", "failed", "queued"} {
+		groups[name] = map[string]any{
+			"type":  "array",
+			"items": map[string]any{"$ref": "#/definitions/ticket"},
+		}
+	}
+	groups["queue"] = map[string]any{"type": "string", "enum": []string{queueRunning, queuePaused}}
+	return map[string]any{
+		"type":                 "object",
+		"properties":           groups,
+		"required":             []string{"queue", "done", "ready", "running", "failed", "queued"},
+		"additionalProperties": true,
+		"definitions":          map[string]any{"ticket": ticket},
+	}
+}
+
 // inboxTickets converts a group to JSON rows. Empty groups use [] rather than
 // null.
 func inboxTickets(tickets []store.OpenTicket) []inboxTicketJSON {

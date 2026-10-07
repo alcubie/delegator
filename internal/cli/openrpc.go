@@ -140,6 +140,8 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 // discovery. Commands without a published contract retain the empty schema.
 func rpcResultSchema(name string) map[string]any {
 	switch name {
+	case "inbox":
+		return inboxResultSchema()
 	case "version":
 		return versionResultSchema()
 	default:
