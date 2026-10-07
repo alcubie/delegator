@@ -38,6 +38,20 @@ type ticketID struct {
 	ID int64 `json:"id"`
 }
 
+// ticketIDResultSchema describes the value returned by ticket and accept.
+// Additional properties stay valid because adding fields does not change
+// jsonSchema.
+func ticketIDResultSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id": map[string]any{"type": "integer", "minimum": 1},
+		},
+		"required":             []string{"id"},
+		"additionalProperties": true,
+	}
+}
+
 // ticketCommand creates a ticket and prints its ID. No arguments open the
 // editor; arguments supply title and description. --body-file reads the
 // description from a file, and --no-body explicitly omits it.
