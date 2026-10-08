@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -202,6 +203,83 @@ func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
 		}
 	}
 	walk(root)
+}
+
+func TestRPCCobraGeneratedHelpersRemainUnavailable(t *testing.T) {
+	generated := []string{
+		"help",
+		"completion",
+		"completion.bash",
+		"completion.fish",
+		"completion.powershell",
+		"completion.zsh",
+		cobra.ShellCompRequestCmd,
+		cobra.ShellCompNoDescRequestCmd,
+	}
+
+	// Cobra installs help and completion only when Execute starts. RPC resolves
+	// against a fresh tree before that point, so publishing these methods would
+	// claim commands that a request cannot reach.
+	root := Root(t.TempDir())
+	document := rpcOpenRPC(root)
+	advertised := make(map[string]bool, len(document.Methods))
+	for _, method := range document.Methods {
+		advertised[method.Name] = true
+	}
+	for _, method := range generated {
+		if advertised[method] {
+			t.Errorf("generated helper %q is advertised", method)
+		}
+		if _, err := rpcTarget(root, method); err == nil {
+			t.Errorf("generated helper %q resolves before Cobra initialization", method)
+		}
+	}
+
+	runtimeRoot := Root(t.TempDir())
+	runtimeRoot.SetOut(io.Discard)
+	runtimeRoot.SetErr(io.Discard)
+	runtimeRoot.SetArgs([]string{"completion", "bash"})
+	if err := runtimeRoot.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	runtimeMethods := map[string]bool{}
+	rpcVisitCommands(runtimeRoot, func(name string, _ *cobra.Command) {
+		runtimeMethods[name] = true
+	})
+	for _, method := range generated[:6] {
+		if !runtimeMethods[method] {
+			t.Errorf("normal Cobra runtime tree has no generated helper %q", method)
+		}
+	}
+	hiddenRoot := Root(t.TempDir())
+	hiddenRoot.SetOut(io.Discard)
+	hiddenRoot.SetErr(io.Discard)
+	hiddenRoot.SetArgs([]string{cobra.ShellCompRequestCmd, ""})
+	if err := hiddenRoot.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var hidden *cobra.Command
+	rpcVisitCommands(hiddenRoot, func(name string, command *cobra.Command) {
+		if name == cobra.ShellCompRequestCmd {
+			hidden = command
+		}
+	})
+	if hidden == nil {
+		t.Errorf("normal Cobra completion request has no generated helper %q", cobra.ShellCompRequestCmd)
+	} else if !hidden.HasAlias(cobra.ShellCompNoDescRequestCmd) {
+		t.Errorf("generated helper %q has no %q alias", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd)
+	}
+
+	dataDir := t.TempDir()
+	workDir := t.TempDir()
+	for _, method := range generated {
+		request := fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"id":1}`, method)
+		response, err := rpcIn(t, dataDir, workDir, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rpcProtocolError(t, response, rpcMethodNotFound, "Method not found")
+	}
 }
 
 func TestRPCNestedMethodsUseQualifiedNamesForDispatchAndParameters(t *testing.T) {

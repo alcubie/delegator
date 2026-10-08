@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const openRPCVersion = "1.4.1"
+const (
+	openRPCVersion       = "1.4.1"
+	openRPCMetaSchemaURL = "https://raw.githubusercontent.com/open-rpc/meta-schema/master/schema.json"
+)
 
 type openRPCDocument struct {
 	OpenRPC string          `json:"openrpc"`
@@ -64,7 +67,7 @@ func rpcDiscoveryMethod() openRPCMethod {
 		Result: openRPCContentDescriptor{
 			Name: "OpenRPC Schema",
 			Schema: map[string]any{
-				"$ref": "https://raw.githubusercontent.com/open-rpc/meta-schema/master/schema.json",
+				"$ref": openRPCMetaSchemaURL,
 			},
 		},
 	}
