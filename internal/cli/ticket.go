@@ -62,6 +62,8 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
   dg ticket list
   dg ticket show 42
   dg ticket edit 42 --title "Handle expired sessions"
+  dg ticket move 42 top
+  dg ticket depend 42 --after 17
   dg ticket runs 42`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -74,6 +76,8 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.AddCommand(showCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(mapCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(editCommand(dataDir, cfg, "dg ticket edit"))
+	cmd.AddCommand(moveCommand(dataDir, cfg, "dg ticket move"))
+	cmd.AddCommand(dependCommand(dataDir, cfg, "dg ticket depend"))
 	cmd.AddCommand(runsCommand(dataDir))
 	return cmd
 }

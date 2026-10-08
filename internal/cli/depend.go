@@ -4,15 +4,18 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// dependCommand updates dependencies silently on success; the inbox and dg
+// dependCommand returns a fresh dependency command whose examples use
+// commandPath. It updates dependencies silently on success; the inbox and dg
 // show display them.
-func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+func dependCommand(dataDir *string, cfg *config.Config, commandPath string) *cobra.Command {
 	var after []int64
 	var remove bool
 	cmd := &cobra.Command{
@@ -20,9 +23,9 @@ func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Short: "Add or remove dependencies of a queued ticket.",
 		Long: "Make a queued ticket wait for one or more other tickets to be done. Use " +
 			"--remove to remove the named dependency links instead.",
-		Example: `  dg depend 42 --after 17
-  dg depend 42 --after 17 --after 23
-  dg depend 42 --after 17 --remove`,
+		Example: fmt.Sprintf(`  %s 42 --after 17
+  %s 42 --after 17 --after 23
+  %s 42 --after 17 --remove`, commandPath, commandPath, commandPath),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])

@@ -1,23 +1,23 @@
-# Alcubi Delegator CLI Reference: dg depend
+# Alcubi Delegator CLI Reference: dg ticket depend
 
-## dg depend
+## dg ticket depend
 
-Add or remove dependencies of a queued ticket. (use dg ticket depend)
+Add or remove dependencies of a queued ticket.
 
 ### Synopsis
 
-Make a queued ticket wait for one or more other tickets to be done. Use --remove to remove the named dependency links instead. The preferred command is `dg ticket depend`; the preferred JSON-RPC method is `ticket.depend`.
+Make a queued ticket wait for one or more other tickets to be done. Use --remove to remove the named dependency links instead.
 
 ```
-dg depend <id> [flags]
+dg ticket depend <id> [flags]
 ```
 
 ### Examples
 
 ```
-  dg depend 42 --after 17
-  dg depend 42 --after 17 --after 23
-  dg depend 42 --after 17 --remove
+  dg ticket depend 42 --after 17
+  dg ticket depend 42 --after 17 --after 23
+  dg ticket depend 42 --after 17 --remove
 ```
 
 ### Options
@@ -37,4 +37,4 @@ dg depend <id> [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.

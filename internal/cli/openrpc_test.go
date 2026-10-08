@@ -158,7 +158,7 @@ func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir,
 
 func TestRPCDiscoverNullResultContracts(t *testing.T) {
 	document := rpcDiscover(t)
-	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start", "ticket.edit"}
+	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start", "ticket.depend", "ticket.edit", "ticket.move"}
 	validators := make(map[string]*jsonschema.Schema, len(methods))
 	for _, method := range methods {
 		validators[method] = openRPCResultValidator(t, document, method)
@@ -492,7 +492,7 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 
 func TestRPCDiscoverPublishesCanonicalTicketMethods(t *testing.T) {
 	document := rpcDiscover(t)
-	for _, name := range []string{"list", "search", "show", "map", "edit"} {
+	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend"} {
 		legacy := openRPCMethodNamed(t, document, name)
 		canonical := openRPCMethodNamed(t, document, "ticket."+name)
 		if !strings.Contains(legacy.Description, "preferred command is `dg ticket "+name+"`") ||
