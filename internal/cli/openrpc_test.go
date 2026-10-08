@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
@@ -252,6 +253,94 @@ func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
 		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{})
 		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{"all": true})
 	})
+}
+
+func TestRPCDiscoverInternalNullResultContracts(t *testing.T) {
+	document := rpcDiscover(t)
+	descriptions := map[string][]string{
+		"run":            {"internal supervisor", "long time", "null"},
+		"telemetry-send": {"internal telemetry sender", "consent", "null"},
+	}
+	validators := make(map[string]*jsonschema.Schema, len(descriptions))
+	for method, fragments := range descriptions {
+		descriptor := openRPCMethodNamed(t, document, method).Result
+		for _, fragment := range fragments {
+			if !strings.Contains(descriptor.Description, fragment) {
+				t.Errorf("%s result description = %q, want %q", method, descriptor.Description, fragment)
+			}
+		}
+		validators[method] = openRPCResultValidator(t, document, method)
+		for _, invalid := range []any{false, float64(0), "", []any{}, map[string]any{}} {
+			if err := validators[method].Validate(invalid); err == nil {
+				t.Errorf("%s schema accepts non-null result %#v", method, invalid)
+			}
+		}
+	}
+
+	t.Run("run with a paused empty queue", func(t *testing.T) {
+		dataDir := t.TempDir()
+		s := testfix.OpenStore(t, dataDir)
+		if err := s.PauseQueue(); err != nil {
+			t.Fatal(err)
+		}
+		launch, record := testfix.RecordingLaunch(t)
+		useLaunch(t, launch)
+		rpcNullResult(t, validators["run"], dataDir, t.TempDir(), "run", map[string]any{})
+		testfix.WaitForStarts(t, record, 0)
+	})
+
+	t.Run("telemetry send with consent disabled", func(t *testing.T) {
+		dataDir := t.TempDir()
+		s := testfix.OpenStore(t, dataDir)
+		if err := s.SetSetting("telemetry", "false"); err != nil {
+			t.Fatal(err)
+		}
+		called := false
+		savedSend := sendTelemetry
+		sendTelemetry = func(senderStore *store.Store, _ time.Time, _ string) error {
+			called = true
+			state, err := senderStore.TelemetryState()
+			if err != nil {
+				return err
+			}
+			if state.Consent == nil || *state.Consent {
+				t.Errorf("telemetry consent = %v, want disabled", state.Consent)
+			}
+			return fmt.Errorf("network disabled by test")
+		}
+		t.Cleanup(func() { sendTelemetry = savedSend })
+
+		rpcNullResult(t, validators["telemetry-send"], dataDir, t.TempDir(), "telemetry-send", map[string]any{})
+		if !called {
+			t.Fatal("telemetry sender was not called")
+		}
+		state, err := s.TelemetryState()
+		if err != nil || state.Consent == nil || *state.Consent {
+			t.Fatalf("telemetry consent after send = %v, %v; want disabled", state.Consent, err)
+		}
+	})
+}
+
+func TestRPCInternalCommandErrorsRemainErrorEnvelopes(t *testing.T) {
+	dataDir := t.TempDir()
+	testfix.OpenStore(t, dataDir)
+	requests := []string{
+		`{"jsonrpc":"2.0","method":"run","params":{"args":["not-an-id"]},"id":"run"}`,
+		`{"jsonrpc":"2.0","method":"telemetry-send","params":{"args":["extra"]},"id":"telemetry"}`,
+	}
+	for _, request := range requests {
+		out, err := rpcIn(t, dataDir, t.TempDir(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := rpcObject(t, out)
+		if _, ok := response["error"].(map[string]any); !ok {
+			t.Errorf("response = %#v, want an error envelope", response)
+		}
+		if _, ok := response["result"]; ok {
+			t.Errorf("error response has a successful result: %#v", response)
+		}
+	}
 }
 
 func TestRPCTerminalOnlyCommandErrorsRemainErrorEnvelopes(t *testing.T) {
