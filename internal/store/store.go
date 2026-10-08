@@ -1184,6 +1184,46 @@ func (s *Store) Run(ticketID int64) (Run, error) {
 	return r, nil
 }
 
+// Runs returns every run recorded for a ticket, newest first. Run IDs record
+// insertion order, so ordering by ID keeps the result deterministic even when
+// runs have the same start time. An existing ticket with no runs returns an
+// empty slice; a missing ticket returns ErrNoTicket.
+func (s *Store) Runs(ticketID int64) ([]Run, error) {
+	rows, err := s.db.Query(`
+		SELECT runs.id, runs.ticket_id, COALESCE(runs.agent_id, 0), COALESCE(agents.name, ''),
+		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code,
+		       runs.model_id, COALESCE(models.name, '')
+		FROM runs LEFT JOIN agents ON agents.id = runs.agent_id
+		LEFT JOIN models ON models.id = runs.model_id
+		WHERE runs.ticket_id = ?
+		ORDER BY runs.id DESC`, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []Run
+	for rows.Next() {
+		var r Run
+		if err := rows.Scan(
+			&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
+			timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model,
+		); err != nil {
+			return nil, err
+		}
+		runs = append(runs, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(runs) == 0 {
+		if err := ticketExists(s.db, ticketID); err != nil {
+			return nil, err
+		}
+	}
+	return runs, nil
+}
+
 // EndRun records the end time and exit code for the supervisor's claimed run
 // ID. It returns ErrNoRun if that run does not exist.
 func (s *Store) EndRun(runID int64, exitCode int) error {
