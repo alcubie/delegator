@@ -116,15 +116,15 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: list,
 	}
-	cmd.AddCommand(&cobra.Command{
+	cmd.AddCommand(rpcOperationCommand("config.list", &cobra.Command{
 		Use:     "list",
 		Short:   "Show every supported instance setting.",
 		Long:    "Show the name, current value, and description of every supported instance setting.",
 		Example: `  dg config list`,
 		Args:    cobra.NoArgs,
 		RunE:    list,
-	})
-	cmd.AddCommand(&cobra.Command{
+	}))
+	cmd.AddCommand(rpcOperationCommand("config.get", &cobra.Command{
 		Use:   "get <name>",
 		Short: "Show one instance setting.",
 		Long:  "Write the current value of one supported instance setting.",
@@ -142,8 +142,8 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				})
 			})
 		},
-	})
-	cmd.AddCommand(&cobra.Command{
+	}))
+	cmd.AddCommand(rpcOperationCommand("config.set", &cobra.Command{
 		Use:   "set <name> <value>",
 		Short: "Change one instance setting.",
 		Long: "Validate and store a new value for one instance setting. The change applies " +
@@ -165,8 +165,8 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return run.Next(s, updated, launchFrom(*dataDir, launch))
 			})
 		},
-	})
-	return cmd
+	}))
+	return rpcOperationCommand("config", cmd)
 }
 
 // writeSettings renders descriptions within the available output width and

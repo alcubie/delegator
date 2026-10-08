@@ -67,7 +67,7 @@ func initCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		"select this available registered agent as the default without prompting")
 	cmd.Flags().BoolVar(&telemetry, "telemetry", false, "submit a usage-data sharing choice (`true|false`)")
 	cmd.Flags().Lookup("telemetry").NoOptDefVal = ""
-	return cmd
+	return rpcOperationCommand("init", cmd)
 }
 
 type initPrompter struct {

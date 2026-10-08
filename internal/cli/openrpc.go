@@ -45,9 +45,11 @@ type openRPCContentDescriptor struct {
 // discovery merely because a second list was not changed.
 func rpcOpenRPC(root *cobra.Command) openRPCDocument {
 	methods := []openRPCMethod{rpcDiscoveryMethod()}
-	methods = append(methods, rpcOpenRPCMethod("inbox", root))
+	if rpcCallable(root) {
+		methods = append(methods, rpcOpenRPCMethod("inbox", root))
+	}
 	rpcVisitCommands(root, func(name string, command *cobra.Command) {
-		if !rpcRefusedMethods[name] {
+		if rpcCallable(command) {
 			methods = append(methods, rpcOpenRPCMethod(name, command))
 		}
 	})
@@ -74,6 +76,7 @@ func rpcDiscoveryMethod() openRPCMethod {
 }
 
 func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
+	operation, _ := rpcOperation(command)
 	method := openRPCMethod{
 		Name:           name,
 		Summary:        command.Short,
@@ -81,17 +84,17 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		Params:         []openRPCContentDescriptor{},
 		Result: openRPCContentDescriptor{
 			Name:   "result",
-			Schema: rpcResultSchema(name),
+			Schema: rpcResultSchema(operation),
 		},
 	}
-	if name == "config.get" {
+	if operation == "config.get" {
 		method.Result.Description = "The requested setting value. Its JSON type depends on the setting and is string, boolean, or null."
 	}
 	internalResults := map[string]string{
 		"run":            "This internal supervisor can take a long time while it waits for an agent to finish; its successful JSON-RPC result is null.",
 		"telemetry-send": "This internal telemetry sender attempts a consent-gated report; its successful JSON-RPC result is null.",
 	}
-	if description, ok := internalResults[name]; ok {
+	if description, ok := internalResults[operation]; ok {
 		method.Result.Description = description
 	}
 	terminalOnlyResults := map[string]string{
@@ -99,7 +102,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		"map":    "The dependency map is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
 		"search": "Search matches are currently written only as terminal text; their structured JSON-RPC result is not yet exposed and is null.",
 	}
-	if description, ok := terminalOnlyResults[name]; ok {
+	if description, ok := terminalOnlyResults[operation]; ok {
 		method.Result.Description = description
 	}
 
@@ -127,7 +130,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 
 	var required, optional []openRPCContentDescriptor
 	rpcVisitFlags(command, func(flag *pflag.Flag) {
-		if flag.Hidden || command.Name() == "edit" && flag.Name == "editor" {
+		if flag.Hidden || operation == "edit" && flag.Name == "editor" {
 			return
 		}
 		description := flag.Usage
@@ -160,8 +163,8 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 // rpcResultSchema is the explicit list of command results described by
 // discovery. There is deliberately no fallback: a new callable command must
 // choose its successful result contract before discovery can describe it.
-func rpcResultSchema(name string) map[string]any {
-	switch name {
+func rpcResultSchema(operation string) map[string]any {
+	switch operation {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
 	case "agents", "agents.add", "cancel", "config.set", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":

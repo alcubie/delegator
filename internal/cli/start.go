@@ -14,7 +14,7 @@ const startMessage = "The queue is running."
 
 // startCommand returns the command for dg start.
 func startCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("start", &cobra.Command{
 		Use:   "start",
 		Short: "Start a paused queue.",
 		Long: "Resume a paused queue and start queued tickets until the configured run " +
@@ -36,5 +36,5 @@ func startCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
 			})
 		},
-	}
+	})
 }

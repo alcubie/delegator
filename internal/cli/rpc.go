@@ -18,10 +18,6 @@ const (
 	rpcInvalidParams  = -32602
 )
 
-// rpcRefusedMethods are commands a JSON-RPC caller cannot use. chat and init
-// need the terminal a person is at, and rpc already owns stdin.
-var rpcRefusedMethods = map[string]bool{"chat": true, "init": true, "rpc": true}
-
 type rpcProjectRequiredError struct{}
 
 func (rpcProjectRequiredError) Error() string { return "project is required" }
@@ -58,7 +54,7 @@ type rpcResponse struct {
 // or batch from standard input and always writes its response on standard
 // output, including command and protocol errors.
 func rpcCommand(dataDir *string, workDir string) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("rpc", &cobra.Command{
 		Use:   "rpc",
 		Short: "Run a dg command from a JSON-RPC request on standard input.",
 		Long: "Read one JSON-RPC 2.0 request or batch from standard input, run the named dg " +
@@ -74,7 +70,7 @@ func rpcCommand(dataDir *string, workDir string) *cobra.Command {
 			response := rpcResponses(*dataDir, workDir, data)
 			return writeRPC(cmd.OutOrStdout(), response)
 		},
-	}
+	})
 }
 
 // rpcResponses turns one JSON value into the response that belongs to it.  A
@@ -209,15 +205,15 @@ func readRPCRequest(raw json.RawMessage) (rpcRequest, error) {
 }
 
 func rpcTarget(root *cobra.Command, method string) (*cobra.Command, error) {
-	if rpcRefusedMethods[method] {
-		return nil, fmt.Errorf("method %q was not found", method)
-	}
 	if method == "inbox" {
-		return root, nil
+		if rpcCallable(root) {
+			return root, nil
+		}
+		return nil, fmt.Errorf("method %q was not found", method)
 	}
 	var target *cobra.Command
 	rpcVisitCommands(root, func(name string, command *cobra.Command) {
-		if name == method {
+		if name == method && rpcCallable(command) {
 			target = command
 		}
 	})
@@ -271,7 +267,8 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 			return nil, fmt.Errorf("body-file cannot be standard input")
 		}
 	}
-	if command.Name() == "ticket" {
+	operation, _ := rpcOperation(command)
+	if operation == "ticket" {
 		rawProject, found := params["project"]
 		if !found {
 			return nil, rpcProjectRequiredError{}
@@ -283,7 +280,7 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 	}
 	// An editor belongs to the person at a terminal; an RPC caller supplies the
 	// title or prose itself instead.
-	if command.Name() == "edit" {
+	if operation == "edit" {
 		if _, found := params["editor"]; found {
 			return nil, fmt.Errorf("editor is not available through rpc")
 		}
@@ -339,12 +336,9 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 		}
 		argv = append(argv, "--"+name, value)
 	}
-	// A resolved creation method stays creation even when its first argument
-	// names a child command. Flags must precede the separator so Cobra still
-	// applies them to the ticket command.
-	if command.Name() == "ticket" {
-		argv = append(argv, "--")
-	}
+	// Keep positional values literal after resolving an exact method. Flags
+	// precede the separator so Cobra still validates them for that operation.
+	argv = append(argv, "--")
 	argv = append(argv, positional...)
 
 	return argv, nil

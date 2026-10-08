@@ -55,5 +55,5 @@ func versionCommand() *cobra.Command {
 			})
 		},
 	}
-	return cmd
+	return rpcOperationCommand("version", cmd)
 }

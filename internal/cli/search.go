@@ -42,7 +42,7 @@ func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"search only the project in this directory (default: every project)")
-	return cmd
+	return rpcOperationCommand("search", cmd)
 }
 
 // searchTickets searches titles and description files for the selected

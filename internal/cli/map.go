@@ -61,7 +61,7 @@ func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Comm
 		"select the project whose first ready ticket to map when ID is omitted (default: current working directory)")
 	cmd.Flags().BoolVar(&mermaid, "mermaid", false,
 		"write a Mermaid flowchart instead of the default text tree")
-	return cmd
+	return rpcOperationCommand("map", cmd)
 }
 
 // mapTickets walks both ends of every dependency link from id. The store keeps

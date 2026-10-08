@@ -43,5 +43,5 @@ func dependCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		"remove the named dependency links instead of adding them")
 	// The flag was registered above, so MarkFlagRequired cannot fail.
 	_ = cmd.MarkFlagRequired("after")
-	return cmd
+	return rpcOperationCommand("depend", cmd)
 }

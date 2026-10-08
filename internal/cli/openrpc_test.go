@@ -478,16 +478,11 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	if !names["inbox"] || !names["rpc.discover"] {
 		t.Errorf("method names = %v, want inbox and rpc.discover", names)
 	}
-	rpcVisitCommands(root, func(name string, _ *cobra.Command) {
-		if got, want := names[name], !rpcRefusedMethods[name]; got != want {
+	rpcVisitCommands(root, func(name string, command *cobra.Command) {
+		if got, want := names[name], rpcCallable(command); got != want {
 			t.Errorf("method %q advertised = %t, want %t", name, got, want)
 		}
 	})
-	for refused := range rpcRefusedMethods {
-		if names[refused] {
-			t.Errorf("refused method %q is advertised", refused)
-		}
-	}
 	for _, nested := range []string{"agents.add", "config.get", "config.list", "config.set"} {
 		if !names[nested] {
 			t.Errorf("nested method %q is not advertised", nested)
@@ -497,10 +492,43 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 
 func TestRPCDiscoverDetectsCommandWithoutResultSchema(t *testing.T) {
 	root := Root(t.TempDir())
-	root.AddCommand(&cobra.Command{Use: "unregistered"})
+	root.AddCommand(rpcOperationCommand("unregistered", &cobra.Command{Use: "unregistered"}))
 	document := rpcOpenRPC(root)
 	if missing := openRPCMethodsMissingResultSchemas(document); !slices.Equal(missing, []string{"unregistered"}) {
 		t.Fatalf("methods without result schemas = %v, want [unregistered]", missing)
+	}
+}
+
+func TestRPCNamespaceTraversalUsesOperationPolicy(t *testing.T) {
+	root := Root(t.TempDir())
+	namespace := &cobra.Command{Use: "group"}
+	alias := rpcOperationCommand("pause", &cobra.Command{Use: "stop", Args: cobra.NoArgs})
+	interactive := rpcOperationCommand("chat", &cobra.Command{Use: "talk", Args: cobra.NoArgs})
+	namespace.AddCommand(alias, interactive)
+	root.AddCommand(namespace)
+
+	if _, err := rpcTarget(root, "group"); err == nil {
+		t.Error("namespace-only parent resolves as a method")
+	}
+	if target, err := rpcTarget(root, "group.stop"); err != nil {
+		t.Errorf("callable child below a namespace does not resolve: %v", err)
+	} else if target != alias {
+		t.Errorf("group.stop resolves to %q, want the alias", target.CommandPath())
+	}
+	if _, err := rpcTarget(root, "group.talk"); err == nil {
+		t.Error("interactive operation alias resolves as a method")
+	}
+
+	document := rpcOpenRPC(root)
+	names := map[string]bool{}
+	for _, method := range document.Methods {
+		names[method.Name] = true
+	}
+	if names["group"] || names["group.talk"] || !names["group.stop"] {
+		t.Errorf("advertised methods = %v, want only the callable namespace child", names)
+	}
+	if got, want := openRPCMethodNamed(t, document, "group.stop").Result.Schema, nullResultSchema(); !reflect.DeepEqual(got, want) {
+		t.Errorf("alias result schema = %#v, want pause operation schema %#v", got, want)
 	}
 }
 

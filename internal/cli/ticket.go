@@ -134,7 +134,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"make the new ticket depend on this ticket ID (may be repeated or comma-separated)")
 	cmd.AddCommand(runsCommand(dataDir))
-	return cmd
+	return rpcOperationCommand("ticket", cmd)
 }
 
 // ticketProse reads the prose that --body-file names. A path of - is the
