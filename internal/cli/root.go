@@ -132,6 +132,7 @@ func Root(workDir string) *cobra.Command {
 			})
 		},
 	}
+	rpcOperationCommand("inbox", root)
 	root.PersistentFlags().Var(&mode, "color",
 		"when to colour status values: always, never, or auto (terminals only)")
 	root.PersistentFlags().StringVar(&selectedDir, "data-dir", "",

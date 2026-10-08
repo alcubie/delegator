@@ -15,7 +15,7 @@ const pausedMessage = "The queue is paused. Current runs will finish. Use dg can
 
 // pauseCommand returns the command for dg pause.
 func pauseCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("pause", &cobra.Command{
 		Use:   "pause",
 		Short: "Pause the queue.",
 		Long: "Pause the queue so no new agent runs start. Runs already in progress are " +
@@ -34,5 +34,5 @@ func pauseCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				})
 			})
 		},
-	}
+	})
 }

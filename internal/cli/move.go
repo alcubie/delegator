@@ -30,7 +30,7 @@ func directionNames() []string {
 
 // moveCommand returns the command dg move.
 func moveCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("move", &cobra.Command{
 		Use:   "move <id> <where>",
 		Short: "Reorder a ticket in its queue or ready list.",
 		Long: "Move a ticket within QUEUED or READY. The destination may be " +
@@ -57,5 +57,5 @@ func moveCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return s.MoveTicketBefore(id, target)
 			})
 		},
-	}
+	})
 }

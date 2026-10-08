@@ -35,7 +35,7 @@ func triggerTelemetry(dataDir string) {
 // hidden because consent and inspection use init/config rather than a separate
 // public telemetry interface.
 func telemetryCommand(dataDir *string) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("telemetry-send", &cobra.Command{
 		Use: "telemetry-send", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			return store.With(*dataDir, func(s *store.Store) error {
@@ -43,5 +43,5 @@ func telemetryCommand(dataDir *string) *cobra.Command {
 				return nil
 			})
 		},
-	}
+	})
 }

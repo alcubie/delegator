@@ -43,7 +43,7 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false,
 		"include registered agents whose executable is missing (default: show available agents only)")
 	cmd.AddCommand(addAgentCommand(dataDir, cfg))
-	return cmd
+	return rpcOperationCommand("agents", cmd)
 }
 
 func writeAgents(out io.Writer, agents []store.Agent, defaultName string, all bool) {
@@ -142,5 +142,5 @@ func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		"register this executable as a custom agent command (mutually exclusive with --path)")
 	cmd.Flags().StringArrayVar(&arguments, "arg", nil,
 		"append this argument to the custom command in order (may be repeated)")
-	return cmd
+	return rpcOperationCommand("agents.add", cmd)
 }

@@ -110,5 +110,5 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&restart, "restart", false, "resume a failed ticket")
 	cmd.Flags().StringVar(&model, "model", "", "model ID for the restarted run")
-	return cmd
+	return rpcOperationCommand("run", cmd)
 }

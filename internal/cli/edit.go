@@ -79,7 +79,7 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		"read the replacement prose from this file, or from standard input when the value is -")
 	cmd.Flags().BoolVar(&useEditor, "editor", false,
 		"open $EDITOR to replace the title and prose instead of taking text flags")
-	return cmd
+	return rpcOperationCommand("edit", cmd)
 }
 
 // flagText distinguishes an omitted flag (nil) from an explicitly empty

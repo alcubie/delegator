@@ -41,7 +41,7 @@ func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"list only the project in this directory (default: every project)")
-	return cmd
+	return rpcOperationCommand("list", cmd)
 }
 
 // listTickets selects all projects unless projectDir specifies --project.

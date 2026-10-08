@@ -489,5 +489,5 @@ func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		// The flag takes no value, as a flag of cobra's own bool does.
 		cmd.Flags().Lookup(name).NoOptDefVal = "true"
 	}
-	return cmd
+	return rpcOperationCommand("show", cmd)
 }

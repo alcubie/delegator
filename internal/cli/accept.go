@@ -79,5 +79,5 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		"select the project whose first ready ticket to accept when ID is omitted (default: current working directory)")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"skip the merge and clean-worktree checks; removing a dirty worktree loses its uncommitted changes")
-	return cmd
+	return rpcOperationCommand("accept", cmd)
 }

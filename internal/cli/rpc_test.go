@@ -159,7 +159,7 @@ func TestRPCRefusesBodyFileFromStandardInputForEveryMethod(t *testing.T) {
 	root := Root(repo)
 
 	for _, command := range root.Commands() {
-		if rpcRefusedMethods[command.Name()] {
+		if !rpcCallable(command) {
 			continue
 		}
 		t.Run(command.Name(), func(t *testing.T) {
@@ -190,9 +190,13 @@ func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
 		for _, command := range parent.Commands() {
 			method := rpcMethodName(command)
 			target, err := rpcTarget(root, method)
-			if rpcRefusedMethods[method] {
+			operation, registered := rpcOperation(command)
+			if !registered && command.Runnable() {
+				t.Errorf("runnable command %q has no RPC operation identity", command.CommandPath())
+			}
+			if !registered || rpcRefusedOperations[operation] {
 				if err == nil {
-					t.Errorf("refused command %q is callable through RPC", command.CommandPath())
+					t.Errorf("non-callable command %q is callable through RPC", command.CommandPath())
 				}
 			} else if err != nil {
 				t.Errorf("command %q is neither callable through RPC nor refused: %v", command.CommandPath(), err)
@@ -203,6 +207,64 @@ func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
 		}
 	}
 	walk(root)
+}
+
+func TestRPCArgumentsCannotRetargetResolvedOperations(t *testing.T) {
+	root := Root(t.TempDir())
+	tests := []struct {
+		method string
+		params string
+		want   []string
+	}{
+		{"inbox", `{"args":["show"]}`, []string{"--", "show"}},
+		{"config", `{"args":["get"]}`, []string{"config", "--", "get"}},
+		{"show", `{"args":["-1"]}`, []string{"show", "--", "-1"}},
+		{"ticket", `{"args":["runs"],"project":"/project"}`, []string{"ticket", "--project", "/project", "--", "runs"}},
+	}
+	for _, test := range tests {
+		t.Run(test.method, func(t *testing.T) {
+			command, err := rpcTarget(root, test.method)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := rpcArgv(command, rpcRequest{Params: json.RawMessage(test.params)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Errorf("argv = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRPCOperationRestrictionsFollowAliases(t *testing.T) {
+	group := &cobra.Command{Use: "group"}
+	create := rpcOperationCommand("ticket", &cobra.Command{Use: "create [title]"})
+	create.Flags().String("project", "", "project")
+	edit := rpcOperationCommand("edit", &cobra.Command{Use: "change <id>"})
+	edit.Flags().Bool("editor", false, "editor")
+	group.AddCommand(create, edit)
+	root := &cobra.Command{Use: "dg"}
+	root.AddCommand(group)
+
+	resolved, err := rpcTarget(root, "group.create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rpcArgv(resolved, rpcRequest{}); err == nil {
+		t.Error("creation alias accepts an omitted project")
+	} else if _, ok := err.(rpcProjectRequiredError); !ok {
+		t.Errorf("creation alias error = %T %v, want rpcProjectRequiredError", err, err)
+	}
+
+	resolved, err = rpcTarget(root, "group.change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rpcArgv(resolved, rpcRequest{Params: json.RawMessage(`{"editor":true}`)}); err == nil {
+		t.Error("edit alias accepts editor mode")
+	}
 }
 
 func TestRPCCobraGeneratedHelpersRemainUnavailable(t *testing.T) {

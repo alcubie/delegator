@@ -73,7 +73,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
 		"select the project whose first ready ticket to continue when ID is omitted (default: current working directory)")
-	return cmd
+	return rpcOperationCommand("chat", cmd)
 }
 
 // resumeOf returns resume arguments, the worktree, and the project cache,

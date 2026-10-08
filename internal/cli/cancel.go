@@ -11,7 +11,7 @@ import (
 // cancelCommand requires an explicit ticket ID. Cancellation preserves the
 // worktree so unfinished work remains available for inspection.
 func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("cancel", &cobra.Command{
 		Use:   "cancel <id>",
 		Short: "Stop the work on a ticket and close it.",
 		Long: "Stop a ticket's running agent when necessary and mark the ticket cancelled. " +
@@ -27,7 +27,7 @@ func cancelCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return cancelTicket(s, cfg, id)
 			})
 		},
-	}
+	})
 }
 
 // cancelTicket stops a running supervisor before marking the ticket

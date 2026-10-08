@@ -49,5 +49,5 @@ func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&model, "model", "", "model ID to use for the new run")
-	return cmd
+	return rpcOperationCommand("restart", cmd)
 }

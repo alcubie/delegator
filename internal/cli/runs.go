@@ -59,7 +59,7 @@ func runsResultSchema() map[string]any {
 }
 
 func runsCommand(dataDir *string) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("ticket.runs", &cobra.Command{
 		Use:   "runs <id>",
 		Short: "Show the recorded runs of a ticket.",
 		Long: "Show every recorded run of one ticket, newest first. Missing recorded " +
@@ -85,7 +85,7 @@ func runsCommand(dataDir *string) *cobra.Command {
 				})
 			})
 		},
-	}
+	})
 }
 
 func runsValue(ticketID int64, runs []store.Run) runsJSON {

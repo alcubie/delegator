@@ -11,7 +11,7 @@ import (
 
 // finishCommand returns the command dg finish
 func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	return rpcOperationCommand("finish", &cobra.Command{
 		Use:   "finish <id> <commit>",
 		Short: "Record the commit of a ticket and mark it Ready.",
 		Long: "Record the ticket branch commit that contains the completed work and mark the " +
@@ -41,5 +41,5 @@ func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return s.FinishTicket(id, commit)
 			})
 		},
-	}
+	})
 }
