@@ -88,6 +88,7 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
+	"depends_on", "blocks",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -943,6 +944,54 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 		if value, held := got[key]; !held || value != nil {
 			t.Errorf("%s = %v for a ticket in the queue, want null", key, value)
 		}
+	}
+	for _, key := range []string{"depends_on", "blocks"} {
+		if value, ok := got[key].([]any); !ok || len(value) != 0 {
+			t.Errorf("%s = %#v for a ticket with no links, want []", key, got[key])
+		}
+	}
+}
+
+// Structured show preserves the complete dependency graph in store order,
+// including links to completed tickets and links in the reverse direction.
+func TestRunShowJSONGivesEveryDependencyLink(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	first := queuedIn(t, s, repo, "the completed prerequisite")
+	second := queuedIn(t, s, repo, "the other prerequisite")
+	target := queuedIn(t, s, repo, "the linked ticket")
+	firstDependent := queuedIn(t, s, repo, "the first dependent")
+	secondDependent := queuedIn(t, s, repo, "the second dependent")
+
+	if err := s.AddDependencies(target, second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(secondDependent, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(firstDependent, target); err != nil {
+		t.Fatal(err)
+	}
+	finishIn(t, s, first)
+	if err := s.ChangeStatus(first, store.Done); err != nil {
+		t.Fatal(err)
+	}
+
+	got := showJSON(t, dataDir, repo, fmt.Sprint(target))
+	dependsOn, ok := got["depends_on"].([]any)
+	if !ok {
+		t.Fatalf("depends_on = %#v, want an array", got["depends_on"])
+	}
+	if want := []any{float64(first), float64(second)}; !slices.Equal(dependsOn, want) {
+		t.Errorf("depends_on = %#v, want %#v", got["depends_on"], want)
+	}
+	blocks, ok := got["blocks"].([]any)
+	if !ok {
+		t.Fatalf("blocks = %#v, want an array", got["blocks"])
+	}
+	if want := []any{float64(firstDependent), float64(secondDependent)}; !slices.Equal(blocks, want) {
+		t.Errorf("blocks = %#v, want %#v", got["blocks"], want)
 	}
 }
 

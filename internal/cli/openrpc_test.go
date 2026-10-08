@@ -755,6 +755,11 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"invalid status", func(result map[string]any) { result["status"] = "waiting" }},
 		{"malformed timestamp", func(result map[string]any) { result["created"] = "yesterday" }},
 		{"wrong nullable field type", func(result map[string]any) { result["session"] = float64(1) }},
+		{"missing depends_on", func(result map[string]any) { delete(result, "depends_on") }},
+		{"missing blocks", func(result map[string]any) { delete(result, "blocks") }},
+		{"null dependency links", func(result map[string]any) { result["depends_on"] = nil }},
+		{"nonpositive dependency identifier", func(result map[string]any) { result["depends_on"] = []any{float64(0)} }},
+		{"wrong reverse links type", func(result map[string]any) { result["blocks"] = "2" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := maps.Clone(actual)
