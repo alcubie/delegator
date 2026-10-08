@@ -20,7 +20,7 @@ var jsonGroups = []string{"done", "ready", "running", "failed", "queued"}
 
 // jsonInboxFields is every key that one ticket of RPC inbox result holds.
 var jsonInboxFields = []string{
-	"id", "title", "status", "project", "created", "accepted", "started",
+	"id", "title", "status", "project", "depends_on", "created", "accepted", "started",
 }
 
 // eachGroup creates one ticket per inbox group and returns the store,
@@ -330,6 +330,44 @@ func TestRunJSONGivesNullForATimeWithNoValue(t *testing.T) {
 	if got["created"] == nil {
 		t.Error("created = null for a ticket in the queue, want the time it arrived")
 	}
+	if dependencies, ok := got["depends_on"].([]any); !ok || len(dependencies) != 0 {
+		t.Errorf("depends_on = %#v for an unblocked ticket, want []", got["depends_on"])
+	}
+}
+
+// Match the terminal note: accepted prerequisites disappear, while cancelled
+// prerequisites continue to block, and identifiers retain store order.
+func TestRunJSONGivesTheUnfinishedDependenciesOfATicket(t *testing.T) {
+	dataDir := t.TempDir()
+	s, dependent, repo := queuedTicket(t, dataDir)
+	first := queuedIn(t, s, repo, "first unfinished dependency")
+	accepted := queuedIn(t, s, repo, "accepted dependency")
+	cancelled := queuedIn(t, s, repo, "cancelled dependency")
+	if err := s.AddDependencies(dependent, cancelled, accepted, first); err != nil {
+		t.Fatal(err)
+	}
+	finishIn(t, s, accepted)
+	if err := s.ChangeStatus(accepted, store.Done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(cancelled, store.Cancelled); err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]any
+	for _, ticket := range jsonGroup(t, readInboxJSON(t, dataDir, repo), "queued") {
+		if ticket["id"] == float64(dependent) {
+			got = ticket
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("queued result holds no ticket %d", dependent)
+	}
+	want := []any{float64(first), float64(cancelled)}
+	if dependencies, ok := got["depends_on"].([]any); !ok || !slices.Equal(dependencies, want) {
+		t.Errorf("depends_on = %#v, want %#v", got["depends_on"], want)
+	}
 }
 
 // Keep absolute paths; shells do not expand a tilde obtained from a variable.
@@ -351,8 +389,8 @@ func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	}
 }
 
-// Shared fields must match the show result. Started is inbox-specific for
-// clients calculating elapsed time.
+// Shared fields must match the show result. Started and depends_on are
+// inbox-specific; show does not yet expose either value.
 func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, ids := eachGroup(t, dataDir)
@@ -361,7 +399,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	shown := showJSON(t, dataDir, repo, fmt.Sprint(ids["done"]))
 
 	for key, want := range row {
-		if key == "started" {
+		if key == "started" || key == "depends_on" {
 			continue
 		}
 		got, there := shown[key]

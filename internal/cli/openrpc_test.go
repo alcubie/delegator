@@ -705,7 +705,10 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	_, repo, _ := eachGroup(t, dataDir)
+	s, repo, ids := eachGroup(t, dataDir)
+	if err := s.AddDependencies(ids["queued"], ids["failed"]); err != nil {
+		t.Fatal(err)
+	}
 	actual := rpcDocument(t, dataDir, repo, "inbox")
 	if err := validator.Validate(actual); err != nil {
 		t.Fatalf("populated handler result does not satisfy the advertised schema: %v", err)
@@ -742,6 +745,16 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 		{"missing nullable ticket field", func(result map[string]any) {
 			row := maps.Clone(queued)
 			delete(row, "accepted")
+			result["queued"] = []any{row}
+		}},
+		{"missing dependencies", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "depends_on")
+			result["queued"] = []any{row}
+		}},
+		{"wrong dependency type", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["depends_on"] = []any{"2"}
 			result["queued"] = []any{row}
 		}},
 		{"wrong ticket field type", func(result map[string]any) {
