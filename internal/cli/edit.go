@@ -26,8 +26,8 @@ var errEditorAndText = errors.New("dg edit --editor takes the title and the pros
 // unexpectedly open an editor.
 var errEditNoForm = errors.New("dg edit takes --title, --body, --body-file or --editor, and got none")
 
-// editCommand returns the command dg edit.
-func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+// editCommand returns a fresh edit command whose examples use commandPath.
+func editCommand(dataDir *string, cfg *config.Config, commandPath string) *cobra.Command {
 	var title, body, bodyFile string
 	var useEditor bool
 	cmd := &cobra.Command{
@@ -35,9 +35,9 @@ func editCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Short: "Change the title and the prose of a queued ticket.",
 		Long: "Change the title or prose of a queued ticket. Supply one or more text flags, " +
 			"or use --editor to edit both fields in $EDITOR.",
-		Example: `  dg edit 42 --title "Handle expired sessions"
-  dg edit 42 --body-file revised-plan.md
-  dg edit 42 --editor`,
+		Example: fmt.Sprintf(`  %s 42 --title "Handle expired sessions"
+  %s 42 --body-file revised-plan.md
+  %s 42 --editor`, commandPath, commandPath, commandPath),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])

@@ -143,7 +143,7 @@ func Root(workDir string) *cobra.Command {
 	root.AddCommand(ticketCompatibilityCommand("dg ticket search", searchCommand(&selectedDir, workDir, &cfg)))
 	root.AddCommand(ticketCompatibilityCommand("dg ticket show", showCommand(&selectedDir, workDir, &cfg)))
 	root.AddCommand(ticketCompatibilityCommand("dg ticket map", mapCommand(&selectedDir, workDir, &cfg)))
-	root.AddCommand(editCommand(&selectedDir, &cfg))
+	root.AddCommand(ticketCompatibilityCommand("dg ticket edit", editCommand(&selectedDir, &cfg, "dg edit")))
 	root.AddCommand(moveCommand(&selectedDir, &cfg))
 	root.AddCommand(dependCommand(&selectedDir, &cfg))
 	root.AddCommand(finishCommand(&selectedDir, &cfg))

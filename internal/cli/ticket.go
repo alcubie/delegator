@@ -57,10 +57,11 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd := &cobra.Command{
 		Use:   "ticket",
 		Short: "Work with tickets.",
-		Long:  "Create and inspect tickets, their dependencies, and their recorded runs.",
+		Long:  "Create, inspect, and edit tickets, their dependencies, and their recorded runs.",
 		Example: `  dg ticket create "Add request tracing" --no-body
   dg ticket list
   dg ticket show 42
+  dg ticket edit 42 --title "Handle expired sessions"
   dg ticket runs 42`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -72,6 +73,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.AddCommand(searchCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(showCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(mapCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(editCommand(dataDir, cfg, "dg ticket edit"))
 	cmd.AddCommand(runsCommand(dataDir))
 	return cmd
 }

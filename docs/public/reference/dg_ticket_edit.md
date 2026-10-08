@@ -1,23 +1,23 @@
-# Alcubi Delegator CLI Reference: dg edit
+# Alcubi Delegator CLI Reference: dg ticket edit
 
-## dg edit
+## dg ticket edit
 
-Change the title and the prose of a queued ticket. (use dg ticket edit)
+Change the title and the prose of a queued ticket.
 
 ### Synopsis
 
-Change the title or prose of a queued ticket. Supply one or more text flags, or use --editor to edit both fields in $EDITOR. The preferred command is `dg ticket edit`; the preferred JSON-RPC method is `ticket.edit`.
+Change the title or prose of a queued ticket. Supply one or more text flags, or use --editor to edit both fields in $EDITOR.
 
 ```
-dg edit <id> [flags]
+dg ticket edit <id> [flags]
 ```
 
 ### Examples
 
 ```
-  dg edit 42 --title "Handle expired sessions"
-  dg edit 42 --body-file revised-plan.md
-  dg edit 42 --editor
+  dg ticket edit 42 --title "Handle expired sessions"
+  dg ticket edit 42 --body-file revised-plan.md
+  dg ticket edit 42 --editor
 ```
 
 ### Options
@@ -39,4 +39,4 @@ dg edit <id> [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.

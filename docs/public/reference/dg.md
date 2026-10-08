@@ -36,7 +36,7 @@ dg [flags]
 * [dg chat](dg_chat.md)	 - Continue a ticket's agent session.
 * [dg config](dg_config.md)	 - Show or change instance settings.
 * [dg depend](dg_depend.md)	 - Add or remove dependencies of a queued ticket.
-* [dg edit](dg_edit.md)	 - Change the title and the prose of a queued ticket.
+* [dg edit](dg_edit.md)	 - Change the title and the prose of a queued ticket. (use dg ticket edit)
 * [dg finish](dg_finish.md)	 - Record the commit of a ticket and mark it Ready.
 * [dg init](dg_init.md)	 - Set up Alcubi Delegator for a first run.
 * [dg list](dg_list.md)	 - List every ticket, whatever its status (use dg ticket list)
