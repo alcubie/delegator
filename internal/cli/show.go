@@ -456,9 +456,9 @@ func showCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		Short: "Show the details of a ticket.",
 		Long: "Show a ticket's status, project, worktree, branch, session, commit, dependency links, " +
 			"run history, and prose. With no ID, show the first ready ticket for the selected project.",
-		Example: `  dg show 42
-  dg show
-  dg show 42 --worktree-only`,
+		Example: `  dg ticket show 42
+  dg ticket show
+  dg ticket show 42 --worktree-only`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {

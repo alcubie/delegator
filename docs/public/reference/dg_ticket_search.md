@@ -1,15 +1,15 @@
-# Alcubi Delegator CLI Reference: dg search
+# Alcubi Delegator CLI Reference: dg ticket search
 
-## dg search
+## dg ticket search
 
-Find tickets by their text (use dg ticket search)
+Find tickets by their text
 
 ### Synopsis
 
-Search ticket titles and prose for a case-insensitive text pattern. By default the search covers tickets in every project and every status. The preferred command is `dg ticket search`; the preferred JSON-RPC method is `ticket.search`.
+Search ticket titles and prose for a case-insensitive text pattern. By default the search covers tickets in every project and every status.
 
 ```
-dg search <pattern> [flags]
+dg ticket search <pattern> [flags]
 ```
 
 ### Examples
@@ -35,4 +35,4 @@ dg search <pattern> [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.

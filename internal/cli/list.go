@@ -25,8 +25,8 @@ func listCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		Short: listShort,
 		Long: "List tickets in every status and every project. Use --project to limit the " +
 			"list to the repository at a particular directory.",
-		Example: `  dg list
-  dg list --project ../api`,
+		Example: `  dg ticket list
+  dg ticket list --project ../api`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tickets, err := listTickets(*dataDir, workDir, cfg, projectDir)

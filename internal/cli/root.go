@@ -80,7 +80,7 @@ func Root(workDir string) *cobra.Command {
 			"worktree. Run dg without a command to see the inbox and the state of the queue.",
 		Example: `  dg
   dg ticket create "Add request tracing" --no-body
-  dg show 42`,
+  dg ticket show 42`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
@@ -139,10 +139,10 @@ func Root(workDir string) *cobra.Command {
 		"store all Delegator data in this absolute directory (default: the platform data directory)")
 	root.AddCommand(initCommand(&selectedDir, &cfg))
 	root.AddCommand(ticketCommand(&selectedDir, workDir, &cfg))
-	root.AddCommand(listCommand(&selectedDir, workDir, &cfg))
-	root.AddCommand(searchCommand(&selectedDir, workDir, &cfg))
-	root.AddCommand(showCommand(&selectedDir, workDir, &cfg))
-	root.AddCommand(mapCommand(&selectedDir, workDir, &cfg))
+	root.AddCommand(ticketCompatibilityCommand("dg ticket list", listCommand(&selectedDir, workDir, &cfg)))
+	root.AddCommand(ticketCompatibilityCommand("dg ticket search", searchCommand(&selectedDir, workDir, &cfg)))
+	root.AddCommand(ticketCompatibilityCommand("dg ticket show", showCommand(&selectedDir, workDir, &cfg)))
+	root.AddCommand(ticketCompatibilityCommand("dg ticket map", mapCommand(&selectedDir, workDir, &cfg)))
 	root.AddCommand(editCommand(&selectedDir, &cfg))
 	root.AddCommand(moveCommand(&selectedDir, &cfg))
 	root.AddCommand(dependCommand(&selectedDir, &cfg))

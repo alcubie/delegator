@@ -80,6 +80,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	method := openRPCMethod{
 		Name:           name,
 		Summary:        command.Short,
+		Description:    command.Long,
 		ParamStructure: "by-name",
 		Params:         []openRPCContentDescriptor{},
 		Result: openRPCContentDescriptor{

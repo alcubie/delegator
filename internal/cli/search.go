@@ -28,8 +28,8 @@ func searchCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		Short: searchShort,
 		Long: "Search ticket titles and prose for a case-insensitive text pattern. By default " +
 			"the search covers tickets in every project and every status.",
-		Example: `  dg search "rate limit"
-  dg search timeout --project ../api`,
+		Example: `  dg ticket search "rate limit"
+  dg ticket search timeout --project ../api`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			found, err := searchTickets(*dataDir, workDir, cfg, projectDir, args[0])

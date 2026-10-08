@@ -16,7 +16,7 @@ dg rpc [flags]
 
 ```
   printf '%s\n' '{"jsonrpc":"2.0","method":"version","id":1}' | dg rpc
-  printf '%s\n' '{"jsonrpc":"2.0","method":"show","params":{"args":[42]},"id":1}' | dg rpc
+  printf '%s\n' '{"jsonrpc":"2.0","method":"ticket.show","params":{"args":[42]},"id":1}' | dg rpc
 ```
 
 ### Options

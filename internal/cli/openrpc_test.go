@@ -490,6 +490,33 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	}
 }
 
+func TestRPCDiscoverPublishesCanonicalTicketInspectionMethods(t *testing.T) {
+	document := rpcDiscover(t)
+	for _, name := range []string{"list", "search", "show", "map"} {
+		legacy := openRPCMethodNamed(t, document, name)
+		canonical := openRPCMethodNamed(t, document, "ticket."+name)
+		if !strings.Contains(legacy.Description, "preferred command is `dg ticket "+name+"`") ||
+			!strings.Contains(legacy.Description, "preferred JSON-RPC method is `ticket."+name+"`") {
+			t.Errorf("%s description does not point to its canonical method: %q", name, legacy.Description)
+		}
+		if !reflect.DeepEqual(legacy.Result.Schema, canonical.Result.Schema) {
+			t.Errorf("%s and ticket.%s result schemas differ", name, name)
+		}
+		if len(legacy.Params) != len(canonical.Params) {
+			t.Fatalf("%s has %d parameters and ticket.%s has %d", name, len(legacy.Params), name, len(canonical.Params))
+		}
+		for i := range legacy.Params {
+			legacyParam := legacy.Params[i]
+			canonicalParam := canonical.Params[i]
+			legacyParam.Description = ""
+			canonicalParam.Description = ""
+			if !reflect.DeepEqual(legacyParam, canonicalParam) {
+				t.Errorf("parameter %d differs between %s and ticket.%s: %#v != %#v", i, name, name, legacyParam, canonicalParam)
+			}
+		}
+	}
+}
+
 func TestRPCDiscoverDetectsCommandWithoutResultSchema(t *testing.T) {
 	root := Root(t.TempDir())
 	root.AddCommand(rpcOperationCommand("unregistered", &cobra.Command{Use: "unregistered"}))

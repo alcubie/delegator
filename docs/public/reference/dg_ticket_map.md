@@ -1,15 +1,15 @@
-# Alcubi Delegator CLI Reference: dg map
+# Alcubi Delegator CLI Reference: dg ticket map
 
-## dg map
+## dg ticket map
 
-Show the dependency graph of a ticket (use dg ticket map)
+Show the dependency graph of a ticket
 
 ### Synopsis
 
-Show the connected dependency graph containing a ticket. With no ID, start from the first ready ticket for the selected project. The preferred command is `dg ticket map`; the preferred JSON-RPC method is `ticket.map`.
+Show the connected dependency graph containing a ticket. With no ID, start from the first ready ticket for the selected project.
 
 ```
-dg map [id] [flags]
+dg ticket map [id] [flags]
 ```
 
 ### Examples
@@ -37,4 +37,4 @@ dg map [id] [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.
