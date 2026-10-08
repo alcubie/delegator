@@ -6,7 +6,7 @@ Add a ticket to a project queue.
 
 ### Synopsis
 
-Add a ticket to a project's queue. Supply a title and prose, read the prose from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR.
+Add a ticket to a project's queue. Supply a title and prose, read the prose from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR. The first positional word runs is reserved; use dg ticket -- runs ... to create that title literally.
 
 ```
 dg ticket [title] [body] [flags]
@@ -18,6 +18,7 @@ dg ticket [title] [body] [flags]
   dg ticket "Remove the legacy endpoint" "Delete the handler and its tests."
   dg ticket "Investigate the flaky test" --no-body
   dg ticket "Implement the approved design" --body-file plan.md --after 41
+  dg ticket -- "runs" "Describe a run-related change."
 ```
 
 ### Options
@@ -40,3 +41,4 @@ dg ticket [title] [body] [flags]
 ### SEE ALSO
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket runs](dg_ticket_runs.md)	 - Show the recorded runs of a ticket.
