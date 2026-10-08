@@ -107,6 +107,9 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	}
 
 	minimum, maximum := rpcArgumentBounds(command.Use)
+	if operation == "ticket" {
+		minimum = 1
+	}
 	if maximum > 0 {
 		use := command.CommandPath()
 		if arguments := strings.TrimSpace(strings.TrimPrefix(command.Use, command.Name())); arguments != "" {

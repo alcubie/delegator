@@ -134,10 +134,10 @@ func TestListTakesTheTicketsOfOneProject(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
 	elsewhere := testfix.Repo(t, "release")
-	if _, err := runIn(t, dataDir, here, "ticket", "the ticket here", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, here, "ticket", "create", "the ticket here", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runIn(t, dataDir, elsewhere, "ticket", "the ticket elsewhere", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, elsewhere, "ticket", "create", "the ticket elsewhere", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,8 +161,7 @@ func TestListWithNoTicketsWritesNothing(t *testing.T) {
 	}
 }
 
-// Keep listing discoverable to avoid mistaking dg ticket list for a list
-// command.
+// Keep listing discoverable in root help.
 func TestHelpNamesList(t *testing.T) {
 	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "--help")
 	if err != nil {

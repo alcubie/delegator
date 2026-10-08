@@ -21,7 +21,7 @@ func threeInTheQueue(t *testing.T) (string, string, []int64) {
 	repo := testfix.Repo(t, repoBranch)
 	var ids []int64
 	for _, title := range []string{"first", "second", "third"} {
-		out, err := runIn(t, dataDir, repo, "ticket", title, "--no-body")
+		out, err := runIn(t, dataDir, repo, "ticket", "create", title, "--no-body")
 		if err != nil {
 			t.Fatal(err)
 		}

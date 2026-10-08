@@ -17,7 +17,7 @@ const repoBranch = "trunk"
 var testNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
 // ticketIn makes one ticket in a data directory, with a store the test opens,
-// as dg ticket makes it with the store of the command.
+// as dg ticket create makes it with the store of the command.
 func ticketIn(t *testing.T, dataDir, workDir, title, body string) (int64, error) {
 	t.Helper()
 	return Ticket(testfix.OpenStore(t, dataDir), workDir, title, body)

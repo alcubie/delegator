@@ -357,6 +357,6 @@ func writeCompletedInit(out io.Writer, agent string) error {
 	fmt.Fprintln(out, "Agent runs can use tokens from your plan.")
 	fmt.Fprintln(out, "\nNext steps:")
 	fmt.Fprintln(out, "    dg          view the inbox")
-	fmt.Fprintln(out, "    dg ticket   create your first ticket")
+	fmt.Fprintln(out, "    dg ticket create   create your first ticket")
 	return nil
 }

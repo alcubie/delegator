@@ -18,7 +18,7 @@ const emptyGroup = "  none"
 
 // emptyInbox replaces empty group headings with guidance for creating a first
 // ticket.
-const emptyInbox = "There are no active tickets. Use `dg ticket` to add."
+const emptyInbox = "There are no active tickets. Use `dg ticket create` to add."
 
 // Always show queue state so users can distinguish paused work from an idle
 // queue.

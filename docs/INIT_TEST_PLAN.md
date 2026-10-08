@@ -56,7 +56,7 @@ Agent runs can use tokens from your plan.
 
 Next steps:
     dg          view the inbox
-    dg ticket   create your first ticket
+    dg ticket create   create your first ticket
 ```
 
 ## 2. Report that no supported agent was found
@@ -122,7 +122,7 @@ Agent runs can use tokens from your plan.
 
 Next steps:
     dg          view the inbox
-    dg ticket   create your first ticket
+    dg ticket create   create your first ticket
 ```
 
 ## 4. Decline installation and supply a Claude ACP command path
@@ -161,7 +161,7 @@ Agent runs can use tokens from your plan.
 
 Next steps:
     dg          view the inbox
-    dg ticket   create your first ticket
+    dg ticket create   create your first ticket
 ```
 
 ## 5. Rerun onboarding
@@ -189,7 +189,7 @@ Agent runs can use tokens from your plan.
 
 Next steps:
     dg          view the inbox
-    dg ticket   create your first ticket
+    dg ticket create   create your first ticket
 ```
 
 Run it once more and enter `1` to replace OpenCode with Goose. The screen is
@@ -231,7 +231,7 @@ Agent runs can use tokens from your plan.
 
 Next steps:
     dg          view the inbox
-    dg ticket   create your first ticket
+    dg ticket create   create your first ticket
 ```
 
 Remove all disposable state when finished:

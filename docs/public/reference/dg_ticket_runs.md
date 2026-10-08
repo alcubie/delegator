@@ -33,4 +33,4 @@ dg ticket runs <id> [flags]
 
 ### SEE ALSO
 
-* [dg ticket](dg_ticket.md)	 - Add a ticket to a project queue.
+* [dg ticket](dg_ticket.md)	 - Work with tickets.

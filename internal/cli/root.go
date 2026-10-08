@@ -79,7 +79,7 @@ func Root(workDir string) *cobra.Command {
 		Long: "Delegator queues work for coding agents and keeps each task in its own Git " +
 			"worktree. Run dg without a command to see the inbox and the state of the queue.",
 		Example: `  dg
-  dg ticket "Add request tracing" --no-body
+  dg ticket create "Add request tracing" --no-body
   dg show 42`,
 		SilenceErrors: true,
 		SilenceUsage:  true,

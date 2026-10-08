@@ -224,7 +224,7 @@ This section gives the shape so that the first version is small and obeys sectio
 flowchart TD
     U["a unit of the service manager"] -->|"at login"| M["dg daemon"]
     M -->|"on a timer: the reconcile, then run.Next"| D["delegator.db"]
-    M -->|"on a push: dg ticket, then run.Next"| D
+    M -->|"on a push: dg ticket create, then run.Next"| D
     C["dg: a command"] --> D
     G["dg gui: the server"] --> D
     D --> N["run.Next"]

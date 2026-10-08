@@ -24,16 +24,16 @@ const filePerm = 0o600
 var ErrNoTitle = errors.New("the ticket must have a title")
 
 // errTwoBodies rejects competing description sources.
-var errTwoBodies = errors.New("dg ticket takes the prose from a body or from --body-file, and got both")
+var errTwoBodies = errors.New("dg ticket create takes the prose from a body or from --body-file, and got both")
 
 // errBodyAndNoBody rejects combining a description with --no-body.
-var errBodyAndNoBody = errors.New("dg ticket takes a body or --no-body, and got both")
+var errBodyAndNoBody = errors.New("dg ticket create takes a body or --no-body, and got both")
 
 // errNoBody requires an explicit description source or --no-body, preventing
 // accidental tickets from a stray argument.
 var errNoBody = errors.New("the ticket has no body: write one, or pass --no-body for a ticket that has none")
 
-// ticketID is the value dg ticket and dg accept write when they name a ticket.
+// ticketID is the value dg ticket create and dg accept write when they name a ticket.
 type ticketID struct {
 	ID int64 `json:"id"`
 }
@@ -52,24 +52,41 @@ func ticketIDResultSchema() map[string]any {
 	}
 }
 
-// ticketCommand creates a ticket and prints its ID. No arguments open the
+// ticketCommand is the namespace for ticket operations.
+func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ticket",
+		Short: "Work with tickets.",
+		Long:  "Create tickets and inspect their recorded runs.",
+		Example: `  dg ticket create "Add request tracing" --no-body
+  dg ticket runs 42`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(ticketCreateCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(runsCommand(dataDir))
+	return cmd
+}
+
+// ticketCreateCommand creates a ticket and prints its ID. No arguments open the
 // editor; arguments supply title and description. --body-file reads the
 // description from a file, and --no-body explicitly omits it.
-func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+func ticketCreateCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	var projectDir string
 	var bodyFile string
 	var noBody bool
 	var after []int64
 	cmd := &cobra.Command{
-		Use:   "ticket [title] [body]",
+		Use:   "create [title] [body]",
 		Short: "Add a ticket to a project queue.",
 		Long: "Add a ticket to a project's queue. Supply a title and prose, read the prose " +
-			"from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR. " +
-			"The first positional word runs is reserved; use dg ticket -- runs ... to create that title literally.",
-		Example: `  dg ticket "Remove the legacy endpoint" "Delete the handler and its tests."
-  dg ticket "Investigate the flaky test" --no-body
-  dg ticket "Implement the approved design" --body-file plan.md --after 41
-  dg ticket -- "runs" "Describe a run-related change."`,
+			"from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR.",
+		Example: `  dg ticket create "Remove the legacy endpoint" "Delete the handler and its tests."
+  dg ticket create "Investigate the flaky test" --no-body
+  dg ticket create "Implement the approved design" --body-file plan.md --after 41
+  dg ticket create -- "-leading-dash" "Describe the change."`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bodyFile != "" && len(args) > 1 {
@@ -111,7 +128,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 				case len(args) == 2:
 					id, err = Ticket(s, dir, args[0], args[1], after...)
 				default:
-					return fmt.Errorf("dg ticket takes a title and a body, and got %d arguments", len(args))
+					return fmt.Errorf("dg ticket create takes a title and a body, and got %d arguments", len(args))
 				}
 				if err != nil {
 					return err
@@ -133,7 +150,6 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		"add the ticket with no prose instead of requiring a body")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"make the new ticket depend on this ticket ID (may be repeated or comma-separated)")
-	cmd.AddCommand(runsCommand(dataDir))
 	return rpcOperationCommand("ticket", cmd)
 }
 

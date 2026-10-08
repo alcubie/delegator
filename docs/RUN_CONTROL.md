@@ -24,7 +24,7 @@ them. It adds these:
 | signal | A message from the operating system to a program, such as `SIGTERM` or `SIGKILL`. |
 | slot | One of the `runs` places from the config. A ticket in `running` takes one slot, and a ticket in `ready` also takes one. |
 | start window | The short time between the claim of a ticket and the moment that its supervisor can answer for itself. |
-| trigger | A command or a supervisor that can start a run. Today `dg ticket`, `dg start`, and a supervisor that ends. |
+| trigger | A command or a supervisor that can start a run. Today `dg ticket create`, `dg start`, and a supervisor that ends. |
 
 ## 1. The problems
 
@@ -292,7 +292,7 @@ always has the process id of a live supervisor.
 
 ```mermaid
 flowchart TD
-    T["Trigger: dg ticket, dg start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
+    T["Trigger: dg ticket create, dg start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
     N -->|"one dg run for each free slot"| S["dg run, apart from the trigger"]
     S --> C{"BEGIN IMMEDIATE<br>first ticket with room?"}
     C -->|"none"| X["Stop, no error"]

@@ -265,7 +265,7 @@ func TestRunShowNamesEveryLinkIncludingADoneOne(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runIn(t, dataDir, repo, "ticket",
+	out, err := runIn(t, dataDir, repo, "ticket", "create",
 		"--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
@@ -330,7 +330,7 @@ func TestRunShowReadsTheRowAndTheFile(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	const title = "Remove the staging app"
 	const body = "Remove the app, the volume and the records of the DNS."
-	if _, err := runIn(t, dataDir, repo, "ticket", title, body); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", title, body); err != nil {
 		t.Fatal(err)
 	}
 

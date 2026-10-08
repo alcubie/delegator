@@ -85,7 +85,7 @@ func TestInitSelectsAndPersistsAnAvailableAgent(t *testing.T) {
 	for _, want := range []string{
 		"Setup complete.\n\nDefault agent: Codex\n\nThe default agent",
 		"default agent will be used to execute ticket tasks", "tokens from your plan",
-		"dg          view the inbox", "dg ticket   create your first ticket",
+		"dg          view the inbox", "dg ticket create   create your first ticket",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
@@ -261,7 +261,7 @@ func TestInitOffATerminalSupportsScriptedAgentSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Default agent: Codex", "tokens from your plan", "dg ticket"} {
+	for _, want := range []string{"Default agent: Codex", "tokens from your plan", "dg ticket create"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("scripted setup output does not contain %q:\n%s", want, out)
 		}

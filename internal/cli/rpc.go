@@ -304,6 +304,9 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 			positional = append(positional, value)
 		}
 	}
+	if operation == "ticket" && len(positional) == 0 {
+		return nil, fmt.Errorf("editor is not available through rpc")
+	}
 
 	for name, raw := range params {
 		if name == "args" {
