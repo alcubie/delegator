@@ -78,6 +78,10 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.AddCommand(editCommand(dataDir, cfg, "dg ticket edit"))
 	cmd.AddCommand(moveCommand(dataDir, cfg, "dg ticket move"))
 	cmd.AddCommand(dependCommand(dataDir, cfg, "dg ticket depend"))
+	cmd.AddCommand(finishCommand(dataDir, cfg, "dg ticket finish"))
+	cmd.AddCommand(acceptCommand(dataDir, workDir, cfg, "dg ticket accept"))
+	cmd.AddCommand(cancelCommand(dataDir, cfg, "dg ticket cancel"))
+	cmd.AddCommand(restartCommand(dataDir, cfg, "dg ticket restart"))
 	cmd.AddCommand(runsCommand(dataDir))
 	return cmd
 }

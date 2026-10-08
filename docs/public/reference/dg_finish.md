@@ -2,11 +2,11 @@
 
 ## dg finish
 
-Record the commit of a ticket and mark it Ready.
+Record the commit of a ticket and mark it Ready. (use dg ticket finish)
 
 ### Synopsis
 
-Record the ticket branch commit that contains the completed work and mark the ticket ready for review. The commit must belong to the ticket's branch.
+Record the ticket branch commit that contains the completed work and mark the ticket ready for review. The commit must belong to the ticket's branch. The preferred command is `dg ticket finish`; the preferred JSON-RPC method is `ticket.finish`.
 
 ```
 dg finish <id> <commit> [flags]

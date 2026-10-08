@@ -13,7 +13,7 @@ import (
 // restartCommand resumes an explicitly named failed ticket directly,
 // bypassing the queue. It preserves the branch, session, and worktree, and
 // writes nothing on success.
-func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+func restartCommand(dataDir *string, cfg *config.Config, commandPath string) *cobra.Command {
 	var model string
 	cmd := &cobra.Command{
 		Use:   "restart <id>",
@@ -24,8 +24,8 @@ func restartCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			"If the model is unknown, the loaded session's selection is left unchanged. " +
 			"If a recorded model is unavailable, the run fails before prompting. " +
 			"Use --model to select a model for this run instead.",
-		Example: `  dg restart 42
-  dg restart 42 --model model-v2`,
+		Example: fmt.Sprintf(`  %s 42
+  %s 42 --model model-v2`, commandPath, commandPath),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("model") && model == "" {

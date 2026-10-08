@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// finishCommand returns the command dg finish
-func finishCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+// finishCommand returns a fresh finish command whose example uses commandPath.
+func finishCommand(dataDir *string, cfg *config.Config, commandPath string) *cobra.Command {
 	return rpcOperationCommand("finish", &cobra.Command{
 		Use:   "finish <id> <commit>",
 		Short: "Record the commit of a ticket and mark it Ready.",
 		Long: "Record the ticket branch commit that contains the completed work and mark the " +
 			"ticket ready for review. The commit must belong to the ticket's branch.",
-		Example: `  dg finish 42 4f3c2b1`,
+		Example: fmt.Sprintf("  %s 42 4f3c2b1", commandPath),
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := ticketArg(args[0])

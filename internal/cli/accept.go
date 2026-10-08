@@ -18,7 +18,7 @@ import (
 // Merge and worktree validation run inside the status transaction, so failures
 // leave the ticket ready. Cleanup follows the durable transition and cannot
 // reverse acceptance. --force skips merge and cleanliness validation.
-func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+func acceptCommand(dataDir *string, workDir string, cfg *config.Config, commandPath string) *cobra.Command {
 	var projectDir string
 	var force bool
 	cmd := &cobra.Command{
@@ -26,9 +26,9 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		Short: "Close a ready ticket.",
 		Long: "Accept a ready ticket after its branch has been merged, mark it done, attempt to remove its " +
 			"worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project.",
-		Example: `  dg accept 42
-  dg accept
-  dg accept 42 --force`,
+		Example: fmt.Sprintf(`  %s 42
+  %s
+  %s 42 --force`, commandPath, commandPath, commandPath),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {

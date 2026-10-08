@@ -2,11 +2,11 @@
 
 ## dg cancel
 
-Stop the work on a ticket and close it.
+Stop the work on a ticket and close it. (use dg ticket cancel)
 
 ### Synopsis
 
-Stop a ticket's running agent when necessary and mark the ticket cancelled. The ticket's worktree is kept so uncommitted work can still be inspected.
+Stop a ticket's running agent when necessary and mark the ticket cancelled. The ticket's worktree is kept so uncommitted work can still be inspected. The preferred command is `dg ticket cancel`; the preferred JSON-RPC method is `ticket.cancel`.
 
 ```
 dg cancel <id> [flags]

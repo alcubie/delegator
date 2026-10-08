@@ -2,11 +2,11 @@
 
 ## dg restart
 
-Start a failed ticket again.
+Start a failed ticket again. (use dg ticket restart)
 
 ### Synopsis
 
-Return a failed ticket to execution, reusing its branch, worktree, and agent session so work can continue where the failed run stopped. A saved session uses its previous agent and recorded model by default, even if the defaults have changed. If the model is unknown, the loaded session's selection is left unchanged. If a recorded model is unavailable, the run fails before prompting. Use --model to select a model for this run instead.
+Return a failed ticket to execution, reusing its branch, worktree, and agent session so work can continue where the failed run stopped. A saved session uses its previous agent and recorded model by default, even if the defaults have changed. If the model is unknown, the loaded session's selection is left unchanged. If a recorded model is unavailable, the run fails before prompting. Use --model to select a model for this run instead. The preferred command is `dg ticket restart`; the preferred JSON-RPC method is `ticket.restart`.
 
 ```
 dg restart <id> [flags]
