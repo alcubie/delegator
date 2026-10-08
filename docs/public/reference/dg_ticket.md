@@ -21,6 +21,7 @@ dg ticket [flags]
   dg ticket edit 42 --title "Handle expired sessions"
   dg ticket move 42 top
   dg ticket depend 42 --after 17
+  dg ticket chat 42
   dg ticket runs 42
 ```
 
@@ -42,6 +43,7 @@ dg ticket [flags]
 * [dg](dg.md)	 - Delegate tasks to coding agents
 * [dg ticket accept](dg_ticket_accept.md)	 - Close a ready ticket.
 * [dg ticket cancel](dg_ticket_cancel.md)	 - Stop the work on a ticket and close it.
+* [dg ticket chat](dg_ticket_chat.md)	 - Continue a ticket's agent session.
 * [dg ticket create](dg_ticket_create.md)	 - Add a ticket to a project queue.
 * [dg ticket depend](dg_ticket_depend.md)	 - Add or remove dependencies of a queued ticket.
 * [dg ticket edit](dg_ticket_edit.md)	 - Change the title and the prose of a queued ticket.

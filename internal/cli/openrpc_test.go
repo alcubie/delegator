@@ -517,6 +517,15 @@ func TestRPCDiscoverPublishesCanonicalTicketMethods(t *testing.T) {
 	}
 }
 
+func TestRPCDiscoverOmitsChatMethods(t *testing.T) {
+	document := rpcDiscover(t)
+	for _, method := range document.Methods {
+		if method.Name == "chat" || method.Name == "ticket.chat" {
+			t.Errorf("discovery advertises terminal-only method %q", method.Name)
+		}
+	}
+}
+
 func TestRPCDiscoverDetectsCommandWithoutResultSchema(t *testing.T) {
 	root := Root(t.TempDir())
 	root.AddCommand(rpcOperationCommand("unregistered", &cobra.Command{Use: "unregistered"}))

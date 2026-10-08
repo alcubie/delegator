@@ -33,7 +33,7 @@ dg [flags]
 * [dg accept](dg_accept.md)	 - Close a ready ticket. (use dg ticket accept)
 * [dg agents](dg_agents.md)	 - List available Agent Client Protocol (ACP) commands
 * [dg cancel](dg_cancel.md)	 - Stop the work on a ticket and close it. (use dg ticket cancel)
-* [dg chat](dg_chat.md)	 - Continue a ticket's agent session.
+* [dg chat](dg_chat.md)	 - Continue a ticket's agent session. (use dg ticket chat)
 * [dg config](dg_config.md)	 - Show or change instance settings.
 * [dg depend](dg_depend.md)	 - Add or remove dependencies of a queued ticket. (use dg ticket depend)
 * [dg edit](dg_edit.md)	 - Change the title and the prose of a queued ticket. (use dg ticket edit)
