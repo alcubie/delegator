@@ -145,6 +145,8 @@ func rpcResultSchema(name string) map[string]any {
 	switch name {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
+	case "agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start":
+		return nullResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
 	case "config.get":
@@ -160,6 +162,12 @@ func rpcResultSchema(name string) map[string]any {
 	default:
 		return map[string]any{}
 	}
+}
+
+// nullResultSchema describes commands whose successful RPC response carries
+// no value. JSON-RPC still includes their result member with an explicit null.
+func nullResultSchema() map[string]any {
+	return map[string]any{"type": "null"}
 }
 
 // rpcArgumentBounds reads Cobra's conventional Use form. The JSON-RPC API
