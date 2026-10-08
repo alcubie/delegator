@@ -492,7 +492,7 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 
 func TestRPCDiscoverPublishesCanonicalTicketMethods(t *testing.T) {
 	document := rpcDiscover(t)
-	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend"} {
+	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend", "finish", "accept", "cancel", "restart"} {
 		legacy := openRPCMethodNamed(t, document, name)
 		canonical := openRPCMethodNamed(t, document, "ticket."+name)
 		if !strings.Contains(legacy.Description, "preferred command is `dg ticket "+name+"`") ||

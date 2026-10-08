@@ -1,23 +1,23 @@
-# Alcubi Delegator CLI Reference: dg accept
+# Alcubi Delegator CLI Reference: dg ticket accept
 
-## dg accept
+## dg ticket accept
 
-Close a ready ticket. (use dg ticket accept)
+Close a ready ticket.
 
 ### Synopsis
 
-Accept a ready ticket after its branch has been merged, mark it done, attempt to remove its worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project. The preferred command is `dg ticket accept`; the preferred JSON-RPC method is `ticket.accept`.
+Accept a ready ticket after its branch has been merged, mark it done, attempt to remove its worktree, and start queued work if capacity is available. With no ID, accept the first ready ticket for the selected project.
 
 ```
-dg accept [id] [flags]
+dg ticket accept [id] [flags]
 ```
 
 ### Examples
 
 ```
-  dg accept 42
-  dg accept
-  dg accept 42 --force
+  dg ticket accept 42
+  dg ticket accept
+  dg ticket accept 42 --force
 ```
 
 ### Options
@@ -37,4 +37,4 @@ dg accept [id] [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.
