@@ -224,21 +224,23 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 	writeProse(out, s)
 }
 
-// ticketJSON is the structured show result. Missing values are null so
-// consumers need only one absence check.
+// ticketJSON is the structured show result. Missing scalar values are null;
+// dependency links are always arrays.
 type ticketJSON struct {
-	ID       int64      `json:"id"`
-	Title    string     `json:"title"`
-	Status   string     `json:"status"`
-	Project  string     `json:"project"`
-	Ticket   string     `json:"ticket"`
-	Worktree *string    `json:"worktree"`
-	Branch   *string    `json:"branch"`
-	Session  *string    `json:"session"`
-	Commit   *string    `json:"commit"`
-	Created  *time.Time `json:"created"`
-	Accepted *time.Time `json:"accepted"`
-	Prose    *string    `json:"prose"`
+	ID        int64      `json:"id"`
+	Title     string     `json:"title"`
+	Status    string     `json:"status"`
+	Project   string     `json:"project"`
+	Ticket    string     `json:"ticket"`
+	Worktree  *string    `json:"worktree"`
+	Branch    *string    `json:"branch"`
+	Session   *string    `json:"session"`
+	Commit    *string    `json:"commit"`
+	Created   *time.Time `json:"created"`
+	Accepted  *time.Time `json:"accepted"`
+	Prose     *string    `json:"prose"`
+	DependsOn []int64    `json:"depends_on"`
+	Blocks    []int64    `json:"blocks"`
 
 	shown shown
 }
@@ -274,10 +276,19 @@ func showResultSchema() map[string]any {
 			"created":  timestamp,
 			"accepted": timestamp,
 			"prose":    nullableString,
+			"depends_on": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "integer", "minimum": 1},
+			},
+			"blocks": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "integer", "minimum": 1},
+			},
 		},
 		"required": []string{
 			"id", "title", "status", "project", "ticket", "worktree",
 			"branch", "session", "commit", "created", "accepted", "prose",
+			"depends_on", "blocks",
 		},
 		"additionalProperties": true,
 	}
@@ -303,19 +314,21 @@ func nullableTime(at time.Time) *time.Time {
 // kept with it for the text renderer, and the exported fields are its JSON.
 func ticketValue(s shown) ticketJSON {
 	return ticketJSON{
-		ID:       s.ID,
-		Title:    s.Title,
-		Status:   string(s.Status),
-		Project:  s.Project.Path,
-		Ticket:   s.ProseFile,
-		Worktree: nullable(s.Worktree),
-		Branch:   nullable(s.Branch),
-		Session:  nullable(s.Session),
-		Commit:   nullable(s.Commit),
-		Created:  nullableTime(s.Created),
-		Accepted: nullableTime(s.Accepted),
-		Prose:    nullable(strings.TrimRight(s.Prose, "\n")),
-		shown:    s,
+		ID:        s.ID,
+		Title:     s.Title,
+		Status:    string(s.Status),
+		Project:   s.Project.Path,
+		Ticket:    s.ProseFile,
+		Worktree:  nullable(s.Worktree),
+		Branch:    nullable(s.Branch),
+		Session:   nullable(s.Session),
+		Commit:    nullable(s.Commit),
+		Created:   nullableTime(s.Created),
+		Accepted:  nullableTime(s.Accepted),
+		Prose:     nullable(strings.TrimRight(s.Prose, "\n")),
+		DependsOn: append([]int64{}, s.DependsOn...),
+		Blocks:    append([]int64{}, s.Blocks...),
+		shown:     s,
 	}
 }
 
