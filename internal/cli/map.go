@@ -34,9 +34,9 @@ func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Comm
 		Short: mapShort,
 		Long: "Show the connected dependency graph containing a ticket. With no ID, start " +
 			"from the first ready ticket for the selected project.",
-		Example: `  dg map 42
-  dg map
-  dg map 42 --mermaid`,
+		Example: `  dg ticket map 42
+  dg ticket map
+  dg ticket map 42 --mermaid`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {

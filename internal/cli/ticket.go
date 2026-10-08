@@ -57,8 +57,10 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd := &cobra.Command{
 		Use:   "ticket",
 		Short: "Work with tickets.",
-		Long:  "Create tickets and inspect their recorded runs.",
+		Long:  "Create and inspect tickets, their dependencies, and their recorded runs.",
 		Example: `  dg ticket create "Add request tracing" --no-body
+  dg ticket list
+  dg ticket show 42
   dg ticket runs 42`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -66,7 +68,21 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		},
 	}
 	cmd.AddCommand(ticketCreateCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(listCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(searchCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(showCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(mapCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(runsCommand(dataDir))
+	return cmd
+}
+
+// ticketCompatibilityCommand identifies a retained root command and points
+// help and remote discovery to its canonical command under ticket. The
+// command remains otherwise identical and emits no migration warning.
+func ticketCompatibilityCommand(canonical string, cmd *cobra.Command) *cobra.Command {
+	cmd.Short += " (use " + canonical + ")"
+	method := strings.ReplaceAll(strings.TrimPrefix(canonical, "dg "), " ", ".")
+	cmd.Long += " The preferred command is `" + canonical + "`; the preferred JSON-RPC method is `" + method + "`."
 	return cmd
 }
 

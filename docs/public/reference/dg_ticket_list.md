@@ -1,15 +1,15 @@
-# Alcubi Delegator CLI Reference: dg list
+# Alcubi Delegator CLI Reference: dg ticket list
 
-## dg list
+## dg ticket list
 
-List every ticket, whatever its status (use dg ticket list)
+List every ticket, whatever its status
 
 ### Synopsis
 
-List tickets in every status and every project. Use --project to limit the list to the repository at a particular directory. The preferred command is `dg ticket list`; the preferred JSON-RPC method is `ticket.list`.
+List tickets in every status and every project. Use --project to limit the list to the repository at a particular directory.
 
 ```
-dg list [flags]
+dg ticket list [flags]
 ```
 
 ### Examples
@@ -35,4 +35,4 @@ dg list [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.

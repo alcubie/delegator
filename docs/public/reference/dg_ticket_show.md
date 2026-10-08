@@ -1,15 +1,15 @@
-# Alcubi Delegator CLI Reference: dg show
+# Alcubi Delegator CLI Reference: dg ticket show
 
-## dg show
+## dg ticket show
 
-Show the details of a ticket. (use dg ticket show)
+Show the details of a ticket.
 
 ### Synopsis
 
-Show a ticket's status, project, worktree, branch, session, commit, dependency links, run history, and prose. With no ID, show the first ready ticket for the selected project. The preferred command is `dg ticket show`; the preferred JSON-RPC method is `ticket.show`.
+Show a ticket's status, project, worktree, branch, session, commit, dependency links, run history, and prose. With no ID, show the first ready ticket for the selected project.
 
 ```
-dg show [id] [flags]
+dg ticket show [id] [flags]
 ```
 
 ### Examples
@@ -41,4 +41,4 @@ dg show [id] [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.
