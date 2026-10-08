@@ -2,11 +2,11 @@
 
 ## dg move
 
-Reorder a ticket in its queue or ready list.
+Reorder a ticket in its queue or ready list. (use dg ticket move)
 
 ### Synopsis
 
-Move a ticket within QUEUED or READY. The destination may be up, down, top, bottom, or the ID of another ticket in the same list, which places the ticket immediately before it.
+Move a ticket within QUEUED or READY. The destination may be up, down, top, bottom, or the ID of another ticket in the same list, which places the ticket immediately before it. The preferred command is `dg ticket move`; the preferred JSON-RPC method is `ticket.move`.
 
 ```
 dg move <id> <where> [flags]
