@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -202,6 +203,78 @@ func TestRPCDiscoverNullResultContracts(t *testing.T) {
 		})
 		testfix.WaitForStarts(t, record, 1)
 	})
+}
+
+func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
+	document := rpcDiscover(t)
+	descriptions := map[string]string{
+		"agents": "agent list",
+		"map":    "dependency map",
+		"search": "Search matches",
+	}
+	validators := make(map[string]*jsonschema.Schema, len(descriptions))
+	for method, subject := range descriptions {
+		descriptor := openRPCMethodNamed(t, document, method).Result
+		if !strings.Contains(descriptor.Description, subject) ||
+			!strings.Contains(descriptor.Description, "not yet exposed") ||
+			!strings.Contains(descriptor.Description, "null") {
+			t.Errorf("%s result description = %q, want the terminal-only structured-result gap", method, descriptor.Description)
+		}
+		validators[method] = openRPCResultValidator(t, document, method)
+		for _, invalid := range []any{false, float64(0), "", []any{}, map[string]any{}} {
+			if err := validators[method].Validate(invalid); err == nil {
+				t.Errorf("%s schema accepts non-null result %#v", method, invalid)
+			}
+		}
+	}
+
+	t.Run("search matches and no matches", func(t *testing.T) {
+		dataDir := t.TempDir()
+		repo := testfix.Repo(t, repoBranch)
+		if _, err := ticketIn(t, dataDir, repo, "Find the lighthouse", "A searchable ticket.\n"); err != nil {
+			t.Fatal(err)
+		}
+		for _, pattern := range []string{"lighthouse", "absent phrase"} {
+			rpcNullResult(t, validators["search"], dataDir, repo, "search", map[string]any{"args": []any{pattern}})
+		}
+	})
+
+	t.Run("map default and mermaid", func(t *testing.T) {
+		dataDir := t.TempDir()
+		_, id, repo := queuedTicket(t, dataDir)
+		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}})
+		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}, "mermaid": true})
+	})
+
+	t.Run("agents default and all", func(t *testing.T) {
+		dataDir := t.TempDir()
+		t.Setenv("PATH", t.TempDir())
+		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{})
+		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{"all": true})
+	})
+}
+
+func TestRPCTerminalOnlyCommandErrorsRemainErrorEnvelopes(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	requests := []string{
+		`{"jsonrpc":"2.0","method":"search","params":{},"id":"search"}`,
+		`{"jsonrpc":"2.0","method":"map","params":{"args":[999]},"id":"map"}`,
+		`{"jsonrpc":"2.0","method":"agents","params":{"args":["extra"]},"id":"agents"}`,
+	}
+	for _, request := range requests {
+		out, err := rpcIn(t, dataDir, repo, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := rpcObject(t, out)
+		if _, ok := response["error"].(map[string]any); !ok {
+			t.Errorf("response = %#v, want an error envelope", response)
+		}
+		if _, ok := response["result"]; ok {
+			t.Errorf("error response has a successful result: %#v", response)
+		}
+	}
 }
 
 func TestRPCNullResultCommandErrorsRemainErrorEnvelopes(t *testing.T) {

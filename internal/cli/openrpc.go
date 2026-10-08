@@ -84,6 +84,14 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	if name == "config.get" {
 		method.Result.Description = "The requested setting value. Its JSON type depends on the setting and is string, boolean, or null."
 	}
+	terminalOnlyResults := map[string]string{
+		"agents": "The agent list is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
+		"map":    "The dependency map is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
+		"search": "Search matches are currently written only as terminal text; their structured JSON-RPC result is not yet exposed and is null.",
+	}
+	if description, ok := terminalOnlyResults[name]; ok {
+		method.Result.Description = description
+	}
 
 	minimum, maximum := rpcArgumentBounds(command.Use)
 	if maximum > 0 {
@@ -145,7 +153,7 @@ func rpcResultSchema(name string) map[string]any {
 	switch name {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
-	case "agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start":
+	case "agents", "agents.add", "cancel", "config.set", "depend", "edit", "finish", "map", "move", "pause", "restart", "search", "start":
 		return nullResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
