@@ -83,6 +83,52 @@ func openRPCResultValidator(t *testing.T, document openRPCDocument, method strin
 	return validator
 }
 
+func openRPCDocumentValidator(t *testing.T, document openRPCDocument) *jsonschema.Schema {
+	t.Helper()
+	compiler := jsonschema.NewCompiler()
+	compiler.DefaultDraft(jsonschema.Draft7)
+	compiler.AssertFormat()
+	// An empty loader makes a missing transitive fixture fail instead of using
+	// the network. These files pin the OpenRPC v1.4.1 schema and its transitive
+	// schema resource from meta.json-schema.tools.
+	compiler.UseLoader(jsonschema.SchemeURLLoader{})
+	for url, path := range map[string]string{
+		openRPCMetaSchemaURL:              "testdata/openrpc-1.4-schema.json",
+		"https://meta.json-schema.tools":  "testdata/json-schema-tools-meta-schema.json",
+		"https://meta.json-schema.tools/": "testdata/json-schema-tools-meta-schema.json",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read pinned schema %s: %v", path, err)
+		}
+		var resource any
+		if err := json.Unmarshal(data, &resource); err != nil {
+			t.Fatalf("decode pinned schema %s: %v", path, err)
+		}
+		// OpenRPC names its schema-object meta-schema as the dialect. The
+		// validator needs the underlying draft named explicitly, while the
+		// $refs still validate every Schema Object against that resource.
+		resource.(map[string]any)["$schema"] = "http://json-schema.org/draft-07/schema#"
+		if err := compiler.AddResource(url, resource); err != nil {
+			t.Fatalf("add pinned schema %s: %v", url, err)
+		}
+	}
+	return openRPCResultValidatorWithCompiler(t, compiler, document, "rpc.discover")
+}
+
+func openRPCResultValidatorWithCompiler(t *testing.T, compiler *jsonschema.Compiler, document openRPCDocument, method string) *jsonschema.Schema {
+	t.Helper()
+	schema := openRPCMethodNamed(t, document, method).Result.Schema
+	if err := compiler.AddResource("result-schema.json", schema); err != nil {
+		t.Fatalf("add %s result schema: %v", method, err)
+	}
+	validator, err := compiler.Compile("result-schema.json")
+	if err != nil {
+		t.Fatalf("compile %s result schema: %v", method, err)
+	}
+	return validator
+}
+
 func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir, method string, params map[string]any) {
 	t.Helper()
 	request, err := json.Marshal(map[string]any{
@@ -437,6 +483,42 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 		if !names[nested] {
 			t.Errorf("nested method %q is not advertised", nested)
 		}
+	}
+}
+
+func TestRPCDiscoverDocumentSatisfiesItsResultSchema(t *testing.T) {
+	document := rpcDiscover(t)
+	method := openRPCMethodNamed(t, document, "rpc.discover")
+	if got := method.Result.Schema["$ref"]; got != openRPCMetaSchemaURL {
+		t.Fatalf("rpc.discover result reference = %q, want %q", got, openRPCMetaSchemaURL)
+	}
+	validator := openRPCDocumentValidator(t, document)
+
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual map[string]any
+	if err := json.Unmarshal(data, &actual); err != nil {
+		t.Fatal(err)
+	}
+	if err := validator.Validate(actual); err != nil {
+		t.Fatalf("rpc.discover result does not satisfy its advertised schema: %v", err)
+	}
+
+	missingInfo := maps.Clone(actual)
+	delete(missingInfo, "info")
+	wrongMethods := maps.Clone(actual)
+	wrongMethods["methods"] = "not an array"
+	for name, invalid := range map[string]any{
+		"missing required info": missingInfo,
+		"wrong methods type":    wrongMethods,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validator.Validate(invalid); err == nil {
+				t.Error("invalid discovery document satisfies the advertised schema")
+			}
+		})
 	}
 }
 
