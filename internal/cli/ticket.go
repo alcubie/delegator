@@ -64,10 +64,12 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		Use:   "ticket [title] [body]",
 		Short: "Add a ticket to a project queue.",
 		Long: "Add a ticket to a project's queue. Supply a title and prose, read the prose " +
-			"from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR.",
+			"from --body-file, explicitly choose --no-body, or give no arguments to compose both fields in $EDITOR. " +
+			"The first positional word runs is reserved; use dg ticket -- runs ... to create that title literally.",
 		Example: `  dg ticket "Remove the legacy endpoint" "Delete the handler and its tests."
   dg ticket "Investigate the flaky test" --no-body
-  dg ticket "Implement the approved design" --body-file plan.md --after 41`,
+  dg ticket "Implement the approved design" --body-file plan.md --after 41
+  dg ticket -- "runs" "Describe a run-related change."`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if bodyFile != "" && len(args) > 1 {
@@ -131,6 +133,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 		"add the ticket with no prose instead of requiring a body")
 	cmd.Flags().Int64SliceVar(&after, "after", nil,
 		"make the new ticket depend on this ticket ID (may be repeated or comma-separated)")
+	cmd.AddCommand(runsCommand(dataDir))
 	return cmd
 }
 

@@ -759,3 +759,31 @@ func TestTicketHelpNamesNoBody(t *testing.T) {
 		t.Errorf("the help line of --no-body is %q, and does not say that the ticket has no prose", line)
 	}
 }
+
+func TestTicketRunsIsReservedButCanBeCreatedLiterally(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	if _, err := runIn(t, dataDir, repo, "ticket", "runs", "42"); err == nil {
+		t.Fatal("invalid runs invocation created a ticket")
+	}
+	out, err := runIn(t, dataDir, repo, "ticket", "--", "runs", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := testfix.OpenStore(t, dataDir).Ticket(idOf(t, out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Title != "runs" || proseOfTicket(t, dataDir, ticket.ID) != "42" {
+		t.Errorf("literal ticket = %#v, prose %q", ticket, proseOfTicket(t, dataDir, ticket.ID))
+	}
+
+	ordinary, err := runIn(t, dataDir, repo, "ticket", "Ordinary title", "Ordinary body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idOf(t, ordinary) == ticket.ID {
+		t.Error("ordinary creation did not make another ticket")
+	}
+}

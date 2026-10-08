@@ -293,6 +293,7 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 	if command != command.Root() {
 		argv = rpcCommandPath(command)
 	}
+	var positional []string
 	if rawArgs, found := params["args"]; found {
 		var args []json.RawMessage
 		if err := json.Unmarshal(rawArgs, &args); err != nil {
@@ -303,7 +304,7 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("args contains %v", err)
 			}
-			argv = append(argv, value)
+			positional = append(positional, value)
 		}
 	}
 
@@ -338,6 +339,13 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 		}
 		argv = append(argv, "--"+name, value)
 	}
+	// A resolved creation method stays creation even when its first argument
+	// names a child command. Flags must precede the separator so Cobra still
+	// applies them to the ticket command.
+	if command.Name() == "ticket" {
+		argv = append(argv, "--")
+	}
+	argv = append(argv, positional...)
 
 	return argv, nil
 }

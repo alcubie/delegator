@@ -465,6 +465,27 @@ func TestRPCTicketRequiresAProjectAndUsesIt(t *testing.T) {
 	}
 }
 
+func TestRPCTicketMethodKeepsRunsAsCreationData(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket","params":{"args":["runs","42"],"project":%q},"id":1}`, repo)
+	out, err := rpcIn(t, dataDir, t.TempDir(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := rpcObject(t, out)["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("response = %s, want a ticket result", out)
+	}
+	ticket, err := testfix.OpenStore(t, dataDir).Ticket(int64(result["id"].(float64)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Title != "runs" || proseOfTicket(t, dataDir, ticket.ID) != "42" {
+		t.Errorf("ticket = %#v, prose %q", ticket, proseOfTicket(t, dataDir, ticket.ID))
+	}
+}
+
 func TestRPCBatchKeepsResponseOrder(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

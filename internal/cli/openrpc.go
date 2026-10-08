@@ -175,6 +175,8 @@ func rpcResultSchema(name string) map[string]any {
 		return listResultSchema()
 	case "show":
 		return showResultSchema()
+	case "ticket.runs":
+		return runsResultSchema()
 	case "version":
 		return versionResultSchema()
 	default:
