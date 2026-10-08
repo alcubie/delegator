@@ -599,9 +599,9 @@ func TestRPCDiscoverDescribesArgumentsAndFlags(t *testing.T) {
 		t.Errorf("config.get args description = %q, want the qualified command use", configArgs.Description)
 	}
 
-	ticketArgs := openRPCParamNamed(t, openRPCMethodNamed(t, document, "ticket"), "args")
-	if ticketArgs.Required || ticketArgs.Schema["minItems"] != float64(0) || ticketArgs.Schema["maxItems"] != float64(2) {
-		t.Errorf("ticket args = %#v, want zero to two items", ticketArgs)
+	ticketArgs := openRPCParamNamed(t, openRPCMethodNamed(t, document, "ticket.create"), "args")
+	if !ticketArgs.Required || ticketArgs.Schema["minItems"] != float64(1) || ticketArgs.Schema["maxItems"] != float64(2) {
+		t.Errorf("ticket.create args = %#v, want one to two items", ticketArgs)
 	}
 	edit := openRPCMethodNamed(t, document, "edit")
 	for _, param := range edit.Params {
@@ -823,7 +823,7 @@ func TestRPCDiscoverConfigGetResultContract(t *testing.T) {
 
 func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
 	document := rpcDiscover(t)
-	ticketValidator := openRPCResultValidator(t, document, "ticket")
+	ticketValidator := openRPCResultValidator(t, document, "ticket.create")
 	acceptValidator := openRPCResultValidator(t, document, "accept")
 
 	dataDir := t.TempDir()
@@ -832,7 +832,7 @@ func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	ticketRequest, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "method": "ticket", "id": "ticket",
+		"jsonrpc": "2.0", "method": "ticket.create", "id": "ticket",
 		"params": map[string]any{
 			"args":    []any{"Publish a contract", "Describe the result."},
 			"project": repo,
@@ -875,7 +875,7 @@ func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
 	}
 
 	errorOut, err := rpcIn(t, t.TempDir(), t.TempDir(),
-		`{"jsonrpc":"2.0","method":"ticket","params":{"args":["Missing project","Fails."]},"id":1}`)
+		`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":["Missing project","Fails."]},"id":1}`)
 	if err != nil {
 		t.Fatal(err)
 	}

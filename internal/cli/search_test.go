@@ -22,7 +22,7 @@ func searchRows(t *testing.T, dataDir, workDir string, args ...string) []string 
 func TestSearchFindsATitle(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	if _, err := runIn(t, dataDir, repo, "ticket", "Remove the staging app", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", "Remove the staging app", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -35,11 +35,11 @@ func TestSearchFindsATitle(t *testing.T) {
 func TestSearchFindsProseWithoutWritingIt(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	if _, err := runIn(t, dataDir, repo, "ticket", "Remove the app", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", "Remove the app", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 	// The command test helper has no stdin to give --body-file, so write the
-	// prose as the editor owns it after dg ticket has made the file.
+	// prose as the editor owns it after dg ticket create has made the file.
 	if err := os.WriteFile(proseFile(dataDir, 1), []byte("Remove the DNS records.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestSearchFindsProseWithoutWritingIt(t *testing.T) {
 func TestSearchWithNoMatchSaysSo(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	if _, err := runIn(t, dataDir, repo, "ticket", "Remove the staging app", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", "Remove the staging app", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 	rows := searchRows(t, dataDir, repo, "nothing")
@@ -66,10 +66,10 @@ func TestSearchProjectAndCase(t *testing.T) {
 	dataDir := t.TempDir()
 	here := testfix.Repo(t, repoBranch)
 	elsewhere := testfix.Repo(t, "release")
-	if _, err := runIn(t, dataDir, here, "ticket", "the local ticket", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, here, "ticket", "create", "the local ticket", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runIn(t, dataDir, elsewhere, "ticket", "the remote ticket", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, elsewhere, "ticket", "create", "the remote ticket", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(proseFile(dataDir, 1), []byte("Need a FROBNICATOR.\n"), 0o644); err != nil {

@@ -51,7 +51,7 @@ Set up Delegator, then create a task in an existing Git repository:
 ```sh
 dg init
 cd /path/to/your/repository
-dg ticket "Add a health check" "Add a health-check endpoint and tests."
+dg ticket create "Add a health check" "Add a health-check endpoint and tests."
 dg
 ```
 

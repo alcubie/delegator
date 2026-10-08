@@ -60,7 +60,7 @@ the wrong place, that is the signal to correct this.
 
 - **A launch that defaults to `os.Executable` is the test binary under test.**
   `launch` in `internal/cli` starts dg's own executable with `run <id>`. Under
-  `go test` that executable is the test binary, so every `dg ticket` in the
+  `go test` that executable is the test binary, so every `dg ticket create` in the
   tests started a detached copy of the tests, which started more, and the CPU
   sat at 100% until they burned out. `TestMain` sets `launch` to a no-op for
   the package; a new package-level launcher needs the same.

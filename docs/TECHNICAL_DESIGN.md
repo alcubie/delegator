@@ -492,7 +492,7 @@ one transaction.
 
 An earlier design put the sequence in `$EDITOR`, as `git rebase -i` does. The person can
 hold that file open for a long time, and the queue can change while it is open: a
-supervisor starts the first ticket, or `dg ticket` adds a ticket at the end. The file then
+supervisor starts the first ticket, or `dg ticket create` adds a ticket at the end. The file then
 holds a sequence for a queue that is not there any more, and delegator must find the
 difference and say so. A command that moves one ticket reads the queue at the time that it
 writes it, so no such difference is possible.
@@ -528,7 +528,7 @@ Remove the staging app, the volume, the records of the DNS, the monitor and
 the secrets.
 ```
 
-The command `dg ticket` creates this file. The command `dg edit` can change the prose
+The command `dg ticket create` creates this file. The command `dg edit` can change the prose
 while the ticket is queued, before an agent starts reading it for a run.
 
 **Why the prose is not in the database.** The person owns the prose. Section 9.2 gives the
@@ -536,7 +536,7 @@ variable `{ticket}` to each command of the person, and that variable is a path. 
 table is not a thing that `$EDITOR` opens. The database holds each field that delegator
 writes, so no command of delegator can damage the prose.
 
-**The title.** The command `dg ticket` with no arguments opens `$EDITOR`. The first line
+**The title.** The command `dg ticket create` with no arguments opens `$EDITOR`. The first line
 becomes the column `title`, and the other lines become the prose. The title is a column,
 and not the first line of the prose. Delegator makes the row of the inbox and the name of
 the branch from it.
@@ -555,7 +555,7 @@ module does not write it.
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> queued: dg ticket
+    [*] --> queued: dg ticket create
     queued --> running: a supervisor starts
     running --> ready: dg finish
     running --> failed: timeout, error, or no dg finish
@@ -569,7 +569,7 @@ Each change of state is in the table below.
 
 | From | To | What causes the change |
 |---|---|---|
-| no ticket | `queued` | `dg ticket`. The new ticket goes at the end of the queue. |
+| no ticket | `queued` | `dg ticket create`. The new ticket goes at the end of the queue. |
 | `queued` | `running` | No command. A supervisor takes the first ticket of the queue. |
 | `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
 | `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
@@ -758,17 +758,20 @@ person that reads a session, and no example here gives one that writes.
 The command is `delegator`, and `dg` is a short name for it. Both names come from the
 installer.
 
+Ticket creation is a breaking command and remote-method change. Callers must replace `dg ticket [title] [body]` with `dg ticket create [title] [body]` and replace the `ticket` remote method with `ticket.create`; the old forms are not aliases.
+
 | Command | Function |
 |---|---|
-| `dg ticket [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket depend on that ticket, and the flag repeats: `dg ticket --after 12 --after 13 "title"` makes a ticket that depends on both. An id that names no ticket is an error and no ticket is made. The flag `--body-file <path>` reads the prose from a file, and a path of `-` reads it from the standard input, as `git commit -F` does. The prose has one source, so the flag beside a body argument is an error, and a path that names no file is an error that holds the path. Neither makes a ticket. The flag `--no-body` makes a ticket that has no prose. Without that flag, a title with no body is an error, and dg makes no ticket. The flag with a body argument, or with `--body-file`, is also an error. |
+| `dg ticket create [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket depend on that ticket, and the flag repeats: `dg ticket create --after 12 --after 13 "title"` makes a ticket that depends on both. An id that names no ticket is an error and no ticket is made. The flag `--body-file <path>` reads the prose from a file, and a path of `-` reads it from the standard input, as `git commit -F` does. The prose has one source, so the flag beside a body argument is an error, and a path that names no file is an error that holds the path. Neither makes a ticket. The flag `--no-body` makes a ticket that has no prose. Without that flag, a title with no body is an error, and dg makes no ticket. The flag with a body argument, or with `--body-file`, is also an error. |
+
 | `dg` | Show the inbox. |
 | `dg list` | Show every ticket, in every status, one to a line, in the order of the ids. The row is the row of the inbox, with the status of the ticket where the inbox puts its note. The inbox holds the work of a day and drops a done ticket after the window of DONE; this list holds every ticket there has ever been. The flag `--project <dir>` narrows it to one project, and with no flag it holds the tickets of every project. A person who has no ticket gets no output and no error. |
 | `dg show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
-| `dg edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
+| `dg edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket create` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket create`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg start` and `dg pause` | Start or stop work on the queue. |
 | `dg move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
-| `dg depend <id> --after <other>` | Make a ticket that is already in the queue depend on another one, which `dg ticket --after` does as the ticket is made. The flag repeats, as it does there, and it takes a comma list. A link that is there already is not an error. The command refuses a ticket that depends on itself, and a link that would make a ring of tickets that each depend on the next, because no ticket of a ring can ever start. It refuses a ticket that is not queued, because a link holds a ticket back in the queue and nowhere else. The flag `--remove` takes a link away instead, which is the way out for a ticket that depends on one that was cancelled, and it is an error when no such link is there. The command writes nothing when it works. |
+| `dg depend <id> --after <other>` | Make a ticket that is already in the queue depend on another one, which `dg ticket create --after` does as the ticket is made. The flag repeats, as it does there, and it takes a comma list. A link that is there already is not an error. The command refuses a ticket that depends on itself, and a link that would make a ring of tickets that each depend on the next, because no ticket of a ring can ever start. It refuses a ticket that is not queued, because a link holds a ticket back in the queue and nowhere else. The flag `--remove` takes a link away instead, which is the way out for a ticket that depends on one that was cancelled, and it is an error when no such link is there. The command writes nothing when it works. |
 | `dg restart <id>` | Start a failed run again. See §6.3. |
 | `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |

@@ -16,7 +16,7 @@ dg [flags]
 
 ```
   dg
-  dg ticket "Add request tracing" --no-body
+  dg ticket create "Add request tracing" --no-body
   dg show 42
 ```
 
@@ -48,5 +48,5 @@ dg [flags]
 * [dg search](dg_search.md)	 - Find tickets by their text
 * [dg show](dg_show.md)	 - Show the details of a ticket.
 * [dg start](dg_start.md)	 - Start a paused queue.
-* [dg ticket](dg_ticket.md)	 - Add a ticket to a project queue.
+* [dg ticket](dg_ticket.md)	 - Work with tickets.
 * [dg version](dg_version.md)	 - Show the version of dg.

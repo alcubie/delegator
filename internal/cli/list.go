@@ -14,8 +14,7 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// listShort makes ticket listing discoverable; dg ticket list would create a
-// ticket named list.
+// listShort makes ticket listing discoverable.
 const listShort = "List every ticket, whatever its status"
 
 // listCommand writes every ticket. --project narrows the list to one project.

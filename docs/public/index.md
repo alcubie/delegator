@@ -9,7 +9,7 @@ search box to find a command, flag, or setting.
 ## Common tasks
 
 - Get started with [`dg init`](reference/dg_init.md).
-- Create work with [`dg ticket`](reference/dg_ticket.md).
+- Create work with [`dg ticket create`](reference/dg_ticket_create.md).
 - Inspect a ticket with [`dg show`](reference/dg_show.md).
 - See all queued and completed work with [`dg list`](reference/dg_list.md).
 - Continue an agent session with [`dg chat`](reference/dg_chat.md).

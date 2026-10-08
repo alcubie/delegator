@@ -399,7 +399,7 @@ func TestWriteInboxWithNoTicketAtAll(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("the inbox takes %d lines, want the status and one more:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if !strings.Contains(got[1], "dg ticket") {
+	if !strings.Contains(got[1], "dg ticket create") {
 		t.Errorf("the line does not say what makes a ticket: %q", got[1])
 	}
 	for _, heading := range []string{"DONE", "READY", "RUNNING", "FAILED", "QUEUED"} {

@@ -91,6 +91,31 @@ func TestRPCRefusesAMethodThatNamesNoCommand(t *testing.T) {
 	}
 }
 
+func TestRPCDoesNotExposeTheTicketNamespaceOrOpenAnEditor(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	for _, request := range []string{
+		`{"jsonrpc":"2.0","method":"ticket","id":"namespace"}`,
+		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"project":%q},"id":"editor"}`, repo),
+		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":[],"project":%q},"id":"empty-args"}`, repo),
+		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":["stdin body"],"project":%q,"body-file":"-"},"id":"stdin"}`, repo),
+	} {
+		out, err := rpcIn(t, dataDir, t.TempDir(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := rpcObject(t, out)
+		if _, ok := got["error"].(map[string]any); !ok {
+			t.Errorf("response = %#v, want an error", got)
+		}
+	}
+	if tickets, err := testfix.OpenStore(t, dataDir).AllTickets(""); err != nil {
+		t.Fatal(err)
+	} else if len(tickets) != 0 {
+		t.Errorf("rejected requests created %d tickets, want none", len(tickets))
+	}
+}
+
 func TestRPCRefusesTerminalAndPersonOnlyMethods(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -191,7 +216,7 @@ func TestRPCEveryCobraCommandIsCallableOrRefused(t *testing.T) {
 			method := rpcMethodName(command)
 			target, err := rpcTarget(root, method)
 			operation, registered := rpcOperation(command)
-			if !registered && command.Runnable() {
+			if !registered && command.Runnable() && len(command.Commands()) == 0 {
 				t.Errorf("runnable command %q has no RPC operation identity", command.CommandPath())
 			}
 			if !registered || rpcRefusedOperations[operation] {
@@ -219,7 +244,7 @@ func TestRPCArgumentsCannotRetargetResolvedOperations(t *testing.T) {
 		{"inbox", `{"args":["show"]}`, []string{"--", "show"}},
 		{"config", `{"args":["get"]}`, []string{"config", "--", "get"}},
 		{"show", `{"args":["-1"]}`, []string{"show", "--", "-1"}},
-		{"ticket", `{"args":["runs"],"project":"/project"}`, []string{"ticket", "--project", "/project", "--", "runs"}},
+		{"ticket.create", `{"args":["runs"],"project":"/project"}`, []string{"ticket", "create", "--project", "/project", "--", "runs"}},
 	}
 	for _, test := range tests {
 		t.Run(test.method, func(t *testing.T) {
@@ -486,12 +511,12 @@ func TestRPCReportsInvalidParamsAndCommandErrors(t *testing.T) {
 	}
 }
 
-func TestRPCTicketRequiresAProjectAndUsesIt(t *testing.T) {
+func TestRPCTicketCreateRequiresAProjectAndUsesIt(t *testing.T) {
 	dataDir := t.TempDir()
 	workDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	out, err := rpcIn(t, dataDir, workDir, `{"jsonrpc":"2.0","method":"ticket","params":{"args":["No implicit project","The request must name one."]},"id":"missing-project"}`)
+	out, err := rpcIn(t, dataDir, workDir, `{"jsonrpc":"2.0","method":"ticket.create","params":{"args":["No implicit project","The request must name one."]},"id":"missing-project"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +530,7 @@ func TestRPCTicketRequiresAProjectAndUsesIt(t *testing.T) {
 		t.Errorf("rejected request created %d tickets, want none", len(tickets))
 	}
 
-	out, err = rpcIn(t, dataDir, workDir, fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket","params":{"args":["Explicit project","The request named its project."],"project":%q},"id":1}`, repo))
+	out, err = rpcIn(t, dataDir, workDir, fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":["Explicit project","The request named its project."],"project":%q},"id":1}`, repo))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,24 +552,26 @@ func TestRPCTicketRequiresAProjectAndUsesIt(t *testing.T) {
 	}
 }
 
-func TestRPCTicketMethodKeepsRunsAsCreationData(t *testing.T) {
+func TestRPCTicketCreateKeepsActionNamesAsCreationData(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket","params":{"args":["runs","42"],"project":%q},"id":1}`, repo)
-	out, err := rpcIn(t, dataDir, t.TempDir(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, ok := rpcObject(t, out)["result"].(map[string]any)
-	if !ok {
-		t.Fatalf("response = %s, want a ticket result", out)
-	}
-	ticket, err := testfix.OpenStore(t, dataDir).Ticket(int64(result["id"].(float64)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Title != "runs" || proseOfTicket(t, dataDir, ticket.ID) != "42" {
-		t.Errorf("ticket = %#v, prose %q", ticket, proseOfTicket(t, dataDir, ticket.ID))
+	for _, title := range []string{"runs", "create", "accept"} {
+		request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":[%q,"body; $(literal)"],"project":%q},"id":1}`, title, repo)
+		out, err := rpcIn(t, dataDir, t.TempDir(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, ok := rpcObject(t, out)["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("response = %s, want a ticket result", out)
+		}
+		ticket, err := testfix.OpenStore(t, dataDir).Ticket(int64(result["id"].(float64)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Title != title || proseOfTicket(t, dataDir, ticket.ID) != "body; $(literal)" {
+			t.Errorf("ticket = %#v, prose %q", ticket, proseOfTicket(t, dataDir, ticket.ID))
+		}
 	}
 }
 

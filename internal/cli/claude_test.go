@@ -50,7 +50,7 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 	return store.Ticket{}
 }
 
-// TestIntegrationClaudeRunsOneTicket exercises dg ticket, the detached agent
+// TestIntegrationClaudeRunsOneTicket exercises dg ticket create, the detached agent
 // run, and the agent's dg finish. It is a paid integration test excluded from
 // make check. XDG_DATA_HOME and PATH direct agent commands to this test's
 // database and binary.
@@ -94,9 +94,9 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 		}
 	})
 
-	// Let dg ticket launch the supervisor; a second manual start would
+	// Let dg ticket create launch the supervisor; a second manual start would
 	// compete for the same ticket.
-	out, err := runIn(t, dataDir, repo, "ticket", "Add a greeting",
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "Add a greeting",
 		"Create a file named HELLO.md at the root of the repository. Its only content is the word hello.")
 	if err != nil {
 		t.Fatal(err)

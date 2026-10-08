@@ -27,7 +27,7 @@ func TestEachCommandDoesTheReconcile(t *testing.T) {
 		{"list"},
 		{"show", "1"},
 		{"move", "2", "top"},
-		{"ticket", "Add rate limiting", "--no-body"},
+		{"ticket", "create", "Add rate limiting", "--no-body"},
 		{"finish", "1", "abc123"},
 		{"accept", "1"},
 		{"pause"},

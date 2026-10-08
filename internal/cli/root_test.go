@@ -53,7 +53,7 @@ func runInOutputs(t *testing.T, dataDir, workDir, stdin string, args ...string) 
 func TestRunWithNoCommandShowsTheInbox(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
-	if _, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", "Remove staging infrastructure", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestRootHelpExplainsTheDefaultInboxAndGlobalFlags(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Run dg without a command to see the inbox",
-		`dg ticket "Add request tracing" --no-body`,
+		`dg ticket create "Add request tracing" --no-body`,
 		"auto (terminals only) (default auto)",
 		"default: the platform data directory",
 	} {
@@ -220,11 +220,11 @@ func TestDataDirFlagBeforeAndAfterCommandsSelectsIsolatedInstances(t *testing.T)
 	repo := testfix.Repo(t, repoBranch)
 
 	if _, err := runIn(t, "", repo,
-		"--data-dir", first, "ticket", "In the first instance", "--no-body"); err != nil {
+		"--data-dir", first, "ticket", "create", "In the first instance", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runIn(t, "", repo,
-		"ticket", "In the second instance", "--no-body", "--data-dir", second); err != nil {
+		"ticket", "create", "In the second instance", "--no-body", "--data-dir", second); err != nil {
 		t.Fatal(err)
 	}
 
@@ -259,7 +259,7 @@ func TestDataDirFlagIsValidatedBeforeTheDefaultStoreOpens(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", xdg)
 	repo := testfix.Repo(t, repoBranch)
 
-	_, err := runIn(t, "", repo, "ticket", "Never added", "--no-body", "--data-dir", "relative")
+	_, err := runIn(t, "", repo, "ticket", "create", "Never added", "--no-body", "--data-dir", "relative")
 	if err == nil || !strings.Contains(err.Error(), "--data-dir") {
 		t.Fatalf("relative --data-dir error = %v, want an error naming --data-dir", err)
 	}
@@ -273,7 +273,7 @@ func TestAbsentDataDirFlagUsesTheDefaultAfterParsing(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", xdg)
 	repo := testfix.Repo(t, repoBranch)
 
-	if _, err := runIn(t, "", repo, "ticket", "Uses the default", "--no-body"); err != nil {
+	if _, err := runIn(t, "", repo, "ticket", "create", "Uses the default", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(xdg, "delegator", "delegator.db")); err != nil {

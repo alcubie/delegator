@@ -94,7 +94,7 @@ func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	useFakeAgent(t, dataDir, "prompt "+promptPath, "stop end_turn")
 	useLaunch(t, func() *exec.Cmd { return exec.Command(testfix.DG(t), "run") })
 
-	out, err := runIn(t, dataDir, repo, "ticket", "Run in the selected instance", "--no-body")
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "Run in the selected instance", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}

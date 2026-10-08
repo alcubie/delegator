@@ -37,12 +37,12 @@ func projectRows(t *testing.T, dataDir string) []store.Project {
 	return rows
 }
 
-// idOf returns the id that dg ticket wrote.
+// idOf returns the id that dg ticket create wrote.
 func idOf(t *testing.T, out string) int64 {
 	t.Helper()
 	id, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
 	if err != nil {
-		t.Fatalf("dg ticket wrote %q, want an id", out)
+		t.Fatalf("dg ticket create wrote %q, want an id", out)
 	}
 	return id
 }
@@ -66,7 +66,7 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestRunTicketShowsTheIDOfTheNewTicket(t *testing.T) {
 	}
 
 	// the second ticket shows the next id
-	out, err = runIn(t, dataDir, repo, "ticket", "Add rate limiting", "--no-body")
+	out, err = runIn(t, dataDir, repo, "ticket", "create", "Add rate limiting", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestRunTicketWithNoArgumentsOpensTheEditor(t *testing.T) {
 	dataDir := t.TempDir()
 	withEditor(t, "Remove staging infrastructure\n\nRemove the staging app.\n")
 
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestRunTicketWithAProjectUsesThatRepository(t *testing.T) {
 	here := testfix.Repo(t, repoBranch)
 	elsewhere := testfix.Repo(t, "release")
 
-	out, err := runIn(t, dataDir, here, "ticket", "--project", elsewhere, "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, here, "ticket", "create", "--project", elsewhere, "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := runIn(t, dataDir, here, "ticket", "--project", relative, "Remove staging infrastructure", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, here, "ticket", "create", "--project", relative, "Remove staging infrastructure", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,7 +163,7 @@ func TestRunTicketInALinkedWorktreeUsesThePrimaryCheckout(t *testing.T) {
 	dataDir := t.TempDir()
 	primary, linked := linkedWorktree(t)
 
-	out, err := runIn(t, dataDir, linked, "ticket", "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, linked, "ticket", "create", "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestRunTicketWithALinkedWorktreeProjectUsesThePrimaryCheckout(t *testing.T)
 	dataDir := t.TempDir()
 	primary, linked := linkedWorktree(t)
 
-	out, err := runIn(t, dataDir, primary, "ticket", "--project", linked, "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, primary, "ticket", "create", "--project", linked, "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestRunTicketWithThePrimaryProjectFromALinkedWorktree(t *testing.T) {
 	dataDir := t.TempDir()
 	primary, linked := linkedWorktree(t)
 
-	out, err := runIn(t, dataDir, linked, "ticket", "--project", primary, "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, linked, "ticket", "create", "--project", primary, "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestRunTicketWithAProjectThatIsNotThere(t *testing.T) {
 	dataDir := t.TempDir()
 	missing := filepath.Join(t.TempDir(), "nowhere")
 
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", missing, "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create", "--project", missing, "Remove staging infrastructure", "--no-body")
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("err = %v, want a path that is not there", err)
 	}
@@ -234,7 +234,7 @@ func TestRunTicketWithAProjectThatIsAFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--project", file, "Remove staging infrastructure", "--no-body")
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create", "--project", file, "Remove staging infrastructure", "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
@@ -393,7 +393,7 @@ func TestTicketStartsARunWhenNothingIsRunning(t *testing.T) {
 	l, record := testfix.RecordingLaunch(t)
 	useLaunch(t, l)
 
-	if _, err := runIn(t, dataDir, repo, "ticket", "Add the thing", "--no-body"); err != nil {
+	if _, err := runIn(t, dataDir, repo, "ticket", "create", "Add the thing", "--no-body"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -406,7 +406,7 @@ func TestRunTicketAfterTwoTickets(t *testing.T) {
 	first, second := twoTickets(t, dataDir, repo)
 
 	out, err := runIn(t, dataDir, repo,
-		"ticket", "--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it", "--no-body")
+		"ticket", "create", "--after", fmt.Sprint(first), "--after", fmt.Sprint(second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestRunTicketAfterACommaList(t *testing.T) {
 	first, second := twoTickets(t, dataDir, repo)
 
 	out, err := runIn(t, dataDir, repo,
-		"ticket", "--after", fmt.Sprintf("%d,%d", first, second), "Remove the last of it", "--no-body")
+		"ticket", "create", "--after", fmt.Sprintf("%d,%d", first, second), "Remove the last of it", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 	first, _ := twoTickets(t, dataDir, repo)
 	withEditor(t, "Remove the last of it\n\nAnd the app with it.\n")
 
-	out, err := runIn(t, dataDir, repo, "ticket", "--after", fmt.Sprint(first), "--no-body")
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "--after", fmt.Sprint(first), "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +452,7 @@ func TestRunTicketAfterATicketWithTheEditor(t *testing.T) {
 func TestRunTicketAfterSomethingThatIsNotANumber(t *testing.T) {
 	dataDir := t.TempDir()
 
-	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--after", "twelve", "Remove the last of it", "--no-body")
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create", "--after", "twelve", "Remove the last of it", "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
@@ -467,7 +467,7 @@ func TestRunTicketAfterATicketThatIsNotThere(t *testing.T) {
 	const missing = 12
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "--after", fmt.Sprint(missing), "Remove the last of it", "--no-body")
+		"ticket", "create", "--after", fmt.Sprint(missing), "Remove the last of it", "--no-body")
 	if !errors.Is(err, store.ErrNoTicket) {
 		t.Fatalf("err = %v, want ErrNoTicket", err)
 	}
@@ -501,11 +501,11 @@ func TestRunTicketWithABodyFileReadsTheProseFromTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fromArgument, err := runIn(t, dataDir, repo, "ticket", title, body)
+	fromArgument, err := runIn(t, dataDir, repo, "ticket", "create", title, body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fromFile, err := runIn(t, dataDir, repo, "ticket", title, "--body-file", path)
+	fromFile, err := runIn(t, dataDir, repo, "ticket", "create", title, "--body-file", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,7 +539,7 @@ func TestRunTicketWithABodyFileOfADashReadsTheStandardInput(t *testing.T) {
 	const body = "Remove the staging app, the volume and the records of the DNS.\n"
 
 	out, err := runInWithStdin(t, dataDir, testfix.Repo(t, repoBranch), body,
-		"ticket", "Remove staging infrastructure", "--body-file", "-")
+		"ticket", "create", "Remove staging infrastructure", "--body-file", "-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,11 +557,11 @@ func TestRunTicketWithABodyFileAndABodyArgument(t *testing.T) {
 	}
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "Remove staging infrastructure", "From the argument.", "--body-file", path)
+		"ticket", "create", "Remove staging infrastructure", "From the argument.", "--body-file", path)
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
-	if want := "dg ticket takes the prose from a body or from --body-file, and got both"; err.Error() != want {
+	if want := "dg ticket create takes the prose from a body or from --body-file, and got both"; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
 	if out != "" {
@@ -577,7 +577,7 @@ func TestRunTicketWithABodyFileThatIsNotThere(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "body.md")
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "Remove staging infrastructure", "--body-file", missing)
+		"ticket", "create", "Remove staging infrastructure", "--body-file", missing)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("err = %v, want a path that is not there", err)
 	}
@@ -609,7 +609,7 @@ func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "--body-file", path)
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create", "--body-file", path)
 	if !errors.Is(err, ErrNoTitle) {
 		t.Fatalf("err = %v, want ErrNoTitle", err)
 	}
@@ -618,12 +618,11 @@ func TestRunTicketWithABodyFileAndNoTitle(t *testing.T) {
 	}
 }
 
-// Regression: dg ticket list once created ticket 159 titled "list". Title-
-// only command lines now require an explicit --no-body.
+// Title-only creation requires an explicit --no-body.
 func TestRunTicketWithNoBodyAndNoFlag(t *testing.T) {
 	dataDir := t.TempDir()
 
-	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "list")
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "create", "list")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
@@ -652,7 +651,7 @@ func TestRunTicketWithNoBodyAddsTheTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	out, err := runIn(t, dataDir, repo, "ticket", "Remove staging infrastructure", "--no-body")
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "Remove staging infrastructure", "--no-body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,11 +677,11 @@ func TestRunTicketWithABodyArgumentAndNoBody(t *testing.T) {
 	dataDir := t.TempDir()
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "Remove staging infrastructure", "Remove the staging app.", "--no-body")
+		"ticket", "create", "Remove staging infrastructure", "Remove the staging app.", "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
-	if want := "dg ticket takes a body or --no-body, and got both"; err.Error() != want {
+	if want := "dg ticket create takes a body or --no-body, and got both"; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
 	if out != "" {
@@ -701,11 +700,11 @@ func TestRunTicketWithABodyFileAndNoBody(t *testing.T) {
 	}
 
 	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch),
-		"ticket", "Remove staging infrastructure", "--body-file", path, "--no-body")
+		"ticket", "create", "Remove staging infrastructure", "--body-file", path, "--no-body")
 	if err == nil {
 		t.Fatal("the command gave no error")
 	}
-	if want := "dg ticket takes a body or --no-body, and got both"; err.Error() != want {
+	if want := "dg ticket create takes a body or --no-body, and got both"; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
 	if out != "" {
@@ -723,7 +722,7 @@ func TestRunTicketFromTheEditorNeedsNoNoBody(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	withEditor(t, "Remove staging infrastructure\n")
 
-	out, err := runIn(t, dataDir, repo, "ticket")
+	out, err := runIn(t, dataDir, repo, "ticket", "create")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +741,7 @@ func TestRunTicketFromTheEditorNeedsNoNoBody(t *testing.T) {
 }
 
 func TestTicketHelpNamesNoBody(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "ticket", "--help")
+	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "ticket", "create", "--help")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,21 +752,67 @@ func TestTicketHelpNamesNoBody(t *testing.T) {
 		}
 	}
 	if line == "" {
-		t.Fatalf("the help of dg ticket names no --no-body:\n%s", out)
+		t.Fatalf("the help of dg ticket create names no --no-body:\n%s", out)
 	}
 	if !strings.Contains(line, "no prose") {
 		t.Errorf("the help line of --no-body is %q, and does not say that the ticket has no prose", line)
 	}
 }
 
-func TestTicketRunsIsReservedButCanBeCreatedLiterally(t *testing.T) {
+func TestTicketActionNamesCanBeCreatedLiterally(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	if _, err := runIn(t, dataDir, repo, "ticket", "runs", "42"); err == nil {
-		t.Fatal("invalid runs invocation created a ticket")
+	for _, title := range []string{"runs", "create", "accept"} {
+		out, err := runIn(t, dataDir, repo, "ticket", "create", title, "ordinary body")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ticket, err := testfix.OpenStore(t, dataDir).Ticket(idOf(t, out))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ticket.Title != title {
+			t.Errorf("title = %q, want %q", ticket.Title, title)
+		}
 	}
-	out, err := runIn(t, dataDir, repo, "ticket", "--", "runs", "42")
+}
+
+func TestBareTicketShowsGroupHelpWithoutCreating(t *testing.T) {
+	dataDir := t.TempDir()
+	out, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Available Commands:", "create", "runs"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("ticket help does not contain %q:\n%s", want, out)
+		}
+	}
+	if tickets, err := testfix.OpenStore(t, dataDir).AllTickets(""); err != nil {
+		t.Fatal(err)
+	} else if len(tickets) != 0 {
+		t.Errorf("bare ticket created %d tickets, want none", len(tickets))
+	}
+}
+
+func TestUnknownTicketActionDoesNotCreate(t *testing.T) {
+	dataDir := t.TempDir()
+	_, err := runIn(t, dataDir, testfix.Repo(t, repoBranch), "ticket", "ordinary-title")
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("err = %v, want an unknown command error", err)
+	}
+	if tickets, err := testfix.OpenStore(t, dataDir).AllTickets(""); err != nil {
+		t.Fatal(err)
+	} else if len(tickets) != 0 {
+		t.Errorf("unknown action created %d tickets, want none", len(tickets))
+	}
+}
+
+func TestTicketCreateSupportsLeadingDashTitle(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	out, err := runIn(t, dataDir, repo, "ticket", "create", "--", "-leading-dash", "body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -775,15 +820,7 @@ func TestTicketRunsIsReservedButCanBeCreatedLiterally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ticket.Title != "runs" || proseOfTicket(t, dataDir, ticket.ID) != "42" {
-		t.Errorf("literal ticket = %#v, prose %q", ticket, proseOfTicket(t, dataDir, ticket.ID))
-	}
-
-	ordinary, err := runIn(t, dataDir, repo, "ticket", "Ordinary title", "Ordinary body")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if idOf(t, ordinary) == ticket.ID {
-		t.Error("ordinary creation did not make another ticket")
+	if ticket.Title != "-leading-dash" {
+		t.Errorf("title = %q, want %q", ticket.Title, "-leading-dash")
 	}
 }
