@@ -798,10 +798,19 @@ when a key of that JSON changes its name, or changes its type, or goes away. A n
 does not change it, because a reader ignores a key that it does not know. A program that
 starts `dg` reads the two values first, and then decides if it can read the data.
 
-To publish another command's result contract, keep its Draft 7 JSON Schema beside the
-response type and add it to `rpcResultSchema`. Contract tests compile the schema returned
-by `rpc.discover` and validate a result from the request handler, including incompatible
-and additive examples, so discovery and serialization cannot drift unnoticed.
+To publish another command's result contract, describe the successful value actually
+serialized by the request handler, keep its Draft 7 JSON Schema beside the response type,
+and register it in `rpcResultSchema`. There is no default contract for new commands.
+Commands that intentionally return no structured value register an explicit `null` schema;
+an error envelope is separate and is never a successful null result. Contract tests compile
+every advertised schema without network access and validate real handler responses. Tests
+for structured objects also reject wrong types and missing required fields while accepting
+new fields, because clients must tolerate additive fields.
+
+The structured-result schema version changes when an existing payload removes or renames a
+field or changes its type. Adding an optional field or publishing discovery metadata does
+not change it. A new command must therefore choose its schema and compatibility behavior,
+but registering that contract alone does not increment the version.
 
 The structured `show` result currently contains the ticket fields and prose needed by
 clients, but omits the agent metadata, dependency links, and run history shown in the
