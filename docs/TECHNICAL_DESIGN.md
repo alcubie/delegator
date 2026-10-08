@@ -640,7 +640,10 @@ The row of a queued ticket that depends on another ends in the same column with
 `depends on #9`, so a person who sees a ticket at the top of the queue and no run reads
 one edge of the inbox for the reason. Only the tickets that are not done are named,
 because those are the ones that hold the ticket back; a link that is satisfied shows
-nothing. The inbox reads the links of every open ticket in one query, so the cost does
+nothing. Thus an accepted dependency is omitted, while a cancelled dependency remains
+until the person removes the link. Each ticket in the structured inbox result has the
+same ascending list in `depends_on`, including an empty list when it has no blockers.
+The inbox reads the links of every open ticket in one query, so the cost does
 not grow with the length of the queue. A ready ticket carries no such note: READY waits
 for the person and not for the queue.
 

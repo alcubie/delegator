@@ -31,13 +31,14 @@ type inboxJSON struct {
 	done time.Duration
 }
 
-// inboxTicketJSON represents one inbox row, using the same field names as the
-// show result.
+// inboxTicketJSON represents one inbox row. Fields shared with the show result
+// use the same names.
 type inboxTicketJSON struct {
-	ID      int64  `json:"id"`
-	Title   string `json:"title"`
-	Status  string `json:"status"`
-	Project string `json:"project"`
+	ID        int64   `json:"id"`
+	Title     string  `json:"title"`
+	Status    string  `json:"status"`
+	Project   string  `json:"project"`
+	DependsOn []int64 `json:"depends_on"`
 
 	// Timestamps use RFC 3339; absent times are null. Started is the
 	// latest run start, allowing clients to update elapsed time without
@@ -58,15 +59,19 @@ func inboxResultSchema() map[string]any {
 	ticket := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"id":       map[string]any{"type": "integer"},
-			"title":    map[string]any{"type": "string"},
-			"status":   map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
-			"project":  map[string]any{"type": "string"},
+			"id":      map[string]any{"type": "integer"},
+			"title":   map[string]any{"type": "string"},
+			"status":  map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"project": map[string]any{"type": "string"},
+			"depends_on": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "integer", "minimum": 1},
+			},
 			"created":  timestamp,
 			"accepted": timestamp,
 			"started":  timestamp,
 		},
-		"required":             []string{"id", "title", "status", "project", "created", "accepted", "started"},
+		"required":             []string{"id", "title", "status", "project", "depends_on", "created", "accepted", "started"},
 		"additionalProperties": true,
 	}
 	groups := map[string]any{}
@@ -93,13 +98,14 @@ func inboxTickets(tickets []store.OpenTicket) []inboxTicketJSON {
 	rows := make([]inboxTicketJSON, 0, len(tickets))
 	for _, t := range tickets {
 		rows = append(rows, inboxTicketJSON{
-			ID:       t.ID,
-			Title:    t.Title,
-			Status:   string(t.Status),
-			Project:  t.Project,
-			Created:  nullableTime(t.Created),
-			Accepted: nullableTime(t.Accepted),
-			Started:  nullableTime(t.Started),
+			ID:        t.ID,
+			Title:     t.Title,
+			Status:    string(t.Status),
+			Project:   t.Project,
+			DependsOn: append([]int64{}, t.DependsOn...),
+			Created:   nullableTime(t.Created),
+			Accepted:  nullableTime(t.Accepted),
+			Started:   nullableTime(t.Started),
 		})
 	}
 	return rows
