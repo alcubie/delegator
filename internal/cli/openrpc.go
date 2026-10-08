@@ -158,7 +158,8 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 }
 
 // rpcResultSchema is the explicit list of command results described by
-// discovery. Commands without a published contract retain the empty schema.
+// discovery. There is deliberately no fallback: a new callable command must
+// choose its successful result contract before discovery can describe it.
 func rpcResultSchema(name string) map[string]any {
 	switch name {
 	case "accept", "ticket":
@@ -178,7 +179,7 @@ func rpcResultSchema(name string) map[string]any {
 	case "version":
 		return versionResultSchema()
 	default:
-		return map[string]any{}
+		return nil
 	}
 }
 

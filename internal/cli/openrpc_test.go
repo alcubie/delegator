@@ -62,6 +62,16 @@ func openRPCParamNamed(t *testing.T, method openRPCMethod, name string) openRPCC
 	return openRPCContentDescriptor{}
 }
 
+func openRPCMethodsMissingResultSchemas(document openRPCDocument) []string {
+	var missing []string
+	for _, method := range document.Methods {
+		if method.Result.Name == "" || len(method.Result.Schema) == 0 {
+			missing = append(missing, method.Name)
+		}
+	}
+	return missing
+}
+
 // openRPCResultValidator compiles the result schema returned by discovery
 // using the JSON Schema draft required by OpenRPC 1.4.1.
 func openRPCResultValidator(t *testing.T, document openRPCDocument, method string) *jsonschema.Schema {
@@ -70,20 +80,10 @@ func openRPCResultValidator(t *testing.T, document openRPCDocument, method strin
 	if len(schema) == 0 {
 		t.Fatalf("OpenRPC method %q has an empty result schema", method)
 	}
-	compiler := jsonschema.NewCompiler()
-	compiler.DefaultDraft(jsonschema.Draft7)
-	compiler.AssertFormat()
-	if err := compiler.AddResource("result-schema.json", schema); err != nil {
-		t.Fatalf("add %s result schema: %v", method, err)
-	}
-	validator, err := compiler.Compile("result-schema.json")
-	if err != nil {
-		t.Fatalf("compile %s result schema: %v", method, err)
-	}
-	return validator
+	return openRPCResultValidatorWithCompiler(t, openRPCCompiler(t), document, method)
 }
 
-func openRPCDocumentValidator(t *testing.T, document openRPCDocument) *jsonschema.Schema {
+func openRPCCompiler(t *testing.T) *jsonschema.Compiler {
 	t.Helper()
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft7)
@@ -113,7 +113,12 @@ func openRPCDocumentValidator(t *testing.T, document openRPCDocument) *jsonschem
 			t.Fatalf("add pinned schema %s: %v", url, err)
 		}
 	}
-	return openRPCResultValidatorWithCompiler(t, compiler, document, "rpc.discover")
+	return compiler
+}
+
+func openRPCDocumentValidator(t *testing.T, document openRPCDocument) *jsonschema.Schema {
+	t.Helper()
+	return openRPCResultValidatorWithCompiler(t, openRPCCompiler(t), document, "rpc.discover")
 }
 
 func openRPCResultValidatorWithCompiler(t *testing.T, compiler *jsonschema.Compiler, document openRPCDocument, method string) *jsonschema.Schema {
@@ -456,14 +461,18 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	}
 
 	names := map[string]bool{}
+	if missing := openRPCMethodsMissingResultSchemas(document); len(missing) != 0 {
+		t.Errorf("methods without result schemas = %v", missing)
+	}
 	for _, method := range document.Methods {
 		if names[method.Name] {
 			t.Errorf("method %q occurs more than once", method.Name)
 		}
 		names[method.Name] = true
-		if method.Result.Name == "" || method.Result.Schema == nil {
-			t.Errorf("method %q has no result descriptor: %#v", method.Name, method.Result)
+		if method.Result.Name == "" || len(method.Result.Schema) == 0 {
+			continue
 		}
+		openRPCResultValidator(t, document, method.Name)
 	}
 	root := Root(t.TempDir())
 	if !names["inbox"] || !names["rpc.discover"] {
@@ -483,6 +492,15 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 		if !names[nested] {
 			t.Errorf("nested method %q is not advertised", nested)
 		}
+	}
+}
+
+func TestRPCDiscoverDetectsCommandWithoutResultSchema(t *testing.T) {
+	root := Root(t.TempDir())
+	root.AddCommand(&cobra.Command{Use: "unregistered"})
+	document := rpcOpenRPC(root)
+	if missing := openRPCMethodsMissingResultSchemas(document); !slices.Equal(missing, []string{"unregistered"}) {
+		t.Fatalf("methods without result schemas = %v, want [unregistered]", missing)
 	}
 }
 
