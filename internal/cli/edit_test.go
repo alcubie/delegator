@@ -130,6 +130,86 @@ func editIn(t *testing.T, dataDir, workDir string, id int64, flags ...string) (s
 	return runIn(t, dataDir, workDir, append([]string{"edit", fmt.Sprint(id)}, flags...)...)
 }
 
+func TestTicketEditMatchesRootCompatibilityForm(t *testing.T) {
+	for _, prefix := range [][]string{{"edit"}, {"ticket", "edit"}} {
+		name := strings.Join(prefix, " ")
+		t.Run(name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := editedTicket(t, dataDir, "Before edit", "Before edit.\n")
+			args := append(append([]string{}, prefix...), fmt.Sprint(id), "--title", "After edit")
+
+			out, err := runIn(t, dataDir, repo, args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out != "" {
+				t.Errorf("dg %s wrote %q, want nothing", name, out)
+			}
+			if got := testfix.ReadTicket(t, dataDir, id).Title; got != "After edit" {
+				t.Errorf("title = %q, want %q", got, "After edit")
+			}
+			if got := proseOf(t, dataDir); got != "Before edit.\n" {
+				t.Errorf("prose = %q, want it unchanged", got)
+			}
+		})
+	}
+}
+
+func TestTicketEditUsesTheEditorAtATerminal(t *testing.T) {
+	dataDir := t.TempDir()
+	id, repo := editedTicket(t, dataDir, "Before edit", "Before edit.\n")
+	editedTo(t, "After edit\n\nAfter edit.\n")
+
+	if _, err := runIn(t, dataDir, repo, "ticket", "edit", fmt.Sprint(id), "--editor"); err != nil {
+		t.Fatal(err)
+	}
+	if got := testfix.ReadTicket(t, dataDir, id).Title; got != "After edit" {
+		t.Errorf("title = %q, want %q", got, "After edit")
+	}
+	if got := proseOf(t, dataDir); got != "After edit.\n" {
+		t.Errorf("prose = %q, want %q", got, "After edit.\\n")
+	}
+}
+
+func TestTicketEditInvalidInputMatchesRootWithoutChangingTheTicket(t *testing.T) {
+	for _, prefix := range [][]string{{"edit"}, {"ticket", "edit"}} {
+		t.Run(strings.Join(prefix, " "), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := editedTicket(t, dataDir, "Before edit", "Before edit.\n")
+			when := ageProse(t, dataDir, id)
+			args := append(append([]string{}, prefix...), fmt.Sprint(id), "--title", "After edit", "--body", "one", "--body-file", "two")
+
+			if _, err := runIn(t, dataDir, repo, args...); !errors.Is(err, errEditTwoBodies) {
+				t.Fatalf("error = %v, want %v", err, errEditTwoBodies)
+			}
+			if got := testfix.ReadTicket(t, dataDir, id).Title; got != "Before edit" {
+				t.Errorf("title = %q, want it unchanged", got)
+			}
+			if got := proseWritten(t, dataDir, id); !got.Equal(when) {
+				t.Errorf("the prose was written at %s, want it unchanged since %s", got, when)
+			}
+		})
+	}
+}
+
+func TestTicketEditAndRootEditFlagsHaveIndependentBindings(t *testing.T) {
+	root := Root(t.TempDir())
+	rootEdit, _, err := root.Find([]string{"edit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketEdit, _, err := root.Find([]string{"ticket", "edit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rootEdit.Flags().Set("title", "root title"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ticketEdit.Flags().Lookup("title").Value.String(); got != "" {
+		t.Errorf("setting root edit --title changed ticket edit --title to %q", got)
+	}
+}
+
 // Editor input and output must use the same title/description split as ticket
 // creation.
 func TestEditWritesBackWhatTheEditorGave(t *testing.T) {

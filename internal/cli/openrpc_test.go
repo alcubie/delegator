@@ -158,7 +158,7 @@ func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir,
 
 func TestRPCDiscoverNullResultContracts(t *testing.T) {
 	document := rpcDiscover(t)
-	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start"}
+	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start", "ticket.edit"}
 	validators := make(map[string]*jsonschema.Schema, len(methods))
 	for _, method := range methods {
 		validators[method] = openRPCResultValidator(t, document, method)
@@ -490,9 +490,9 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 	}
 }
 
-func TestRPCDiscoverPublishesCanonicalTicketInspectionMethods(t *testing.T) {
+func TestRPCDiscoverPublishesCanonicalTicketMethods(t *testing.T) {
 	document := rpcDiscover(t)
-	for _, name := range []string{"list", "search", "show", "map"} {
+	for _, name := range []string{"list", "search", "show", "map", "edit"} {
 		legacy := openRPCMethodNamed(t, document, name)
 		canonical := openRPCMethodNamed(t, document, "ticket."+name)
 		if !strings.Contains(legacy.Description, "preferred command is `dg ticket "+name+"`") ||
@@ -630,10 +630,12 @@ func TestRPCDiscoverDescribesArgumentsAndFlags(t *testing.T) {
 	if !ticketArgs.Required || ticketArgs.Schema["minItems"] != float64(1) || ticketArgs.Schema["maxItems"] != float64(2) {
 		t.Errorf("ticket.create args = %#v, want one to two items", ticketArgs)
 	}
-	edit := openRPCMethodNamed(t, document, "edit")
-	for _, param := range edit.Params {
-		if param.Name == "editor" {
-			t.Errorf("edit advertises the editor parameter that RPC refuses")
+	for _, name := range []string{"edit", "ticket.edit"} {
+		edit := openRPCMethodNamed(t, document, name)
+		for _, param := range edit.Params {
+			if param.Name == "editor" {
+				t.Errorf("%s advertises the editor parameter that RPC refuses", name)
+			}
 		}
 	}
 	if got := openRPCMethodNamed(t, document, "rpc.discover").Params; len(got) != 0 {

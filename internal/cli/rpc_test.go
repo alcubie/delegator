@@ -130,11 +130,16 @@ func TestRPCRefusesTerminalAndPersonOnlyMethods(t *testing.T) {
 		})
 	}
 
-	out, err := rpcIn(t, dataDir, repo, `{"jsonrpc":"2.0","method":"edit","params":{"args":[1],"editor":true},"id":2}`)
-	if err != nil {
-		t.Fatal(err)
+	for _, method := range []string{"edit", "ticket.edit"} {
+		for _, params := range []string{`{"args":[1],"editor":true}`, `{"args":[1],"body-file":"-"}`} {
+			request := fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"params":%s,"id":2}`, method, params)
+			out, err := rpcIn(t, dataDir, repo, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+		}
 	}
-	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
 }
 
 func TestRPCRunsTheNonEditorFormsOfEdit(t *testing.T) {
@@ -153,28 +158,30 @@ func TestRPCRunsTheNonEditorFormsOfEdit(t *testing.T) {
 		{"body", map[string]any{"body": "Changed through RPC.\n"}},
 		{"body file", map[string]any{"body-file": bodyFile}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			id, err := ticketIn(t, dataDir, repo, "Before edit", "Before edit.\n")
-			if err != nil {
-				t.Fatal(err)
-			}
-			params := maps.Clone(test.params)
-			params["args"] = []any{id}
-			request, err := json.Marshal(map[string]any{
-				"jsonrpc": "2.0", "method": "edit", "params": params, "id": test.name,
+		for _, method := range []string{"edit", "ticket.edit"} {
+			t.Run(test.name+" through "+method, func(t *testing.T) {
+				id, err := ticketIn(t, dataDir, repo, "Before edit", "Before edit.\n")
+				if err != nil {
+					t.Fatal(err)
+				}
+				params := maps.Clone(test.params)
+				params["args"] = []any{id}
+				request, err := json.Marshal(map[string]any{
+					"jsonrpc": "2.0", "method": method, "params": params, "id": test.name,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				out, err := rpcIn(t, dataDir, repo, string(request))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := rpcObject(t, out)
+				if _, hasError := got["error"]; hasError {
+					t.Errorf("response = %#v, want edit to run", got)
+				}
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			out, err := rpcIn(t, dataDir, repo, string(request))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := rpcObject(t, out)
-			if _, hasError := got["error"]; hasError {
-				t.Errorf("response = %#v, want edit to run", got)
-			}
-		})
+		}
 	}
 }
 

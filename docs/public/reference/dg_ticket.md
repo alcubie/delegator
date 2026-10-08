@@ -6,7 +6,7 @@ Work with tickets.
 
 ### Synopsis
 
-Create and inspect tickets, their dependencies, and their recorded runs.
+Create, inspect, and edit tickets, their dependencies, and their recorded runs.
 
 ```
 dg ticket [flags]
@@ -18,6 +18,7 @@ dg ticket [flags]
   dg ticket create "Add request tracing" --no-body
   dg ticket list
   dg ticket show 42
+  dg ticket edit 42 --title "Handle expired sessions"
   dg ticket runs 42
 ```
 
@@ -38,6 +39,7 @@ dg ticket [flags]
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
 * [dg ticket create](dg_ticket_create.md)	 - Add a ticket to a project queue.
+* [dg ticket edit](dg_ticket_edit.md)	 - Change the title and the prose of a queued ticket.
 * [dg ticket list](dg_ticket_list.md)	 - List every ticket, whatever its status
 * [dg ticket map](dg_ticket_map.md)	 - Show the dependency graph of a ticket
 * [dg ticket runs](dg_ticket_runs.md)	 - Show the recorded runs of a ticket.
