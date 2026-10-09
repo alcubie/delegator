@@ -158,7 +158,7 @@ func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir,
 
 func TestRPCDiscoverNullResultContracts(t *testing.T) {
 	document := rpcDiscover(t)
-	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "restart", "start", "ticket.depend", "ticket.edit", "ticket.move"}
+	methods := []string{"agents.add", "cancel", "config.set", "depend", "edit", "finish", "move", "pause", "queue.pause", "queue.start", "restart", "start", "ticket.depend", "ticket.edit", "ticket.move"}
 	validators := make(map[string]*jsonschema.Schema, len(methods))
 	for _, method := range methods {
 		validators[method] = openRPCResultValidator(t, document, method)
@@ -231,6 +231,8 @@ func TestRPCDiscoverNullResultContracts(t *testing.T) {
 		workDir := t.TempDir()
 		rpcNullResult(t, validators["pause"], dataDir, workDir, "pause", map[string]any{})
 		rpcNullResult(t, validators["start"], dataDir, workDir, "start", map[string]any{})
+		rpcNullResult(t, validators["queue.pause"], dataDir, workDir, "queue.pause", map[string]any{})
+		rpcNullResult(t, validators["queue.start"], dataDir, workDir, "queue.start", map[string]any{})
 	})
 
 	t.Run("agents add", func(t *testing.T) {
@@ -513,6 +515,21 @@ func TestRPCDiscoverPublishesCanonicalTicketMethods(t *testing.T) {
 			if !reflect.DeepEqual(legacyParam, canonicalParam) {
 				t.Errorf("parameter %d differs between %s and ticket.%s: %#v != %#v", i, name, name, legacyParam, canonicalParam)
 			}
+		}
+	}
+}
+
+func TestRPCDiscoverPublishesCanonicalQueueMethods(t *testing.T) {
+	document := rpcDiscover(t)
+	for _, name := range []string{"pause", "start"} {
+		legacy := openRPCMethodNamed(t, document, name)
+		canonical := openRPCMethodNamed(t, document, "queue."+name)
+		if !strings.Contains(legacy.Description, "preferred command is `dg queue "+name+"`") ||
+			!strings.Contains(legacy.Description, "preferred JSON-RPC method is `queue."+name+"`") {
+			t.Errorf("%s description does not point to its canonical method: %q", name, legacy.Description)
+		}
+		if !reflect.DeepEqual(legacy.Result.Schema, canonical.Result.Schema) {
+			t.Errorf("%s and queue.%s result schemas differ", name, name)
 		}
 	}
 }

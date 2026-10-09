@@ -1,27 +1,28 @@
-# Alcubi Delegator CLI Reference: dg start
+# Alcubi Delegator CLI Reference: dg queue
 
-## dg start
+## dg queue
 
-Start a paused queue. (use dg queue start)
+Control the queue.
 
 ### Synopsis
 
-Resume a paused queue and start queued tickets until the configured run limits are filled. The preferred command is `dg queue start`; the preferred JSON-RPC method is `queue.start`.
+Pause or start work across the queue.
 
 ```
-dg start [flags]
+dg queue [flags]
 ```
 
 ### Examples
 
 ```
-  dg start
+  dg queue pause
+  dg queue start
 ```
 
 ### Options
 
 ```
-  -h, --help   help for start
+  -h, --help   help for queue
 ```
 
 ### Options inherited from parent commands
@@ -34,3 +35,5 @@ dg start [flags]
 ### SEE ALSO
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg queue pause](dg_queue_pause.md)	 - Pause the queue.
+* [dg queue start](dg_queue_start.md)	 - Start a paused queue.
