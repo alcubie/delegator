@@ -12,7 +12,7 @@ search box to find a command, flag, or setting.
 - Create work with [`dg ticket create`](reference/dg_ticket_create.md).
 - Inspect a ticket with [`dg show`](reference/dg_show.md).
 - See all queued and completed work with [`dg list`](reference/dg_list.md).
-- Continue an agent session with [`dg chat`](reference/dg_chat.md).
+- Continue an agent session with [`dg ticket chat`](reference/dg_ticket_chat.md).
 - Configure the instance with [`dg config`](reference/dg_config.md).
 
 The command pages are generated from the same Cobra command tree that powers

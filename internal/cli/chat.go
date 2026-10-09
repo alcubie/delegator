@@ -46,9 +46,9 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		Short: "Continue a ticket's agent session.",
 		Long: "Continue a ticket's existing agent session in its worktree and wait for the " +
 			"interactive command. With no ID, continue the first ready ticket for the selected project.",
-		Example: `  dg chat 42
-  dg chat
-  dg chat --project ../api`,
+		Example: `  dg ticket chat 42
+  dg ticket chat
+  dg ticket chat --project ../api`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var argv []string

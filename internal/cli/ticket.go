@@ -64,6 +64,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
   dg ticket edit 42 --title "Handle expired sessions"
   dg ticket move 42 top
   dg ticket depend 42 --after 17
+  dg ticket chat 42
   dg ticket runs 42`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,6 +83,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.AddCommand(acceptCommand(dataDir, workDir, cfg, "dg ticket accept"))
 	cmd.AddCommand(cancelCommand(dataDir, cfg, "dg ticket cancel"))
 	cmd.AddCommand(restartCommand(dataDir, cfg, "dg ticket restart"))
+	cmd.AddCommand(chatCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(runsCommand(dataDir))
 	return cmd
 }
@@ -93,6 +95,14 @@ func ticketCompatibilityCommand(canonical string, cmd *cobra.Command) *cobra.Com
 	cmd.Short += " (use " + canonical + ")"
 	method := strings.ReplaceAll(strings.TrimPrefix(canonical, "dg "), " ", ".")
 	cmd.Long += " The preferred command is `" + canonical + "`; the preferred JSON-RPC method is `" + method + "`."
+	return cmd
+}
+
+// ticketTerminalCompatibilityCommand points a retained terminal-only command
+// to its canonical ticket subcommand without advertising a remote method.
+func ticketTerminalCompatibilityCommand(canonical string, cmd *cobra.Command) *cobra.Command {
+	cmd.Short += " (use " + canonical + ")"
+	cmd.Long += " The preferred command is `" + canonical + "`."
 	return cmd
 }
 

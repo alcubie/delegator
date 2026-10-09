@@ -109,6 +109,42 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	}
 }
 
+func TestChatRootAndGroupedInvocationsMatch(t *testing.T) {
+	dataDir := t.TempDir()
+	ticketID, repo, session := chattableTicket(t, dataDir)
+	var records []started
+	saved := chat
+	chat = func(argv []string, dir string) *exec.Cmd {
+		cmd := exec.Command("true")
+		records = append(records, started{argv: argv, dir: dir, cmd: cmd})
+		return cmd
+	}
+	t.Cleanup(func() { chat = saved })
+
+	for _, args := range [][]string{
+		{"chat", fmt.Sprint(ticketID)},
+		{"ticket", "chat", fmt.Sprint(ticketID)},
+	} {
+		if _, err := runIn(t, dataDir, repo, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(records) != 2 {
+		t.Fatalf("launches = %d, want 2", len(records))
+	}
+	wantArgv := resumeArgv(session)
+	wantDir := run.WorktreePath(dataDir, ticketID)
+	for i, record := range records {
+		if !slices.Equal(record.argv, wantArgv) || record.dir != wantDir {
+			t.Errorf("launch %d = (%v, %q), want (%v, %q)", i, record.argv, record.dir, wantArgv, wantDir)
+		}
+	}
+	if !slices.Equal(records[0].cmd.Env, records[1].cmd.Env) {
+		t.Errorf("root and grouped environments differ")
+	}
+}
+
 // A failed supervisor leaves both the session and its worktree available. The
 // agent can finish the work in dg chat and report its commit without dg chat
 // creating a supervisor or another run.

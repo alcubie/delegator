@@ -1,15 +1,15 @@
-# Alcubi Delegator CLI Reference: dg chat
+# Alcubi Delegator CLI Reference: dg ticket chat
 
-## dg chat
+## dg ticket chat
 
-Continue a ticket's agent session. (use dg ticket chat)
+Continue a ticket's agent session.
 
 ### Synopsis
 
-Continue a ticket's existing agent session in its worktree and wait for the interactive command. With no ID, continue the first ready ticket for the selected project. The preferred command is `dg ticket chat`.
+Continue a ticket's existing agent session in its worktree and wait for the interactive command. With no ID, continue the first ready ticket for the selected project.
 
 ```
-dg chat [id] [flags]
+dg ticket chat [id] [flags]
 ```
 
 ### Examples
@@ -36,4 +36,4 @@ dg chat [id] [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg ticket](dg_ticket.md)	 - Work with tickets.
