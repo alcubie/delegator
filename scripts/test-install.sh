@@ -191,7 +191,7 @@ make_onboarding_release() {
 assert_no_tickets() {
 	local tickets
 	tickets=$(PATH="$CASE_DIR/fake-bin" XDG_DATA_HOME="$CASE_DIR/data-home" \
-		"$CASE_DIR/bin/dg" list) || fail "installed dg could not list tickets"
+		"$CASE_DIR/bin/dg" ticket list) || fail "installed dg could not list tickets"
 	[[ -z $tickets ]] || fail "onboarding created a ticket without consent: $tickets"
 }
 
