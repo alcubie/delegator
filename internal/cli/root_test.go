@@ -119,20 +119,20 @@ func TestRootHelpExplainsTheDefaultInboxAndGlobalFlags(t *testing.T) {
 }
 
 func TestDependHelpSeparatesArgumentsFromFlags(t *testing.T) {
-	out, err := runIn(t, filepath.Join(t.TempDir(), "absent"), t.TempDir(), "depend", "--help")
+	out, err := runIn(t, filepath.Join(t.TempDir(), "absent"), t.TempDir(), "ticket", "depend", "--help")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Usage:\n  dg depend <id> [flags]") {
-		t.Errorf("dg depend help has the wrong usage:\n%s", out)
+	if !strings.Contains(out, "Usage:\n  dg ticket depend <id> [flags]") {
+		t.Errorf("dg ticket depend help has the wrong usage:\n%s", out)
 	}
 	for _, want := range []string{
-		"dg depend 42 --after 17",
-		"dg depend 42 --after 17 --remove",
+		"dg ticket depend 42 --after 17",
+		"dg ticket depend 42 --after 17 --remove",
 		"--after int64Slice",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("dg depend help does not contain %q:\n%s", want, out)
+			t.Errorf("dg ticket depend help does not contain %q:\n%s", want, out)
 		}
 	}
 }

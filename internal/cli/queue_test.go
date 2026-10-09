@@ -93,17 +93,17 @@ func TestQueueCommandsUseFreshInstances(t *testing.T) {
 	}
 }
 
-func TestQueueHelpFavorsGroupedCommandsWithoutWarnings(t *testing.T) {
+func TestQueueHelpRedirectsDeprecatedCommands(t *testing.T) {
 	for _, name := range []string{"pause", "start"} {
 		out, errOut, err := runInOutputs(t, t.TempDir(), t.TempDir(), "", name, "--help")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "dg queue "+name) {
+		if !strings.Contains(errOut, "dg queue "+name+" --help") || !strings.Contains(errOut, "deprecated") {
 			t.Errorf("dg %s help does not point to dg queue %s:\n%s", name, name, out)
 		}
-		if errOut != "" {
-			t.Errorf("dg %s help warned on stderr: %q", name, errOut)
+		if out != "" {
+			t.Errorf("dg %s still prints legacy help: %q", name, out)
 		}
 
 		out, errOut, err = runInOutputs(t, t.TempDir(), t.TempDir(), "", "queue", name, "--help")

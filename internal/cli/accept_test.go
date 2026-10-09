@@ -337,7 +337,7 @@ func TestAcceptAllowsAnAbsentWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, errOut, err := runInOutputs(t, dataDir, repo, "", "accept", fmt.Sprint(ticketID))
+	_, errOut, err := runInOutputs(t, dataDir, repo, "", "ticket", "accept", fmt.Sprint(ticketID))
 	if err != nil {
 		t.Fatal(err)
 	}

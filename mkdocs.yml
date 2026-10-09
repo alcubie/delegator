@@ -18,29 +18,34 @@ nav:
   - Telemetry and privacy: telemetry.md
   - Command reference:
       - dg: reference/dg.md
-      - accept: reference/dg_accept.md
       - agents:
           - Overview: reference/dg_agents.md
           - add: reference/dg_agents_add.md
-      - cancel: reference/dg_cancel.md
-      - chat: reference/dg_chat.md
       - config:
           - Overview: reference/dg_config.md
           - get: reference/dg_config_get.md
           - list: reference/dg_config_list.md
           - set: reference/dg_config_set.md
-      - depend: reference/dg_depend.md
-      - edit: reference/dg_edit.md
-      - finish: reference/dg_finish.md
       - init: reference/dg_init.md
-      - list: reference/dg_list.md
-      - map: reference/dg_map.md
-      - move: reference/dg_move.md
-      - pause: reference/dg_pause.md
-      - restart: reference/dg_restart.md
       - rpc: reference/dg_rpc.md
-      - search: reference/dg_search.md
-      - show: reference/dg_show.md
-      - start: reference/dg_start.md
-      - ticket: reference/dg_ticket.md
+      - ticket:
+          - Overview: reference/dg_ticket.md
+          - create: reference/dg_ticket_create.md
+          - list: reference/dg_ticket_list.md
+          - search: reference/dg_ticket_search.md
+          - show: reference/dg_ticket_show.md
+          - map: reference/dg_ticket_map.md
+          - edit: reference/dg_ticket_edit.md
+          - move: reference/dg_ticket_move.md
+          - depend: reference/dg_ticket_depend.md
+          - finish: reference/dg_ticket_finish.md
+          - accept: reference/dg_ticket_accept.md
+          - cancel: reference/dg_ticket_cancel.md
+          - restart: reference/dg_ticket_restart.md
+          - chat: reference/dg_ticket_chat.md
+          - runs: reference/dg_ticket_runs.md
+      - queue:
+          - Overview: reference/dg_queue.md
+          - pause: reference/dg_queue_pause.md
+          - start: reference/dg_queue_start.md
       - version: reference/dg_version.md

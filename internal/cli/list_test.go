@@ -161,9 +161,9 @@ func TestListWithNoTicketsWritesNothing(t *testing.T) {
 	}
 }
 
-// Keep listing discoverable in root help.
+// Keep listing discoverable in ticket help.
 func TestHelpNamesList(t *testing.T) {
-	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "--help")
+	out, err := runIn(t, t.TempDir(), testfix.Repo(t, repoBranch), "ticket", "--help")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +177,6 @@ func TestHelpNamesList(t *testing.T) {
 		t.Fatalf("the help names no command list:\n%s", out)
 	}
 	if !strings.Contains(line, "every ticket") {
-		t.Errorf("the help line of dg list is %q, and does not say that it shows every ticket", line)
+		t.Errorf("the help line of dg ticket list is %q, and does not say that it shows every ticket", line)
 	}
 }

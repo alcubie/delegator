@@ -77,7 +77,7 @@ For operations other than creation, root-level entry points remain callable with
 
 Do not reparent the same mutable Cobra command instance in two places. Build separate command instances using shared handlers and independently bound flags. Creation-only flags must not become inherited flags on every ticket command.
 
-Compatibility commands show a short pointer to the canonical form. They do not emit automatic per-call warnings that add noise to scripts or corrupt structured output. No removal date is proposed for those other compatibility commands. Creation is excluded: its old form and method were removed when explicit creation was introduced.
+Compatibility commands are deprecated and hidden from command listings, completion and generated reference pages. Invoking one prints a warning on standard error naming its replacement; direct help points to the replacement help. Remote discovery marks retained methods as deprecated and identifies their replacements. Structured result output remains unchanged. No removal date is proposed for those other compatibility commands. Creation is excluded: its old form and method were removed when explicit creation was introduced.
 
 ## Structured methods and discovery
 
@@ -164,7 +164,7 @@ The desktop run-history work described below remains outside this command-line d
 - Explicit project requirements and editor restrictions still apply to canonical creation/editing.
 - Runs covers no history, multiple restarts, equal start timestamps, missing metadata, active/ended runs, and unknown tickets.
 - Desktop Runs requests are lazy, survive normal tab switching, invalidate correctly, and ignore stale responses.
-- Generated reference and shell completion reflect the canonical structure without concealing compatibility forms.
+- Generated reference and shell completion reflect the canonical structure while excluding deprecated compatibility forms.
 
 ## Delivered decisions
 

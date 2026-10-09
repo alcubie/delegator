@@ -46,6 +46,23 @@ func TestGenerateCommandReference(t *testing.T) {
 	}
 }
 
+func TestReferencePublishesCanonicalCommandsOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := generate(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend", "finish", "accept", "cancel", "restart", "chat", "pause", "start"} {
+		group := "ticket"
+		if name == "pause" || name == "start" {
+			group = "queue"
+		}
+		readGenerated(t, dir, "dg_"+group+"_"+name+".md")
+		if _, err := os.Stat(filepath.Join(dir, "dg_"+name+".md")); !os.IsNotExist(err) {
+			t.Errorf("deprecated page for %s remains: %v", name, err)
+		}
+	}
+}
+
 func TestGenerateRequiresAnOutputDirectory(t *testing.T) {
 	err := generate("")
 	if err == nil || !strings.Contains(err.Error(), "--output-dir is required") {

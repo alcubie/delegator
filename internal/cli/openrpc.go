@@ -25,6 +25,7 @@ type openRPCInfo struct {
 }
 
 type openRPCMethod struct {
+	Deprecated     bool                       `json:"deprecated,omitempty"`
 	Name           string                     `json:"name"`
 	Summary        string                     `json:"summary,omitempty"`
 	Description    string                     `json:"description,omitempty"`
@@ -79,6 +80,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	operation, _ := rpcOperation(command)
 	method := openRPCMethod{
 		Name:           name,
+		Deprecated:     command.Annotations[replacementAnnotation] != "",
 		Summary:        command.Short,
 		Description:    command.Long,
 		ParamStructure: "by-name",

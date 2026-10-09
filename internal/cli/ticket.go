@@ -88,24 +88,6 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	return cmd
 }
 
-// ticketCompatibilityCommand identifies a retained root command and points
-// help and remote discovery to its canonical command under ticket. The
-// command remains otherwise identical and emits no migration warning.
-func ticketCompatibilityCommand(canonical string, cmd *cobra.Command) *cobra.Command {
-	cmd.Short += " (use " + canonical + ")"
-	method := strings.ReplaceAll(strings.TrimPrefix(canonical, "dg "), " ", ".")
-	cmd.Long += " The preferred command is `" + canonical + "`; the preferred JSON-RPC method is `" + method + "`."
-	return cmd
-}
-
-// ticketTerminalCompatibilityCommand points a retained terminal-only command
-// to its canonical ticket subcommand without advertising a remote method.
-func ticketTerminalCompatibilityCommand(canonical string, cmd *cobra.Command) *cobra.Command {
-	cmd.Short += " (use " + canonical + ")"
-	cmd.Long += " The preferred command is `" + canonical + "`."
-	return cmd
-}
-
 // ticketCreateCommand creates a ticket and prints its ID. No arguments open the
 // editor; arguments supply title and description. --body-file reads the
 // description from a file, and --no-body explicitly omits it.
