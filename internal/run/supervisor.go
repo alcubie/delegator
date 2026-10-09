@@ -206,8 +206,8 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 	return os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 }
 
-// prompt tells the agent to read its ticket with dg show and report its
-// commit with dg finish. It also gives concrete limits on repository reads to
+// prompt tells the agent to read its ticket with dg ticket show and report its
+// commit with dg ticket finish. It also gives concrete limits on repository reads to
 // keep unnecessary files out of the agent's context.
 func prompt(id int64, dataDir, cacheDir string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
@@ -218,13 +218,13 @@ A project-scoped cache directory shared by concurrent tickets is writable at
 ticket-specific temporary artifacts in this worktree. Its contents are
 disposable and are not removed with this worktree.
 
-1. Run dg show %[1]d --data-dir %[2]q to read the ticket.
+1. Run dg ticket show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.
 3. Commit your work with git. The commit message is your report: say
    what you did and why, and name anything that did not go as the
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
-4. Run dg finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
+4. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
 
 How to read the repository:
 

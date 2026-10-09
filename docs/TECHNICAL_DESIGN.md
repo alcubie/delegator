@@ -229,7 +229,7 @@ ticket that entered the queue first comes into the list **above** tickets that t
 can see now. The list therefore moves below the eyes of the person. A new ticket that
 goes at the end moves no row above it.
 
-The command `dg move` changes the sequence of READY. A ticket at the end can go to the
+The command `dg ticket move` changes the sequence of READY. A ticket at the end can go to the
 top, and the person then examines it first. A move keeps a ticket in its own list: a
 ready ticket cannot go into the queue, and a queued ticket cannot go into READY.
 
@@ -243,12 +243,12 @@ run goes above the timeout, the supervisor stops the agent, and the state become
 `failed`.
 
 An error can also come from outside. An example is an API that does not reply. The command
-`dg restart <id>` therefore starts the run again. It continues the same session, in the
+`dg ticket restart <id>` therefore starts the run again. It continues the same session, in the
 same worktree, so the agent keeps the work that it did.
 
-The command `dg cancel <id>` stops the work on a ticket. It operates from each state that
+The command `dg ticket cancel <id>` stops the work on a ticket. It operates from each state that
 is not the end. From `running` it stops the run and keeps the worktree. From each other
-state there is no run to stop, and the ticket closes with no `dg accept`. Section 8 gives
+state there is no run to stop, and the ticket closes with no `dg ticket accept`. Section 8 gives
 each state.
 
 ### 6.4 The report from the agent: one commit
@@ -256,7 +256,7 @@ each state.
 The agent must end its work with one commit, and then this command:
 
 ```
-dg finish <id> <commit>
+dg ticket finish <id> <commit>
 ```
 
 The message of that commit is the report. It says what the run did, and it names each item
@@ -284,7 +284,7 @@ flag. Section 6.4 says that a ticket which looks complete but is not complete is
 expensive error, and a ticket that looks safe is that same error one level above. The
 person reads the commit.
 
-A run that stops before `dg finish` becomes `failed`, and not `ready`.
+A run that stops before `dg ticket finish` becomes `failed`, and not `ready`.
 
 The full data stays available, but away from the eyes of the person. The session has the
 complete conversation. The log file has the raw output.
@@ -299,7 +299,7 @@ the default branch of the repository. At acceptance, Delegator attempts to remov
 validated worktree, but it never removes the branch. The person can therefore open the
 branch later. A cleanup failure is a warning and does not reverse ticket closure.
 
-`dg accept` first asks Git whether the ticket branch is an ancestor of `HEAD` in the
+`dg ticket accept` first asks Git whether the ticket branch is an ancestor of `HEAD` in the
 stored project checkout. If it is not, Delegator compares the stable patch of the complete
 branch change with each non-merge commit in `HEAD` after the common base. An equal patch
 accepts a squash merge. A partial change, or the ticket change in a commit that also holds
@@ -340,7 +340,7 @@ does not use that. One path for every agent is worth more than a property that o
 has. An earlier draft gave delegator the id and said that no code reads the output of an
 agent; that was true of claude alone, and it made the seam fit one agent of four.
 
-`RunSpec` carries a session, and it is empty for the first run of a ticket. `dg restart`
+`RunSpec` carries a session, and it is empty for the first run of a ticket. `dg ticket restart`
 gives the next run the session of the run that failed. The adapter says how to continue
 it: for claude, the argv is `claude -p --resume <id>`. Delegator still makes no id of its
 own. The id that it gives back is the id that the agent made and reported through
@@ -364,7 +364,7 @@ the row in the transaction of the change, so a change that gives an error writes
 
 A run keeps its own start time and its own end time, and the rows of `transitions` do not
 replace them. Those times are facts of one run, and a ticket has one run for each claim.
-The end of a run is also not always a change of state. `dg finish` makes a ticket ready,
+The end of a run is also not always a change of state. `dg ticket finish` makes a ticket ready,
 and the supervisor ends the run after that with the exit code. The two records agree,
 because the writes of one time are in one transaction and take one value. The claim of a
 ticket gives `runs.started_at` and the change into `running` the same value.
@@ -411,11 +411,11 @@ migration step above that number, in one transaction. The earlier design had no 
 because of lesson 3, and this design answers the lesson directly.
 
 The person loses one thing. A ticket is no longer a file that `cat` can show. The command
-`dg rpc` with the method `show` and ticket id 4 gives the same fields, and §12 says
+`dg rpc` with the method `ticket.show` and ticket id 4 gives the same fields, and §12 says
 why a program uses that endpoint.
 
 **Ticket ids are one sequence for all projects.** The column `id` of the table `tickets`
-is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg show 4` is
+is an `INTEGER PRIMARY KEY`, so SQLite gives the next number. The command `dg ticket show 4` is
 therefore not ambiguous, and the inbox can show all projects together. No name on the disk
 contains a project, so the name of each file below `tickets/`, `worktrees/` and `runs/` is
 the id alone.
@@ -485,7 +485,7 @@ at the same time therefore lose no data, and a program that only reads does not 
 removes the file lock of the earlier design. It also keeps the answer to lesson 7. The lock
 comes from the operating system, so it cannot become out of date.
 
-**How the person changes the sequence.** The command `dg move <id> up` moves one ticket
+**How the person changes the sequence.** The command `dg ticket move <id> up` moves one ticket
 above the ticket that is above it. The other directions are `down`, `top` and `bottom`.
 Delegator reads the sequence, moves the one ticket, and writes each new position, all in
 one transaction.
@@ -528,7 +528,7 @@ Remove the staging app, the volume, the records of the DNS, the monitor and
 the secrets.
 ```
 
-The command `dg ticket create` creates this file. The command `dg edit` can change the prose
+The command `dg ticket create` creates this file. The command `dg ticket edit` can change the prose
 while the ticket is queued, before an agent starts reading it for a run.
 
 **Why the prose is not in the database.** The person owns the prose. Section 9.2 gives the
@@ -557,11 +557,11 @@ stateDiagram-v2
     direction LR
     [*] --> queued: dg ticket create
     queued --> running: a supervisor starts
-    running --> ready: dg finish
-    running --> failed: timeout, error, or no dg finish
-    failed --> running: dg restart
-    failed --> ready: dg finish after dg chat
-    ready --> done: dg accept
+    running --> ready: dg ticket finish
+    running --> failed: timeout, error, or no dg ticket finish
+    failed --> running: dg ticket restart
+    failed --> ready: dg ticket finish after dg ticket chat
+    ready --> done: dg ticket accept
     done --> [*]
 ```
 
@@ -571,30 +571,30 @@ Each change of state is in the table below.
 |---|---|---|
 | no ticket | `queued` | `dg ticket create`. The new ticket goes at the end of the queue. |
 | `queued` | `running` | No command. A supervisor takes the first ticket of the queue. |
-| `running` | `ready` | `dg finish`. The agent gives the commit that its run made. |
-| `running` | `failed` | The timeout, an error, or the end of a run before `dg finish`. |
-| `failed` | `running` | `dg restart`. The run continues the same session, in the same worktree. |
-| `failed` | `ready` | `dg finish`, after the agent completes the work interactively through `dg chat`. |
-| `ready` | `done` | `dg accept`, after the ticket branch is in the project HEAD and its registered worktree is clean. Delegator then attempts to remove the worktree and keeps the branch. |
-| each state that is not the end | `cancelled` | `dg cancel`. From `running` it also stops the run. |
+| `running` | `ready` | `dg ticket finish`. The agent gives the commit that its run made. |
+| `running` | `failed` | The timeout, an error, or the end of a run before `dg ticket finish`. |
+| `failed` | `running` | `dg ticket restart`. The run continues the same session, in the same worktree. |
+| `failed` | `ready` | `dg ticket finish`, after the agent completes the work interactively through `dg ticket chat`. |
+| `ready` | `done` | `dg ticket accept`, after the ticket branch is in the project HEAD and its registered worktree is clean. Delegator then attempts to remove the worktree and keeps the branch. |
+| each state that is not the end | `cancelled` | `dg ticket cancel`. From `running` it also stops the run. |
 
-**Only an agent gives the state `ready`.** The command `dg finish` is one of the two
-commands of the agent in §9.3. A run that stops before `dg finish` becomes `failed`, and
+**Only an agent gives the state `ready`.** The command `dg ticket finish` is one of the two
+commands of the agent in §9.3. A run that stops before `dg ticket finish` becomes `failed`, and
 not `ready`. Section 6.4 says why: a ticket that looks complete but is not complete is the
 most expensive error.
 
-**The state `ready` is where the person examines the work.** The command `dg accept`
-closes the ticket after its branch is merged. The command `dg cancel` stops the work.
-If changes are needed, the person can continue the agent session with `dg chat` or edit
+**The state `ready` is where the person examines the work.** The command `dg ticket accept`
+closes the ticket after its branch is merged. The command `dg ticket cancel` stops the work.
+If changes are needed, the person can continue the agent session with `dg ticket chat` or edit
 the worktree directly before merging and accepting it.
 
-**The command `dg cancel` is not in the diagram.** It operates from each state that is
+**The command `dg ticket cancel` is not in the diagram.** It operates from each state that is
 not the end, so an edge from each of those states would go to `cancelled`. Those edges
 show one rule, and they make the sequence of the other states less easy to see. The
 table above gives the rule in one row.
 
 **The states `done` and `cancelled` are the end.** No command changes a ticket from them,
-and `dg cancel` does not operate on them.
+and `dg ticket cancel` does not operate on them.
 
 ## 9. Interfaces for the person
 
@@ -621,9 +621,9 @@ QUEUED
 ```
 
 DONE is the first group. It shows each ticket that the person accepted with
-`dg accept` in the period that `done_hours` gives. The sequence is the time that
+`dg ticket accept` in the period that `done_hours` gives. The sequence is the time that
 the person accepted the ticket, and the ticket that the person accepted last is
-at the end. A ticket that `dg cancel` stopped is not in DONE, because a cancel
+at the end. A ticket that `dg ticket cancel` stopped is not in DONE, because a cancel
 is not an acceptance.
 
 DONE keeps the work of a day in view after the person accepts each ticket of it.
@@ -632,7 +632,7 @@ completed.
 
 The row of a run ends with the time from its start, as HH:MM:SS. The value changes
 each second, and a person who reads the inbox with `watch -n 1 dg` sees that the run
-continues. The time is at the right of the row, at the width of the rule that `dg show`
+continues. The time is at the right of the row, at the width of the rule that `dg ticket show`
 puts below a title, so the times of two runs are in one column. A title that reaches
 that column is cut, and an ellipsis shows where it was cut.
 
@@ -659,13 +659,13 @@ to say so, and it means something each time a person sees it.
 A failed ticket is not in READY. READY is where the person examines work, and each
 ticket of it holds the commit of a finished run. A failed run made no commit, so there
 is nothing to examine, and the action it wants is not a review but a decision about the
-run: `dg restart` or `dg cancel`. The inbox gives no mark, and a failure does not need
+run: `dg ticket restart` or `dg ticket cancel`. The inbox gives no mark, and a failure does not need
 one: a mark would say that a ticket needs no examination, and a failure is not the claim
 of an agent about its work, it is a fact that delegator observed, that the run gave no
 report. A group of its own shows it without a mark.
 
 The first line says whether the queue will start work: `Status: Running`, or
-`Status: Paused` after `dg pause`. It is always there, so a person never has to know what
+`Status: Paused` after `dg queue pause`. It is always there, so a person never has to know what
 the absence of a line means. At a terminal the word is green or yellow; in a pipe or a
 file it is plain text, so a log or a grep sees no escape code. The flag `--color` takes
 `always`, `never` or `auto`, as `ls` and `grep` do, and `auto` is the default. With
@@ -678,10 +678,10 @@ run. Each ticket below READY waits for the same thing: a person who reads its co
 mark that came from the agent would say that the other tickets need no examination, and
 that is the one thing delegator must not say. Section 6.4 gives the reason in full.
 
-The command `dg show 4` gives one ticket in full:
+The command `dg ticket show 4` gives one ticket in full:
 
 ```
-$ dg show 4
+$ dg ticket show 4
   #4  Remove the staging app                                  ready
                                                              2h ago
   ─────────────────────────────────────────────────────────────────
@@ -699,7 +699,7 @@ $ dg show 4
 
 The subject of the commit is on the row. `dg open diff 4` gives the change itself.
 
-`dg show` puts the time on the line below the status: HH:MM:SS for a ticket in
+`dg ticket show` puts the time on the line below the status: HH:MM:SS for a ticket in
 `running`, the time from the completion for a ticket in `ready`, and the time of the
 failure for a ticket in `failed`. The time ends where the status above it ends, so a
 long title does not push it off the line. A ticket with no time gives no line, and the
@@ -747,7 +747,7 @@ This removes the detection of tools and of terminals from delegator. It also let
 person keep the tools that they have now. When the TUI comes, each command also gets a
 key.
 
-The continuation of a session is not one of these commands. `dg chat [id]` in §9.3 is a
+The continuation of a session is not one of these commands. `dg ticket chat [id]` in §9.3 is a
 command of delegator, because delegator knows which program made the session, which
 worktree it ran in, and whether a run is on it now, and the person knows none of the
 three at the moment they type. The variable `{session}` stays for a command of the
@@ -760,22 +760,24 @@ installer.
 
 Ticket creation is a breaking command and remote-method change. Callers must replace `dg ticket [title] [body]` with `dg ticket create [title] [body]` and replace the `ticket` remote method with `ticket.create`; the old forms are not aliases.
 
+Other former root commands and remote methods remain available as compatibility entry points. The grouped commands and dotted methods below are canonical.
+
 | Command | Function |
 |---|---|
 | `dg ticket create [title] [body]` | Add a ticket for the project of the current directory. With no arguments, it opens `$EDITOR`. The flag `--project <dir>` takes the project from another directory. The flag `--after <id>` makes the new ticket depend on that ticket, and the flag repeats: `dg ticket create --after 12 --after 13 "title"` makes a ticket that depends on both. An id that names no ticket is an error and no ticket is made. The flag `--body-file <path>` reads the prose from a file, and a path of `-` reads it from the standard input, as `git commit -F` does. The prose has one source, so the flag beside a body argument is an error, and a path that names no file is an error that holds the path. Neither makes a ticket. The flag `--no-body` makes a ticket that has no prose. Without that flag, a title with no body is an error, and dg makes no ticket. The flag with a body argument, or with `--body-file`, is also an error. |
 
 | `dg` | Show the inbox. |
-| `dg list` | Show every ticket, in every status, one to a line, in the order of the ids. The row is the row of the inbox, with the status of the ticket where the inbox puts its note. The inbox holds the work of a day and drops a done ticket after the window of DONE; this list holds every ticket there has ever been. The flag `--project <dir>` narrows it to one project, and with no flag it holds the tickets of every project. A person who has no ticket gets no output and no error. |
-| `dg show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
-| `dg edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket create` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket create`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
+| `dg ticket list` | Show every ticket, in every status, one to a line, in the order of the ids. The row is the row of the inbox, with the status of the ticket where the inbox puts its note. The inbox holds the work of a day and drops a done ticket after the window of DONE; this list holds every ticket there has ever been. The flag `--project <dir>` narrows it to one project, and with no flag it holds the tickets of every project. A person who has no ticket gets no output and no error. |
+| `dg ticket show [id]` | Show one ticket and its variables. With no id, it shows the first ticket of READY of the project of the current directory, which is the ticket the person reviews next, and the flag `--project <dir>` takes that project from another directory. A flag `--project-only`, `--ticket-only`, `--worktree-only`, `--branch-only` or `--session-only` writes that value alone, on a line with no tilde, for another command line. With more than one of them, the first on the command line is the one that answers. |
+| `dg ticket edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket create` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket create`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
-| `dg start` and `dg pause` | Start or stop work on the queue. |
-| `dg move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
-| `dg depend <id> --after <other>` | Make a ticket that is already in the queue depend on another one, which `dg ticket create --after` does as the ticket is made. The flag repeats, as it does there, and it takes a comma list. A link that is there already is not an error. The command refuses a ticket that depends on itself, and a link that would make a ring of tickets that each depend on the next, because no ticket of a ring can ever start. It refuses a ticket that is not queued, because a link holds a ticket back in the queue and nowhere else. The flag `--remove` takes a link away instead, which is the way out for a ticket that depends on one that was cancelled, and it is an error when no such link is there. The command writes nothing when it works. |
-| `dg restart <id>` | Start a failed run again. See §6.3. |
-| `dg cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
-| `dg chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |
-| `dg accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
+| `dg queue start` and `dg queue pause` | Start or stop work on the queue. |
+| `dg ticket move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
+| `dg ticket depend <id> --after <other>` | Make a ticket that is already in the queue depend on another one, which `dg ticket create --after` does as the ticket is made. The flag repeats, as it does there, and it takes a comma list. A link that is there already is not an error. The command refuses a ticket that depends on itself, and a link that would make a ring of tickets that each depend on the next, because no ticket of a ring can ever start. It refuses a ticket that is not queued, because a link holds a ticket back in the queue and nowhere else. The flag `--remove` takes a link away instead, which is the way out for a ticket that depends on one that was cancelled, and it is an error when no such link is there. The command writes nothing when it works. |
+| `dg ticket restart <id>` | Start a failed run again. See §6.3. |
+| `dg ticket cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
+| `dg ticket chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. |
+| `dg ticket accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
 | `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
@@ -829,16 +831,16 @@ The agent uses two commands only, and one of them is a command of the person:
 
 | Command | Function |
 |---|---|
-| `dg show <id>` | Read the ticket, with each change that came after the start. |
-| `dg finish <id> <commit>` | End the work. See §6.4. |
+| `dg ticket show <id>` | Read the ticket, with each change that came after the start. |
+| `dg ticket finish <id> <commit>` | End the work. See §6.4. |
 
 An earlier draft gave the agent its own `dg read`. The agent and the person then read
 the ticket through two commands, and the two can say different things: the first draft of
 `dg read` gave the prose alone, and the title of a ticket is a column and not the first
 line of the prose, so the agent could not see the one line that says what to do. A person
-who then examines the work with `dg show` reads a ticket that the agent never got.
+who then examines the work with `dg ticket show` reads a ticket that the agent never got.
 
-One command removes that risk completely. The text that `dg show` makes needs no change
+One command removes that risk completely. The text that `dg ticket show` makes needs no change
 for an agent: the prose goes out as the person wrote it, and each line of the ticket has
 two spaces in front of it, which an agent reads as well as a person does.
 
@@ -856,7 +858,7 @@ limit to one: the report is a commit message.
 ### 10.2 The fake agent
 
 A program `dg-fake-agent` reads a script, and does what the script says. It can write
-files, call `dg finish`, stop with an error, stop with no output, and continue past the
+files, call `dg ticket finish`, stop with an error, stop with no output, and continue past the
 timeout.
 
 This decision has the largest effect in this document. It makes the queue, the supervisor,

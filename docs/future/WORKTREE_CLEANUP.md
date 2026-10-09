@@ -10,7 +10,7 @@ This document records future work only; it does not change current behavior.
 
 ## Current behavior and failure
 
-`dg accept` validates the merge and checks a registered worktree for staged,
+`dg ticket accept` validates the merge and checks a registered worktree for staged,
 unstaged, and non-ignored untracked changes before committing DONE. It then attempts
 immediate removal outside the database transaction. Removal errors produce a warning,
 but the ticket stays DONE and queue progression continues. An absent directory needs
@@ -24,7 +24,7 @@ artifacts remained. An earlier `npm run dev` may have recreated files during
 removal; the original command's
 error was unavailable, so that cause remains unconfirmed.
 
-`dg cancel` intentionally retains worktrees so unfinished changes remain available
+`dg ticket cancel` intentionally retains worktrees so unfinished changes remain available
 for inspection. Those worktrees currently have no automatic expiry.
 
 The relevant code is in [accept.go](../../internal/cli/accept.go),
@@ -114,7 +114,7 @@ remain visible while the queue continues normally.
 
 ## Current workaround limits
 
-`dg accept --force` skips merge and cleanliness checks and permits removal of a
+`dg ticket accept --force` skips merge and cleanliness checks and permits removal of a
 dirty registered worktree. It does not delete an unregistered directory. For the
 observed ticket 296 state, retrying acceptance now closes the ticket, preserves the
 leftover directory, and warns that manual inspection is needed. The person must

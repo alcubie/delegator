@@ -12,7 +12,7 @@ builds publication-free release artifacts.
 
 An agent can use two commands. The ACP command is the server that Delegator
 starts for unattended work. A separate terminal command can resume the saved
-session for `dg chat`. Installing an agent's normal CLI does not always install
+session for `dg ticket chat`. Installing an agent's normal CLI does not always install
 its ACP adapter.
 
 The live tests record these commands and versions:
@@ -28,7 +28,7 @@ The live tests record these commands and versions:
 | Pi | `pi-acp` | `pi --session {session}` | Pi 0.85.1; `pi-acp` 0.0.33 |
 
 Cursor's terminal client did not accept an ACP session ID in the verified
-version, so its test covers ACP start and session load but not `dg chat`.
+version, so its test covers ACP start and session load but not `dg ticket chat`.
 Claude, OpenCode, GitHub Copilot, and Pi add supported one-shot flags during
 the terminal assertion. Codex and Goose use a pseudo-terminal because their
 resume commands are interactive.

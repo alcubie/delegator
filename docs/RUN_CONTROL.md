@@ -24,7 +24,7 @@ them. It adds these:
 | signal | A message from the operating system to a program, such as `SIGTERM` or `SIGKILL`. |
 | slot | One of the `runs` places from the config. A ticket in `running` takes one slot, and a ticket in `ready` also takes one. |
 | start window | The short time between the claim of a ticket and the moment that its supervisor can answer for itself. |
-| trigger | A command or a supervisor that can start a run. Today `dg ticket create`, `dg start`, and a supervisor that ends. |
+| trigger | A command or a supervisor that can start a run. Today `dg ticket create`, `dg queue start`, and a supervisor that ends. |
 
 ## 1. The problems
 
@@ -41,7 +41,7 @@ must stop the run of a ticket, so it must reach the agent. Ticket 21 must tell a
 that `Next` claimed for this supervisor from a ticket that a different supervisor holds.
 The table `tickets` has no column for a program.
 
-**P3. How does delegator stop a run?** Two functions stop a run: `dg cancel` from ticket
+**P3. How does delegator stop a run?** Two functions stop a run: `dg ticket cancel` from ticket
 26, and the timeout from section 6.3. The timeout has no ticket. The agent starts programs
 of its own, and a stop that reaches the agent alone leaves those programs alive.
 
@@ -67,15 +67,15 @@ keeps its own times. The process id from P2 is a fact of a run, and not of a tic
 | Ticket 21, the claim before the run | | yes | | yes | | |
 | Ticket 22, more than one run | yes | | | yes | | |
 | Ticket 23, the limit of a project | | | | yes | | |
-| Ticket 26, `dg cancel` | | yes | yes | | | |
+| Ticket 26, `dg ticket cancel` | | yes | yes | | | |
 | Ticket 7, the history of state | | | | | | yes |
 | Ticket 24, the config | | | yes | yes | | |
 | Section 6.1, a run is an entity | yes | | | | | yes |
 | Section 6.3, the timeout | | yes | yes | | | yes |
-| Section 6.3, `dg restart` | | | | | | yes |
+| Section 6.3, `dg ticket restart` | | | | | | yes |
 | Section 5, the start after a reconcile | | | | yes | yes | |
 
-Two items in the table have no ticket: the timeout, and `dg restart`. Both are in
+Two items in the table have no ticket: the timeout, and `dg ticket restart`. Both are in
 milestone 2 of section 13.
 
 ## 3. The architecture
@@ -201,13 +201,13 @@ and `dg run <id>` takes that one ticket. Both forms claim inside the supervisor.
 `detach` already puts each supervisor in a session of its own, so the process id of the
 supervisor is also the id of its process group. A signal to the group reaches the
 supervisor, the agent, and each program that the agent started. This is the same call for
-`dg cancel` and for the timeout.
+`dg ticket cancel` and for the timeout.
 
 | Option | How it operates | For | Against |
 |---|---|---|---|
-| A signal to the group | `dg cancel` sends `SIGTERM` to the group, waits, and sends `SIGKILL`. The timeout in the supervisor does the same to its own group. | One call. No channel between programs. Reaches each program of the agent. | The supervisor must catch `SIGTERM` and write `cancelled` before it stops, or the command writes it after the wait. |
-| A socket, as option D of section 4 | `dg cancel` connects and sends `stop`. The supervisor stops the agent and writes the state. | The supervisor writes its own end, in order. | A channel to write and to test, for one message. |
-| A row in the database | `dg cancel` writes a request. The supervisor reads the table at an interval. | Inside SQLite only. | A delay at each interval, and a timer in the supervisor. A supervisor that hangs never reads it. |
+| A signal to the group | `dg ticket cancel` sends `SIGTERM` to the group, waits, and sends `SIGKILL`. The timeout in the supervisor does the same to its own group. | One call. No channel between programs. Reaches each program of the agent. | The supervisor must catch `SIGTERM` and write `cancelled` before it stops, or the command writes it after the wait. |
+| A socket, as option D of section 4 | `dg ticket cancel` connects and sends `stop`. The supervisor stops the agent and writes the state. | The supervisor writes its own end, in order. | A channel to write and to test, for one message. |
+| A row in the database | `dg ticket cancel` writes a request. The supervisor reads the table at an interval. | Inside SQLite only. | A delay at each interval, and a timer in the supervisor. A supervisor that hangs never reads it. |
 
 The signal to the group is sufficient. The command writes the state itself, after the
 wait, so a supervisor that does not catch the signal leaves nothing undone.
@@ -216,8 +216,8 @@ wait, so a supervisor that does not catch the signal leaves nothing undone.
 
 | Option | For | Against |
 |---|---|---|
-| Columns on `tickets` | One migration, no join. Ticket 17 as written. | A ticket has more than one run after `dg restart` and `dg revise`, and one row holds the facts of the last one only. Section 6.1 asks for each run. The process id, the start, the end and the exit code then move to a table of runs later, which is a second migration and rework in each command that reads them. |
-| A table `runs` | Section 6.1 as written. The log below `runs/<id>` already has one file for each run. The process id, the start time, the end time and the exit code go where they belong, on the first day. Ticket 7 gets its answer: a run keeps its own times, and a change of state is a different table. | One join in the reconcile and in `dg show`. Ticket 17 makes the table, which is more than the ticket says. |
+| Columns on `tickets` | One migration, no join. Ticket 17 as written. | A ticket has more than one run after `dg ticket restart` and `dg revise`, and one row holds the facts of the last one only. Section 6.1 asks for each run. The process id, the start, the end and the exit code then move to a table of runs later, which is a second migration and rework in each command that reads them. |
+| A table `runs` | Section 6.1 as written. The log below `runs/<id>` already has one file for each run. The process id, the start time, the end time and the exit code go where they belong, on the first day. Ticket 7 gets its answer: a run keeps its own times, and a change of state is a different table. | One join in the reconcile and in `dg ticket show`. Ticket 17 makes the table, which is more than the ticket says. |
 
 The table `runs` costs one join now and saves one migration and one rewrite later. The
 first version holds the columns that ticket 17 and ticket 26 need, and later tickets add
@@ -251,7 +251,7 @@ table of changes, and it writes both below one transaction if it keeps both.
    time, or if signal 0 says that the process id is free. A run is also dead if it is
    older than the timeout. The reconcile marks each dead run `failed` and writes its end
    time. Then it calls `Next`, which section 5 asks for and ticket 17 leaves out.
-5. **A stop is a signal to the process group.** `dg cancel` and the timeout both send
+5. **A stop is a signal to the process group.** `dg ticket cancel` and the timeout both send
    `SIGTERM`, wait, and send `SIGKILL`. The command that sent the signal writes the
    state.
 6. **The file lock stays in reserve.** If option B shows a fault in use, the file lock
@@ -274,7 +274,7 @@ table of changes, and it writes both below one transaction if it keeps both.
 | Ticket | What it is |
 |---|---|
 | The timeout | The supervisor stops its own group after `timeout_minutes`, and the ticket becomes `failed`. Section 6.3. After ticket 24. |
-| `dg restart` | A `failed` ticket goes back to the queue, and the next run continues the same session in the same worktree. Section 6.3 and section 9.3. After ticket 26, because both find the run. |
+| `dg ticket restart` | A `failed` ticket goes back to the queue, and the next run continues the same session in the same worktree. Section 6.3 and section 9.3. After ticket 26, because both find the run. |
 
 ### 8.3 Changes to the documents
 
@@ -292,14 +292,14 @@ always has the process id of a live supervisor.
 
 ```mermaid
 flowchart TD
-    T["Trigger: dg ticket create, dg start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
+    T["Trigger: dg ticket create, dg queue start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
     N -->|"one dg run for each free slot"| S["dg run, apart from the trigger"]
     S --> C{"BEGIN IMMEDIATE<br>first ticket with room?"}
     C -->|"none"| X["Stop, no error"]
     C -->|"a ticket"| W["Claim: status running,<br>row of runs with pid and started_at<br>COMMIT"]
     W --> A["Run the agent in the worktree"]
-    A -->|"dg finish"| R["ready"]
-    A -->|"ends with no dg finish"| F["failed"]
+    A -->|"dg ticket finish"| R["ready"]
+    A -->|"ends with no dg ticket finish"| F["failed"]
     A -->|"timeout: SIGTERM, then SIGKILL,<br>to the process group"| F
     R --> E["Write ended_at and exit_code"]
     F --> E
@@ -326,13 +326,13 @@ flowchart TD
     N --> O["The work of the command"]
 ```
 
-The third diagram gives `dg cancel` on a ticket in `running`. The command sends the
+The third diagram gives `dg ticket cancel` on a ticket in `running`. The command sends the
 signal and writes the state itself, so a supervisor that does not catch the signal
 leaves nothing undone.
 
 ```mermaid
 flowchart LR
-    C["dg cancel id"] --> P["Read pid from runs"]
+    C["dg ticket cancel id"] --> P["Read pid from runs"]
     P --> T["SIGTERM to the<br>process group"]
     T --> W["Wait"]
     W --> K["SIGKILL to the<br>process group"]

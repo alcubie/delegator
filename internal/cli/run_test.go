@@ -109,8 +109,8 @@ func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		fmt.Sprintf("dg show %d --data-dir %q", id, dataDir),
-		fmt.Sprintf("dg finish %d <hash> --data-dir %q", id, dataDir),
+		fmt.Sprintf("dg ticket show %d --data-dir %q", id, dataDir),
+		fmt.Sprintf("dg ticket finish %d <hash> --data-dir %q", id, dataDir),
 	} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the agent prompt does not hold %q:\n%s", want, prompt)
