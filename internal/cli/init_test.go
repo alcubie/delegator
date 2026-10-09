@@ -165,14 +165,14 @@ func TestInitPromptsToInstallAMissingCodexAdapter(t *testing.T) {
 		return nil
 	}
 
-	out, err := runInteractiveInit(t, dataDir, "1\ny\nn\n", initOptions{}, install)
+	out, err := runInteractiveInit(t, dataDir, "1\n\nn\n", initOptions{}, install)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !installed {
 		t.Fatal("dg init did not install the selected adapter")
 	}
-	for _, want := range []string{"1. Codex\nSelection", "Delegator uses Agent Client Protocol (ACP) to communicate with Codex while it runs ticket tasks", "The required ACP command codex-acp is not available", "npm install -g @agentclientprotocol/codex-acp", "Setup complete"} {
+	for _, want := range []string{"1. Codex\nSelection", "Delegator uses Agent Client Protocol (ACP) to communicate with Codex while it runs ticket tasks", "The required ACP command codex-acp is not available", "npm install -g @agentclientprotocol/codex-acp? [Y/n]", "Setup complete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg init output does not contain %q:\n%s", want, out)
 		}

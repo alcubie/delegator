@@ -110,7 +110,7 @@ Selection [1] (q to cancel): 1
 
 Delegator uses Agent Client Protocol (ACP) to communicate with Codex while it runs ticket tasks.
 The required ACP command codex-acp is not available.
-Install it now with npm install -g @agentclientprotocol/codex-acp? [y/N] y
+Install it now with npm install -g @agentclientprotocol/codex-acp? [Y/n]
 Running npm install -g @agentclientprotocol/codex-acp
 
 Setup complete.
@@ -149,7 +149,7 @@ Selection [1] (q to cancel): 1
 
 Delegator uses Agent Client Protocol (ACP) to communicate with Claude while it runs ticket tasks.
 The required ACP command claude-agent-acp is not available.
-Install it now with npm install -g @agentclientprotocol/claude-agent-acp? [y/N] n
+Install it now with npm install -g @agentclientprotocol/claude-agent-acp? [Y/n] n
 ACP command or absolute path (leave blank to cancel): /tmp/dg-init/claude/manual/claude-acp
 
 Setup complete.
