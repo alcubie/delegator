@@ -84,7 +84,7 @@ a queue that stopped at the restart.
 
 | Item | What it is |
 |---|---|
-| Without a daemon | A unit at login that runs `dg start`. The command does the reconcile, starts the queue, and stops. Section 10 of [`FEATURES.md`](FEATURES.md) holds this item. |
+| Without a daemon | A unit at login that runs `dg queue start`. The command does the reconcile, starts the queue, and stops. Section 10 of [`FEATURES.md`](FEATURES.md) holds this item. |
 | What it costs | The installer must put one unit on the computer. A person who installs with `curl` does not get it, and must make it by hand. |
 | What a daemon adds | Nothing. The daemon does the same work at its start, and then waits for the next event. |
 | The signal for a daemon | None. The unit at login is the complete answer. |
@@ -110,7 +110,7 @@ Nothing in delegator today reads a clock for this.
 
 | Item | What it is |
 |---|---|
-| Without a daemon | A timer that runs `dg start` at one time and `dg pause` at a different time. The commands exist. A person who wants one ticket at a time puts it at the top of the queue and starts the queue with the timer. |
+| Without a daemon | A timer that runs `dg queue start` at one time and `dg queue pause` at a different time. The commands exist. A person who wants one ticket at a time puts it at the top of the queue and starts the queue with the timer. |
 | What it costs | Two units, or one line in the crontab of the person. |
 | What a daemon adds | A schedule inside the config, which a person edits in one place. |
 | The signal for a daemon | A person asks for a schedule on a system that has no timer and no cron, such as a container. |
@@ -182,7 +182,7 @@ here so that the document is complete.
 | The two lessons | Lesson 1 and lesson 7 came from a long-life program. The MCP server lived inside the queue worker, and `queue down` released a lock while a run continued. Section 5 gives the rules that keep the two lessons answered. |
 | The tests | Each integration test must start and stop the daemon, which makes it slower and less independent. |
 | The port | A daemon that listens for a push has a port. Section 11 of the technical document says that delegator has no port, and that sentence becomes false. Section 7 of the GUI document gives the defence for a port on the loopback, and a push from the internet needs more. |
-| A second path | A person types `dg start`, and the daemon also starts the queue. The two must not disagree. They do not, because each calls the same function on the same database, and the claim is in the supervisor. |
+| A second path | A person types `dg queue start`, and the daemon also starts the queue. The two must not disagree. They do not, because each calls the same function on the same database, and the claim is in the supervisor. |
 
 The last row is the reason that a daemon costs less today than it did when section 3.2
 of the run control document refused it. That section had the claim in the trigger, so

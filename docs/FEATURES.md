@@ -16,9 +16,9 @@ trigger occurs, the item stays here, and this is a good result.
 
 | Item | What it is | Why it waits | Trigger |
 |---|---|---|---|
-| The TUI | A full screen program with the inbox on the left and the ticket on the right. It refreshes while you look at it. It goes in `internal/tui/`, and it reads the same structure from `inbox/`. | The commands `dg` and `dg show` give the same data. The TUI was about 40 percent of the work of version 1. | READY has more than about 20 tickets, and the output of `dg` is difficult to scan. |
+| The TUI | A full screen program with the inbox on the left and the ticket on the right. It refreshes while you look at it. It goes in `internal/tui/`, and it reads the same structure from `inbox/`. | The commands `dg` and `dg ticket show` give the same data. The TUI was about 40 percent of the work of version 1. | READY has more than about 20 tickets, and the output of `dg` is difficult to scan. |
 | Keys for commands | Each command of the person also gets one key in the TUI. The config in §9.2 keeps its place for this. | `dg open <name> <id>` does the same work from the CLI. | The TUI arrives. |
-| Reorder with `j` and `k` | Move one ticket up or down in the queue with one key. | `dg move <id> up` and `dg move <id> down` do the same work from the CLI. | The TUI arrives. |
+| Reorder with `j` and `k` | Move one ticket up or down in the queue with one key. | `dg ticket move <id> up` and `dg ticket move <id> down` do the same work from the CLI. | The TUI arrives. |
 | A GUI | A graphical interface. In Go it is a second binary `cmd/dg-gui/`. In a different language it uses `dg --json`. | A terminal is sufficient for a programmer, and the CLI is the product now. | A person who does not use a terminal must use delegator. |
 | A filter by project | Show one project only. | The inbox shows the project on each row, and other programs can filter the output. | You have more than about 5 projects with active tickets. |
 
@@ -88,7 +88,7 @@ this item is the first one to examine again.
 
 | Item | What it is | Why it waits | Trigger |
 |---|---|---|---|
-| Garbage collection of worktrees | A command that removes each worktree that a crash left behind, if the worktree has no changes. | The reconcile marks the run `failed`, and `dg accept` removes the worktree. A worktree stays only after a crash. | The worktree directory becomes large. |
+| Garbage collection of worktrees | A command that removes each worktree that a crash left behind, if the worktree has no changes. | The reconcile marks the run `failed`, and `dg ticket accept` removes the worktree. A worktree stays only after a crash. | The worktree directory becomes large. |
 | A report if the base branch moved | Delegator says that the default branch moved after the start of the run. | The person selects the diff command, so the person can see this. | A diff gives a result that is difficult to read, because the base branch moved. |
 | Removal of old logs | A command that removes the log files of closed tickets. | A log file is small. | The data directory becomes large. |
 | One step for the first release | Delegator makes the database with one step. The list `migrations` holds that step only, and a new database is at version 1. | No person has delegator now. The steps of the prototype are a record of the work, and no database of a person must go through them. A step that a person has must not change, so this work is possible one time only. | The first release. Do this work before the first person installs delegator. |
@@ -98,7 +98,7 @@ this item is the first one to examine again.
 | Item | Why it waits | Trigger |
 |---|---|---|
 | `dg note` for the agent | The person does not see the output, and the detail belongs in a commit message. | The commit messages do not hold the data that a return to work needs. |
-| `--fresh` on `dg restart` | One restart behaviour is easier to understand. A restart continues the same session. | A session becomes damaged, and only a new session can correct it. |
+| `--fresh` on `dg ticket restart` | One restart behaviour is easier to understand. A restart continues the same session. | A session becomes damaged, and only a new session can correct it. |
 | A timeout for one ticket | One value in the config is sufficient. | One ticket type always goes above the limit, or always stops early. |
 | A `priority` field | The person changes the order of the queue file directly. | The order of the queue is not sufficient control. |
 | An automatic restart after an error | The person must see an error. An automatic restart can add cost on a ticket that is broken. | Errors from outside are frequent, and each one is a delay for you. |

@@ -57,7 +57,7 @@ dg
 
 Delegator starts the task automatically when capacity is available. Run `dg`
 to check your inbox. Review and merge the completed changes, then accept the
-ticket with `dg accept ID`.
+ticket with `dg ticket accept ID`.
 
 ## Documentation
 

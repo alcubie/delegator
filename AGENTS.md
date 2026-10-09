@@ -2,9 +2,9 @@
 
 ## Tickets
 
-- Use `dg show <id>` to view an existing ticket. Do not use `dg ticket create` for viewing; it creates a new ticket.
+- Use `dg ticket show <id>` to view an existing ticket. Do not use `dg ticket create` for viewing; it creates a new ticket.
 - When breaking work into tickets, use `dg ticket create` and supply `--project` when the current working directory is not the target project directory.
-- Use `--after` or `dg depend` to link dependencies so work is processed in the intended order.
+- Use `--after` or `dg ticket depend` to link dependencies so work is processed in the intended order.
 
 ## Documentation
 

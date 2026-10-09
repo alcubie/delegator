@@ -232,7 +232,7 @@ func TestPromptNamesBothCommands(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "selected instance")
 	cacheDir := filepath.Join(dataDir, "cache", "projects", "7")
 	got := prompt(42, dataDir, cacheDir)
-	for _, want := range []string{"dg show 42", "dg finish 42"} {
+	for _, want := range []string{"dg ticket show 42", "dg ticket finish 42"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}

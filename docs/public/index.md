@@ -10,8 +10,8 @@ search box to find a command, flag, or setting.
 
 - Get started with [`dg init`](reference/dg_init.md).
 - Create work with [`dg ticket create`](reference/dg_ticket_create.md).
-- Inspect a ticket with [`dg show`](reference/dg_show.md).
-- See all queued and completed work with [`dg list`](reference/dg_list.md).
+- Inspect a ticket with [`dg ticket show`](reference/dg_ticket_show.md).
+- See all queued and completed work with [`dg ticket list`](reference/dg_ticket_list.md).
 - Continue an agent session with [`dg ticket chat`](reference/dg_ticket_chat.md).
 - Configure the instance with [`dg config`](reference/dg_config.md).
 

@@ -12,7 +12,7 @@ derive the shape of the repository by reading it.
   is the Agent Client Protocol agent the tests drive instead of a real one.
 - `internal/cli` is the command layer: the cobra tree, the work behind each
   command, and the text a command writes. One file per command, named for it,
-  so `dg move` is `move.go`.
+  so `dg ticket move` is `move.go`.
 - `internal/store` keeps every field in one SQLite database, and owns the
   migrations. The prose of a ticket is not in it; that is a file under
   `tickets/` in the data directory.
@@ -66,7 +66,7 @@ the wrong place, that is the signal to correct this.
   the package; a new package-level launcher needs the same.
 
 - **Run the real binary.** `make install` puts `dg` on the PATH. Two faults this
-  session passed each test and appeared at the first real run: `dg show` wrapped
+  session passed each test and appeared at the first real run: `dg ticket show` wrapped
   prose that already held the line breaks of the person, and the text of a field
   went past the rule below the title. A test holds the data that its writer
   thought of, and a real ticket holds the data that a person wrote.

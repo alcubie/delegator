@@ -184,6 +184,25 @@ func TestHelpAndCompletionDoNotOpenTheInstance(t *testing.T) {
 	}
 }
 
+func TestCompletionListsCanonicalCommandGroups(t *testing.T) {
+	for group, want := range map[string][]string{
+		"ticket": {"accept", "cancel", "chat", "create", "depend", "edit", "finish", "list", "map", "move", "restart", "runs", "search", "show"},
+		"queue":  {"pause", "start"},
+	} {
+		t.Run(group, func(t *testing.T) {
+			out, err := runIn(t, filepath.Join(t.TempDir(), "absent"), t.TempDir(), cobra.ShellCompRequestCmd, group, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, command := range want {
+				if !strings.Contains(out, command+"\t") {
+					t.Errorf("%s completion does not contain %q:\n%s", group, command, out)
+				}
+			}
+		})
+	}
+}
+
 func TestDataDirTakesXDGDataHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/somewhere/data")
 
