@@ -16,7 +16,8 @@ func TestTelemetryTriggerUsesARealDetachedProcess(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "detached")
 	saved := launchTelemetry
 	launchTelemetry = func(dataDir string) *exec.Cmd {
-		return exec.Command("sh", "-c", `printf '%s' "$1" > "$2"`, "--", dataDir, marker)
+		// Publish the marker only once its contents are complete.
+		return exec.Command("sh", "-c", `printf '%s' "$1" > "$2.tmp" && mv "$2.tmp" "$2"`, "--", dataDir, marker)
 	}
 	t.Cleanup(func() { launchTelemetry = saved })
 
