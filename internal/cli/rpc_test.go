@@ -91,11 +91,12 @@ func TestRPCRefusesAMethodThatNamesNoCommand(t *testing.T) {
 	}
 }
 
-func TestRPCDoesNotExposeTheTicketNamespaceOrOpenAnEditor(t *testing.T) {
+func TestRPCDoesNotExposeNamespacesOrOpenAnEditor(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	for _, request := range []string{
 		`{"jsonrpc":"2.0","method":"ticket","id":"namespace"}`,
+		`{"jsonrpc":"2.0","method":"queue","id":"queue-namespace"}`,
 		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"project":%q},"id":"editor"}`, repo),
 		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":[],"project":%q},"id":"empty-args"}`, repo),
 		fmt.Sprintf(`{"jsonrpc":"2.0","method":"ticket.create","params":{"args":["stdin body"],"project":%q,"body-file":"-"},"id":"stdin"}`, repo),

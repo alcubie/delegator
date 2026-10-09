@@ -42,11 +42,12 @@ dg [flags]
 * [dg list](dg_list.md)	 - List every ticket, whatever its status (use dg ticket list)
 * [dg map](dg_map.md)	 - Show the dependency graph of a ticket (use dg ticket map)
 * [dg move](dg_move.md)	 - Reorder a ticket in its queue or ready list. (use dg ticket move)
-* [dg pause](dg_pause.md)	 - Pause the queue.
+* [dg pause](dg_pause.md)	 - Pause the queue. (use dg queue pause)
+* [dg queue](dg_queue.md)	 - Control the queue.
 * [dg restart](dg_restart.md)	 - Start a failed ticket again. (use dg ticket restart)
 * [dg rpc](dg_rpc.md)	 - Run a dg command from a JSON-RPC request on standard input.
 * [dg search](dg_search.md)	 - Find tickets by their text (use dg ticket search)
 * [dg show](dg_show.md)	 - Show the details of a ticket. (use dg ticket show)
-* [dg start](dg_start.md)	 - Start a paused queue.
+* [dg start](dg_start.md)	 - Start a paused queue. (use dg queue start)
 * [dg ticket](dg_ticket.md)	 - Work with tickets.
 * [dg version](dg_version.md)	 - Show the version of dg.

@@ -1,21 +1,21 @@
-# Alcubi Delegator CLI Reference: dg pause
+# Alcubi Delegator CLI Reference: dg queue pause
 
-## dg pause
+## dg queue pause
 
-Pause the queue. (use dg queue pause)
+Pause the queue.
 
 ### Synopsis
 
-Pause the queue so no new agent runs start. Runs already in progress are allowed to finish. The preferred command is `dg queue pause`; the preferred JSON-RPC method is `queue.pause`.
+Pause the queue so no new agent runs start. Runs already in progress are allowed to finish.
 
 ```
-dg pause [flags]
+dg queue pause [flags]
 ```
 
 ### Examples
 
 ```
-  dg pause
+  dg queue pause
 ```
 
 ### Options
@@ -33,4 +33,4 @@ dg pause [flags]
 
 ### SEE ALSO
 
-* [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg queue](dg_queue.md)	 - Control the queue.
