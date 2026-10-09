@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -34,7 +35,10 @@ func dependCommand(dataDir *string, cfg *config.Config, commandPath string) *cob
 			}
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
 				if remove {
-					return s.RemoveDependencies(id, after...)
+					if err := s.RemoveDependencies(id, after...); err != nil {
+						return err
+					}
+					return run.Next(s, *cfg, launchFrom(*dataDir, launch))
 				}
 				return s.AddDependencies(id, after...)
 			})

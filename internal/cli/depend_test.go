@@ -73,6 +73,11 @@ func TestRunDependRemove(t *testing.T) {
 	if _, err := runIn(t, dataDir, repo, "depend", fmt.Sprint(second), "--after", fmt.Sprint(first)); err != nil {
 		t.Fatal(err)
 	}
+	if err := testfix.OpenStore(t, dataDir).ChangeStatus(first, store.Cancelled); err != nil {
+		t.Fatal(err)
+	}
+	launch, record := testfix.RecordingLaunch(t)
+	useLaunch(t, launch)
 
 	out, err := runIn(t, dataDir, repo, "depend", fmt.Sprint(second), "--after", fmt.Sprint(first), "--remove")
 	if err != nil {
@@ -84,6 +89,7 @@ func TestRunDependRemove(t *testing.T) {
 	if got := testfix.Dependencies(t, dataDir, second); len(got) != 0 {
 		t.Errorf("ticket %d depends on %v, want nothing", second, got)
 	}
+	testfix.WaitForStarts(t, record, 1)
 }
 
 func TestRunDependRemoveALinkThatIsNotThere(t *testing.T) {
