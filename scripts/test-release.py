@@ -1,6 +1,7 @@
 """Release safety tests. Run with Python and PyYAML (included with MkDocs)."""
 
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -12,6 +13,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
+SPEC = importlib.util.spec_from_file_location("release_latest", ROOT / "scripts/release-latest.py")
+LATEST = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(LATEST)
 
 
 class ReleaseTests(unittest.TestCase):
@@ -86,7 +90,7 @@ class ReleaseTests(unittest.TestCase):
                               cwd=ROOT, capture_output=True)
         self.assertNotEqual(site.returncode, 0)
 
-    def run_publication(self, failure="", tag="v1.2.3"):
+    def run_publication(self, failure="", tag="v1.2.3", manual=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             assets = root / "assets"
@@ -94,14 +98,17 @@ class ReleaseTests(unittest.TestCase):
             for name in ("install.sh", "install.ps1"):
                 (assets / name).write_bytes((ROOT / name).read_bytes())
             checksums = []
-            for index in range(7):
-                name = f"archive-{index}.tar.gz"
+            names = [f"delegator_{tag[1:]}_{system}_{arch}.{extension}"
+                     for system, extension in (("linux", "tar.gz"), ("darwin", "tar.gz"), ("windows", "zip"))
+                     for arch in ("amd64", "arm64")]
+            names.append(f"delegator_{tag[1:]}_source.tar.gz")
+            for index, name in enumerate(names):
                 data = f"archive {index}".encode()
                 (assets / name).write_bytes(data)
                 checksums.append(f"{hashlib.sha256(data).hexdigest()}  {name}\n")
             (assets / f"delegator_{tag[1:]}_checksums.txt").write_text("".join(checksums))
             if failure == "local-corruption":
-                (assets / "archive-0.tar.gz").write_text("corrupt")
+                (assets / names[0]).write_text("corrupt")
             if failure == "missing-installer":
                 (assets / "install.sh").unlink()
             if failure == "empty-installer":
@@ -117,6 +124,7 @@ class ReleaseTests(unittest.TestCase):
             mock = root / "gh"
             mock.write_text(r"""#!/usr/bin/env python3
 import os
+import json
 from pathlib import Path
 import shutil
 import sys
@@ -125,18 +133,21 @@ args = sys.argv[1:]
 with (root / 'calls').open('a') as out:
     out.write(' '.join(args) + '\n')
 failure = os.environ['FAILURE']
+if args[:2] == ['release', 'view']:
+    print(json.dumps({'isDraft': failure == 'draft', 'isPrerelease': failure == 'prerelease'}))
 if args[:2] == ['release', 'create'] and failure in ('upload', 'existing'):
     sys.exit(1)
 if args[:2] == ['release', 'download']:
     if failure == 'download':
         sys.exit(1)
     dest = Path(args[args.index('--dir') + 1])
+    dest.mkdir(exist_ok=True)
     for asset in (root / 'assets').iterdir():
         shutil.copy(asset, dest)
     if failure == 'remote-corruption':
-        (dest / 'archive-0.tar.gz').write_text('corrupt')
+        next(dest.glob('*_linux_amd64.tar.gz')).write_text('corrupt')
     if failure == 'missing':
-        (dest / 'archive-0.tar.gz').unlink()
+        next(dest.glob('*_linux_amd64.tar.gz')).unlink()
     if failure == 'remote-installer-corruption':
         (dest / 'install.sh').write_text('#!/bin/sh\nexit 1\n')
     if failure == 'remote-missing-installer':
@@ -154,7 +165,9 @@ if args[:2] == ['release', 'download']:
                        SHELL_SHA256=hashlib.sha256((ROOT / "install.sh").read_bytes()).hexdigest(),
                        POWERSHELL_SHA256=hashlib.sha256((ROOT / "install.ps1").read_bytes()).hexdigest())
             script = WORKFLOW["jobs"]["publish"]["steps"][-1]["run"]
-            result = subprocess.run(["bash", "-c", script], cwd=root, env=env, capture_output=True)
+            command = (["make", "-f", str(ROOT / "Makefile"), "release-latest", tag] if manual
+                       else ["bash", "-c", script])
+            result = subprocess.run(command, cwd=ROOT if manual else root, env=env, capture_output=True)
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""
             return result, calls
 
@@ -167,6 +180,43 @@ if args[:2] == ['release', 'download']:
             self.assertIn("./install.ps1", calls.splitlines()[0])
             self.assertTrue(calls.splitlines()[-1].startswith("release edit"))
             self.assertIn("--prerelease=" + str("-" in tag.split("+")[0]).lower(), calls.splitlines()[-1])
+            self.assertIn("--latest=false", calls.splitlines()[-1])
+
+    def test_manual_latest(self):
+        result, calls = self.run_publication(manual=True)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertIn("--latest=true", calls.splitlines()[-1])
+        self.assertEqual(sum(line.startswith("release download ") for line in calls.splitlines()), 1)
+        self.assertNotIn("--draft=false", calls)
+        self.assertFalse(any(line.startswith("api ") for line in calls.splitlines()))
+        for failure in ("draft", "prerelease", "download", "remote-corruption", "missing",
+                        "remote-missing-installer", "remote-empty-powershell-installer"):
+            result, calls = self.run_publication(failure, manual=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("release edit", calls)
+        result, calls = self.run_publication(tag="v1.2.3-rc.1", manual=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("release edit", calls)
+
+    def test_manual_checksums(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tag = "v1.2.3"
+            prefix = "delegator_1.2.3"
+            names = [f"{prefix}_{system}_{arch}.{extension}"
+                     for system, extension in (("linux", "tar.gz"), ("darwin", "tar.gz"), ("windows", "zip"))
+                     for arch in ("amd64", "arm64")] + [f"{prefix}_source.tar.gz"]
+            for name in names + ["install.sh", "install.ps1"]:
+                (root / name).write_bytes(b"asset")
+            lines = [f"{hashlib.sha256(b'asset').hexdigest()}  {name}\n" for name in names]
+            checksum = root / f"{prefix}_checksums.txt"
+            checksum.write_text("".join(lines))
+            LATEST.verify_assets(root, tag)
+            for content in ("".join(lines[:-1]), "".join(lines + [lines[0]]),
+                            "".join(lines).replace(names[0], "../escape"), "invalid\n"):
+                checksum.write_text(content)
+                with self.assertRaises(ValueError):
+                    LATEST.verify_assets(root, tag)
 
     def test_failures_never_publish(self):
         for failure in ("local-corruption", "upload", "existing", "download", "remote-corruption", "missing",

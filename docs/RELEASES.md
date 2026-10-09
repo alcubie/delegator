@@ -1,6 +1,9 @@
 # Making a release
 
-Pushing a version tag publishes a release through GitHub Actions.
+Pushing a version tag publishes a release through GitHub Actions without marking
+it **Latest**. Run `make release-latest` after publication to verify the assets and
+select the release for default installation. A stable version
+tag has no prerelease suffix, for example `v1.4.0` rather than `v1.4.0-rc.1`.
 `make release` only runs local checks and builds artifacts; it does not publish.
 
 ## One-time setup
@@ -54,35 +57,38 @@ for the settings above.
 4. Open **Actions → Release**. After Linux/macOS checks, builds, and Windows
    installer checks pass, review and approve the `release` environment deployment. The workflow uploads a draft, downloads
    its assets to verify the seven archive checksums and compare both installers
-   byte for byte, then publishes it with generated release notes. Windows checks
+   byte for byte, then publishes it with generated release notes and leaves
+   **Latest** unchanged. Windows checks
    run the retained `install.ps1` under Windows PowerShell 5.1 and PowerShell 7;
    a failed check blocks publication. The publication job also checks both scripts
    against the source hashes retained by the build before creating the draft.
-5. On Linux, run this command with the GitHub CLI (`gh`) installed. Replace
-   `v1.4.0` with the release tag. It downloads all ten release assets into a
-   fresh temporary directory and checks all seven archives against the checksum
-   file, including the macOS, Windows, and source archives:
+5. Once publication succeeds, verify and promote the stable release with one
+   command (replace `v1.4.0` with the release tag):
 
    ```sh
-   make release-verify v1.4.0
+   make release-latest v1.4.0
    ```
 
-   Expect seven `OK` lines and the download directory. A failed download, missing
-   archive, or checksum mismatch stops the command with a nonzero exit status.
-   The checksum file is the reference used to verify the archives; it does not
-   contain a checksum of itself. This also works for older releases with the
-   `alcubi-delegator_` filename prefix. This command checks archive checksums;
-   installer byte comparisons happen in the publication workflow.
-
-   After verification, extract the Linux archive for your architecture (`amd64`
-   for Intel/AMD or `arm64` for ARM) from the printed directory and run
-   `./dg version`. For the example above, expect `dg v1.4.0`.
-6. For a stable release intended for default installation, edit the GitHub release
-   and mark it **Latest**. The workflow does not do this automatically; the
-   installer defaults to the latest stable release.
-7. (Optional) Publish a new version of the website docs for minor version changes.
+   This requires Python 3 and an authenticated GitHub CLI with release write access. It rejects
+   drafts and prereleases, downloads all ten assets, verifies all seven archive
+   checksums, and requires both nonempty installers before changing **Latest**.
+   A failed download, missing asset, or checksum mismatch stops promotion.
+   Expect `Latest is now v1.4.0` on success. Temporary downloads are removed.
+   The command can also select an older stable release for rollback; it does not
+   enforce version order. Use releases published through the
+   normal workflow: this command does not repeat the installer source-byte
+   comparisons or Windows tests. Prerelease tags cannot be promoted; publish a
+   new stable version tag when ready.
+   Changing **Latest** affects future default installations, not existing ones.
+6. (Optional) Publish a new version of the website docs for minor version changes.
 
 Never move or reuse a version tag, or replace published assets.
+
+To remove the approval step for a single maintainer, remove **Required reviewers**
+under **Settings → Environments → release**. Keep the `v*` deployment restriction
+and tag rulesets above. This makes an authorized tag push sufficient to publish
+once automated checks pass. Verification and promotion to **Latest** remain
+a single manual step with `make release-latest`.
 
 ## Public installer URLs
 
@@ -91,13 +97,14 @@ The website's `public/_redirects` maps
 `https://github.com/alcubie/delegator/releases/latest/download/install.sh`.
 The release workflow attaches the tested `install.sh` and `install.ps1` from
 the tagged source and compares both downloaded copies before publishing. No
-website deployment is needed for each subsequent release. Mark a stable release **Latest** to select it for this URL.
+website deployment is needed for each subsequent release. `make release-latest`
+verifies the assets and selects the stable release served by this URL.
 
 The Windows public URL is `https://alcubi.ai/delegator/install.ps1`,
 redirecting to
 `https://github.com/alcubie/delegator/releases/latest/download/install.ps1`.
 The README uses this live public URL. Before marking a stable release **Latest**,
-verify it contains both installer assets published through the normal approved
+verify it contains both installer assets published through the normal validated
 release process. After changing **Latest**, verify that each public URL resolves
 to the corresponding release asset. The Windows URL cannot serve the installer
 if the selected latest release lacks `install.ps1`.
