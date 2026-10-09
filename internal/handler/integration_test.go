@@ -405,6 +405,29 @@ func TestIntegrationClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 // adapter's "Approve for me" mode edited and committed without asking
 // delegator for approval.
 func TestIntegrationCodexTakesASessionFromStartToTheTerminal(t *testing.T) {
+	// Codex initializes SQLite state under CODEX_HOME. Keep that state inside
+	// the test's writable temporary directory while reusing the user's login.
+	home := os.Getenv("CODEX_HOME")
+	if home == "" {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		home = filepath.Join(userHome, ".codex")
+	}
+	isolated := t.TempDir()
+	auth, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if err != nil {
+		t.Fatalf("read Codex authentication: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(isolated, "auth.json"), auth, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(isolated, "config.toml"), []byte("sandbox_mode = \"read-only\"\napproval_policy = \"on-request\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", isolated)
+
 	verifyAgent(t, "codex", func(t *testing.T, events []Event) {
 		asked := permissions(events)
 		t.Logf("codex asked delegator to answer %d permissions: %v", len(asked), asked)
