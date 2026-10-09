@@ -517,6 +517,10 @@ type OpenTicket struct {
 	// Completed dependencies are omitted so the inbox shows only
 	// blockers.
 	DependsOn []int64
+
+	// AllDependsOn and Blocks retain all links, including completed tickets.
+	AllDependsOn []int64
+	Blocks       []int64
 }
 
 // OpenTickets returns queued, running, ready, and failed tickets across all
@@ -579,7 +583,7 @@ const inboxTicketQuery = `
 func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 	// Load dependencies in one query to avoid a separate lookup per
 	// ticket.
-	unmet, err := unmetDependencies(s.db)
+	unmet, all, blocks, err := inboxDependencies(s.db)
 	if err != nil {
 		return nil, err
 	}
@@ -599,7 +603,9 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 			timeColumn{&t.Started}, timeColumn{&t.Changed}); err != nil {
 			return nil, err
 		}
-		t.DependsOn = unmet[t.ID]
+		t.DependsOn = append([]int64{}, unmet[t.ID]...)
+		t.AllDependsOn = append([]int64{}, all[t.ID]...)
+		t.Blocks = append([]int64{}, blocks[t.ID]...)
 		open = append(open, t)
 	}
 	return open, rows.Err()

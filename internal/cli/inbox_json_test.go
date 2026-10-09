@@ -20,7 +20,7 @@ var jsonGroups = []string{"done", "ready", "running", "failed", "queued"}
 
 // jsonInboxFields is every key that one ticket of RPC inbox result holds.
 var jsonInboxFields = []string{
-	"id", "title", "status", "project", "depends_on", "created", "accepted", "started",
+	"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "created", "accepted", "started",
 }
 
 // eachGroup creates one ticket per inbox group and returns the store,
@@ -330,8 +330,10 @@ func TestRunJSONGivesNullForATimeWithNoValue(t *testing.T) {
 	if got["created"] == nil {
 		t.Error("created = null for a ticket in the queue, want the time it arrived")
 	}
-	if dependencies, ok := got["depends_on"].([]any); !ok || len(dependencies) != 0 {
-		t.Errorf("depends_on = %#v for an unblocked ticket, want []", got["depends_on"])
+	for _, key := range []string{"depends_on", "all_depends_on", "blocks"} {
+		if dependencies, ok := got[key].([]any); !ok || len(dependencies) != 0 {
+			t.Errorf("%s = %#v for an unlinked ticket, want []", key, got[key])
+		}
 	}
 }
 
@@ -399,7 +401,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	shown := showJSON(t, dataDir, repo, fmt.Sprint(ids["done"]))
 
 	for key, want := range row {
-		if key == "started" || key == "depends_on" {
+		if key == "started" || key == "depends_on" || key == "all_depends_on" || key == "blocks" {
 			continue
 		}
 		got, there := shown[key]
@@ -449,5 +451,51 @@ func TestRunJSONKeepsTheCharactersOfTheTitle(t *testing.T) {
 	}
 	if !strings.Contains(out, title) {
 		t.Errorf("RPC inbox result does not hold the title as it is:\n%s", out)
+	}
+}
+
+func TestInboxJSONIncludesCompletedAndHiddenRelationships(t *testing.T) {
+	dataDir := t.TempDir()
+	s, dependent, repo := queuedTicket(t, dataDir)
+	first := queuedIn(t, s, repo, "first prerequisite")
+	completed := queuedIn(t, s, repo, "completed prerequisite")
+	hidden := queuedIn(t, s, repo, "cancelled dependent")
+	if err := s.AddDependencies(dependent, completed, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(hidden, completed); err != nil {
+		t.Fatal(err)
+	}
+	finishIn(t, s, completed)
+	if err := s.ChangeStatus(completed, store.Done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(hidden, store.Cancelled); err != nil {
+		t.Fatal(err)
+	}
+	// An accepted prerequisite remains linked even when the done window excludes it.
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range open {
+		if row.ID == dependent && !slices.Equal(row.AllDependsOn, []int64{first, completed}) {
+			t.Errorf("open prerequisites = %v", row.AllDependsOn)
+		}
+	}
+	result := readInboxJSON(t, dataDir, repo)
+	done := one(t, result, "done")
+	if got, ok := done["blocks"].([]any); !ok || !slices.Equal(got, []any{float64(dependent), float64(hidden)}) {
+		t.Errorf("done blocks = %#v", done["blocks"])
+	}
+	for _, row := range jsonGroup(t, result, "queued") {
+		if row["id"] != float64(dependent) {
+			continue
+		}
+		for key, want := range map[string][]any{"depends_on": {float64(first)}, "all_depends_on": {float64(first), float64(completed)}} {
+			if got, ok := row[key].([]any); !ok || !slices.Equal(got, want) {
+				t.Errorf("%s = %#v, want %#v", key, row[key], want)
+			}
+		}
 	}
 }

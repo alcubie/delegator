@@ -1102,6 +1102,36 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 			delete(row, "depends_on")
 			result["queued"] = []any{row}
 		}},
+		{"missing all_depends_on", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "all_depends_on")
+			result["queued"] = []any{row}
+		}},
+		{"null all_depends_on", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["all_depends_on"] = nil
+			result["queued"] = []any{row}
+		}},
+		{"nonpositive all_depends_on", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["all_depends_on"] = []any{float64(0)}
+			result["queued"] = []any{row}
+		}},
+		{"missing blocks", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "blocks")
+			result["queued"] = []any{row}
+		}},
+		{"null blocks", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["blocks"] = nil
+			result["queued"] = []any{row}
+		}},
+		{"nonpositive blocks", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["blocks"] = []any{float64(0)}
+			result["queued"] = []any{row}
+		}},
 		{"wrong dependency type", func(result map[string]any) {
 			row := maps.Clone(queued)
 			row["depends_on"] = []any{"2"}

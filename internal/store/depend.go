@@ -167,28 +167,32 @@ func (s *Store) Dependents(id int64) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// unmetDependencies maps each blocked ticket to its unfinished prerequisite
-// IDs. Tickets without blockers are absent. One query serves the whole inbox,
-// avoiding a lookup per ticket.
-func unmetDependencies(q querier) (map[int64][]int64, error) {
+// inboxDependencies loads all prerequisite and reverse links in one query.
+// Only DependsOn omits completed prerequisites.
+func inboxDependencies(q querier) (map[int64][]int64, map[int64][]int64, map[int64][]int64, error) {
 	rows, err := q.Query(`
-		SELECT ticket_deps.ticket_id, ticket_deps.depends_on
-		FROM ticket_deps
-		JOIN tickets ON tickets.id = ticket_deps.depends_on
-		WHERE tickets.status <> ?
-		ORDER BY ticket_deps.ticket_id, ticket_deps.depends_on`, Done)
+  SELECT ticket_deps.ticket_id, ticket_deps.depends_on, tickets.status
+  FROM ticket_deps
+  JOIN tickets ON tickets.id = ticket_deps.depends_on
+  ORDER BY ticket_deps.ticket_id, ticket_deps.depends_on`)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer rows.Close()
-
 	unmet := make(map[int64][]int64)
+	all := make(map[int64][]int64)
+	blocks := make(map[int64][]int64)
 	for rows.Next() {
 		var id, on int64
-		if err := rows.Scan(&id, &on); err != nil {
-			return nil, err
+		var status TicketStatus
+		if err := rows.Scan(&id, &on, &status); err != nil {
+			return nil, nil, nil, err
 		}
-		unmet[id] = append(unmet[id], on)
+		all[id] = append(all[id], on)
+		blocks[on] = append(blocks[on], id)
+		if status != Done {
+			unmet[id] = append(unmet[id], on)
+		}
 	}
-	return unmet, rows.Err()
+	return unmet, all, blocks, rows.Err()
 }
