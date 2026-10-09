@@ -95,14 +95,14 @@ func (p *initPrompter) line(prompt string) (string, bool, error) {
 
 func (p *initPrompter) confirm(prompt string) (bool, error) {
 	for {
-		answer, read, err := p.line(prompt + " [y/N] ")
+		answer, read, err := p.line(prompt + " [Y/n] ")
 		if err != nil || !read {
 			return false, err
 		}
 		switch strings.ToLower(answer) {
-		case "y", "yes":
+		case "", "y", "yes":
 			return true, nil
-		case "", "n", "no":
+		case "n", "no":
 			return false, nil
 		default:
 			fmt.Fprintln(p.out, "Please answer yes or no.")
