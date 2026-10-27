@@ -42,6 +42,12 @@ func WorktreePath(dataDir string, id int64) string {
 	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
 }
 
+// LogDirPath returns the directory of one ticket's run logs. Using the ticket
+// ID keeps it stable when the project moves, as the worktree path does.
+func LogDirPath(dataDir string, id int64) string {
+	return filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10))
+}
+
 // ProjectCachePath returns the stable cache directory of one project. The
 // cache subtree is disposable data, unlike tickets, logs, and the database;
 // it is outside worktrees so accepting a ticket does not remove it.

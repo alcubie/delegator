@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -198,7 +197,7 @@ const logTime = "2006-01-02T15-04-05.000"
 // openLog creates the log for one run below runs/<id>. Each run gets its own
 // file, named for when it started, so a restart leaves the earlier log alone.
 func openLog(dataDir string, id int64) (*os.File, error) {
-	dir := filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10))
+	dir := LogDirPath(dataDir, id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
