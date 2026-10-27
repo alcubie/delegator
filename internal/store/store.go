@@ -1058,8 +1058,22 @@ LEFT JOIN agents ON agents.id = settings.default_agent_id WHERE settings.id = 1`
 
 // SetDefaultAgent selects an existing registry entry for new runs.
 func (s *Store) SetDefaultAgent(name string) error {
-	result, err := s.db.Exec(`UPDATE settings SET default_agent_id = agents.id
-FROM agents WHERE settings.id = 1 AND agents.name = ?`, name)
+	return s.setDefaultAgent(name, false)
+}
+
+// SetDefaultAgentAndClearModel selects an existing registry entry for new
+// runs and clears default_model in the same statement, for a switch that
+// leaves the previous model unsupported by the new agent.
+func (s *Store) SetDefaultAgentAndClearModel(name string) error {
+	return s.setDefaultAgent(name, true)
+}
+
+func (s *Store) setDefaultAgent(name string, clearModel bool) error {
+	query := `UPDATE settings SET default_agent_id = agents.id FROM agents WHERE settings.id = 1 AND agents.name = ?`
+	if clearModel {
+		query = `UPDATE settings SET default_agent_id = agents.id, default_model = NULL FROM agents WHERE settings.id = 1 AND agents.name = ?`
+	}
+	result, err := s.db.Exec(query, name)
 	if err != nil {
 		return err
 	}

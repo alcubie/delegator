@@ -64,6 +64,27 @@ func configGetResultSchema() map[string]any {
 	return map[string]any{"type": types}
 }
 
+// configSetResultSchema describes the result of dg config.set. Most settings
+// give an explicit null; changing default_agent to one that does not offer
+// the current default_model reports the clearing, so a caller does not have
+// to infer it from a second config.get.
+func configSetResultSchema() map[string]any {
+	return map[string]any{
+		"oneOf": []any{
+			nullResultSchema(),
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"notice":                map[string]any{"type": "string"},
+					"default_model_cleared": map[string]any{"type": "boolean"},
+				},
+				"required":             []string{"notice", "default_model_cleared"},
+				"additionalProperties": false,
+			},
+		},
+	}
+}
+
 func settingJSONTypes(name string) []string {
 	enabled := true
 	populated := config.Config{
@@ -156,9 +177,10 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
   dg config set default_agent codex
   dg config set telemetry false`,
 		Args: cobra.ExactArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
-				if err := setSetting(s, args[0], args[1]); err != nil {
+				change, err := setSetting(s, args[0], args[1])
+				if err != nil {
 					return err
 				}
 				updated, err := s.Settings()
@@ -166,7 +188,18 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 				*cfg = updated
-				return run.Next(s, updated, launchFrom(*dataDir, launch))
+				if err := run.Next(s, updated, launchFrom(*dataDir, launch)); err != nil {
+					return err
+				}
+				var value any
+				if change.DefaultModelCleared {
+					value = change
+				}
+				return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+					if change.Notice != "" {
+						fmt.Fprintln(out, change.Notice)
+					}
+				})
 			})
 		},
 	}))
@@ -214,25 +247,70 @@ func writeSettings(out io.Writer, settings []setting, width int) {
 	writeRule("└", "┴", "┘")
 }
 
+// settingChange reports a side effect of changing one setting, beyond its
+// own value, that a person or an RPC caller needs to see. Notice is empty
+// when there is nothing to tell.
+type settingChange struct {
+	Notice              string `json:"notice"`
+	DefaultModelCleared bool   `json:"default_model_cleared"`
+}
+
 // setSetting is the validation path shared by dg config set and guided
 // onboarding. The store validates every setting; the command layer also
 // checks what needs this environment or the agent itself.
-func setSetting(s *store.Store, name, value string) error {
+func setSetting(s *store.Store, name, value string) (settingChange, error) {
 	switch name {
 	case "default_agent":
 		if err := checkAgent(s, value); err != nil {
-			return err
+			return settingChange{}, err
 		}
+		return switchDefaultAgent(s, value)
 	case "default_model":
 		if err := checkModel(s, value); err != nil {
-			return err
+			return settingChange{}, err
 		}
 	}
 	err := s.SetSetting(name, value)
 	if err == nil && name == "telemetry" && value == "true" {
 		attemptTelemetry(s)
 	}
-	return err
+	return settingChange{}, err
+}
+
+// switchDefaultAgent changes default_agent and keeps default_model valid for
+// the new agent, since the next run would otherwise fail setting up its
+// session. An empty default_model needs no probe. A model the new agent does
+// not offer is cleared rather than left to fail later; a probe that cannot
+// run refuses the agent change outright, since the model can then be
+// confirmed neither way.
+func switchDefaultAgent(s *store.Store, name string) (settingChange, error) {
+	agent, err := s.Agent(name)
+	if err != nil {
+		return settingChange{}, err
+	}
+	cfg, err := s.Settings()
+	if err != nil {
+		return settingChange{}, err
+	}
+	model := cfg.DefaultModel
+	if model == "" {
+		return settingChange{}, s.SetDefaultAgent(name)
+	}
+	models, err := probeModels(agent)
+	if err != nil {
+		return settingChange{}, fmt.Errorf("cannot change default_agent to %q while keeping default_model %q: %w", name, model, err)
+	}
+	if slices.Contains(models, model) {
+		return settingChange{}, s.SetDefaultAgent(name)
+	}
+	if err := s.SetDefaultAgentAndClearModel(name); err != nil {
+		return settingChange{}, err
+	}
+	return settingChange{
+		Notice: fmt.Sprintf("default_model was cleared because agent %q does not offer %q. Available models: %s",
+			name, model, strings.Join(models, ", ")),
+		DefaultModelCleared: true,
+	}, nil
 }
 
 // checkAgent refuses an agent that this environment cannot run, and gives the
@@ -279,14 +357,7 @@ func checkModel(s *store.Store, model string) error {
 	if err != nil {
 		return err
 	}
-	dir, err := os.MkdirTemp("", "delegator-models-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	ctx, cancel := context.WithTimeout(context.Background(), modelProbeTimeout)
-	defer cancel()
-	models, err := handler.Models(ctx, agent.Name, agent.Argv, dir)
+	models, err := probeModels(agent)
 	if err != nil {
 		return fmt.Errorf("cannot set model %q: %w", model, err)
 	}
@@ -295,6 +366,20 @@ func checkModel(s *store.Store, model string) error {
 	}
 	return fmt.Errorf("model %q is not offered by agent %q. Available models: %s",
 		model, agent.Name, strings.Join(models, ", "))
+}
+
+// probeModels starts agent in a temporary directory and returns the model
+// IDs it advertises. The temporary directory stands in for a project because
+// this probe runs for a setting that belongs to no project.
+func probeModels(agent store.Agent) ([]string, error) {
+	dir, err := os.MkdirTemp("", "delegator-models-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithTimeout(context.Background(), modelProbeTimeout)
+	defer cancel()
+	return handler.Models(ctx, agent.Name, agent.Argv, dir)
 }
 
 func knownSetting(name string) bool {

@@ -173,12 +173,14 @@ func rpcResultSchema(operation string) map[string]any {
 	switch operation {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
-	case "agents", "agents.add", "cancel", "config.set", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
+	case "agents", "agents.add", "cancel", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
 		return nullResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
 	case "config.get":
 		return configGetResultSchema()
+	case "config.set":
+		return configSetResultSchema()
 	case "inbox":
 		return inboxResultSchema()
 	case "list":

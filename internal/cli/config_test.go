@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
@@ -19,6 +20,26 @@ func storedModel(t *testing.T, dataDir string) string {
 		t.Fatal(err)
 	}
 	return got
+}
+
+// storedAgent reads default_agent through the command a person would use.
+func storedAgent(t *testing.T, dataDir string) string {
+	t.Helper()
+	got, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// registerFakeAgent adds a second scripted agent without making it the
+// default, so a test can switch default_agent to it.
+func registerFakeAgent(t *testing.T, dataDir, name string, lines ...string) {
+	t.Helper()
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{Name: name, Argv: []string{testfix.FakeAgent(t), testfix.Script(t, lines...)}}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestConfigShowsDatabaseSettingsAndDescriptions(t *testing.T) {
@@ -373,5 +394,139 @@ func TestConfigDefaultModelNeedsADefaultAgentToCheckIt(t *testing.T) {
 		"    dg config set default_agent NAME"
 	if err == nil || err.Error() != want {
 		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+// Switching default_agent could otherwise leave a default_model the new
+// agent cannot run, which the next run would only discover when it failed
+// to set up its session.
+
+func TestConfigSetDefaultAgentKeepsDefaultModelWhenTheNewAgentOffersIt(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet"); err != nil {
+		t.Fatal(err)
+	}
+	registerFakeAgent(t, dataDir, "second", "models: sonnet haiku", "stop end_turn")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("dg config set default_agent wrote %q, want nothing", out)
+	}
+	if got := storedAgent(t, dataDir); got != "second\n" {
+		t.Fatalf("default_agent = %q, want second", got)
+	}
+	if got := storedModel(t, dataDir); got != "sonnet\n" {
+		t.Fatalf("default_model after switch = %q, want sonnet kept", got)
+	}
+}
+
+func TestConfigSetDefaultAgentClearsDefaultModelWhenTheNewAgentDoesNotOfferIt(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet"); err != nil {
+		t.Fatal(err)
+	}
+	registerFakeAgent(t, dataDir, "second", "models: haiku", "stop end_turn")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "default_model was cleared because agent \"second\" does not offer \"sonnet\". Available models: haiku\n"
+	if out != want {
+		t.Errorf("dg config set default_agent wrote %q, want %q", out, want)
+	}
+	if got := storedAgent(t, dataDir); got != "second\n" {
+		t.Fatalf("default_agent = %q, want second", got)
+	}
+	if got := storedModel(t, dataDir); got != "null\n" {
+		t.Fatalf("default_model after switch = %q, want null", got)
+	}
+}
+
+// The desktop app has no terminal to read, so the clearing must also be in
+// the RPC result rather than only in the text dg config set writes.
+func TestConfigSetDefaultAgentReportsTheClearedModelOverRPC(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet"); err != nil {
+		t.Fatal(err)
+	}
+	registerFakeAgent(t, dataDir, "second", "models: haiku", "stop end_turn")
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"config.set","params":{"args":["default_agent","second"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("config.set response = %#v, want an object result", response)
+	}
+	if result["default_model_cleared"] != true {
+		t.Errorf("default_model_cleared = %#v, want true", result["default_model_cleared"])
+	}
+	want := `default_model was cleared because agent "second" does not offer "sonnet". Available models: haiku`
+	if result["notice"] != want {
+		t.Errorf("notice = %#v, want %q", result["notice"], want)
+	}
+}
+
+// A probe that cannot run leaves both settings alone: the model may or may
+// not be valid for the new agent, and that cannot be confirmed either way.
+func TestConfigSetDefaultAgentRefusesWhenTheProbeFails(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet"); err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{
+		Name: "broken",
+		Argv: []string{testfix.FakeAgent(t), filepath.Join(t.TempDir(), "missing-script")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "broken")
+	want := `cannot change default_agent to "broken" while keeping default_model "sonnet"`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %v, want it to contain %q", err, want)
+	}
+	if got := storedAgent(t, dataDir); got != "fake\n" {
+		t.Fatalf("default_agent after failed probe = %q, want fake unchanged", got)
+	}
+	if got := storedModel(t, dataDir); got != "sonnet\n" {
+		t.Fatalf("default_model after failed probe = %q, want sonnet unchanged", got)
+	}
+}
+
+// An empty default_model needs no probe, so the agent can change even when
+// the new agent's session would fail.
+func TestConfigSetDefaultAgentNeedsNoProbeWhenDefaultModelIsEmpty(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.SaveAgent(store.Agent{
+		Name: "second",
+		Argv: []string{testfix.FakeAgent(t), filepath.Join(t.TempDir(), "missing-script")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_agent", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("dg config set default_agent wrote %q, want nothing", out)
+	}
+	if got := storedAgent(t, dataDir); got != "second\n" {
+		t.Fatalf("default_agent = %q, want second", got)
 	}
 }
