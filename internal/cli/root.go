@@ -157,7 +157,7 @@ func Root(workDir string) *cobra.Command {
 	root.AddCommand(compatibilityCommand("dg queue start", startCommand(&selectedDir, &cfg, "dg start")))
 	root.AddCommand(configCommand(&selectedDir, &cfg))
 	root.AddCommand(agentsCommand(&selectedDir, &cfg))
-	root.AddCommand(projectCommand(&selectedDir, &cfg))
+	root.AddCommand(projectCommand(&selectedDir, workDir, &cfg))
 	root.AddCommand(versionCommand())
 	root.AddCommand(rpcCommand(&selectedDir, workDir))
 	root.AddCommand(telemetryCommand(&selectedDir))

@@ -2,9 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -51,6 +56,26 @@ func projectListResult(t *testing.T, dataDir, workDir string) []any {
 	result, ok := response["result"].([]any)
 	if !ok {
 		t.Fatalf("project.list result = %#v, want an array", response["result"])
+	}
+	return result
+}
+
+// projectAddResult reads the object that project.add returns through the
+// protocol for the repository at dir.
+func projectAddResult(t *testing.T, dataDir, workDir, dir string) map[string]any {
+	t.Helper()
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"project.add","params":{"args":[%q]},"id":1}`, dir)
+	out, err := rpcIn(t, dataDir, workDir, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	if response["error"] != nil {
+		t.Fatalf("project.add response = %#v, want a result", response)
+	}
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("project.add result = %#v, want an object", response["result"])
 	}
 	return result
 }
@@ -175,6 +200,194 @@ func TestRPCDiscoverPublishesProjectList(t *testing.T) {
 		if param.Name == "args" {
 			t.Errorf("project.list takes positional arguments: %#v", param)
 		}
+	}
+	for _, advertised := range document.Methods {
+		if advertised.Name == "project" {
+			t.Error("discovery advertises the project namespace as a method")
+		}
+	}
+}
+
+func TestProjectAddRegistersANewRepositoryAndReturnsItsRecord(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	result := projectAddResult(t, dataDir, t.TempDir(), repo)
+
+	rows := projectRows(t, dataDir)
+	if len(rows) != 1 {
+		t.Fatalf("projects = %v, want one", rows)
+	}
+	if result["id"] != float64(rows[0].ID) || result["path"] != repo || result["default_branch"] != repoBranch {
+		t.Errorf("result = %#v, want id %d, path %q, default_branch %q", result, rows[0].ID, repo, repoBranch)
+	}
+}
+
+func TestProjectAddPrintsThePathAsTextOutput(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	out, err := runIn(t, dataDir, t.TempDir(), "project", "add", repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := repo + "\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+func TestProjectAddDefaultsToTheCurrentWorkingDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	out, err := runIn(t, dataDir, repo, "project", "add")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := repo + "\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+func TestProjectAddIsIdempotentForTheSameRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	first := projectAddResult(t, dataDir, t.TempDir(), repo)
+	second := projectAddResult(t, dataDir, t.TempDir(), repo)
+
+	if first["id"] != second["id"] {
+		t.Errorf("second add id = %#v, want %#v", second["id"], first["id"])
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 1 {
+		t.Errorf("projects = %v, want one", rows)
+	}
+}
+
+func TestProjectAddFromASubdirectoryResolvesToTheRoot(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := projectAddResult(t, dataDir, t.TempDir(), sub)
+	if result["path"] != repo {
+		t.Errorf("result path = %#v, want the repository root %q", result["path"], repo)
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 1 || rows[0].Path != repo {
+		t.Errorf("projects = %v, want the root %q", rows, repo)
+	}
+}
+
+func TestProjectAddFromALinkedWorktreeResolvesToThePrimaryCheckout(t *testing.T) {
+	dataDir := t.TempDir()
+	primary, linked := linkedWorktree(t)
+
+	result := projectAddResult(t, dataDir, t.TempDir(), linked)
+	if result["path"] != primary {
+		t.Errorf("result path = %#v, want the primary checkout %q", result["path"], primary)
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 1 || rows[0].Path != primary {
+		t.Errorf("projects = %v, want the primary checkout %q", rows, primary)
+	}
+}
+
+func TestProjectAddRejectsANonRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	notARepo := t.TempDir()
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "add", notARepo)
+	if !errors.Is(err, project.ErrNotARepository) {
+		t.Fatalf("err = %v, want %v", err, project.ErrNotARepository)
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("projects = %v, want none", rows)
+	}
+}
+
+func TestProjectAddRejectsAnEmptyRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	empty := testfix.EmptyRepo(t, repoBranch)
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "add", empty)
+	if !errors.Is(err, project.ErrNoCommit) {
+		t.Fatalf("err = %v, want %v", err, project.ErrNoCommit)
+	}
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("projects = %v, want none", rows)
+	}
+}
+
+func TestRPCProjectAddRejectsAMissingPath(t *testing.T) {
+	dataDir := t.TempDir()
+
+	out, err := rpcIn(t, dataDir, t.TempDir(), `{"jsonrpc":"2.0","method":"project.add","params":{},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("projects = %v, want none", rows)
+	}
+}
+
+func TestRPCProjectAddRejectsARelativePath(t *testing.T) {
+	dataDir := t.TempDir()
+
+	out, err := rpcIn(t, dataDir, t.TempDir(), `{"jsonrpc":"2.0","method":"project.add","params":{"args":["relative/path"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("projects = %v, want none", rows)
+	}
+}
+
+func TestRPCProjectAddUsesACallerSuppliedAbsolutePath(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	result := projectAddResult(t, dataDir, t.TempDir(), repo)
+	if result["path"] != repo {
+		t.Errorf("result path = %#v, want %q", result["path"], repo)
+	}
+}
+
+func TestRPCDiscoverProjectAddResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "project.add")
+
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	result := projectAddResult(t, dataDir, t.TempDir(), repo)
+	if err := validator.Validate(result); err != nil {
+		t.Fatalf("project.add result does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, field := range []string{"id", "path", "default_branch"} {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var copied map[string]any
+		if err := json.Unmarshal(encoded, &copied); err != nil {
+			t.Fatal(err)
+		}
+		delete(copied, field)
+		if err := validator.Validate(copied); err == nil {
+			t.Errorf("a result missing %q satisfies the schema", field)
+		}
+	}
+}
+
+func TestRPCDiscoverPublishesProjectAdd(t *testing.T) {
+	document := rpcDiscover(t)
+	method := openRPCMethodNamed(t, document, "project.add")
+	if method.Summary == "" || method.Description == "" {
+		t.Errorf("project.add method = %#v, want its help text", method)
 	}
 	for _, advertised := range document.Methods {
 		if advertised.Name == "project" {

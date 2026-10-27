@@ -33,4 +33,4 @@ dg project list [flags]
 
 ### SEE ALSO
 
-* [dg project](dg_project.md)	 - Inspect the registered projects.
+* [dg project](dg_project.md)	 - Work with the registered projects.

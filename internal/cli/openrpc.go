@@ -183,6 +183,8 @@ func rpcResultSchema(operation string) map[string]any {
 		return inboxResultSchema()
 	case "list":
 		return listResultSchema()
+	case "project.add":
+		return projectResultSchema()
 	case "project.list":
 		return projectListResultSchema()
 	case "show":

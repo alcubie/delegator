@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -306,6 +307,11 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 	}
 	if operation == "ticket" && len(positional) == 0 {
 		return nil, fmt.Errorf("editor is not available through rpc")
+	}
+	// The working directory of dg rpc means nothing to a remote caller, so
+	// project.add cannot default to it the way dg project add does.
+	if operation == "project.add" && (len(positional) != 1 || !filepath.IsAbs(positional[0])) {
+		return nil, fmt.Errorf("project.add requires one absolute path")
 	}
 
 	for name, raw := range params {
