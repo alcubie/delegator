@@ -65,6 +65,21 @@ func chattableTicketWithAgent(t *testing.T, dataDir, agent string) (int64, strin
 	return ticketID, repo, session
 }
 
+// writeRunLog puts one run log in a ticket's log directory and returns its
+// path.
+func writeRunLog(t *testing.T, dataDir string, id int64, name, content string) string {
+	t.Helper()
+	dir := run.LogDirPath(dataDir, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // chattableIn creates a resumable ticket in repo with the supplied session
 // ID.
 func chattableIn(t *testing.T, s *store.Store, dataDir, repo, title, session string) int64 {
@@ -379,8 +394,67 @@ func TestChatRefusesATicketWithNoSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("dg chat continued a ticket that has no session")
 	}
+	if want := "it has not run yet"; !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want %q in it", err, want)
+	}
 	if record.argv != nil {
 		t.Errorf("dg chat started %v, want nothing", record.argv)
+	}
+}
+
+// A run that failed during session setup left its reason in the log, so name
+// that log rather than report a ticket that has never run.
+func TestChatNamesTheLogOfARunThatOpenedNoSession(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := failedTicket(t, dataDir)
+	if err := os.MkdirAll(run.WorktreePath(dataDir, ticketID), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	log := writeRunLog(t, dataDir, ticketID, "2026-10-27T16-53-44.689.log",
+		"delegator: configure agent \"claude\": model \"model-v9\" is unavailable\n")
+	held, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := useChat(t, "true")
+
+	_, err = runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
+	if err == nil {
+		t.Fatal("dg chat continued a ticket whose run opened no session")
+	}
+	for _, want := range []string{fmt.Sprintf("run %d", held.ID), log} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want %q in it", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "has not run yet") {
+		t.Errorf("error = %q, and the ticket did run", err)
+	}
+	if record.argv != nil {
+		t.Errorf("dg chat started %v, want nothing", record.argv)
+	}
+}
+
+// Without a log there is nothing to name, and the run is still the fact worth
+// reporting.
+func TestChatReportsARunThatOpenedNoSessionAndLeftNoLog(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := failedTicket(t, dataDir)
+	if err := os.MkdirAll(run.WorktreePath(dataDir, ticketID), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	held, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	useChat(t, "true")
+
+	_, err = runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID))
+	if err == nil {
+		t.Fatal("dg chat continued a ticket whose run opened no session")
+	}
+	if want := fmt.Sprintf("run %d ended before the agent opened one", held.ID); !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want %q in it", err, want)
 	}
 }
 
