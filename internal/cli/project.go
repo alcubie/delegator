@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -33,6 +34,28 @@ func projectCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	}
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
 	return cmd
+}
+
+// registerProject resolves dir to its repository root and registers it with
+// the store, creating the project row if needed. It refuses a repository
+// with no commit, since that leaves no branch to start a worktree from.
+func registerProject(s *store.Store, dir string) (store.Project, error) {
+	root, err := project.Root(dir)
+	if err != nil {
+		return store.Project{}, err
+	}
+	if _, err := project.FirstCommit(root); err != nil {
+		return store.Project{}, err
+	}
+	branch, err := project.DefaultBranch(root)
+	if err != nil {
+		return store.Project{}, err
+	}
+	id, err := s.ProjectID(root, branch)
+	if err != nil {
+		return store.Project{}, err
+	}
+	return store.Project{ID: id, Path: root, DefaultBranch: branch}, nil
 }
 
 // projectListCommand writes every registered project, including those whose
