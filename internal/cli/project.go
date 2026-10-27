@@ -5,6 +5,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -41,8 +43,8 @@ func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	return rpcOperationCommand("project.list", &cobra.Command{
 		Use:   "list",
 		Short: "List every registered project.",
-		Long: "List every project that this Delegator instance has registered, oldest " +
-			"first, with its directory and the branch its worktrees start from.",
+		Long: "List every project that this Delegator instance has registered, in " +
+			"alphabetical order of directory, with the branch its worktrees start from.",
 		Example: `  dg project list`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -62,13 +64,16 @@ func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	})
 }
 
-// projectValues keeps an instance with no projects an empty array rather than
-// null, so a caller can read the result without a nil case.
+// projectValues orders projects by path, because a person and a client both
+// find a project by where it is rather than by when it was registered. It
+// keeps an instance with no projects an empty array rather than null, so a
+// caller can read the result without a nil case.
 func projectValues(projects []store.Project) []projectJSON {
 	values := make([]projectJSON, 0, len(projects))
 	for _, p := range projects {
 		values = append(values, projectJSON{ID: p.ID, Path: p.Path, DefaultBranch: p.DefaultBranch})
 	}
+	slices.SortFunc(values, func(a, b projectJSON) int { return strings.Compare(a.Path, b.Path) })
 	return values
 }
 

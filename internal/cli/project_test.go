@@ -10,7 +10,8 @@ import (
 )
 
 // registerProjects adds projects to a data directory in the given order, as
-// the first ticket of a repository registers one, and returns them.
+// the first ticket of a repository registers one, and returns them in the
+// order of their IDs.
 func registerProjects(t *testing.T, dataDir string, paths ...string) []store.Project {
 	t.Helper()
 	s := testfix.OpenStore(t, dataDir)
@@ -24,6 +25,15 @@ func registerProjects(t *testing.T, dataDir string, paths ...string) []store.Pro
 		t.Fatal(err)
 	}
 	return projects
+}
+
+// registerUnsortedProjects registers projects in an order that is not their
+// alphabetical order, so a listing left in the order of registration is
+// visible, and returns the paths in the order the listing must write them.
+func registerUnsortedProjects(t *testing.T, dataDir string) ([]store.Project, []string) {
+	t.Helper()
+	projects := registerProjects(t, dataDir, "/srv/zulu", "/srv/alpha", "/srv/mike")
+	return projects, []string{"/srv/alpha", "/srv/mike", "/srv/zulu"}
 }
 
 // projectListResult reads the array that project.list returns through the
@@ -43,6 +53,16 @@ func projectListResult(t *testing.T, dataDir, workDir string) []any {
 		t.Fatalf("project.list result = %#v, want an array", response["result"])
 	}
 	return result
+}
+
+// projectIDs maps each registered project to its ID, so a test can assert the
+// ID of a row it finds by path.
+func projectIDs(projects []store.Project) map[string]int64 {
+	ids := map[string]int64{}
+	for _, project := range projects {
+		ids[project.Path] = project.ID
+	}
+	return ids
 }
 
 func TestProjectListReportsAnInstanceWithNoProjects(t *testing.T) {
@@ -72,43 +92,43 @@ func TestProjectListValueOfAnEmptyInstanceIsAnEmptyArray(t *testing.T) {
 	}
 }
 
-func TestProjectListWritesEveryProjectInIDOrder(t *testing.T) {
+func TestProjectListWritesEveryProjectInAlphabeticalOrder(t *testing.T) {
 	dataDir := t.TempDir()
-	first, second, third := testfix.Repo(t, repoBranch), testfix.Repo(t, repoBranch), testfix.Repo(t, repoBranch)
-	projects := registerProjects(t, dataDir, first, second, third)
+	_, want := registerUnsortedProjects(t, dataDir)
 
 	out, err := runIn(t, dataDir, t.TempDir(), "project", "list")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[0], "PATH") || !strings.Contains(lines[0], "DEFAULT BRANCH") {
+	if len(lines) != len(want)+1 || !strings.HasPrefix(lines[0], "PATH") || !strings.Contains(lines[0], "DEFAULT BRANCH") {
 		t.Fatalf("output has no PATH and DEFAULT BRANCH header:\n%s", out)
 	}
-	for i, project := range projects {
+	for i, path := range want {
 		fields := strings.Fields(lines[i+1])
-		if len(fields) != 2 || fields[0] != project.Path || fields[1] != repoBranch {
-			t.Errorf("row %d = %q, want %s and %s", i, lines[i+1], project.Path, repoBranch)
+		if len(fields) != 2 || fields[0] != path || fields[1] != repoBranch {
+			t.Errorf("row %d = %q, want %s and %s", i, lines[i+1], path, repoBranch)
 		}
 	}
 }
 
-func TestProjectListValueHoldsEveryFieldInIDOrder(t *testing.T) {
+func TestProjectListValueHoldsEveryFieldInAlphabeticalOrder(t *testing.T) {
 	dataDir := t.TempDir()
-	projects := registerProjects(t, dataDir, testfix.Repo(t, repoBranch), testfix.Repo(t, repoBranch))
+	projects, want := registerUnsortedProjects(t, dataDir)
+	ids := projectIDs(projects)
 
 	result := projectListResult(t, dataDir, t.TempDir())
-	if len(result) != len(projects) {
-		t.Fatalf("project.list result = %#v, want %d projects", result, len(projects))
+	if len(result) != len(want) {
+		t.Fatalf("project.list result = %#v, want %d projects", result, len(want))
 	}
 	for i, value := range result {
 		row, ok := value.(map[string]any)
 		if !ok {
 			t.Fatalf("project row = %#v, want an object", value)
 		}
-		if row["id"] != float64(projects[i].ID) || row["path"] != projects[i].Path ||
+		if row["path"] != want[i] || row["id"] != float64(ids[want[i]]) ||
 			row["default_branch"] != repoBranch {
-			t.Errorf("row %d = %#v, want project %#v", i, row, projects[i])
+			t.Errorf("row %d = %#v, want %s with id %d", i, row, want[i], ids[want[i]])
 		}
 	}
 }
@@ -123,7 +143,7 @@ func TestRPCDiscoverProjectListResultContract(t *testing.T) {
 	}
 
 	dataDir := t.TempDir()
-	registerProjects(t, dataDir, testfix.Repo(t, repoBranch), testfix.Repo(t, repoBranch))
+	registerUnsortedProjects(t, dataDir)
 	result := projectListResult(t, dataDir, t.TempDir())
 	if err := validator.Validate(result); err != nil {
 		t.Fatalf("project list does not satisfy the advertised schema: %v", err)
