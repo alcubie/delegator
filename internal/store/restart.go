@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -49,7 +50,7 @@ func (s *Store) restart(id, agentID int64, modelID sql.Null[int64], model string
 	if err := changeStatus(tx, id, Running, started); err != nil {
 		return 0, err
 	}
-	runID, err := startRun(tx, id, agentID, modelID, started)
+	runID, err := startRun(tx, id, agentID, modelID, os.Getpid(), started)
 	if err != nil {
 		return 0, err
 	}

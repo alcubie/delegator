@@ -140,7 +140,7 @@ const (
 var nextStates = map[TicketStatus][]TicketStatus{
 	Queued:    {Running, Cancelled},
 	Running:   {Ready, Failed, Cancelled},
-	Ready:     {Done, Cancelled},
+	Ready:     {Running, Done, Cancelled},
 	Failed:    {Running, Ready, Cancelled},
 	Done:      nil,
 	Cancelled: nil,
@@ -907,16 +907,18 @@ func claim(tx *sql.Tx, id int64, branch string, agentID int64) (int64, error) {
 	if _, err := tx.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id); err != nil {
 		return 0, err
 	}
-	return startRun(tx, id, agentID, sql.Null[int64]{}, started)
+	return startRun(tx, id, agentID, sql.Null[int64]{}, os.Getpid(), started)
 }
 
-// startRun records a new run after its ticket becomes running. Claim and
-// Restart share this process and start-time bookkeeping. modelID is the
-// inherited selection for a restarted session, or NULL for a fresh claim.
-func startRun(tx *sql.Tx, ticketID, agentID int64, modelID sql.Null[int64], started time.Time) (int64, error) {
+// startRun records a new run after its ticket becomes running. Claim,
+// Restart, and Rerun share this process and start-time bookkeeping. modelID
+// is the inherited selection for a restarted session, or NULL for a fresh
+// claim or rerun. pid is the supervisor's own process for a claim or
+// restart, and the dg ticket chat process for a rerun.
+func startRun(tx *sql.Tx, ticketID, agentID int64, modelID sql.Null[int64], pid int, started time.Time) (int64, error) {
 	result, err := tx.Exec(
 		"INSERT INTO runs (ticket_id, agent_id, model_id, pid, started_at) VALUES (?, ?, ?, ?, ?)",
-		ticketID, agentID, modelID, os.Getpid(), rfc3339(started),
+		ticketID, agentID, modelID, pid, rfc3339(started),
 	)
 	if err != nil {
 		return 0, err
