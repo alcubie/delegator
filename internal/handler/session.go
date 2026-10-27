@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"log/slog"
 	"os/exec"
 	"sync"
 
@@ -102,10 +101,6 @@ func open(ctx context.Context, name string, argv []string, policy Policy, cwd st
 	}
 	s := &Session{cmd: cmd, events: make(chan Event, eventRoom)}
 	s.conn = acp.NewClientSideConnection(&client{policy: policy, events: s.events}, stdin, stdout)
-	// Connection diagnostics belong beside the agent's own output, not on the
-	// standard logger, which a detached run discards and a command shows to
-	// the person who asked about something else.
-	s.conn.SetLogger(slog.New(slog.NewTextHandler(stderr, nil)))
 	r, err := s.conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
