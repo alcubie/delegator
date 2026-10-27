@@ -138,8 +138,8 @@ func noSession(s *store.Store, dataDir string, id int64) error {
 		return err
 	}
 	if log, ok := run.LatestLog(dataDir, id); ok {
-		return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one; "+
-			"the reason is in %s", id, r.ID, log)
+		return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one\n"+
+			"View the run log for more details: %s", id, r.ID, log)
 	}
 	return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one", id, r.ID)
 }

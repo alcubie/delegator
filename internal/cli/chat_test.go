@@ -422,7 +422,10 @@ func TestChatNamesTheLogOfARunThatOpenedNoSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("dg chat continued a ticket whose run opened no session")
 	}
-	for _, want := range []string{fmt.Sprintf("run %d", held.ID), log} {
+	for _, want := range []string{
+		fmt.Sprintf("run %d ended before the agent opened one", held.ID),
+		"\nView the run log for more details: " + log,
+	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want %q in it", err, want)
 		}
