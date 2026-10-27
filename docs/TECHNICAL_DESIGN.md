@@ -148,10 +148,10 @@ earlier draft, and it removes lesson 1 and lesson 7 completely.
            │ files on disk │   prose, worktrees, config, logs
            └───────┬───────┘
                    ▼
-           ┌───────────────┐
-           │ dg run [id]   │   one supervisor for each run. It claims its
-           │ (supervisor)  │   own ticket, starts the agent, applies the
-           └───────┬───────┘   timeout, writes the state, starts the next
+           ┌────────────────────┐
+           │ dg ticket run [id] │   one supervisor for each run. It claims its
+           │ (supervisor)       │   own ticket, starts the agent, applies the
+           └───────┬────────────┘   timeout, writes the state, starts the next
                    │           ticket, and then stops.
                    ▼
              claude process ──► git worktree
@@ -778,7 +778,7 @@ Other former root commands and remote methods remain available as compatibility 
 | `dg ticket cancel <id>` | Stop the work on a ticket, from each state that is not the end. |
 | `dg ticket chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. If a run did not start a session, it gives the number of that run and the path of its log. |
 | `dg ticket accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
-| `dg run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
+| `dg ticket run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
 | `dg project relink` | Connect a project again after a move. See §7. |
 | `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
 | `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |

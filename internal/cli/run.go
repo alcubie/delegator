@@ -41,7 +41,7 @@ func dgRunArgs(args ...string) *exec.Cmd {
 	if err != nil {
 		exe = "dg"
 	}
-	return exec.Command(exe, append([]string{"run"}, args...)...)
+	return exec.Command(exe, append([]string{"ticket", "run"}, args...)...)
 }
 
 // launchIn passes the selected instance to a detached supervisor. Flags after
@@ -76,7 +76,7 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				return fmt.Errorf("--model needs --restart and a model ID")
 			}
 			if restart && len(args) != 1 {
-				return fmt.Errorf("dg run --restart needs a ticket id")
+				return fmt.Errorf("%s --restart needs a ticket id", cmd.CommandPath())
 			}
 			// Automatic starts claim the next eligible ticket; an
 			// explicit ID selects one ticket.

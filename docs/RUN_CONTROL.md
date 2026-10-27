@@ -86,7 +86,7 @@ the later tickets change that.
 
 ### 3.1 One supervisor for each run
 
-This is the design of today. A trigger starts `dg run <id>` apart from itself. The
+This is the design of today. A trigger starts `dg ticket run <id>` apart from itself. The
 supervisor runs the agent, writes the state, starts the next ticket, and stops.
 
 | For | Against |
@@ -182,19 +182,19 @@ has this window, because each one needs the supervisor to be there.
 
 Two orders are possible.
 
-| Order | How it operates | The start window | Two triggers at the same time | `dg run <id>` from a person |
+| Order | How it operates | The start window | Two triggers at the same time | `dg ticket run <id>` from a person |
 |---|---|---|---|---|
-| The trigger claims | `Next` claims the first ticket, commits, and starts `dg run <id>`. The supervisor writes its process id when it starts. | Exists. The reconcile needs a grace period, and a run with no process id after the grace period is dead. | Ticket 21 as written. Each trigger claims a different ticket. | `Start` finds a ticket in `running` with no process id. It cannot tell its own claim from a claim of a different trigger, which is the open question of ticket 21. |
-| The supervisor claims | `Next` starts `dg run` with no id. The supervisor reads the first ticket with room, claims it, and writes its own process id, in one transaction. If nothing has room, it stops. | Does not exist. A ticket in `running` always has the process id of its supervisor. | Each supervisor claims a different ticket, or finds nothing and stops. Two triggers can start two supervisors, and the second one stops immediately. | `dg run <id>` claims that ticket in the same transaction. A ticket already in `running` is one that a different supervisor holds, and `Start` refuses it. |
+| The trigger claims | `Next` claims the first ticket, commits, and starts `dg ticket run <id>`. The supervisor writes its process id when it starts. | Exists. The reconcile needs a grace period, and a run with no process id after the grace period is dead. | Ticket 21 as written. Each trigger claims a different ticket. | `Start` finds a ticket in `running` with no process id. It cannot tell its own claim from a claim of a different trigger, which is the open question of ticket 21. |
+| The supervisor claims | `Next` starts `dg ticket run` with no id. The supervisor reads the first ticket with room, claims it, and writes its own process id, in one transaction. If nothing has room, it stops. | Does not exist. A ticket in `running` always has the process id of its supervisor. | Each supervisor claims a different ticket, or finds nothing and stops. Two triggers can start two supervisors, and the second one stops immediately. | `dg ticket run <id>` claims that ticket in the same transaction. A ticket already in `running` is one that a different supervisor holds, and `Start` refuses it. |
 
 The second order removes the start window, removes the grace period from the reconcile,
 and answers the open question of ticket 21 with no new column. It also makes ticket 22
 small: a trigger that finds `k` free slots starts `k` supervisors, and each one claims
 one ticket or stops. Ticket 23 is then one more condition in the same `SELECT`.
 
-The cost is that `dg run` changes. Today it takes an id, and section 9.3 says that a
-person can type it. With this order, `dg run` with no id takes the next ticket with room,
-and `dg run <id>` takes that one ticket. Both forms claim inside the supervisor.
+The cost is that `dg ticket run` changes. Today it takes an id, and section 9.3 says that a
+person can type it. With this order, `dg ticket run` with no id takes the next ticket with room,
+and `dg ticket run <id>` takes that one ticket. Both forms claim inside the supervisor.
 
 ## 6. Options for P3: how a stop reaches the agent
 
@@ -241,8 +241,8 @@ table of changes, and it writes both below one transaction if it keeps both.
 
 1. **Keep one supervisor for each run.** No later ticket needs a long-life program.
    Section 5 stays as it is.
-2. **The supervisor claims its own ticket.** `dg run` with no id reads the first ticket
-   with room, claims it, and writes its process id, in one transaction. `dg run <id>`
+2. **The supervisor claims its own ticket.** `dg ticket run` with no id reads the first ticket
+   with room, claims it, and writes its process id, in one transaction. `dg ticket run <id>`
    claims that ticket. `Next` starts one supervisor for each free slot and does not claim.
    This is ticket 21, with a different order, and it removes the start window.
 3. **A table `runs`** holds the process id, the start time, the end time and the exit
@@ -280,7 +280,7 @@ table of changes, and it writes both below one transaction if it keeps both.
 
 - Section 6.1: a run is a row of the table `runs`, and the reconcile reads it.
 - Section 7: add the table `runs` to the tables.
-- Section 9.3: `dg run` with no id takes the next ticket with room.
+- Section 9.3: `dg ticket run` with no id takes the next ticket with room.
 - `DECISIONS.md`: one row for option B, and one row for the claim inside the supervisor.
 - Ticket 17: the two answers in its text become a reference to this document.
 
@@ -293,7 +293,7 @@ always has the process id of a live supervisor.
 ```mermaid
 flowchart TD
     T["Trigger: dg ticket create, dg queue start,<br>a supervisor that ends, or the reconcile"] --> N["Next: count the free slots"]
-    N -->|"one dg run for each free slot"| S["dg run, apart from the trigger"]
+    N -->|"one dg ticket run for each free slot"| S["dg ticket run, apart from the trigger"]
     S --> C{"BEGIN IMMEDIATE<br>first ticket with room?"}
     C -->|"none"| X["Stop, no error"]
     C -->|"a ticket"| W["Claim: status running,<br>row of runs with pid and started_at<br>COMMIT"]
@@ -343,8 +343,8 @@ flowchart LR
 
 The three questions of the first draft got their answers on 2026-09-03:
 
-1. The change to `dg run` is accepted. `dg run` with no id is for triggers, and
-   `dg run <id>` stays for a person.
+1. The change to `dg ticket run` is accepted. `dg ticket run` with no id is for triggers, and
+   `dg ticket run <id>` stays for a person.
 2. The changes that must come before ticket 17 are their own tickets, done first.
    Ticket 28 makes the table `runs`. Ticket 21 puts the claim in the supervisor.
    Ticket 17 then does the reconcile on top of both.

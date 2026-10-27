@@ -228,13 +228,13 @@ flowchart TD
     C["dg: a command"] --> D
     G["dg gui: the server"] --> D
     D --> N["run.Next"]
-    N -->|"detach"| S["dg run: a supervisor"]
+    N -->|"detach"| S["dg ticket run: a supervisor"]
     S --> A["claude in the worktree"]
 ```
 
 | Item | Behaviour |
 |---|---|
-| The command | `dg daemon`. It is hidden from `dg help`, as `dg run` is, because the unit starts it and a person does not. |
+| The command | `dg daemon`. It is hidden from `dg help`, as `dg ticket run` is, because the unit starts it and a person does not. |
 | The loop | The daemon waits for an event. An event is the timer, or a push on the port. For each event it opens the store, does the reconcile, does the work of the event, calls `run.Next`, and closes the store. |
 | The timer | One interval in the config, with a default of 1 minute. Each tick is the same reconcile that each command does. |
 | The port | Only if a push exists. The daemon listens on the loopback, with a token, as the GUI does. A push from the internet is the work of a tunnel that the person selects, and not of delegator. |

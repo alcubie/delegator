@@ -10,7 +10,7 @@ import (
 )
 
 func TestCompatibilityCommandsWarnWithoutChangingOutput(t *testing.T) {
-	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend", "finish", "accept", "cancel", "restart", "chat", "pause", "start"} {
+	for _, name := range []string{"list", "search", "show", "map", "edit", "move", "depend", "finish", "accept", "cancel", "restart", "chat", "run", "pause", "start"} {
 		t.Run(name, func(t *testing.T) {
 			root := Root(t.TempDir())
 			root.PersistentPreRunE = nil
