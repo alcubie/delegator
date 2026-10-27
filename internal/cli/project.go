@@ -5,8 +5,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"slices"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -64,16 +62,14 @@ func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	})
 }
 
-// projectValues orders projects by path, because a person and a client both
-// find a project by where it is rather than by when it was registered. It
-// keeps an instance with no projects an empty array rather than null, so a
-// caller can read the result without a nil case.
+// projectValues keeps an instance with no projects an empty array rather than
+// null, so a caller can read the result without a nil case. The store returns
+// the rows in the order of their path.
 func projectValues(projects []store.Project) []projectJSON {
 	values := make([]projectJSON, 0, len(projects))
 	for _, p := range projects {
 		values = append(values, projectJSON{ID: p.ID, Path: p.Path, DefaultBranch: p.DefaultBranch})
 	}
-	slices.SortFunc(values, func(a, b projectJSON) int { return strings.Compare(a.Path, b.Path) })
 	return values
 }
 

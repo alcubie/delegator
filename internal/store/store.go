@@ -273,9 +273,9 @@ func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
 	return id, tx.Commit()
 }
 
-// Projects returns each project, in the order of id.
+// Projects returns each project, in the order of its path.
 func (s *Store) Projects() ([]Project, error) {
-	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY id")
+	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY path")
 	if err != nil {
 		return nil, err
 	}
