@@ -429,6 +429,41 @@ func TestRestartKeepsTheExistingSessionWhenLoadFails(t *testing.T) {
 	}
 }
 
+// A requested model the agent does not advertise must leave its reason, and
+// the IDs it does advertise, in the run log.
+func TestTheACPRunnerLogsAnUnavailableModel(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Run on a model the agent dropped")
+	cfg := acpConfig(t, dataDir, "models: model-v1 model-v2", "stop end_turn")
+	cfg.DefaultModel = "model-v9"
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
+		t.Fatal("err = nil, want the unavailable model")
+	}
+
+	want := `delegator: configure agent "fake": model "model-v9" is unavailable; available model IDs: model-v1, model-v2`
+	if got := logOf(t, dataDir, id); !strings.Contains(got, want) {
+		t.Errorf("the log holds\n%s\nwant the line\n%s", got, want)
+	}
+}
+
+// A load that fails must leave its reason in the run log.
+func TestTheACPRunnerLogsAFailedSessionLoad(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Resume a session the agent rejects")
+	cfg := acpConfig(t, dataDir, "stop end_turn", "history:", "no-such-action")
+	testfix.SetSession(t, dataDir, id, "existing-session")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
+		t.Fatal("err = nil, want the failed load")
+	}
+
+	got := logOf(t, dataDir, id)
+	for _, want := range []string{"delegator: load session existing-session", "the script has no action"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the log holds\n%s\nwant %q in it", got, want)
+		}
+	}
+}
+
 // The mid-turn marker proves the session ID was saved before completion,
 // allowing interrupted runs to resume.
 func TestTheACPRunnerRecordsTheSessionBeforeTheTurnEnds(t *testing.T) {
