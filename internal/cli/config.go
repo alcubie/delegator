@@ -1,16 +1,20 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/config"
+	"github.com/alcubie/delegator/internal/handler"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/spf13/cobra"
@@ -212,10 +216,15 @@ func writeSettings(out io.Writer, settings []setting, width int) {
 
 // setSetting is the validation path shared by dg config set and guided
 // onboarding. The store validates every setting; the command layer also
-// checks that a selected agent is runnable in this environment.
+// checks what needs this environment or the agent itself.
 func setSetting(s *store.Store, name, value string) error {
-	if name == "default_agent" {
+	switch name {
+	case "default_agent":
 		if err := checkAgent(s, value); err != nil {
+			return err
+		}
+	case "default_model":
+		if err := checkModel(s, value); err != nil {
 			return err
 		}
 	}
@@ -243,6 +252,49 @@ func checkAgent(s *store.Store, name string) error {
 		return fmt.Errorf("agent %q uses executable %q, but it was not found on PATH.\nInstall it or configure its executable with:\n    %s", agent.Name, agent.Argv[0], configure)
 	}
 	return nil
+}
+
+// modelProbeTimeout bounds the session that reads the advertised models, so
+// that an agent which never answers cannot hold the command open.
+const modelProbeTimeout = time.Minute
+
+// checkModel refuses a model the default agent does not offer, which a run
+// would otherwise discover when it set up its session and failed. The agent
+// default needs no agent to confirm it. The probe gets a temporary directory
+// because this setting belongs to no project.
+func checkModel(s *store.Store, model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" || model == "null" {
+		return nil
+	}
+	name, err := s.DefaultAgent()
+	if err != nil {
+		return err
+	}
+	if name == "" {
+		selectAgent := commandText([]string{"dg", "config", "set", "default_agent", "NAME"})
+		return fmt.Errorf("model %q cannot be checked while no default agent is selected.\nSelect one with:\n    %s", model, selectAgent)
+	}
+	agent, err := s.Agent(name)
+	if err != nil {
+		return err
+	}
+	dir, err := os.MkdirTemp("", "delegator-models-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithTimeout(context.Background(), modelProbeTimeout)
+	defer cancel()
+	models, err := handler.Models(ctx, agent.Name, agent.Argv, dir)
+	if err != nil {
+		return fmt.Errorf("cannot set model %q: %w", model, err)
+	}
+	if slices.Contains(models, model) {
+		return nil
+	}
+	return fmt.Errorf("model %q is not offered by agent %q. Available models: %s",
+		model, agent.Name, strings.Join(models, ", "))
 }
 
 func knownSetting(name string) bool {

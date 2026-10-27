@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -17,6 +19,27 @@ var ErrNoModelOption = errors.New("agent does not expose an ACP model config opt
 // Model returns the model selected during session setup, or empty when the
 // agent did not report one. It does not track switches during a prompt.
 func (s *Session) Model() string { return s.model }
+
+// Models launches the agent in cwd and returns the model IDs it advertises,
+// then terminates it. Nothing is prompted and no tool is permitted, so the
+// agent only reports what it offers. An agent that advertises no model
+// selector returns ErrNoModelOption.
+func Models(ctx context.Context, name string, argv []string, cwd string) ([]string, error) {
+	session, configOptions, err := newSession(ctx, name, argv, Deny(), cwd, SessionOptions{}, io.Discard)
+	if err != nil {
+		return nil, err
+	}
+	// Ending the probe disconnects the agent, which the SDK reports on the
+	// standard logger. The person at the terminal asked about models, not
+	// about a connection that closed as intended.
+	session.conn.SetLogger(slog.New(slog.DiscardHandler))
+	defer session.Close()
+	selectOption := modelOption(configOptions)
+	if selectOption == nil {
+		return nil, ErrNoModelOption
+	}
+	return modelValues(selectOption), nil
+}
 
 // setModel uses the agent's advertised selector and value IDs, including
 // grouped model lists. Never silently fall back when a model was requested.

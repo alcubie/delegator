@@ -2,12 +2,24 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/alcubie/delegator/internal/testfix"
 )
+
+// storedModel reads default_model through the command a person would use, so
+// a refused value is observed the way it is reported.
+func storedModel(t *testing.T, dataDir string) string {
+	t.Helper()
+	got, err := runIn(t, dataDir, t.TempDir(), "config", "get", "default_model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
 
 func TestConfigShowsDatabaseSettingsAndDescriptions(t *testing.T) {
 	dataDir := t.TempDir()
@@ -245,6 +257,7 @@ func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
 
 func TestConfigDefaultModelPersistsAndResets(t *testing.T) {
 	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: provider/model-v1 provider/model-v2 default", "stop end_turn")
 	for _, value := range []string{"provider/model-v1", "null", "provider/model-v2", "default", "null"} {
 		if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", value); err != nil {
 			t.Fatal(err)
@@ -265,6 +278,7 @@ func TestConfigDefaultModelPersistsAndResets(t *testing.T) {
 
 func TestConfigDefaultModelRejectsEmptyInput(t *testing.T) {
 	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: model-v1", "stop end_turn")
 	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "model-v1"); err != nil {
 		t.Fatal(err)
 	}
@@ -277,5 +291,87 @@ func TestConfigDefaultModelRejectsEmptyInput(t *testing.T) {
 		if err != nil || got != "model-v1\n" {
 			t.Fatalf("rejected input changed model: %q, %v", got, err)
 		}
+	}
+}
+
+// A model the agent does not offer fails during session setup when a ticket
+// runs, so the refusal belongs to the command that sets it. The listed IDs are
+// what the person chooses from.
+func TestConfigDefaultModelRefusesAModelTheAgentDoesNotOffer(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "opus-5-5")
+	want := `model "opus-5-5" is not offered by agent "fake". Available models: sonnet, opus`
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if got := storedModel(t, dataDir); got != "sonnet\n" {
+		t.Fatalf("the refused model was stored: %q", got)
+	}
+}
+
+func TestConfigDefaultModelRefusesAnAgentWithNoModelOption(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "stop end_turn")
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet")
+	want := `cannot set model "sonnet": agent does not expose an ACP model config option`
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if got := storedModel(t, dataDir); got != "null\n" {
+		t.Fatalf("the unverified model was stored: %q", got)
+	}
+}
+
+// An agent that cannot start reports nothing to check the model against, so
+// the value stays unverified and unstored.
+func TestConfigDefaultModelRefusesAnAgentThatCannotStart(t *testing.T) {
+	dataDir := t.TempDir()
+	testfix.UseAgent(t, dataDir, "broken", filepath.Join(t.TempDir(), "missing-agent"))
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet")
+	if err == nil || !strings.Contains(err.Error(), `cannot set model "sonnet": start agent "broken"`) {
+		t.Fatalf("error = %v", err)
+	}
+	if got := storedModel(t, dataDir); got != "null\n" {
+		t.Fatalf("the unverified model was stored: %q", got)
+	}
+}
+
+// The agent default names no model, so it needs no agent to confirm it. The
+// broken agent would fail any probe.
+func TestConfigDefaultModelResetNeedsNoAgent(t *testing.T) {
+	dataDir := t.TempDir()
+	testfix.UseAgent(t, dataDir, "broken", filepath.Join(t.TempDir(), "missing-agent"))
+	if err := testfix.OpenStore(t, dataDir).SetSetting("default_model", "model-v1"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "")
+	if err == nil || !strings.Contains(err.Error(), "must be a model ID or null") {
+		t.Fatalf("empty value error = %v, want the store refusal", err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "null"); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedModel(t, dataDir); got != "null\n" {
+		t.Fatalf("stored model = %q, want null", got)
+	}
+}
+
+func TestConfigDefaultModelNeedsADefaultAgentToCheckIt(t *testing.T) {
+	dataDir := t.TempDir()
+
+	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet")
+	want := "model \"sonnet\" cannot be checked while no default agent is selected.\n" +
+		"Select one with:\n" +
+		"    dg config set default_agent NAME"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
 	}
 }

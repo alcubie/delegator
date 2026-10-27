@@ -1,10 +1,38 @@
 package handler
 
 import (
+	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
+
+// Models reports what the config command checks a default model against, so
+// grouped lists and a selector without a category must reach it too.
+func TestModelsListsWhatTheAgentAdvertises(t *testing.T) {
+	for _, tc := range []struct {
+		options string
+		want    []string
+		wantErr error
+	}{
+		{"model-flat", []string{"model-v1", "model-v2"}, nil},
+		{"model-grouped", []string{"model-v1", "model-v2"}, nil},
+		{"model-no-category", []string{"model-v1", "model-v2"}, nil},
+		{stubFullOptions, nil, ErrNoModelOption},
+	} {
+		t.Run(tc.options, func(t *testing.T) {
+			name, argv, _ := stubLaunch(t, tc.options, stubTurnUpdates, stubLoadsLong)
+			got, err := Models(t.Context(), name, argv, t.TempDir())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("models = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestSessionModelSelection(t *testing.T) {
 	for _, loaded := range []bool{false, true} {
