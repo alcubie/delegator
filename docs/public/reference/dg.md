@@ -33,6 +33,7 @@ dg [flags]
 * [dg agents](dg_agents.md)	 - List available Agent Client Protocol (ACP) commands
 * [dg config](dg_config.md)	 - Show or change instance settings.
 * [dg init](dg_init.md)	 - Set up Alcubi Delegator for a first run.
+* [dg project](dg_project.md)	 - Inspect the registered projects.
 * [dg queue](dg_queue.md)	 - Control the queue.
 * [dg rpc](dg_rpc.md)	 - Run a dg command from a JSON-RPC request on standard input.
 * [dg ticket](dg_ticket.md)	 - Work with tickets.

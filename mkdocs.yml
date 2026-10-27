@@ -27,6 +27,9 @@ nav:
           - list: reference/dg_config_list.md
           - set: reference/dg_config_set.md
       - init: reference/dg_init.md
+      - project:
+          - Overview: reference/dg_project.md
+          - list: reference/dg_project_list.md
       - rpc: reference/dg_rpc.md
       - ticket:
           - Overview: reference/dg_ticket.md
