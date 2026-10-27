@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alcubie/delegator/internal/config"
-	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 )
@@ -219,25 +218,12 @@ func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (in
 		return 0, ErrNoTitle
 	}
 
-	root, err := project.Root(workDir)
-	if err != nil {
-		return 0, err
-	}
-	// A repository with no commit has no branch to start a worktree from, so
-	// refuse it here rather than when the run begins.
-	if _, err := project.FirstCommit(root); err != nil {
-		return 0, err
-	}
-	branch, err := project.DefaultBranch(root)
+	p, err := registerProject(s, workDir)
 	if err != nil {
 		return 0, err
 	}
 
-	projectID, err := s.ProjectID(root, branch)
-	if err != nil {
-		return 0, err
-	}
-	id, err := s.AddTicket(projectID, title, dependsOn...)
+	id, err := s.AddTicket(p.ID, title, dependsOn...)
 	if err != nil {
 		return 0, err
 	}
