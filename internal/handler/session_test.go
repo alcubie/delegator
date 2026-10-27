@@ -8,31 +8,65 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 )
 
+// sessionLog collects what a session writes to stderr. The agent's output and
+// the connection's diagnostics arrive from separate goroutines, so a test
+// reads it under the same lock.
+type sessionLog struct {
+	mu      sync.Mutex
+	written bytes.Buffer
+}
+
+func (l *sessionLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.written.Write(p)
+}
+
+func (l *sessionLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.written.String()
+}
+
+// waitFor fails unless the session writes text to stderr within the timeout.
+// The connection logs its end from a goroutine of the SDK, after the call
+// that closed it returned.
+func waitFor(t *testing.T, log *sessionLog, text string) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if strings.Contains(log.String(), text) {
+			return
+		}
+	}
+	t.Fatalf("the session wrote %q, and it should hold %q", log.String(), text)
+}
+
 // start opens a stub session with test cleanup and returns its request record
 // and stderr.
-func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
+func start(t *testing.T, cwd string) (*Session, string, *sessionLog) {
 	t.Helper()
 	return startPolicy(t, cwd, Policy{}, stubFullOptions, stubTurnPermissions)
 }
 
 // startPolicy opens a session on the stub agent that answers by the policy,
 // offers one of the sets of permission options and takes one of the turns.
-func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *bytes.Buffer) {
+func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *sessionLog) {
 	return startConfigured(t, cwd, policy, options, turn, SessionOptions{})
 }
 
 // startConfigured is startPolicy with the workspace roots and process
 // environment the client gives the session.
-func startConfigured(t *testing.T, cwd string, policy Policy, options, turn string, sessionOptions SessionOptions) (*Session, string, *bytes.Buffer) {
+func startConfigured(t *testing.T, cwd string, policy Policy, options, turn string, sessionOptions SessionOptions) (*Session, string, *sessionLog) {
 	t.Helper()
 	name, argv, record := stubLaunch(t, options, turn, stubLoads)
-	var stderr bytes.Buffer
+	var stderr sessionLog
 	s, err := Start(t.Context(), name, argv, policy, cwd, sessionOptions, &stderr)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -123,6 +157,17 @@ func TestCloseEndsTheAgent(t *testing.T) {
 	if !strings.Contains(stderr.String(), stubHello) {
 		t.Errorf("the agent's stderr is %q, and it wrote %q", stderr.String(), stubHello)
 	}
+}
+
+// A detached run discards the standard logger and a command owns its terminal,
+// so the connection reports its end where the caller already collects what the
+// agent writes.
+func TestSessionDiagnosticsGoToTheGivenStderr(t *testing.T) {
+	s, _, stderr := start(t, t.TempDir())
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, stderr, "connection closed")
 }
 
 func TestStartNamesACommandThatIsNotThere(t *testing.T) {
