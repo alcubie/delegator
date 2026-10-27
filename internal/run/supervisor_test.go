@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 
 func queuedTicket(t *testing.T, title string) (string, int64) {
 	t.Helper()
-	repo := repoOnMain(t)
+	repo := testfix.Repo(t, "main")
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
 	projectID, err := s.ProjectID(repo, "main")

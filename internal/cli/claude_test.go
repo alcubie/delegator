@@ -78,7 +78,6 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	testfix.GitIn(t, repo, "config", "user.email", "test@example.com")
 	testfix.GitIn(t, repo, "config", "user.name", "Test")
-	testfix.CommitIn(t, repo, "first")
 	t.Cleanup(func() {
 		if held, err := s.Run(1); err == nil && held.EndedAt.IsZero() {
 			if err := run.Stop(held.PID, run.StopGrace); err != nil {

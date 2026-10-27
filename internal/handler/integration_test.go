@@ -68,7 +68,6 @@ func integrationRepo(t *testing.T) string {
 	repo := testfix.Repo(t, "main")
 	testfix.GitIn(t, repo, "config", "user.email", "test@example.com")
 	testfix.GitIn(t, repo, "config", "user.name", "Test")
-	testfix.CommitIn(t, repo, "first")
 	return repo
 }
 

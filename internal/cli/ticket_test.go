@@ -152,7 +152,6 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 func linkedWorktree(t *testing.T) (string, string) {
 	t.Helper()
 	primary := testfix.Repo(t, repoBranch)
-	testfix.CommitIn(t, primary, "first")
 	linked := filepath.Join(t.TempDir(), "linked")
 	testfix.GitIn(t, primary, "worktree", "add", "-b", "linked", linked)
 	t.Cleanup(func() { testfix.GitIn(t, primary, "worktree", "remove", "--force", linked) })
@@ -286,6 +285,31 @@ func TestTicketOutsideARepositoryUsesNoID(t *testing.T) {
 	}
 	if id != 1 {
 		t.Errorf("id = %d, want 1", id)
+	}
+}
+
+// A run cannot branch a worktree from a repository with no commit, so the
+// ticket is refused before anything is written.
+func TestTicketInARepositoryWithNoCommitWritesNothing(t *testing.T) {
+	dataDir := t.TempDir()
+
+	_, err := ticketIn(t, dataDir, testfix.EmptyRepo(t, repoBranch), "Remove staging infrastructure", "")
+	if !errors.Is(err, project.ErrNoCommit) {
+		t.Fatalf("err = %v, want %v", err, project.ErrNoCommit)
+	}
+
+	if rows := projectRows(t, dataDir); len(rows) != 0 {
+		t.Errorf("the database holds %d projects, want 0", len(rows))
+	}
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("the queue holds %d tickets, want 0", len(queue))
+	}
+	if got := proseFiles(t, dataDir); len(got) != 0 {
+		t.Errorf("the files of prose are %v, want none", got)
 	}
 }
 
