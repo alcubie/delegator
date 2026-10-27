@@ -12,8 +12,9 @@ import (
 )
 
 // ErrNoModelOption reports an agent that advertises no ACP model config
-// option. Callers wrap it with the model they could not set.
-var ErrNoModelOption = errors.New("agent does not expose an ACP model config option")
+// option, so no run and no setting can choose a model for it. Callers wrap it
+// with the model they could not set.
+var ErrNoModelOption = errors.New("agent does not allow setting a specific model")
 
 // Model returns the model selected during session setup, or empty when the
 // agent did not report one. It does not track switches during a prompt.

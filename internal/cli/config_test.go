@@ -319,7 +319,7 @@ func TestConfigDefaultModelRefusesAnAgentWithNoModelOption(t *testing.T) {
 	useFakeAgent(t, dataDir, "stop end_turn")
 
 	_, err := runIn(t, dataDir, t.TempDir(), "config", "set", "default_model", "sonnet")
-	want := `agent "fake" does not allow setting specific models. default_model must remain as null`
+	want := `cannot set model "sonnet": agent does not allow setting a specific model`
 	if err == nil || err.Error() != want {
 		t.Fatalf("error = %v, want %q", err, want)
 	}

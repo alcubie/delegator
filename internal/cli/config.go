@@ -287,9 +287,6 @@ func checkModel(s *store.Store, model string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), modelProbeTimeout)
 	defer cancel()
 	models, err := handler.Models(ctx, agent.Name, agent.Argv, dir)
-	if errors.Is(err, handler.ErrNoModelOption) {
-		return fmt.Errorf("agent %q does not allow setting specific models. default_model must remain as null", agent.Name)
-	}
 	if err != nil {
 		return fmt.Errorf("cannot set model %q: %w", model, err)
 	}

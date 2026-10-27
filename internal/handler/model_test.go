@@ -41,7 +41,7 @@ func TestSessionModelSelection(t *testing.T) {
 			{"model-grouped", "model-v2", ""},
 			{"model-no-category", "model-v2", ""},
 			{"model-flat", "missing", "available model IDs: model-v1, model-v2"},
-			{stubFullOptions, "model-v2", "does not expose an ACP model config option"},
+			{stubFullOptions, "model-v2", "agent does not allow setting a specific model"},
 			{"model-rejected", "model-v2", "model rejected"},
 			{"model-unconfirmed", "model-v2", "did not confirm"},
 			{stubFullOptions, "", ""},
