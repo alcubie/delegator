@@ -12,8 +12,8 @@ import (
 )
 
 // superviseACP runs the configured ACP agent in the ticket worktree. It saves
-// the session ID before prompting and writes events and agent stderr to the
-// run log.
+// the session ID before prompting and writes events, agent stderr and its own
+// setup failures to the run log.
 //
 // A completed turn records exit code zero; other outcomes record failure
 // details. The supervisor context cancels the turn on timeout, alongside
@@ -33,14 +33,14 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 		session, err = handler.Load(ctx, agent.Name, agent.Argv, handler.AllowAll(), worktree, ticket.Session, options, log)
 	}
 	if err != nil {
-		return err
+		return reportSetupFailure(log, err)
 	}
 	defer session.Close()
 
 	// Save the confirmed model and session atomically before any prompt.
 	// Failed setup leaves the model recorded at restart intact.
 	if err := s.RecordSession(runID, session.ID(), session.Model()); err != nil {
-		return err
+		return reportSetupFailure(log, err)
 	}
 
 	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir)), log)
@@ -53,6 +53,15 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 	}
 	code = 0
 	return nil
+}
+
+// reportSetupFailure writes a failure from before the first prompt to the run
+// log, marked as delegator's own rather than the agent's. A detached
+// supervisor's stderr goes nowhere a person reads, so an unlogged setup error
+// leaves only the exit code.
+func reportSetupFailure(log io.Writer, err error) error {
+	_, bad := fmt.Fprintf(log, "delegator: %s\n", err)
+	return errors.Join(err, bad)
 }
 
 // sessionOptions gives an agent access to only this project's cache and names

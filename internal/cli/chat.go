@@ -94,7 +94,7 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, strin
 			"ticket %d is running: process %d is on its session", id, r.PID)
 	}
 	if ticket.Session == "" {
-		return nil, "", "", fmt.Errorf("ticket %d has no session: it has not run yet", id)
+		return nil, "", "", noSession(s, dataDir, id)
 	}
 	// Require the original worktree: agents may locate session history by
 	// working directory.
@@ -124,6 +124,24 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, strin
 		argv = append(argv, strings.ReplaceAll(arg, "{project_cache}", cacheDir))
 	}
 	return argv, worktree, cacheDir, nil
+}
+
+// noSession explains a ticket that holds no conversation to continue. A run
+// that ended before its agent opened a session wrote the reason to its log, so
+// name that log instead of reporting a ticket that has never run.
+func noSession(s *store.Store, dataDir string, id int64) error {
+	r, err := s.Run(id)
+	if errors.Is(err, store.ErrNoRun) {
+		return fmt.Errorf("ticket %d has no session: it has not run yet", id)
+	}
+	if err != nil {
+		return err
+	}
+	if log, ok := run.LatestLog(dataDir, id); ok {
+		return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one\n"+
+			"View the run log for more details: %s", id, r.ID, log)
+	}
+	return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one", id, r.ID)
 }
 
 func cacheEnvironment(environ []string, cacheDir string) []string {

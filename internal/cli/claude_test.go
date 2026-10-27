@@ -86,7 +86,7 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 			}
 		}
 		if t.Failed() {
-			logs, _ := filepath.Glob(filepath.Join(dataDir, "runs", "1", "*.log"))
+			logs, _ := filepath.Glob(filepath.Join(run.LogDirPath(dataDir, 1), "*.log"))
 			for _, path := range logs {
 				data, err := os.ReadFile(path)
 				t.Logf("run log %s (read error: %v):\n%s", path, err, data)
@@ -122,7 +122,7 @@ func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 		t.Errorf("HELLO.md holds %q, want %q", got, "hello")
 	}
 
-	logs, _ := filepath.Glob(filepath.Join(dataDir, "runs", "1", "*.log"))
+	logs, _ := filepath.Glob(filepath.Join(run.LogDirPath(dataDir, 1), "*.log"))
 	if len(logs) != 1 {
 		t.Errorf("logs = %v, want one", logs)
 	}

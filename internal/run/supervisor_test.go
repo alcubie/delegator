@@ -214,7 +214,7 @@ func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 
 func logOf(t *testing.T, dataDir string, id int64) string {
 	t.Helper()
-	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))
+	logs, err := filepath.Glob(filepath.Join(LogDirPath(dataDir, id), "*.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestStartKeepsTheLogOfEachRunOfATicket(t *testing.T) {
 	if err := Restart(s, id, cfg, ""); err != nil {
 		t.Fatal(err)
 	}
-	logs, err := filepath.Glob(filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10), "*.log"))
+	logs, err := filepath.Glob(filepath.Join(LogDirPath(dataDir, id), "*.log"))
 	if err != nil {
 		t.Fatal(err)
 	}

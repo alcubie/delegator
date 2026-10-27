@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/gosimple/slug"
@@ -40,6 +41,23 @@ func branch(id int64, title string) string {
 // stable when the project moves.
 func WorktreePath(dataDir string, id int64) string {
 	return filepath.Join(dataDir, "worktrees", strconv.FormatInt(id, 10))
+}
+
+// LogDirPath returns the directory of one ticket's run logs. Using the ticket
+// ID keeps it stable when the project moves, as the worktree path does.
+func LogDirPath(dataDir string, id int64) string {
+	return filepath.Join(dataDir, "runs", strconv.FormatInt(id, 10))
+}
+
+// LatestLog names the newest run log of a ticket, and reports false when it
+// has none. Each log is named for the time its run started, at a fixed width,
+// so the last name in order is the newest.
+func LatestLog(dataDir string, id int64) (string, bool) {
+	logs, err := filepath.Glob(filepath.Join(LogDirPath(dataDir, id), "*.log"))
+	if err != nil || len(logs) == 0 {
+		return "", false
+	}
+	return slices.Max(logs), true
 }
 
 // ProjectCachePath returns the stable cache directory of one project. The

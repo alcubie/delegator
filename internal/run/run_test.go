@@ -52,6 +52,37 @@ func TestBranchNoAsciiTitle(t *testing.T) {
 	}
 }
 
+func TestLatestLogNamesTheNewestLogOfATicket(t *testing.T) {
+	dataDir := t.TempDir()
+	dir := LogDirPath(dataDir, 17)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Restarts write a log each, and the names order by start time.
+	for _, name := range []string{"2026-10-27T16-53-44.689.log", "2026-10-27T09-01-02.000.log", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := filepath.Join(dir, "2026-10-27T16-53-44.689.log")
+	if got, ok := LatestLog(dataDir, 17); !ok || got != want {
+		t.Errorf("LatestLog = %q, %v; want %q, true", got, ok, want)
+	}
+}
+
+func TestLatestLogReportsATicketWithNoLog(t *testing.T) {
+	dataDir := t.TempDir()
+	if got, ok := LatestLog(dataDir, 17); ok {
+		t.Errorf("LatestLog = %q, true; want no log", got)
+	}
+	if err := os.MkdirAll(LogDirPath(dataDir, 17), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := LatestLog(dataDir, 17); ok {
+		t.Errorf("LatestLog of an empty directory = %q, true; want no log", got)
+	}
+}
+
 func TestProjectCachePathUsesTheDataDirectoryAndProjectID(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "selected data")
 	want := filepath.Join(dataDir, "cache", "projects", "17")
