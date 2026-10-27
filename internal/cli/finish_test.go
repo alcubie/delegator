@@ -20,7 +20,6 @@ const testAgentID int64 = 1
 func queuedTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	t.Helper()
 	repo := testfix.Repo(t, repoBranch)
-	testfix.CommitIn(t, repo, "first")
 
 	s := testfix.OpenStore(t, dataDir)
 	projectID, err := s.AddProject(repo, repoBranch)

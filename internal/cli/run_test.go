@@ -89,7 +89,6 @@ func TestDetachedSupervisorKeepsTheSelectedDataDirectory(t *testing.T) {
 	defaultDir := testfix.XDGDataDir(t)
 	dataDir := filepath.Join(t.TempDir(), "selected")
 	repo := testfix.Repo(t, repoBranch)
-	testfix.CommitIn(t, repo, "first")
 	promptPath := filepath.Join(t.TempDir(), "prompt")
 	useFakeAgent(t, dataDir, "prompt "+promptPath, "stop end_turn")
 	useLaunch(t, func() *exec.Cmd { return exec.Command(testfix.DG(t), "run") })

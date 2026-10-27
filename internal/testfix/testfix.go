@@ -53,9 +53,19 @@ func CommitIn(t *testing.T, dir, message string) {
 		"commit", "--allow-empty", "-q", "-m", message)
 }
 
-// Repo creates an empty repository with an explicit initial branch,
-// independent of the user's Git configuration.
+// Repo creates a repository with one commit on an explicit initial branch,
+// independent of the user's Git configuration. A ticket needs a commit to
+// start a worktree from, so the usable fixture has one.
 func Repo(t *testing.T, branch string) string {
+	t.Helper()
+	dir := EmptyRepo(t, branch)
+	CommitIn(t, dir, "initial commit")
+	return dir
+}
+
+// EmptyRepo creates a repository with no commit, for the paths that refuse
+// one.
+func EmptyRepo(t *testing.T, branch string) string {
 	t.Helper()
 	dir := t.TempDir()
 	if out, err := project.Command(dir, "init", "-q", "-b", branch).CombinedOutput(); err != nil {

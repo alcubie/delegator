@@ -152,7 +152,6 @@ func TestRunTicketWithARelativeProject(t *testing.T) {
 func linkedWorktree(t *testing.T) (string, string) {
 	t.Helper()
 	primary := testfix.Repo(t, repoBranch)
-	testfix.CommitIn(t, primary, "first")
 	linked := filepath.Join(t.TempDir(), "linked")
 	testfix.GitIn(t, primary, "worktree", "add", "-b", "linked", linked)
 	t.Cleanup(func() { testfix.GitIn(t, primary, "worktree", "remove", "--force", linked) })

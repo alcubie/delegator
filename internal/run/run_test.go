@@ -11,15 +11,6 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// repoOnMain makes a repository on main with one commit, which a worktree
-// needs to start from.
-func repoOnMain(t *testing.T) string {
-	t.Helper()
-	dir := testfix.Repo(t, "main")
-	testfix.CommitIn(t, dir, "first")
-	return dir
-}
-
 func TestBranchSuffix(t *testing.T) {
 	tests := []struct {
 		title string
@@ -113,7 +104,7 @@ func TestProjectCacheSurvivesWorktreeRemoval(t *testing.T) {
 	dataDir := t.TempDir()
 	ticket := store.Ticket{
 		ID:      7,
-		Project: store.Project{ID: 17, Path: repoOnMain(t), DefaultBranch: "main"},
+		Project: store.Project{ID: 17, Path: testfix.Repo(t, "main"), DefaultBranch: "main"},
 		Title:   "Add the thing",
 	}
 	worktree, err := Worktree(dataDir, ticket)
@@ -141,7 +132,7 @@ func TestProjectCacheSurvivesWorktreeRemoval(t *testing.T) {
 
 // Move HEAD off main to prove the worktree uses the default branch.
 func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
-	repo := repoOnMain(t)
+	repo := testfix.Repo(t, "main")
 	testfix.GitIn(t, repo, "checkout", "-q", "-b", "other")
 	testfix.CommitIn(t, repo, "second")
 	dataDir := t.TempDir()
@@ -168,7 +159,7 @@ func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 
 // Repeated creation must reuse the existing worktree.
 func TestWorktreeThatIsThereAlready(t *testing.T) {
-	repo := repoOnMain(t)
+	repo := testfix.Repo(t, "main")
 	dataDir := t.TempDir()
 
 	first, err := Worktree(dataDir, store.Ticket{
