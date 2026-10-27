@@ -211,23 +211,12 @@ func writeSettings(out io.Writer, settings []setting, width int) {
 }
 
 // setSetting is the validation path shared by dg config set and guided
-// onboarding. The store validates every setting; the command layer also makes
-// sure a selected agent is runnable in this environment and gives the person
-// a command that fixes a missing registry entry or executable.
+// onboarding. The store validates every setting; the command layer also
+// checks that a selected agent is runnable in this environment.
 func setSetting(s *store.Store, name, value string) error {
 	if name == "default_agent" {
-		agent, err := s.Agent(value)
-		if err != nil {
-			if errors.Is(err, store.ErrInvalidAgent) {
-				add := commandText([]string{"dg", "agents", "add", value, "--command", "/path/to/executable"})
-				return fmt.Errorf("agent %q is not registered.\nAdd it with:\n    %s", value, add)
-			}
+		if err := checkAgent(s, value); err != nil {
 			return err
-		}
-		if _, err := agentExecutable(agent); err != nil {
-			path := "/path/to/" + filepath.Base(agent.Argv[0])
-			configure := commandText([]string{"dg", "agents", "add", agent.Name, "--path", path})
-			return fmt.Errorf("agent %q uses executable %q, but it was not found on PATH.\nInstall it or configure its executable with:\n    %s", agent.Name, agent.Argv[0], configure)
 		}
 	}
 	err := s.SetSetting(name, value)
@@ -235,6 +224,25 @@ func setSetting(s *store.Store, name, value string) error {
 		attemptTelemetry(s)
 	}
 	return err
+}
+
+// checkAgent refuses an agent that this environment cannot run, and gives the
+// person the command that fixes a missing registry entry or executable.
+func checkAgent(s *store.Store, name string) error {
+	agent, err := s.Agent(name)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidAgent) {
+			add := commandText([]string{"dg", "agents", "add", name, "--command", "/path/to/executable"})
+			return fmt.Errorf("agent %q is not registered.\nAdd it with:\n    %s", name, add)
+		}
+		return err
+	}
+	if _, err := agentExecutable(agent); err != nil {
+		path := "/path/to/" + filepath.Base(agent.Argv[0])
+		configure := commandText([]string{"dg", "agents", "add", agent.Name, "--path", path})
+		return fmt.Errorf("agent %q uses executable %q, but it was not found on PATH.\nInstall it or configure its executable with:\n    %s", agent.Name, agent.Argv[0], configure)
+	}
+	return nil
 }
 
 func knownSetting(name string) bool {

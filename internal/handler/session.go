@@ -119,9 +119,23 @@ func open(ctx context.Context, name string, argv []string, policy Policy, cwd st
 // Start launches the agent in cwd and opens a new session with no MCP
 // servers. Any failure terminates the process.
 func Start(ctx context.Context, name string, argv []string, policy Policy, cwd string, options SessionOptions, stderr io.Writer) (*Session, error) {
-	s, err := open(ctx, name, argv, policy, cwd, options, stderr)
+	s, configOptions, err := newSession(ctx, name, argv, policy, cwd, options, stderr)
 	if err != nil {
 		return nil, err
+	}
+	if err := s.setModel(ctx, options.Model, configOptions); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("configure agent %q: %w", name, err)
+	}
+	return s, nil
+}
+
+// newSession launches the agent in cwd and opens a session, returning it with
+// the config options the agent advertised. Failure terminates the process.
+func newSession(ctx context.Context, name string, argv []string, policy Policy, cwd string, options SessionOptions, stderr io.Writer) (*Session, []acp.SessionConfigOption, error) {
+	s, err := open(ctx, name, argv, policy, cwd, options, stderr)
+	if err != nil {
+		return nil, nil, err
 	}
 	r, err := s.conn.NewSession(ctx, acp.NewSessionRequest{
 		Cwd:                   cwd,
@@ -130,14 +144,10 @@ func Start(ctx context.Context, name string, argv []string, policy Policy, cwd s
 	})
 	if err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("open a session of agent %q in %s: %w", name, cwd, err)
+		return nil, nil, fmt.Errorf("open a session of agent %q in %s: %w", name, cwd, err)
 	}
 	s.id = r.SessionId
-	if err := s.setModel(ctx, options.Model, r.ConfigOptions); err != nil {
-		_ = s.Close()
-		return nil, fmt.Errorf("configure agent %q: %w", name, err)
-	}
-	return s, nil
+	return s, r.ConfigOptions, nil
 }
 
 // Load launches the agent in cwd and loads a saved session. History updates
