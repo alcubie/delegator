@@ -57,7 +57,7 @@ Angle brackets denote required arguments; square brackets denote optional ones. 
 
 `move` stays with tickets because it operates on a specific ticket, including tickets in Ready. Do not rename start to resume or depend to dependencies in this change; that would add another migration decision.
 
-The hidden `run` supervisor and `telemetry-send` worker remain at their existing paths. Their launch sites and existing remote-call treatment are outside this reorganisation. In particular, `ticket runs` reads history; it does not start a run.
+The hidden `telemetry-send` worker remains at its existing path; its launch site and existing remote-call treatment are outside this reorganisation. The hidden `run` supervisor moved to `dg ticket run` under ticket #448, with `dg run` retained as a hidden compatibility entry point. In particular, `ticket runs` reads history; it does not start a run.
 
 ## Compatibility and ticket creation
 

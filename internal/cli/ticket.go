@@ -85,6 +85,7 @@ func ticketCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.C
 	cmd.AddCommand(restartCommand(dataDir, cfg, "dg ticket restart"))
 	cmd.AddCommand(chatCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(runsCommand(dataDir))
+	cmd.AddCommand(runCommand(dataDir, cfg))
 	return cmd
 }
 

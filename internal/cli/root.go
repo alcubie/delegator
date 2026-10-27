@@ -151,7 +151,7 @@ func Root(workDir string) *cobra.Command {
 	root.AddCommand(compatibilityCommand("dg ticket cancel", cancelCommand(&selectedDir, &cfg, "dg cancel")))
 	root.AddCommand(compatibilityCommand("dg ticket restart", restartCommand(&selectedDir, &cfg, "dg restart")))
 	root.AddCommand(deprecatedCommand("dg ticket chat", chatCommand(&selectedDir, workDir, &cfg)))
-	root.AddCommand(runCommand(&selectedDir, &cfg))
+	root.AddCommand(compatibilityCommand("dg ticket run", runCommand(&selectedDir, &cfg)))
 	root.AddCommand(queueCommand(&selectedDir, &cfg))
 	root.AddCommand(compatibilityCommand("dg queue pause", pauseCommand(&selectedDir, &cfg, "dg pause")))
 	root.AddCommand(compatibilityCommand("dg queue start", startCommand(&selectedDir, &cfg, "dg start")))
