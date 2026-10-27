@@ -223,6 +223,11 @@ func Ticket(s *store.Store, workDir, title, body string, dependsOn ...int64) (in
 	if err != nil {
 		return 0, err
 	}
+	// A repository with no commit has no branch to start a worktree from, so
+	// refuse it here rather than when the run begins.
+	if _, err := project.FirstCommit(root); err != nil {
+		return 0, err
+	}
 	branch, err := project.DefaultBranch(root)
 	if err != nil {
 		return 0, err
