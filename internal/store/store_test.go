@@ -1214,6 +1214,32 @@ func TestProjectIDMakesTheProjectOnce(t *testing.T) {
 	}
 }
 
+func TestProjectsAreInTheOrderOfTheirPath(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, path := range []string{"/projects/zulu", "/projects/alpha", "/projects/mike"} {
+		if _, err := s.ProjectID(path, "main"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, len(projects))
+	for _, project := range projects {
+		paths = append(paths, project.Path)
+	}
+	if want := []string{"/projects/alpha", "/projects/mike", "/projects/zulu"}; !slices.Equal(paths, want) {
+		t.Errorf("paths = %v, want %v", paths, want)
+	}
+}
+
 // Database permissions must protect ticket data regardless of the user's
 // umask.
 func TestOpenMakesTheDatabaseForItsPersonOnly(t *testing.T) {
