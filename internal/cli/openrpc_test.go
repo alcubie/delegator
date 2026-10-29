@@ -1009,6 +1009,11 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	if err := validator.Validate(accepted); err != nil {
 		t.Fatalf("result with an acceptance timestamp does not satisfy the advertised schema: %v", err)
 	}
+	// Accept takes the worktree away, so the accepted result carries a
+	// reason and the schema sees chat_unavailable with a string in it.
+	if _, ok := accepted["chat_unavailable"].(string); !ok {
+		t.Fatalf("chat_unavailable = %#v for an accepted ticket, want a reason", accepted["chat_unavailable"])
+	}
 
 	valid := maps.Clone(actual)
 	valid["id"] = float64(1 << 62)
@@ -1032,6 +1037,8 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"null dependency links", func(result map[string]any) { result["depends_on"] = nil }},
 		{"nonpositive dependency identifier", func(result map[string]any) { result["depends_on"] = []any{float64(0)} }},
 		{"wrong reverse links type", func(result map[string]any) { result["blocks"] = "2" }},
+		{"missing chat_unavailable", func(result map[string]any) { delete(result, "chat_unavailable") }},
+		{"wrong chat_unavailable type", func(result map[string]any) { result["chat_unavailable"] = float64(1) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := maps.Clone(actual)
