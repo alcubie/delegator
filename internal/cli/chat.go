@@ -46,10 +46,11 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 		Use:   "chat [id]",
 		Short: "Continue a ticket's agent session.",
 		Long: "Continue a ticket's existing agent session in its worktree and wait for the " +
-			"interactive command. With no ID, continue the first ready ticket for the selected project. " +
-			"Do not move the session to the background from inside the chat: an agent command that ends the " +
-			"foreground process, such as Claude Code's /background, ends the chat with it. " +
-			"The ticket then shows Failed until the agent finishes, and that is expected.",
+			"interactive command. With no ID, continue the first ready ticket for the selected project.\n\n" +
+			"Moving the session to the background from within chat may cause issues, and is best avoided. " +
+			"For example, Claude Code's /background command ends the session and starts a new process. " +
+			"This causes Delegator to show that the ticket has failed while it is still actually running. " +
+			"However, when the run has completed successfully, the ticket moves to the Ready bucket.",
 		Example: `  dg ticket chat 42
   dg ticket chat
   dg ticket chat --project ../api`,
