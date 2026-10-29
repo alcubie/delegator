@@ -25,8 +25,6 @@ func (s *Session) Model() string { return s.model }
 // agent only reports what it offers. An agent that advertises no model
 // selector returns ErrNoModelOption.
 func Models(ctx context.Context, name string, argv []string, cwd string) ([]string, error) {
-	// The agent's own output and the diagnostic of the disconnect that ends
-	// the probe share the writer, and the person asked about neither.
 	session, configOptions, err := newSession(ctx, name, argv, Deny(), cwd, SessionOptions{}, io.Discard)
 	if err != nil {
 		return nil, err
