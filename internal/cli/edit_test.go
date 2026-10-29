@@ -565,8 +565,8 @@ func TestEditARunningTicketIsRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("dg edit gave no error for a ticket that is running")
 			}
-			if !strings.Contains(err.Error(), "dg revise") {
-				t.Errorf("the error is %q, want dg revise named in it", err)
+			if want := fmt.Sprintf("dg ticket chat %d", id); !strings.Contains(err.Error(), want) {
+				t.Errorf("the error is %q, want %q named in it", err, want)
 			}
 			if got := proseWritten(t, dataDir, id); !got.Equal(when) {
 				t.Errorf("the file of prose was written at %s, want it not written since %s", got, when)
