@@ -50,7 +50,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			"Moving the session to the background from within chat may cause issues, and is best avoided. " +
 			"For example, Claude Code's /background command ends the session and starts a new process. " +
 			"This causes Delegator to show that the ticket has failed while it is still actually running. " +
-			"However, when the run has completed successfully, the ticket moves to the Ready bucket.",
+			"However, when the run has completed successfully, the ticket will move to the Ready bucket.",
 		Example: `  dg ticket chat 42
   dg ticket chat
   dg ticket chat --project ../api`,
