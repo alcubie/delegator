@@ -138,7 +138,7 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.FinishTicket(ids[0], "abc123"); err != nil {
+	if err := s.FinishTicket(ids[0], "abc123", ""); err != nil {
 		t.Fatal(err)
 	}
 	launch, record := testfix.RecordingLaunch(t)

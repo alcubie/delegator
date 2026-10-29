@@ -29,6 +29,9 @@ func TestMain(m *testing.M) {
 	// values.
 	os.Unsetenv("NO_COLOR")
 	os.Unsetenv("CLICOLOR_FORCE")
+	// The suite itself may run inside a Claude Code session, whose session ID
+	// would otherwise reach dg ticket finish.
+	os.Unsetenv(claudeSessionEnv)
 	code := m.Run()
 	testfix.CleanupBinaries()
 	os.Exit(code)

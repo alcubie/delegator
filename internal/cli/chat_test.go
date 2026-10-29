@@ -57,7 +57,7 @@ func chattableTicketWithAgent(t *testing.T, dataDir, agent string) (int64, strin
 	s, ticketID, repo, commit := runningTicketWithAgent(t, dataDir, agent)
 	const session = "session-of-the-run"
 	testfix.SetSession(t, s.DataDir(), ticketID, session)
-	if err := s.FinishTicket(ticketID, commit); err != nil {
+	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(run.WorktreePath(dataDir, ticketID), 0o700); err != nil {

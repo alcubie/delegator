@@ -56,6 +56,29 @@ func runningTicketWithAgent(t *testing.T, dataDir, agent string) (*store.Store, 
 	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)
 }
 
+// recordSession stores a session on the ticket's latest run, as the setup of
+// an ACP session does.
+func recordSession(t *testing.T, s *store.Store, ticketID int64, session string) {
+	t.Helper()
+	run, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordSession(run.ID, session, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sessionOf returns the session the ticket holds.
+func sessionOf(t *testing.T, s *store.Store, ticketID int64) string {
+	t.Helper()
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ticket.Session
+}
+
 func TestFinishReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
@@ -116,7 +139,7 @@ func TestFinishRefusesQueuedDoneAndCancelledTicketsBeforeConsultingGit(t *testin
 				var commit string
 				s, ticketID, repo, commit = runningTicket(t, dataDir)
 				if status == store.Done {
-					if err := s.FinishTicket(ticketID, commit); err != nil {
+					if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -208,6 +231,75 @@ func TestFinishWritesTheFullHashWhenGivenAShortHash(t *testing.T) {
 	}
 	if ticket.Commit != commit {
 		t.Errorf("commit_id = %q, want full hash %q", ticket.Commit, commit)
+	}
+}
+
+// A Claude Code session that moves to the background continues as a fork
+// under a new session ID and finishes from there, so finish records it: the
+// stored session is the one dg ticket chat resumes.
+func TestFinishRecordsTheSessionOfTheCallingClaudeSession(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	recordSession(t, s, ticketID, "before-the-fork")
+	t.Setenv(claudeSessionEnv, "after-the-fork")
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := sessionOf(t, s, ticketID); got != "after-the-fork" {
+		t.Errorf("session = %q, want after-the-fork", got)
+	}
+}
+
+func TestFinishWithNoSessionInTheEnvironmentKeepsTheStoredSession(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicket(t, dataDir)
+	recordSession(t, s, ticketID, "the-session")
+	t.Setenv(claudeSessionEnv, "")
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := sessionOf(t, s, ticketID); got != "the-session" {
+		t.Errorf("session = %q, want the-session", got)
+	}
+}
+
+// A person finishing a ticket by hand from a Claude session of their own must
+// not replace the session of a ticket another agent ran.
+func TestFinishKeepsTheSessionOfARunByAnotherAgent(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningTicketWithAgent(t, dataDir, "codex")
+	recordSession(t, s, ticketID, "the-codex-session")
+	t.Setenv(claudeSessionEnv, "a-claude-session-of-my-own")
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := sessionOf(t, s, ticketID); got != "the-codex-session" {
+		t.Errorf("session = %q, want the-codex-session", got)
+	}
+}
+
+// A ticket that has never run has no agent to attribute a session to.
+func TestFinishKeepsTheSessionOfATicketWithNoRun(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, _ := queuedTicket(t, dataDir)
+	t.Setenv(claudeSessionEnv, "a-claude-session-of-my-own")
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := callingSession(s, ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session != "" {
+		t.Errorf("session = %q, want none", session)
 	}
 }
 

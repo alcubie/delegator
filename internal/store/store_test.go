@@ -53,6 +53,21 @@ func oneTicket(t *testing.T) (*Store, int64) {
 	return s, id
 }
 
+// claimedWithSession returns a store holding one claimed ticket whose run has
+// recorded a session, with the id of the ticket.
+func claimedWithSession(t *testing.T, session string) (*Store, int64) {
+	t.Helper()
+	s, id := oneTicket(t)
+	runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordSession(runID, session, ""); err != nil {
+		t.Fatal(err)
+	}
+	return s, id
+}
+
 // ticketIDs returns the id of each ticket of a list, in the order the list
 // holds them.
 func ticketIDs(tickets []OpenTicket) []int64 {
@@ -2842,7 +2857,7 @@ func TestReconcileAsksAboutTheRunOfEachTicketInRunning(t *testing.T) {
 	}
 	// Only the first ticket is still running; ready and never-claimed
 	// tickets need no probe.
-	if err := s.FinishTicket(ids[1], "abc123"); err != nil {
+	if err := s.FinishTicket(ids[1], "abc123", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3070,7 +3085,7 @@ func TestFinishTicketOnARunningTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.FinishTicket(fourth, "abc1234"); err != nil {
+	if err := s.FinishTicket(fourth, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3110,7 +3125,7 @@ func TestFinishTicketOnAFailedTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.FinishTicket(fourth, "abc1234"); err != nil {
+	if err := s.FinishTicket(fourth, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3138,13 +3153,13 @@ func TestFinishTicketOnAFailedTicket(t *testing.T) {
 // or transition history.
 func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 	s, ids := threeReady(t)
-	if err := s.FinishTicket(ids[1], "abc1234"); err != nil {
+	if err := s.FinishTicket(ids[1], "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 	position := ticketPosition(t, s, "ready_position", ids[1])
 	history := steps(t, s, ids[1])
 
-	if err := s.FinishTicket(ids[1], "def5678"); err != nil {
+	if err := s.FinishTicket(ids[1], "def5678", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3170,6 +3185,60 @@ func TestFinishTicketOnAReadyTicketReplacesTheCommit(t *testing.T) {
 	}
 }
 
+// An agent that finishes under a session other than the one it set up with
+// replaces the stored session, so that dg chat resumes the work that finished.
+func TestFinishTicketRecordsANewSession(t *testing.T) {
+	s, id := claimedWithSession(t, "before-the-fork")
+
+	if err := s.FinishTicket(id, "abc1234", "after-the-fork"); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Session != "after-the-fork" {
+		t.Errorf("session = %q, want after-the-fork", ticket.Session)
+	}
+}
+
+func TestFinishTicketWithNoSessionKeepsTheStoredOne(t *testing.T) {
+	s, id := claimedWithSession(t, "the-session")
+
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Session != "the-session" {
+		t.Errorf("session = %q, want the-session", ticket.Session)
+	}
+}
+
+// The session, the commit and the status change together, so a finish that the
+// state refuses leaves all three as they were.
+func TestFinishTicketFromAnInvalidStateKeepsTheSession(t *testing.T) {
+	s, id := claimedWithSession(t, "before-the-fork")
+	setStatus(t, s, id, Cancelled)
+
+	err := s.FinishTicket(id, "abc1234", "after-the-fork")
+	if !errors.Is(err, ErrInvalidTicketStateChange) {
+		t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Session != "before-the-fork" {
+		t.Errorf("session = %q, want before-the-fork", ticket.Session)
+	}
+}
+
 func TestFinishTicketFromAnInvalidState(t *testing.T) {
 	for _, status := range []TicketStatus{Queued, Done, Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
@@ -3178,7 +3247,7 @@ func TestFinishTicketFromAnInvalidState(t *testing.T) {
 				setStatus(t, s, id, status)
 			}
 
-			err := s.FinishTicket(id, "abc1234")
+			err := s.FinishTicket(id, "abc1234", "")
 			if !errors.Is(err, ErrInvalidTicketStateChange) {
 				t.Fatalf("err = %v, want ErrInvalidTicketStateChange", err)
 			}
