@@ -1413,10 +1413,14 @@ func (s *Store) Cancel(id, runID int64) error {
 // FinishTicket records a commit and moves Running or Failed tickets to Ready.
 // This allows a failed session resumed with dg chat to finish.
 //
+// A non-empty session replaces the ticket's session, for an agent that
+// finishes under a session other than the one it started with. An empty
+// session leaves the stored one alone.
+//
 // For an already Ready ticket, only the commit changes, preserving its
 // position and status timestamp after an amend or rebase. Other statuses
 // return ErrInvalidTicketStateChange.
-func (s *Store) FinishTicket(id int64, commit string) error {
+func (s *Store) FinishTicket(id int64, commit, session string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -1436,6 +1440,13 @@ func (s *Store) FinishTicket(id int64, commit string) error {
 		"UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id,
 	); err != nil {
 		return err
+	}
+	if session != "" {
+		if _, err := tx.Exec(
+			"UPDATE tickets SET session = ? WHERE id = ?", session, id,
+		); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

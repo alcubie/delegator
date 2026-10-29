@@ -48,7 +48,7 @@ func finishIn(t *testing.T, s *store.Store, id int64) string {
 	if _, err := s.Claim(id, branch, testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, ""); err != nil {
+	if err := s.FinishTicket(id, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	return branch

@@ -26,7 +26,7 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	}
 	testfix.GitIn(t, repo, "worktree", "add", run.WorktreePath(dataDir, ticketID), ticket.Branch)
 
-	if err := s.FinishTicket(ticketID, commit); err != nil {
+	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
 	}
 	return s, ticketID, repo
@@ -45,7 +45,7 @@ func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int6
 	testfix.GitIn(t, worktree, "add", name)
 	testfix.CommitIn(t, worktree, "ticket work")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
-	if err := s.FinishTicket(ticketID, commit); err != nil {
+	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
 	}
 	ticket, err := s.Ticket(ticketID)
@@ -238,7 +238,7 @@ func TestAcceptIgnoresIgnoredArtifacts(t *testing.T) {
 	testfix.GitIn(t, worktree, "add", ".gitignore")
 	testfix.CommitIn(t, worktree, "ignore build artifact")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
-	if err := s.FinishTicket(ticketID, commit); err != nil {
+	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
 	}
 	ticket := testfix.ReadTicket(t, dataDir, ticketID)

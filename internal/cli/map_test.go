@@ -251,7 +251,7 @@ func TestMapWithNoIDUsesTheHeadOfReady(t *testing.T) {
 		if _, err := s.Claim(id, fmt.Sprintf("delegator/%d", id), testAgentID); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.FinishTicket(id, ""); err != nil {
+		if err := s.FinishTicket(id, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}

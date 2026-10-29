@@ -611,7 +611,7 @@ func TestTheACPRunnerTimeoutKeepsATicketThatFinishedFirstReady(t *testing.T) {
 	}()
 	testfix.WaitFor(t, marker)
 	commit := testfix.GitOut(t, WorktreePath(dataDir, id), "rev-parse", "HEAD")
-	if err := s.FinishTicket(id, commit); err != nil {
+	if err := s.FinishTicket(id, commit, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err == nil {

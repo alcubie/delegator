@@ -122,7 +122,7 @@ func TestEveryChangeOfStatusWritesOneRow(t *testing.T) {
 	if firstRun == secondRun {
 		t.Fatalf("the claim and restart gave the run %d twice", firstRun)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Done); err != nil {
@@ -149,7 +149,7 @@ func TestChangeStatusWithWritesTheRowWithTheChange(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,7 +276,7 @@ func TestTicketGivesTheTimeOfTheLastChange(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 	stopped := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
@@ -305,7 +305,7 @@ func TestTheTimeOfADoneTicketIsTheAcceptance(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 	// the run stopped long before the person read it
@@ -374,7 +374,7 @@ func TestTicketGivesTheTimeOfTheAcceptance(t *testing.T) {
 	if _, err := s.Claim(id, "delegator/1-my-ticket", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FinishTicket(id, "abc1234"); err != nil {
+	if err := s.FinishTicket(id, "abc1234", ""); err != nil {
 		t.Fatal(err)
 	}
 
