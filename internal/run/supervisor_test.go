@@ -237,8 +237,24 @@ func TestPromptNamesBothCommands(t *testing.T) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}
 	}
-	if got, want := strings.Count(got, "--data-dir "+strconv.Quote(dataDir)), 2; got != want {
+	if got, want := strings.Count(got, "--data-dir "+strconv.Quote(dataDir)), 4; got != want {
 		t.Errorf("the prompt names the selected data directory %d times, want %d:\n%s", got, want, prompt(42, dataDir, cacheDir))
+	}
+}
+
+func TestPromptSaysToRerunBeforeARevision(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "selected instance")
+	got := prompt(42, dataDir, t.TempDir())
+	for _, want := range []string{
+		"dg ticket rerun 42 --data-dir " + strconv.Quote(dataDir),
+		"before you change anything",
+		"new commit on top",
+		"do not amend it",
+		"Do not run rerun when the person only asks questions",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
 	}
 }
 

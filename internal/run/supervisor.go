@@ -206,8 +206,10 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 }
 
 // prompt tells the agent to read its ticket with dg ticket show and report its
-// commit with dg ticket finish. It also gives concrete limits on repository reads to
-// keep unnecessary files out of the agent's context.
+// commit with dg ticket finish, and to mark the ticket running again with dg
+// ticket rerun when the person asks for changes later in the same session. It
+// also gives concrete limits on repository reads to keep unnecessary files out
+// of the agent's context.
 func prompt(id int64, dataDir, cacheDir string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
@@ -224,6 +226,18 @@ disposable and are not removed with this worktree.
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
 4. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
+
+If the person continues this session later and asks for changes:
+
+1. Run dg ticket rerun %[1]d --data-dir %[2]q before you change anything.
+2. Make the changes and commit them. Add a new commit on top of the one you
+   reported before; do not amend it, so that the reviewer sees what changed
+   since the last review.
+3. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the new
+   commit.
+
+Do not run rerun when the person only asks questions and does not ask for a
+change.
 
 How to read the repository:
 
