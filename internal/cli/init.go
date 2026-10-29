@@ -208,8 +208,12 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 				return writeIncompleteInit(out)
 			}
 		}
-		if err := setSetting(s, "default_agent", options.agent); err != nil {
+		change, err := setSetting(s, "default_agent", options.agent)
+		if err != nil {
 			return err
+		}
+		if change.Notice != "" {
+			fmt.Fprintln(out, change.Notice)
 		}
 		cfg.DefaultAgent = options.agent
 		return completeInit(cmd, s, cfg, false)
@@ -245,8 +249,12 @@ func runInit(cmd *cobra.Command, s *store.Store, cfg *config.Config, options ini
 			return writeIncompleteInit(out)
 		}
 	}
-	if err := setSetting(s, "default_agent", choice.Agent.Name); err != nil {
+	change, err := setSetting(s, "default_agent", choice.Agent.Name)
+	if err != nil {
 		return err
+	}
+	if change.Notice != "" {
+		fmt.Fprintln(out, change.Notice)
 	}
 	cfg.DefaultAgent = choice.Agent.Name
 	return completeInit(cmd, s, cfg, true)

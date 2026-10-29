@@ -13,7 +13,7 @@ import (
 
 func setInitTelemetry(s *store.Store, cfg *config.Config, choice *bool) error {
 	if choice != nil {
-		if err := setSetting(s, "telemetry", strconv.FormatBool(*choice)); err != nil {
+		if _, err := setSetting(s, "telemetry", strconv.FormatBool(*choice)); err != nil {
 			return err
 		}
 		cfg.Telemetry = choice
