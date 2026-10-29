@@ -2,11 +2,11 @@
 
 ## dg project
 
-Inspect the registered projects.
+Work with the registered projects.
 
 ### Synopsis
 
-Show the repositories that this Delegator instance has registered.
+Register a repository as a project, and show the repositories that this Delegator instance has registered.
 
 ```
 dg project [flags]
@@ -15,6 +15,7 @@ dg project [flags]
 ### Examples
 
 ```
+  dg project add
   dg project list
 ```
 
@@ -34,4 +35,5 @@ dg project [flags]
 ### SEE ALSO
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
+* [dg project add](dg_project_add.md)	 - Register a repository as a project.
 * [dg project list](dg_project_list.md)	 - List every registered project.

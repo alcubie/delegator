@@ -21,19 +21,61 @@ type projectJSON struct {
 }
 
 // projectCommand is the namespace for the projects of the instance.
-func projectCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "project",
-		Short:   "Inspect the registered projects.",
-		Long:    "Show the repositories that this Delegator instance has registered.",
-		Example: "  dg project list",
-		Args:    cobra.NoArgs,
+		Use:   "project",
+		Short: "Work with the registered projects.",
+		Long:  "Register a repository as a project, and show the repositories that this Delegator instance has registered.",
+		Example: `  dg project add
+  dg project list`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
+	cmd.AddCommand(projectAddCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
 	return cmd
+}
+
+// projectAddCommand registers a repository as a project without adding a
+// ticket, so a project with no work yet can still be registered. dir
+// defaults to the current working directory.
+func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	return rpcOperationCommand("project.add", &cobra.Command{
+		Use:   "add [dir]",
+		Short: "Register a repository as a project.",
+		Long: "Register the Git repository at dir, or the current working directory, as a Delegator project, " +
+			"without adding a ticket to its queue. A repository that is already registered, including from a " +
+			"subdirectory or a linked worktree, returns the project already on record.",
+		Example: `  dg project add
+  dg project add ~/projects/widget`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var arg string
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			dir, err := ticketProject(workDir, arg)
+			if err != nil {
+				return err
+			}
+			var value projectJSON
+			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				p, err := registerProject(s, dir)
+				if err != nil {
+					return err
+				}
+				value = projectJSON{ID: p.ID, Path: p.Path, DefaultBranch: p.DefaultBranch}
+				return nil
+			}); err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+				fmt.Fprintln(out, value.Path)
+			})
+		},
+	})
 }
 
 // registerProject resolves dir to its repository root and registers it with
@@ -109,10 +151,10 @@ func writeProjects(out io.Writer, projects []projectJSON) {
 	_ = w.Flush()
 }
 
-// projectListResultSchema describes the array of projects returned by
-// project.list.
-func projectListResultSchema() map[string]any {
-	project := map[string]any{
+// projectResultSchema describes the object that identifies a registered
+// project, as project.add returns it.
+func projectResultSchema() map[string]any {
+	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"id":             map[string]any{"type": "integer", "minimum": 1},
@@ -122,8 +164,13 @@ func projectListResultSchema() map[string]any {
 		"required":             []string{"id", "path", "default_branch"},
 		"additionalProperties": true,
 	}
+}
+
+// projectListResultSchema describes the array of projects returned by
+// project.list.
+func projectListResultSchema() map[string]any {
 	return map[string]any{
 		"type":  "array",
-		"items": project,
+		"items": projectResultSchema(),
 	}
 }
