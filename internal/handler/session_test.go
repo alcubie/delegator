@@ -8,31 +8,51 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 )
 
+// syncBuffer collects the writes of more than one goroutine. A session's
+// writer takes both the agent's stderr and the connection's diagnostics.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // start opens a stub session with test cleanup and returns its request record
 // and stderr.
-func start(t *testing.T, cwd string) (*Session, string, *bytes.Buffer) {
+func start(t *testing.T, cwd string) (*Session, string, *syncBuffer) {
 	t.Helper()
 	return startPolicy(t, cwd, Policy{}, stubFullOptions, stubTurnPermissions)
 }
 
 // startPolicy opens a session on the stub agent that answers by the policy,
 // offers one of the sets of permission options and takes one of the turns.
-func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *bytes.Buffer) {
+func startPolicy(t *testing.T, cwd string, policy Policy, options, turn string) (*Session, string, *syncBuffer) {
 	return startConfigured(t, cwd, policy, options, turn, SessionOptions{})
 }
 
 // startConfigured is startPolicy with the workspace roots and process
 // environment the client gives the session.
-func startConfigured(t *testing.T, cwd string, policy Policy, options, turn string, sessionOptions SessionOptions) (*Session, string, *bytes.Buffer) {
+func startConfigured(t *testing.T, cwd string, policy Policy, options, turn string, sessionOptions SessionOptions) (*Session, string, *syncBuffer) {
 	t.Helper()
 	name, argv, record := stubLaunch(t, options, turn, stubLoads)
-	var stderr bytes.Buffer
+	var stderr syncBuffer
 	s, err := Start(t.Context(), name, argv, policy, cwd, sessionOptions, &stderr)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -68,6 +88,18 @@ func drain(t *testing.T, s *Session, want int) []Event {
 		}
 	}
 	return got
+}
+
+// waitFor fails unless the writer holds want before the deadline. The SDK
+// writes a diagnostic from its own goroutine, so one read can be too early.
+func waitFor(t *testing.T, w *syncBuffer, want string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if strings.Contains(w.String(), want) {
+			return
+		}
+	}
+	t.Errorf("the writer holds %q, and the connection should report %q", w.String(), want)
 }
 
 func TestStartOpensTheSessionTheAgentIssued(t *testing.T) {
@@ -123,6 +155,14 @@ func TestCloseEndsTheAgent(t *testing.T) {
 	if !strings.Contains(stderr.String(), stubHello) {
 		t.Errorf("the agent's stderr is %q, and it wrote %q", stderr.String(), stubHello)
 	}
+}
+
+func TestCloseReportsTheConnectionOnTheWriterTheCallerGave(t *testing.T) {
+	s, _, stderr := start(t, t.TempDir())
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, stderr, "connection closed")
 }
 
 func TestStartNamesACommandThatIsNotThere(t *testing.T) {
