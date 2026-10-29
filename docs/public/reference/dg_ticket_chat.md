@@ -8,6 +8,8 @@ Continue a ticket's agent session.
 
 Continue a ticket's existing agent session in its worktree and wait for the interactive command. With no ID, continue the first ready ticket for the selected project.
 
+Moving the session to the background from within chat may cause issues, and is best avoided. For example, Claude Code's /background command ends the session and starts a new process. This causes Delegator to show that the ticket has failed while it is still actually running. However, when the run has completed successfully, the ticket will move to the Ready bucket.
+
 ```
 dg ticket chat [id] [flags]
 ```
