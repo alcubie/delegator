@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"os/exec"
 	"sync"
 
@@ -78,8 +79,9 @@ type outcome struct {
 const eventRoom = 64
 
 // open starts the agent in absolute cwd and negotiates ACP capabilities for
-// file access, without terminal support. Agent diagnostics go to stderr. It
-// returns a process without a session; on failure it terminates the process.
+// file access, without terminal support. The agent's diagnostics and the
+// connection's own both go to stderr. It returns a process without a session;
+// on failure it terminates the process.
 func open(ctx context.Context, name string, argv []string, policy Policy, cwd string, options SessionOptions, stderr io.Writer) (*Session, error) {
 	if len(argv) == 0 {
 		return nil, fmt.Errorf("agent %q has no command", name)
@@ -101,6 +103,7 @@ func open(ctx context.Context, name string, argv []string, policy Policy, cwd st
 	}
 	s := &Session{cmd: cmd, events: make(chan Event, eventRoom)}
 	s.conn = acp.NewClientSideConnection(&client{policy: policy, events: s.events}, stdin, stdout)
+	s.conn.SetLogger(slog.New(slog.NewTextHandler(stderr, nil)))
 	r, err := s.conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"strings"
 
@@ -30,10 +29,6 @@ func Models(ctx context.Context, name string, argv []string, cwd string) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	// Ending the probe disconnects the agent, which the SDK reports on the
-	// standard logger. The person at the terminal asked about models, not
-	// about a connection that closed as intended.
-	session.conn.SetLogger(slog.New(slog.DiscardHandler))
 	defer session.Close()
 	selectOption := modelOption(configOptions)
 	if selectOption == nil {
