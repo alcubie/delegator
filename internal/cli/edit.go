@@ -160,7 +160,7 @@ func editFromEditor(s *store.Store, id int64) error {
 // ticket, editing it could make the report describe different work.
 func refuseEdit(ticket store.Ticket) error {
 	if ticket.Status == store.Running {
-		return fmt.Errorf("ticket %d is running: use dg revise after the run to change it", ticket.ID)
+		return fmt.Errorf("ticket %d is running: after the run, use dg ticket chat %d to ask for changes", ticket.ID, ticket.ID)
 	}
 	return fmt.Errorf("ticket %d is %s: only a ticket in the queue can be changed", ticket.ID, ticket.Status)
 }
