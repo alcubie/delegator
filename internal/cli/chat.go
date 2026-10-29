@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -67,7 +68,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			// Close the store before the interactive
 			// conversation, which may run indefinitely.
 			interactive := chat(argv, worktree)
-			interactive.Env = cacheEnvironment(os.Environ(), cacheDir)
+			interactive.Env = chatEnvironment(os.Environ(), cacheDir, os.Getpid())
 			return waitForChat(interactive)
 		},
 	}
@@ -144,15 +145,27 @@ func noSession(s *store.Store, dataDir string, id int64) error {
 	return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one", id, r.ID)
 }
 
-func cacheEnvironment(environ []string, cacheDir string) []string {
-	prefix := run.ProjectCacheEnvironment + "="
-	result := make([]string, 0, len(environ)+1)
+// chatEnvironment sets the project cache and chat PID variables on the
+// agent's environment, replacing any inherited values of either so a chat
+// started from inside another chat does not keep its parent's.
+func chatEnvironment(environ []string, cacheDir string, pid int) []string {
+	environ = withoutEnv(environ, run.ProjectCacheEnvironment)
+	environ = withoutEnv(environ, run.ChatPIDEnvironment)
+	return append(environ,
+		run.ProjectCacheEnvironment+"="+cacheDir,
+		run.ChatPIDEnvironment+"="+strconv.Itoa(pid))
+}
+
+// withoutEnv returns environ with any entry for key removed.
+func withoutEnv(environ []string, key string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(environ))
 	for _, entry := range environ {
 		if !strings.HasPrefix(entry, prefix) {
 			result = append(result, entry)
 		}
 	}
-	return append(result, prefix+cacheDir)
+	return result
 }
 
 // waitForChat waits for the interactive agent and propagates its exit status.

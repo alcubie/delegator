@@ -20,6 +20,12 @@ const branchPrefix = "delegator"
 // deliberately neutral: an agent can choose which tools, if any, use it.
 const ProjectCacheEnvironment = "DELEGATOR_PROJECT_CACHE_DIR"
 
+// ChatPIDEnvironment names the PID of the dg ticket chat process in an agent
+// process. dg ticket rerun reads it to confirm it runs inside a chat and
+// records that PID on the run it starts, so dg ticket chat still finds the
+// right resume command afterwards.
+const ChatPIDEnvironment = "DELEGATOR_CHAT_PID"
+
 // maxSlug limits the title portion of a ticket branch name.
 const maxSlug = 40
 

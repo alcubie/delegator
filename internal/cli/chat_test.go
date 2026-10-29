@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -121,6 +122,23 @@ func TestChatStartsTheResumeOfTheAgent(t *testing.T) {
 	want := resumeArgv(session)
 	if !slices.Equal(record.argv, want) {
 		t.Errorf("argv = %v, want %v", record.argv, want)
+	}
+}
+
+// dg ticket rerun reads this variable to confirm it runs inside dg ticket
+// chat and to record the right PID on the run it starts.
+func TestChatSetsItsPIDForRerun(t *testing.T) {
+	dataDir := t.TempDir()
+	ticketID, repo, _ := chattableTicket(t, dataDir)
+	record := useChat(t, "true")
+
+	if _, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(ticketID)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := strconv.Itoa(os.Getpid())
+	if got := envValue(record.cmd.Env, run.ChatPIDEnvironment); got != want {
+		t.Errorf("%s = %q, want %q", run.ChatPIDEnvironment, got, want)
 	}
 }
 
