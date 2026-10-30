@@ -134,20 +134,22 @@ func shortHash(hash string) string {
 }
 
 // shown combines a stored ticket with its description file and text, existing
-// worktree path, dependency IDs, latest run start, and the reason that chat
-// cannot continue its conversation. Missing worktrees use an empty path;
-// never-run tickets use the zero start time; a ticket that chat can continue
-// has no reason.
+// worktree path, dependency IDs, latest run start, the reason that chat
+// cannot continue its conversation, and the reason that the status of the
+// ticket refuses accept. Missing worktrees use an empty path; never-run
+// tickets use the zero start time; a ticket that chat can continue, or that
+// accept can run on, has no reason.
 type shown struct {
 	store.Ticket
-	ProseFile       string
-	Prose           string
-	Worktree        string
-	DependsOn       []int64
-	Blocks          []int64
-	Started         time.Time
-	Agent           string
-	ChatUnavailable string
+	ProseFile         string
+	Prose             string
+	Worktree          string
+	DependsOn         []int64
+	Blocks            []int64
+	Started           time.Time
+	Agent             string
+	ChatUnavailable   string
+	AcceptUnavailable string
 }
 
 // writeHeading writes the title and the status, the time below the status, and
@@ -229,23 +231,25 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 
 // ticketJSON is the structured show result. Missing scalar values are null;
 // dependency links are always arrays; chat_unavailable is null when chat can
-// continue the ticket's conversation.
+// continue the ticket's conversation; accept_unavailable is null when the
+// status of the ticket lets accept run.
 type ticketJSON struct {
-	ID              int64      `json:"id"`
-	Title           string     `json:"title"`
-	Status          string     `json:"status"`
-	Project         string     `json:"project"`
-	Ticket          string     `json:"ticket"`
-	Worktree        *string    `json:"worktree"`
-	Branch          *string    `json:"branch"`
-	Session         *string    `json:"session"`
-	Commit          *string    `json:"commit"`
-	Created         *time.Time `json:"created"`
-	Accepted        *time.Time `json:"accepted"`
-	Prose           *string    `json:"prose"`
-	DependsOn       []int64    `json:"depends_on"`
-	Blocks          []int64    `json:"blocks"`
-	ChatUnavailable *string    `json:"chat_unavailable"`
+	ID                int64      `json:"id"`
+	Title             string     `json:"title"`
+	Status            string     `json:"status"`
+	Project           string     `json:"project"`
+	Ticket            string     `json:"ticket"`
+	Worktree          *string    `json:"worktree"`
+	Branch            *string    `json:"branch"`
+	Session           *string    `json:"session"`
+	Commit            *string    `json:"commit"`
+	Created           *time.Time `json:"created"`
+	Accepted          *time.Time `json:"accepted"`
+	Prose             *string    `json:"prose"`
+	DependsOn         []int64    `json:"depends_on"`
+	Blocks            []int64    `json:"blocks"`
+	ChatUnavailable   *string    `json:"chat_unavailable"`
+	AcceptUnavailable *string    `json:"accept_unavailable"`
 
 	shown shown
 }
@@ -294,11 +298,17 @@ func showResultSchema() map[string]any {
 				"description": "Why dg ticket chat cannot continue the ticket's session, " +
 					"or null when it can continue it.",
 			},
+			"accept_unavailable": map[string]any{
+				"type": []string{"string", "null"},
+				"description": "Why the status of the ticket refuses dg ticket accept, " +
+					"or null when the status lets it run. accept validates the merge " +
+					"of the branch and the state of the worktree when it runs.",
+			},
 		},
 		"required": []string{
 			"id", "title", "status", "project", "ticket", "worktree",
 			"branch", "session", "commit", "created", "accepted", "prose",
-			"depends_on", "blocks", "chat_unavailable",
+			"depends_on", "blocks", "chat_unavailable", "accept_unavailable",
 		},
 		"additionalProperties": true,
 	}
@@ -324,22 +334,23 @@ func nullableTime(at time.Time) *time.Time {
 // kept with it for the text renderer, and the exported fields are its JSON.
 func ticketValue(s shown) ticketJSON {
 	return ticketJSON{
-		ID:              s.ID,
-		Title:           s.Title,
-		Status:          string(s.Status),
-		Project:         s.Project.Path,
-		Ticket:          s.ProseFile,
-		Worktree:        nullable(s.Worktree),
-		Branch:          nullable(s.Branch),
-		Session:         nullable(s.Session),
-		Commit:          nullable(s.Commit),
-		Created:         nullableTime(s.Created),
-		Accepted:        nullableTime(s.Accepted),
-		Prose:           nullable(strings.TrimRight(s.Prose, "\n")),
-		DependsOn:       append([]int64{}, s.DependsOn...),
-		Blocks:          append([]int64{}, s.Blocks...),
-		ChatUnavailable: nullable(s.ChatUnavailable),
-		shown:           s,
+		ID:                s.ID,
+		Title:             s.Title,
+		Status:            string(s.Status),
+		Project:           s.Project.Path,
+		Ticket:            s.ProseFile,
+		Worktree:          nullable(s.Worktree),
+		Branch:            nullable(s.Branch),
+		Session:           nullable(s.Session),
+		Commit:            nullable(s.Commit),
+		Created:           nullableTime(s.Created),
+		Accepted:          nullableTime(s.Accepted),
+		Prose:             nullable(strings.TrimRight(s.Prose, "\n")),
+		DependsOn:         append([]int64{}, s.DependsOn...),
+		Blocks:            append([]int64{}, s.Blocks...),
+		ChatUnavailable:   nullable(s.ChatUnavailable),
+		AcceptUnavailable: nullable(s.AcceptUnavailable),
+		shown:             s,
 	}
 }
 
@@ -415,6 +426,11 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	}
 	if !available {
 		t.ChatUnavailable = reason
+	}
+
+	available, reason = acceptAvailable(ticket)
+	if !available {
+		t.AcceptUnavailable = reason
 	}
 
 	t.DependsOn, err = s.Dependencies(id)

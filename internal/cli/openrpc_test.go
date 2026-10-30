@@ -1014,6 +1014,12 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	if _, ok := accepted["chat_unavailable"].(string); !ok {
 		t.Fatalf("chat_unavailable = %#v for an accepted ticket, want a reason", accepted["chat_unavailable"])
 	}
+	// A closed ticket cannot be accepted again, so the accepted result
+	// carries a reason and the schema sees accept_unavailable with a string
+	// in it.
+	if _, ok := accepted["accept_unavailable"].(string); !ok {
+		t.Fatalf("accept_unavailable = %#v for an accepted ticket, want a reason", accepted["accept_unavailable"])
+	}
 
 	valid := maps.Clone(actual)
 	valid["id"] = float64(1 << 62)
@@ -1039,6 +1045,8 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"wrong reverse links type", func(result map[string]any) { result["blocks"] = "2" }},
 		{"missing chat_unavailable", func(result map[string]any) { delete(result, "chat_unavailable") }},
 		{"wrong chat_unavailable type", func(result map[string]any) { result["chat_unavailable"] = float64(1) }},
+		{"missing accept_unavailable", func(result map[string]any) { delete(result, "accept_unavailable") }},
+		{"wrong accept_unavailable type", func(result map[string]any) { result["accept_unavailable"] = float64(1) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := maps.Clone(actual)

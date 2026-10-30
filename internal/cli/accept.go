@@ -12,6 +12,22 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
+// acceptAvailable reports whether the status of a ticket lets accept run,
+// and the reason beside it for when it does not. The reason is the message
+// accept itself would print, so the two cannot drift apart.
+//
+// The merge and the worktree are accept's own validation, left to the run of
+// accept. The status of a ticket changes only through dg, so the answer holds
+// until dg changes it, while a branch merges and a worktree turns dirty
+// outside dg and a reported answer would already be stale.
+func acceptAvailable(ticket store.Ticket) (bool, string) {
+	if ticket.Status != store.Ready {
+		return false, fmt.Sprintf("%s: %s to %s",
+			store.ErrInvalidTicketStateChange, ticket.Status, store.Done)
+	}
+	return true, ""
+}
+
 // acceptCommand accepts an explicit ticket or the project's first ready
 // ticket. An implicit selection prints the accepted ID.
 //

@@ -80,27 +80,37 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
-// chatUnavailableIn reads the chat_unavailable field of the show result.
-func chatUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
+// unavailableIn reads one of the fields of the show result that carry the
+// reason a command refuses a ticket, named by field.
+func unavailableIn(t *testing.T, dataDir, workDir string, id int64, field string) any {
 	t.Helper()
 	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
-	value, held := got["chat_unavailable"]
+	value, held := got[field]
 	if !held {
-		t.Fatalf("show result holds no chat_unavailable: %#v", got)
+		t.Fatalf("show result holds no %s: %#v", field, got)
 	}
 	return value
 }
 
-// chatRefusalIn reads the reason that show gives for a ticket whose
-// conversation chat cannot continue.
-func chatRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
+// refusalIn reads the reason that one of those fields holds.
+func refusalIn(t *testing.T, dataDir, workDir string, id int64, field string) string {
 	t.Helper()
-	value := chatUnavailableIn(t, dataDir, workDir, id)
+	value := unavailableIn(t, dataDir, workDir, id, field)
 	reason, ok := value.(string)
 	if !ok {
-		t.Fatalf("chat_unavailable = %#v, want a reason", value)
+		t.Fatalf("%s = %#v, want a reason", field, value)
 	}
 	return reason
+}
+
+// acceptErrorIn runs dg accept and returns the message it refuses with.
+func acceptErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := runIn(t, dataDir, workDir, "accept", fmt.Sprint(id)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg accept closed ticket %d", id)
+	return ""
 }
 
 // jsonFields is every key that RPC show result writes, in the order that the
@@ -108,7 +118,7 @@ func chatRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
-	"depends_on", "blocks", "chat_unavailable",
+	"depends_on", "blocks", "chat_unavailable", "accept_unavailable",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -977,7 +987,7 @@ func TestRunShowJSONGivesNoChatReasonForATicketThatCanChat(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo, _ := chattableTicket(t, dataDir)
 
-	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
 		t.Errorf("chat_unavailable = %#v, want null", value)
 	}
 }
@@ -993,7 +1003,7 @@ func TestRunShowJSONMakesNoProjectCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
 		t.Errorf("chat_unavailable = %#v, want null", value)
 	}
 	if _, err := os.Stat(cacheDir); !errors.Is(err, os.ErrNotExist) {
@@ -1051,7 +1061,7 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo, want := test.build(t, dataDir)
 
-			if reason := chatRefusalIn(t, dataDir, repo, id); reason != want {
+			if reason := refusalIn(t, dataDir, repo, id, "chat_unavailable"); reason != want {
 				t.Errorf("chat_unavailable = %q, want %q", reason, want)
 			}
 			useChat(t, "true")
@@ -1061,6 +1071,97 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			}
 			if err.Error() != want {
 				t.Errorf("dg chat error = %q, want %q", err, want)
+			}
+		})
+	}
+}
+
+// The desktop app reads accept_unavailable before it offers its Accept
+// button, and a ready ticket gives no reason.
+func TestRunShowJSONGivesNoAcceptReasonForAReadyTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+
+	if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
+		t.Errorf("accept_unavailable = %#v, want null", value)
+	}
+}
+
+// show gives the words that accept would print for a status that refuses it,
+// so the desktop can report the reason instead of starting a subprocess to
+// find it.
+func TestRunShowJSONGivesTheStatusReasonAcceptWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo, want string)
+	}{
+		{"the ticket is queued", func(t *testing.T, dataDir string) (int64, string, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo, "invalid ticket state change: queued to done"
+		}},
+		{"the ticket is running", func(t *testing.T, dataDir string) (int64, string, string) {
+			_, id, repo, _ := runningTicket(t, dataDir)
+			return id, repo, "invalid ticket state change: running to done"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo, want := test.build(t, dataDir)
+
+			if reason := refusalIn(t, dataDir, repo, id, "accept_unavailable"); reason != want {
+				t.Errorf("accept_unavailable = %q, want %q", reason, want)
+			}
+			if got := acceptErrorIn(t, dataDir, repo, id); got != want {
+				t.Errorf("dg accept error = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// The merge of the branch and the state of the worktree belong to the run of
+// accept, which validates both when the person clicks. Reporting them here
+// would disable a button over an answer that a merge in another window has
+// already made wrong.
+func TestRunShowJSONGivesNoAcceptReasonForAValidationAcceptMakesItself(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo string)
+	}{
+		{"the branch is not merged", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			commitReadyWork(t, s, dataDir, id)
+			return id, repo
+		}},
+		{"the worktree is dirty", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket := commitReadyWork(t, s, dataDir, id)
+			testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
+			path := filepath.Join(run.WorktreePath(dataDir, id), "not-committed.txt")
+			if err := os.WriteFile(path, []byte("untracked\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return id, repo
+		}},
+		{"the branch is gone", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket, err := s.Ticket(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, id))
+			testfix.GitIn(t, repo, "branch", "-D", ticket.Branch)
+			return id, repo
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := test.build(t, dataDir)
+
+			if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
+				t.Errorf("accept_unavailable = %#v, want null", value)
+			}
+			if acceptErrorIn(t, dataDir, repo, id) == "" {
+				t.Error("dg accept refused with no message")
 			}
 		})
 	}
