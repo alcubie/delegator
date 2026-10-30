@@ -982,8 +982,8 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 }
 
 // The desktop app reads accept_unavailable before it offers its Accept
-// button, and a ticket that accept can close gives no reason.
-func TestRunShowJSONGivesNoAcceptReasonForATicketThatCanBeAccepted(t *testing.T) {
+// button, and a ready ticket gives no reason.
+func TestRunShowJSONGivesNoAcceptReasonForAReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
 
@@ -992,9 +992,10 @@ func TestRunShowJSONGivesNoAcceptReasonForATicketThatCanBeAccepted(t *testing.T)
 	}
 }
 
-// show gives the words that accept would print, so the desktop can report the
-// reason instead of starting a subprocess to find it.
-func TestRunShowJSONGivesTheReasonAcceptWouldPrint(t *testing.T) {
+// show gives the words that accept would print for a status that refuses it,
+// so the desktop can report the reason instead of starting a subprocess to
+// find it.
+func TestRunShowJSONGivesTheStatusReasonAcceptWouldPrint(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		build func(t *testing.T, dataDir string) (id int64, repo, want string)
@@ -1006,23 +1007,6 @@ func TestRunShowJSONGivesTheReasonAcceptWouldPrint(t *testing.T) {
 		{"the ticket is running", func(t *testing.T, dataDir string) (int64, string, string) {
 			_, id, repo, _ := runningTicket(t, dataDir)
 			return id, repo, "invalid ticket state change: running to done"
-		}},
-		{"the branch is not merged", func(t *testing.T, dataDir string) (int64, string, string) {
-			s, id, repo := readyTicket(t, dataDir)
-			ticket := commitReadyWork(t, s, dataDir, id)
-			return id, repo, fmt.Sprintf(
-				"the ticket branch is not merged into HEAD: %s; use dg accept --force to accept it anyway",
-				ticket.Branch)
-		}},
-		{"the worktree is dirty", func(t *testing.T, dataDir string) (int64, string, string) {
-			s, id, repo := readyTicket(t, dataDir)
-			ticket := commitReadyWork(t, s, dataDir, id)
-			testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
-			path := filepath.Join(run.WorktreePath(dataDir, id), "not-committed.txt")
-			if err := os.WriteFile(path, []byte("untracked\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			return id, repo, "the worktree has uncommitted changes; use dg accept --force to accept it anyway"
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1039,24 +1023,52 @@ func TestRunShowJSONGivesTheReasonAcceptWouldPrint(t *testing.T) {
 	}
 }
 
-// A merge check that cannot look is a reason too: accept would stop at the
-// same failure, and show still answers for every other field of the ticket.
-func TestRunShowJSONGivesAMergeCheckFailureAsAnAcceptReason(t *testing.T) {
-	dataDir := t.TempDir()
-	s, id, repo := readyTicket(t, dataDir)
-	ticket, err := s.Ticket(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, id))
-	testfix.GitIn(t, repo, "branch", "-D", ticket.Branch)
+// The merge of the branch and the state of the worktree belong to the run of
+// accept, which validates both when the person clicks. Reporting them here
+// would disable a button over an answer that a merge in another window has
+// already made wrong.
+func TestRunShowJSONGivesNoAcceptReasonForAValidationAcceptMakesItself(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo string)
+	}{
+		{"the branch is not merged", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			commitReadyWork(t, s, dataDir, id)
+			return id, repo
+		}},
+		{"the worktree is dirty", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket := commitReadyWork(t, s, dataDir, id)
+			testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
+			path := filepath.Join(run.WorktreePath(dataDir, id), "not-committed.txt")
+			if err := os.WriteFile(path, []byte("untracked\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return id, repo
+		}},
+		{"the branch is gone", func(t *testing.T, dataDir string) (int64, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket, err := s.Ticket(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, id))
+			testfix.GitIn(t, repo, "branch", "-D", ticket.Branch)
+			return id, repo
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := test.build(t, dataDir)
 
-	reason := acceptRefusalIn(t, dataDir, repo, id)
-	if reason == "" {
-		t.Fatal("accept_unavailable = \"\", want the failure of the merge check")
-	}
-	if got := acceptErrorIn(t, dataDir, repo, id); got != reason {
-		t.Errorf("dg accept error = %q, want the reason %q that show gives", got, reason)
+			if value := acceptUnavailableIn(t, dataDir, repo, id); value != nil {
+				t.Errorf("accept_unavailable = %#v, want null", value)
+			}
+			if acceptErrorIn(t, dataDir, repo, id) == "" {
+				t.Error("dg accept refused with no message")
+			}
+		})
 	}
 }
 

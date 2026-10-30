@@ -12,23 +12,18 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
-// acceptAvailable reports whether accept can close a ticket without --force,
-// and the reason beside it for when it cannot. The reason is the message
+// acceptAvailable reports whether the status of a ticket lets accept run,
+// and the reason beside it for when it does not. The reason is the message
 // accept itself would print, so the two cannot drift apart.
 //
-// Both checks of accept only read, so they run here as they stand. A check
-// that fails to look is a reason too, because accept would not get past it
-// either.
-func acceptAvailable(dataDir string, ticket store.Ticket) (bool, string) {
+// The merge and the worktree are accept's own validation, left to the run of
+// accept. The status of a ticket changes only through dg, so the answer holds
+// until dg changes it, while a branch merges and a worktree turns dirty
+// outside dg and a reported answer would already be stale.
+func acceptAvailable(ticket store.Ticket) (bool, string) {
 	if ticket.Status != store.Ready {
 		return false, fmt.Sprintf("%s: %s to %s",
 			store.ErrInvalidTicketStateChange, ticket.Status, store.Done)
-	}
-	if err := project.RequireBranchMerged(ticket.Project.Path, ticket.Branch); err != nil {
-		return false, err.Error()
-	}
-	if _, err := run.ValidateAcceptanceWorktree(run.WorktreePath(dataDir, ticket.ID), false); err != nil {
-		return false, err.Error()
 	}
 	return true, ""
 }

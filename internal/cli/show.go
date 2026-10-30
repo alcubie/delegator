@@ -134,9 +134,10 @@ func shortHash(hash string) string {
 }
 
 // shown combines a stored ticket with its description file and text, existing
-// worktree path, dependency IDs, latest run start, and the reason that accept
-// cannot close it. Missing worktrees use an empty path; never-run tickets use
-// the zero start time; a ticket that accept can close has no reason.
+// worktree path, dependency IDs, latest run start, and the reason that the
+// status of the ticket refuses accept. Missing worktrees use an empty path;
+// never-run tickets use the zero start time; a ticket that accept can run on
+// has no reason.
 type shown struct {
 	store.Ticket
 	ProseFile         string
@@ -227,8 +228,8 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 }
 
 // ticketJSON is the structured show result. Missing scalar values are null;
-// dependency links are always arrays; accept_unavailable is null when accept
-// can close the ticket.
+// dependency links are always arrays; accept_unavailable is null when the
+// status of the ticket lets accept run.
 type ticketJSON struct {
 	ID                int64      `json:"id"`
 	Title             string     `json:"title"`
@@ -290,8 +291,9 @@ func showResultSchema() map[string]any {
 			},
 			"accept_unavailable": map[string]any{
 				"type": []string{"string", "null"},
-				"description": "Why dg ticket accept cannot close the ticket, " +
-					"or null when it can close it without --force.",
+				"description": "Why the status of the ticket refuses dg ticket accept, " +
+					"or null when the status lets it run. accept validates the merge " +
+					"of the branch and the state of the worktree when it runs.",
 			},
 		},
 		"required": []string{
@@ -408,7 +410,7 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		t.Worktree = ""
 	}
 
-	if available, reason := acceptAvailable(dataDir, ticket); !available {
+	if available, reason := acceptAvailable(ticket); !available {
 		t.AcceptUnavailable = reason
 	}
 
