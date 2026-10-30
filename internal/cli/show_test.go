@@ -80,48 +80,25 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
-// chatUnavailableIn reads the chat_unavailable field of the show result.
-func chatUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
+// unavailableIn reads one of the fields of the show result that carry the
+// reason a command refuses a ticket, named by field.
+func unavailableIn(t *testing.T, dataDir, workDir string, id int64, field string) any {
 	t.Helper()
 	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
-	value, held := got["chat_unavailable"]
+	value, held := got[field]
 	if !held {
-		t.Fatalf("show result holds no chat_unavailable: %#v", got)
+		t.Fatalf("show result holds no %s: %#v", field, got)
 	}
 	return value
 }
 
-// chatRefusalIn reads the reason that show gives for a ticket whose
-// conversation chat cannot continue.
-func chatRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
+// refusalIn reads the reason that one of those fields holds.
+func refusalIn(t *testing.T, dataDir, workDir string, id int64, field string) string {
 	t.Helper()
-	value := chatUnavailableIn(t, dataDir, workDir, id)
+	value := unavailableIn(t, dataDir, workDir, id, field)
 	reason, ok := value.(string)
 	if !ok {
-		t.Fatalf("chat_unavailable = %#v, want a reason", value)
-	}
-	return reason
-}
-
-// acceptUnavailableIn reads the accept_unavailable field of the show result.
-func acceptUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
-	t.Helper()
-	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
-	value, held := got["accept_unavailable"]
-	if !held {
-		t.Fatalf("show result holds no accept_unavailable: %#v", got)
-	}
-	return value
-}
-
-// acceptRefusalIn reads the reason that show gives for a ticket that accept
-// cannot close.
-func acceptRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
-	t.Helper()
-	value := acceptUnavailableIn(t, dataDir, workDir, id)
-	reason, ok := value.(string)
-	if !ok {
-		t.Fatalf("accept_unavailable = %#v, want a reason", value)
+		t.Fatalf("%s = %#v, want a reason", field, value)
 	}
 	return reason
 }
@@ -1010,7 +987,7 @@ func TestRunShowJSONGivesNoChatReasonForATicketThatCanChat(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo, _ := chattableTicket(t, dataDir)
 
-	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
 		t.Errorf("chat_unavailable = %#v, want null", value)
 	}
 }
@@ -1026,7 +1003,7 @@ func TestRunShowJSONMakesNoProjectCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
 		t.Errorf("chat_unavailable = %#v, want null", value)
 	}
 	if _, err := os.Stat(cacheDir); !errors.Is(err, os.ErrNotExist) {
@@ -1084,7 +1061,7 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo, want := test.build(t, dataDir)
 
-			if reason := chatRefusalIn(t, dataDir, repo, id); reason != want {
+			if reason := refusalIn(t, dataDir, repo, id, "chat_unavailable"); reason != want {
 				t.Errorf("chat_unavailable = %q, want %q", reason, want)
 			}
 			useChat(t, "true")
@@ -1105,7 +1082,7 @@ func TestRunShowJSONGivesNoAcceptReasonForAReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
 
-	if value := acceptUnavailableIn(t, dataDir, repo, id); value != nil {
+	if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
 		t.Errorf("accept_unavailable = %#v, want null", value)
 	}
 }
@@ -1131,7 +1108,7 @@ func TestRunShowJSONGivesTheStatusReasonAcceptWouldPrint(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo, want := test.build(t, dataDir)
 
-			if reason := acceptRefusalIn(t, dataDir, repo, id); reason != want {
+			if reason := refusalIn(t, dataDir, repo, id, "accept_unavailable"); reason != want {
 				t.Errorf("accept_unavailable = %q, want %q", reason, want)
 			}
 			if got := acceptErrorIn(t, dataDir, repo, id); got != want {
@@ -1180,7 +1157,7 @@ func TestRunShowJSONGivesNoAcceptReasonForAValidationAcceptMakesItself(t *testin
 			dataDir := t.TempDir()
 			id, repo := test.build(t, dataDir)
 
-			if value := acceptUnavailableIn(t, dataDir, repo, id); value != nil {
+			if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
 				t.Errorf("accept_unavailable = %#v, want null", value)
 			}
 			if acceptErrorIn(t, dataDir, repo, id) == "" {
