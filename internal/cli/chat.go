@@ -116,11 +116,8 @@ func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 		return resumption{}, err
 	}
 	if ticket.Status == store.Running {
-		r, err := s.Run(id)
-		if err != nil {
-			return resumption{}, err
-		}
-		return resumption{}, refuse("ticket %d is running: process %d is on its session", id, r.PID)
+		return resumption{}, refuse(
+			"ticket %d is running. Wait until the current process finishes and the ticket is ready.", id)
 	}
 	if ticket.Session == "" {
 		return resumption{}, noSession(s, dataDir, id)
@@ -140,7 +137,7 @@ func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 		return resumption{}, err
 	}
 	if len(agent.Resume) == 0 {
-		return resumption{}, refuse("agent %q has no command that opens a session", r.Agent)
+		return resumption{}, refuse("agent %q does not support resuming chat sessions", r.Agent)
 	}
 	return resumption{
 		session:  ticket.Session,

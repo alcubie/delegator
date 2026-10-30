@@ -1012,7 +1012,7 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			s, id, repo, _ := runningTicket(t, dataDir)
 			testfix.SetSession(t, s.DataDir(), id, "session-of-the-run")
 			return id, repo, fmt.Sprintf(
-				"ticket %d is running: process %d is on its session", id, os.Getpid())
+				"ticket %d is running. Wait until the current process finishes and the ticket is ready.", id)
 		}},
 		{"the ticket has not run", func(t *testing.T, dataDir string) (int64, string, string) {
 			_, id, repo := queuedTicket(t, dataDir)
@@ -1044,7 +1044,7 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			if err := s.SaveAgent(store.Agent{Name: "claude", Argv: []string{"claude-agent-acp"}}); err != nil {
 				t.Fatal(err)
 			}
-			return id, repo, `agent "claude" has no command that opens a session`
+			return id, repo, `agent "claude" does not support resuming chat sessions`
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
