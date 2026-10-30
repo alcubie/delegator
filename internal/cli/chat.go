@@ -150,15 +150,18 @@ func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 	}, nil
 }
 
-// chatUnavailable reports why a ticket cannot continue its conversation, and
-// an empty string when chat can continue it.
-func chatUnavailable(s *store.Store, dataDir string, id int64) (string, error) {
+// chatAvailable reports whether chat can continue a ticket's conversation,
+// and the reason beside it for when it cannot.
+func chatAvailable(s *store.Store, dataDir string, id int64) (bool, string, error) {
 	_, err := resumable(s, dataDir, id)
 	var refused refusal
 	if errors.As(err, &refused) {
-		return refused.reason, nil
+		return false, refused.reason, nil
 	}
-	return "", err
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
 }
 
 // resumeOf returns resume arguments, the worktree, and the project cache of a

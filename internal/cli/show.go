@@ -409,9 +409,12 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		t.Worktree = ""
 	}
 
-	t.ChatUnavailable, err = chatUnavailable(s, dataDir, id)
+	available, reason, err := chatAvailable(s, dataDir, id)
 	if err != nil {
 		return ticketJSON{}, err
+	}
+	if !available {
+		t.ChatUnavailable = reason
 	}
 
 	t.DependsOn, err = s.Dependencies(id)
