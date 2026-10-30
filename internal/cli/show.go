@@ -134,17 +134,19 @@ func shortHash(hash string) string {
 }
 
 // shown combines a stored ticket with its description file and text, existing
-// worktree path, dependency IDs, and latest run start. Missing worktrees use
-// an empty path; never-run tickets use the zero start time.
+// worktree path, dependency IDs, latest run start, and the reason that accept
+// cannot close it. Missing worktrees use an empty path; never-run tickets use
+// the zero start time; a ticket that accept can close has no reason.
 type shown struct {
 	store.Ticket
-	ProseFile string
-	Prose     string
-	Worktree  string
-	DependsOn []int64
-	Blocks    []int64
-	Started   time.Time
-	Agent     string
+	ProseFile         string
+	Prose             string
+	Worktree          string
+	DependsOn         []int64
+	Blocks            []int64
+	Started           time.Time
+	Agent             string
+	AcceptUnavailable string
 }
 
 // writeHeading writes the title and the status, the time below the status, and
@@ -225,22 +227,24 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 }
 
 // ticketJSON is the structured show result. Missing scalar values are null;
-// dependency links are always arrays.
+// dependency links are always arrays; accept_unavailable is null when accept
+// can close the ticket.
 type ticketJSON struct {
-	ID        int64      `json:"id"`
-	Title     string     `json:"title"`
-	Status    string     `json:"status"`
-	Project   string     `json:"project"`
-	Ticket    string     `json:"ticket"`
-	Worktree  *string    `json:"worktree"`
-	Branch    *string    `json:"branch"`
-	Session   *string    `json:"session"`
-	Commit    *string    `json:"commit"`
-	Created   *time.Time `json:"created"`
-	Accepted  *time.Time `json:"accepted"`
-	Prose     *string    `json:"prose"`
-	DependsOn []int64    `json:"depends_on"`
-	Blocks    []int64    `json:"blocks"`
+	ID                int64      `json:"id"`
+	Title             string     `json:"title"`
+	Status            string     `json:"status"`
+	Project           string     `json:"project"`
+	Ticket            string     `json:"ticket"`
+	Worktree          *string    `json:"worktree"`
+	Branch            *string    `json:"branch"`
+	Session           *string    `json:"session"`
+	Commit            *string    `json:"commit"`
+	Created           *time.Time `json:"created"`
+	Accepted          *time.Time `json:"accepted"`
+	Prose             *string    `json:"prose"`
+	DependsOn         []int64    `json:"depends_on"`
+	Blocks            []int64    `json:"blocks"`
+	AcceptUnavailable *string    `json:"accept_unavailable"`
 
 	shown shown
 }
@@ -284,11 +288,16 @@ func showResultSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"type": "integer", "minimum": 1},
 			},
+			"accept_unavailable": map[string]any{
+				"type": []string{"string", "null"},
+				"description": "Why dg ticket accept cannot close the ticket, " +
+					"or null when it can close it without --force.",
+			},
 		},
 		"required": []string{
 			"id", "title", "status", "project", "ticket", "worktree",
 			"branch", "session", "commit", "created", "accepted", "prose",
-			"depends_on", "blocks",
+			"depends_on", "blocks", "accept_unavailable",
 		},
 		"additionalProperties": true,
 	}
@@ -314,21 +323,22 @@ func nullableTime(at time.Time) *time.Time {
 // kept with it for the text renderer, and the exported fields are its JSON.
 func ticketValue(s shown) ticketJSON {
 	return ticketJSON{
-		ID:        s.ID,
-		Title:     s.Title,
-		Status:    string(s.Status),
-		Project:   s.Project.Path,
-		Ticket:    s.ProseFile,
-		Worktree:  nullable(s.Worktree),
-		Branch:    nullable(s.Branch),
-		Session:   nullable(s.Session),
-		Commit:    nullable(s.Commit),
-		Created:   nullableTime(s.Created),
-		Accepted:  nullableTime(s.Accepted),
-		Prose:     nullable(strings.TrimRight(s.Prose, "\n")),
-		DependsOn: append([]int64{}, s.DependsOn...),
-		Blocks:    append([]int64{}, s.Blocks...),
-		shown:     s,
+		ID:                s.ID,
+		Title:             s.Title,
+		Status:            string(s.Status),
+		Project:           s.Project.Path,
+		Ticket:            s.ProseFile,
+		Worktree:          nullable(s.Worktree),
+		Branch:            nullable(s.Branch),
+		Session:           nullable(s.Session),
+		Commit:            nullable(s.Commit),
+		Created:           nullableTime(s.Created),
+		Accepted:          nullableTime(s.Accepted),
+		Prose:             nullable(strings.TrimRight(s.Prose, "\n")),
+		DependsOn:         append([]int64{}, s.DependsOn...),
+		Blocks:            append([]int64{}, s.Blocks...),
+		AcceptUnavailable: nullable(s.AcceptUnavailable),
+		shown:             s,
 	}
 }
 
@@ -396,6 +406,10 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	t.Worktree = run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(t.Worktree); err != nil {
 		t.Worktree = ""
+	}
+
+	if available, reason := acceptAvailable(dataDir, ticket); !available {
+		t.AcceptUnavailable = reason
 	}
 
 	t.DependsOn, err = s.Dependencies(id)

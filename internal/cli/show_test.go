@@ -80,12 +80,45 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
+// acceptUnavailableIn reads the accept_unavailable field of the show result.
+func acceptUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
+	t.Helper()
+	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
+	value, held := got["accept_unavailable"]
+	if !held {
+		t.Fatalf("show result holds no accept_unavailable: %#v", got)
+	}
+	return value
+}
+
+// acceptRefusalIn reads the reason that show gives for a ticket that accept
+// cannot close.
+func acceptRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	value := acceptUnavailableIn(t, dataDir, workDir, id)
+	reason, ok := value.(string)
+	if !ok {
+		t.Fatalf("accept_unavailable = %#v, want a reason", value)
+	}
+	return reason
+}
+
+// acceptErrorIn runs dg accept and returns the message it refuses with.
+func acceptErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := runIn(t, dataDir, workDir, "accept", fmt.Sprint(id)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg accept closed ticket %d", id)
+	return ""
+}
+
 // jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
-	"depends_on", "blocks",
+	"depends_on", "blocks", "accept_unavailable",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -945,6 +978,85 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 		if value, ok := got[key].([]any); !ok || len(value) != 0 {
 			t.Errorf("%s = %#v for a ticket with no links, want []", key, got[key])
 		}
+	}
+}
+
+// The desktop app reads accept_unavailable before it offers its Accept
+// button, and a ticket that accept can close gives no reason.
+func TestRunShowJSONGivesNoAcceptReasonForATicketThatCanBeAccepted(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := readyTicket(t, dataDir)
+
+	if value := acceptUnavailableIn(t, dataDir, repo, id); value != nil {
+		t.Errorf("accept_unavailable = %#v, want null", value)
+	}
+}
+
+// show gives the words that accept would print, so the desktop can report the
+// reason instead of starting a subprocess to find it.
+func TestRunShowJSONGivesTheReasonAcceptWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo, want string)
+	}{
+		{"the ticket is queued", func(t *testing.T, dataDir string) (int64, string, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo, "invalid ticket state change: queued to done"
+		}},
+		{"the ticket is running", func(t *testing.T, dataDir string) (int64, string, string) {
+			_, id, repo, _ := runningTicket(t, dataDir)
+			return id, repo, "invalid ticket state change: running to done"
+		}},
+		{"the branch is not merged", func(t *testing.T, dataDir string) (int64, string, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket := commitReadyWork(t, s, dataDir, id)
+			return id, repo, fmt.Sprintf(
+				"the ticket branch is not merged into HEAD: %s; use dg accept --force to accept it anyway",
+				ticket.Branch)
+		}},
+		{"the worktree is dirty", func(t *testing.T, dataDir string) (int64, string, string) {
+			s, id, repo := readyTicket(t, dataDir)
+			ticket := commitReadyWork(t, s, dataDir, id)
+			testfix.GitIn(t, repo, "merge", "-q", "--ff-only", ticket.Branch)
+			path := filepath.Join(run.WorktreePath(dataDir, id), "not-committed.txt")
+			if err := os.WriteFile(path, []byte("untracked\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return id, repo, "the worktree has uncommitted changes; use dg accept --force to accept it anyway"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo, want := test.build(t, dataDir)
+
+			if reason := acceptRefusalIn(t, dataDir, repo, id); reason != want {
+				t.Errorf("accept_unavailable = %q, want %q", reason, want)
+			}
+			if got := acceptErrorIn(t, dataDir, repo, id); got != want {
+				t.Errorf("dg accept error = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A merge check that cannot look is a reason too: accept would stop at the
+// same failure, and show still answers for every other field of the ticket.
+func TestRunShowJSONGivesAMergeCheckFailureAsAnAcceptReason(t *testing.T) {
+	dataDir := t.TempDir()
+	s, id, repo := readyTicket(t, dataDir)
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testfix.GitIn(t, repo, "worktree", "remove", run.WorktreePath(dataDir, id))
+	testfix.GitIn(t, repo, "branch", "-D", ticket.Branch)
+
+	reason := acceptRefusalIn(t, dataDir, repo, id)
+	if reason == "" {
+		t.Fatal("accept_unavailable = \"\", want the failure of the merge check")
+	}
+	if got := acceptErrorIn(t, dataDir, repo, id); got != reason {
+		t.Errorf("dg accept error = %q, want the reason %q that show gives", got, reason)
 	}
 }
 
