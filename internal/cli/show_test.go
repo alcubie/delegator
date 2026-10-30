@@ -80,6 +80,29 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
+// chatUnavailableIn reads the chat_unavailable field of the show result.
+func chatUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
+	t.Helper()
+	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
+	value, held := got["chat_unavailable"]
+	if !held {
+		t.Fatalf("show result holds no chat_unavailable: %#v", got)
+	}
+	return value
+}
+
+// chatRefusalIn reads the reason that show gives for a ticket whose
+// conversation chat cannot continue.
+func chatRefusalIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	value := chatUnavailableIn(t, dataDir, workDir, id)
+	reason, ok := value.(string)
+	if !ok {
+		t.Fatalf("chat_unavailable = %#v, want a reason", value)
+	}
+	return reason
+}
+
 // acceptUnavailableIn reads the accept_unavailable field of the show result.
 func acceptUnavailableIn(t *testing.T, dataDir, workDir string, id int64) any {
 	t.Helper()
@@ -118,7 +141,7 @@ func acceptErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
-	"depends_on", "blocks", "accept_unavailable",
+	"depends_on", "blocks", "chat_unavailable", "accept_unavailable",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -978,6 +1001,101 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 		if value, ok := got[key].([]any); !ok || len(value) != 0 {
 			t.Errorf("%s = %#v for a ticket with no links, want []", key, got[key])
 		}
+	}
+}
+
+// The desktop app reads chat_unavailable before it opens a terminal, and a
+// ticket whose conversation chat can continue gives no reason.
+func TestRunShowJSONGivesNoChatReasonForATicketThatCanChat(t *testing.T) {
+	dataDir := t.TempDir()
+	id, repo, _ := chattableTicket(t, dataDir)
+
+	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+		t.Errorf("chat_unavailable = %#v, want null", value)
+	}
+}
+
+// show runs the checks of chat, and those checks must leave nothing behind:
+// the project cache belongs to a chat that starts.
+func TestRunShowJSONMakesNoProjectCache(t *testing.T) {
+	dataDir := t.TempDir()
+	id, repo, _ := chattableTicket(t, dataDir)
+	ticket := testfix.ReadTicket(t, dataDir, id)
+	cacheDir := run.ProjectCachePath(dataDir, ticket.Project.ID)
+	if err := os.RemoveAll(cacheDir); err != nil {
+		t.Fatal(err)
+	}
+
+	if value := chatUnavailableIn(t, dataDir, repo, id); value != nil {
+		t.Errorf("chat_unavailable = %#v, want null", value)
+	}
+	if _, err := os.Stat(cacheDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("dg show made the project cache at %q: %v", cacheDir, err)
+	}
+}
+
+// show gives the words that chat would print, so the desktop can report the
+// reason without opening a terminal to find it.
+func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo, want string)
+	}{
+		{"a run holds the session", func(t *testing.T, dataDir string) (int64, string, string) {
+			s, id, repo, _ := runningTicket(t, dataDir)
+			testfix.SetSession(t, s.DataDir(), id, "session-of-the-run")
+			return id, repo, fmt.Sprintf(
+				"ticket %d is running. Wait until the current process finishes and the ticket is ready.", id)
+		}},
+		{"the ticket has not run", func(t *testing.T, dataDir string) (int64, string, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo, fmt.Sprintf("ticket %d has no session: it has not run yet", id)
+		}},
+		{"the run opened no session", func(t *testing.T, dataDir string) (int64, string, string) {
+			s, id, repo := failedTicket(t, dataDir)
+			log := writeRunLog(t, dataDir, id, "2026-10-27T16-53-44.689.log",
+				"delegator: configure agent \"claude\": model \"model-v9\" is unavailable\n")
+			held, err := s.Run(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return id, repo, fmt.Sprintf(
+				"ticket %d has no session: run %d ended before the agent opened one\n"+
+					"View the run log for more details: %s", id, held.ID, log)
+		}},
+		{"the worktree is gone", func(t *testing.T, dataDir string) (int64, string, string) {
+			id, repo, _ := chattableTicket(t, dataDir)
+			worktree := run.WorktreePath(dataDir, id)
+			if err := os.RemoveAll(worktree); err != nil {
+				t.Fatal(err)
+			}
+			return id, repo, fmt.Sprintf("the worktree of ticket %d is gone: %s", id, worktree)
+		}},
+		{"the agent opens no session", func(t *testing.T, dataDir string) (int64, string, string) {
+			id, repo, _ := chattableTicket(t, dataDir)
+			s := testfix.OpenStore(t, dataDir)
+			if err := s.SaveAgent(store.Agent{Name: "claude", Argv: []string{"claude-agent-acp"}}); err != nil {
+				t.Fatal(err)
+			}
+			return id, repo, `agent "claude" does not support resuming chat sessions`
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo, want := test.build(t, dataDir)
+
+			if reason := chatRefusalIn(t, dataDir, repo, id); reason != want {
+				t.Errorf("chat_unavailable = %q, want %q", reason, want)
+			}
+			useChat(t, "true")
+			_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(id))
+			if err == nil {
+				t.Fatalf("dg chat continued ticket %d", id)
+			}
+			if err.Error() != want {
+				t.Errorf("dg chat error = %q, want %q", err, want)
+			}
+		})
 	}
 }
 

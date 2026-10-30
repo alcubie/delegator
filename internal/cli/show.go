@@ -134,10 +134,11 @@ func shortHash(hash string) string {
 }
 
 // shown combines a stored ticket with its description file and text, existing
-// worktree path, dependency IDs, latest run start, and the reason that the
-// status of the ticket refuses accept. Missing worktrees use an empty path;
-// never-run tickets use the zero start time; a ticket that accept can run on
-// has no reason.
+// worktree path, dependency IDs, latest run start, the reason that chat
+// cannot continue its conversation, and the reason that the status of the
+// ticket refuses accept. Missing worktrees use an empty path; never-run
+// tickets use the zero start time; a ticket that chat can continue, or that
+// accept can run on, has no reason.
 type shown struct {
 	store.Ticket
 	ProseFile         string
@@ -147,6 +148,7 @@ type shown struct {
 	Blocks            []int64
 	Started           time.Time
 	Agent             string
+	ChatUnavailable   string
 	AcceptUnavailable string
 }
 
@@ -228,7 +230,8 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 }
 
 // ticketJSON is the structured show result. Missing scalar values are null;
-// dependency links are always arrays; accept_unavailable is null when the
+// dependency links are always arrays; chat_unavailable is null when chat can
+// continue the ticket's conversation; accept_unavailable is null when the
 // status of the ticket lets accept run.
 type ticketJSON struct {
 	ID                int64      `json:"id"`
@@ -245,6 +248,7 @@ type ticketJSON struct {
 	Prose             *string    `json:"prose"`
 	DependsOn         []int64    `json:"depends_on"`
 	Blocks            []int64    `json:"blocks"`
+	ChatUnavailable   *string    `json:"chat_unavailable"`
 	AcceptUnavailable *string    `json:"accept_unavailable"`
 
 	shown shown
@@ -289,6 +293,11 @@ func showResultSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"type": "integer", "minimum": 1},
 			},
+			"chat_unavailable": map[string]any{
+				"type": []string{"string", "null"},
+				"description": "Why dg ticket chat cannot continue the ticket's session, " +
+					"or null when it can continue it.",
+			},
 			"accept_unavailable": map[string]any{
 				"type": []string{"string", "null"},
 				"description": "Why the status of the ticket refuses dg ticket accept, " +
@@ -299,7 +308,7 @@ func showResultSchema() map[string]any {
 		"required": []string{
 			"id", "title", "status", "project", "ticket", "worktree",
 			"branch", "session", "commit", "created", "accepted", "prose",
-			"depends_on", "blocks", "accept_unavailable",
+			"depends_on", "blocks", "chat_unavailable", "accept_unavailable",
 		},
 		"additionalProperties": true,
 	}
@@ -339,6 +348,7 @@ func ticketValue(s shown) ticketJSON {
 		Prose:             nullable(strings.TrimRight(s.Prose, "\n")),
 		DependsOn:         append([]int64{}, s.DependsOn...),
 		Blocks:            append([]int64{}, s.Blocks...),
+		ChatUnavailable:   nullable(s.ChatUnavailable),
 		AcceptUnavailable: nullable(s.AcceptUnavailable),
 		shown:             s,
 	}
@@ -410,7 +420,16 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		t.Worktree = ""
 	}
 
-	if available, reason := acceptAvailable(ticket); !available {
+	available, reason, err := chatAvailable(s, dataDir, id)
+	if err != nil {
+		return ticketJSON{}, err
+	}
+	if !available {
+		t.ChatUnavailable = reason
+	}
+
+	available, reason = acceptAvailable(ticket)
+	if !available {
 		t.AcceptUnavailable = reason
 	}
 
