@@ -81,54 +81,103 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 	return rpcOperationCommand("chat", cmd)
 }
 
-// resumeOf returns resume arguments, the worktree, and the project cache,
-// rejecting tickets without a resumable conversation. Running tickets are
-// refused to avoid two agents writing the same session; reconciliation has
-// already identified stale runs.
-func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, string, error) {
+// refusal is a reason that a ticket cannot continue its conversation. chat
+// returns it as the error of the command and show reports it in its result, so
+// both name the same reason.
+type refusal struct{ reason string }
+
+// Error gives the reason, for a caller that writes the error.
+func (r refusal) Error() string { return r.reason }
+
+// refuse builds one refusal.
+func refuse(format string, args ...any) error {
+	return refusal{reason: fmt.Sprintf(format, args...)}
+}
+
+// resumption is what continuing a conversation needs: the session the agent
+// reported, the worktree its run worked in, the command of the agent that
+// opens a session, and the project whose cache that command names.
+type resumption struct {
+	session  string
+	worktree string
+	resume   []string
+	project  int64
+}
+
+// resumable rejects tickets without a resumable conversation and returns what
+// the resume command needs for the rest. Running tickets are refused to avoid
+// two agents writing the same session; reconciliation has already identified
+// stale runs. A ticket that cannot continue gives a refusal, and any other
+// error is a fault of the store. The checks have no side effect, so a caller
+// that only reports them leaves nothing behind.
+func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
-		return nil, "", "", err
+		return resumption{}, err
 	}
 	if ticket.Status == store.Running {
-		r, err := s.Run(id)
-		if err != nil {
-			return nil, "", "", err
-		}
-		return nil, "", "", fmt.Errorf(
-			"ticket %d is running: process %d is on its session", id, r.PID)
+		return resumption{}, refuse(
+			"ticket %d is running. Wait until the current process finishes and the ticket is ready.", id)
 	}
 	if ticket.Session == "" {
-		return nil, "", "", noSession(s, dataDir, id)
+		return resumption{}, noSession(s, dataDir, id)
 	}
 	// Require the original worktree: agents may locate session history by
 	// working directory.
 	worktree := run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(worktree); err != nil {
-		return nil, "", "", fmt.Errorf(
-			"the worktree of ticket %d is gone: %s", id, worktree)
+		return resumption{}, refuse("the worktree of ticket %d is gone: %s", id, worktree)
 	}
 	r, err := s.Run(id)
 	if err != nil {
-		return nil, "", "", err
+		return resumption{}, err
 	}
 	agent, err := s.Agent(r.Agent)
 	if err != nil {
-		return nil, "", "", err
+		return resumption{}, err
 	}
 	if len(agent.Resume) == 0 {
-		return nil, "", "", fmt.Errorf("agent %q has no command that opens a session", r.Agent)
+		return resumption{}, refuse("agent %q does not support resuming chat sessions", r.Agent)
 	}
-	cacheDir, err := run.ProjectCache(dataDir, ticket.Project.ID)
+	return resumption{
+		session:  ticket.Session,
+		worktree: worktree,
+		resume:   agent.Resume,
+		project:  ticket.Project.ID,
+	}, nil
+}
+
+// chatAvailable reports whether chat can continue a ticket's conversation,
+// and the reason beside it for when it cannot.
+func chatAvailable(s *store.Store, dataDir string, id int64) (bool, string, error) {
+	_, err := resumable(s, dataDir, id)
+	var refused refusal
+	if errors.As(err, &refused) {
+		return false, refused.reason, nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
+}
+
+// resumeOf returns resume arguments, the worktree, and the project cache of a
+// ticket whose conversation can continue.
+func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, string, error) {
+	target, err := resumable(s, dataDir, id)
+	if err != nil {
+		return nil, "", "", err
+	}
+	cacheDir, err := run.ProjectCache(dataDir, target.project)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("prepare the project cache: %w", err)
 	}
-	argv := make([]string, 0, len(agent.Resume))
-	for _, arg := range agent.Resume {
-		arg = strings.ReplaceAll(arg, "{session}", ticket.Session)
+	argv := make([]string, 0, len(target.resume))
+	for _, arg := range target.resume {
+		arg = strings.ReplaceAll(arg, "{session}", target.session)
 		argv = append(argv, strings.ReplaceAll(arg, "{project_cache}", cacheDir))
 	}
-	return argv, worktree, cacheDir, nil
+	return argv, target.worktree, cacheDir, nil
 }
 
 // noSession explains a ticket that holds no conversation to continue. A run
@@ -137,16 +186,16 @@ func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, strin
 func noSession(s *store.Store, dataDir string, id int64) error {
 	r, err := s.Run(id)
 	if errors.Is(err, store.ErrNoRun) {
-		return fmt.Errorf("ticket %d has no session: it has not run yet", id)
+		return refuse("ticket %d has no session: it has not run yet", id)
 	}
 	if err != nil {
 		return err
 	}
 	if log, ok := run.LatestLog(dataDir, id); ok {
-		return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one\n"+
+		return refuse("ticket %d has no session: run %d ended before the agent opened one\n"+
 			"View the run log for more details: %s", id, r.ID, log)
 	}
-	return fmt.Errorf("ticket %d has no session: run %d ended before the agent opened one", id, r.ID)
+	return refuse("ticket %d has no session: run %d ended before the agent opened one", id, r.ID)
 }
 
 // chatEnvironment sets the project cache and chat PID variables on the

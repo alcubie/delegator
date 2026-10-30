@@ -379,8 +379,8 @@ func TestChatStartsInTheWorktreeOfTheTicket(t *testing.T) {
 	}
 }
 
-// Reject active sessions to avoid concurrent writers; include the supervisor
-// PID for diagnosis.
+// Reject active sessions to avoid concurrent writers, and say what to wait for
+// rather than name the process that holds the session.
 func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, _ := runningTicket(t, dataDir)
@@ -391,8 +391,9 @@ func TestChatRefusesATicketThatIsRunning(t *testing.T) {
 	if err == nil {
 		t.Fatal("dg chat started a session that a run holds")
 	}
-	if want := fmt.Sprint(os.Getpid()); !strings.Contains(err.Error(), want) {
-		t.Errorf("error = %q, want the process id %s in it", err, want)
+	want := fmt.Sprintf("ticket %d is running. Wait until the current process finishes and the ticket is ready.", ticketID)
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
 	}
 	if record.argv != nil {
 		t.Errorf("dg chat started %v, want nothing", record.argv)
