@@ -262,7 +262,6 @@ func TestRPCDiscoverNullResultContracts(t *testing.T) {
 func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
 	document := rpcDiscover(t)
 	descriptions := map[string]string{
-		"agents": "agent list",
 		"map":    "dependency map",
 		"search": "Search matches",
 	}
@@ -298,13 +297,6 @@ func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
 		_, id, repo := queuedTicket(t, dataDir)
 		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}})
 		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}, "mermaid": true})
-	})
-
-	t.Run("agents default and all", func(t *testing.T) {
-		dataDir := t.TempDir()
-		t.Setenv("PATH", t.TempDir())
-		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{})
-		rpcNullResult(t, validators["agents"], dataDir, t.TempDir(), "agents", map[string]any{"all": true})
 	})
 }
 
@@ -402,7 +394,6 @@ func TestRPCTerminalOnlyCommandErrorsRemainErrorEnvelopes(t *testing.T) {
 	requests := []string{
 		`{"jsonrpc":"2.0","method":"search","params":{},"id":"search"}`,
 		`{"jsonrpc":"2.0","method":"map","params":{"args":[999]},"id":"map"}`,
-		`{"jsonrpc":"2.0","method":"agents","params":{"args":["extra"]},"id":"agents"}`,
 	}
 	for _, request := range requests {
 		out, err := rpcIn(t, dataDir, repo, request)

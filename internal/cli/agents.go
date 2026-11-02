@@ -15,6 +15,12 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
+type agentJSON struct {
+	Name  string   `json:"name"`
+	Argv  []string `json:"argv"`
+	Found bool     `json:"found"`
+}
+
 // agentsCommand lists the agent programs that delegator knows and owns the
 // command that adds a locally installed or custom one.
 func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
@@ -36,14 +42,50 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			writeAgents(cmd.OutOrStdout(), agents, cfg.DefaultAgent, all)
-			return nil
+			return writeValue(cmd.OutOrStdout(), agentValues(agents), false, func(out io.Writer) {
+				writeAgents(out, agents, cfg.DefaultAgent, all)
+			})
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false,
 		"include registered agents whose executable is missing (default: show available agents only)")
 	cmd.AddCommand(addAgentCommand(dataDir, cfg))
 	return rpcOperationCommand("agents", cmd)
+}
+
+// agentValues holds every registered agent, in the order the store returns
+// them, whether or not its executable is on PATH; --all selects what the
+// terminal list shows and leaves the structured result alone. An instance with
+// no agents is an empty array rather than null.
+func agentValues(agents []store.Agent) []agentJSON {
+	values := make([]agentJSON, 0, len(agents))
+	for _, agent := range agents {
+		_, err := agentExecutable(agent)
+		values = append(values, agentJSON{Name: agent.Name, Argv: agent.Argv, Found: err == nil})
+	}
+	return values
+}
+
+// agentsResultSchema describes the array of registered agents returned by
+// agents.
+func agentsResultSchema() map[string]any {
+	return map[string]any{
+		"type": "array",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string"},
+				"argv": map[string]any{
+					"type":     "array",
+					"items":    map[string]any{"type": "string"},
+					"minItems": 1,
+				},
+				"found": map[string]any{"type": "boolean"},
+			},
+			"required":             []string{"name", "argv", "found"},
+			"additionalProperties": true,
+		},
+	}
 }
 
 func writeAgents(out io.Writer, agents []store.Agent, defaultName string, all bool) {
