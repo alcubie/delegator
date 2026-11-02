@@ -93,6 +93,9 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	if operation == "config.get" {
 		method.Result.Description = "The requested setting value. Its JSON type depends on the setting and is string, boolean, or null."
 	}
+	if operation == "agents" {
+		method.Result.Description = "Every registered agent, in the order of the terminal list, including those without their executable on PATH. The `all` flag selects what the terminal list shows and leaves this result alone."
+	}
 	internalResults := map[string]string{
 		"run":            "This internal supervisor can take a long time while it waits for an agent to finish; its successful JSON-RPC result is null.",
 		"telemetry-send": "This internal telemetry sender attempts a consent-gated report; its successful JSON-RPC result is null.",
@@ -101,7 +104,6 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 		method.Result.Description = description
 	}
 	terminalOnlyResults := map[string]string{
-		"agents": "The agent list is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
 		"map":    "The dependency map is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
 		"search": "Search matches are currently written only as terminal text; their structured JSON-RPC result is not yet exposed and is null.",
 	}
@@ -173,7 +175,9 @@ func rpcResultSchema(operation string) map[string]any {
 	switch operation {
 	case "accept", "ticket":
 		return ticketIDResultSchema()
-	case "agents", "agents.add", "cancel", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
+	case "agents":
+		return agentsResultSchema()
+	case "agents.add", "cancel", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
 		return nullResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
