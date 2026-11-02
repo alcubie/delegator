@@ -1147,6 +1147,9 @@ func (s *Store) SetSetting(name, value string) error {
 	if err != nil {
 		return fmt.Errorf("setting %s must be an integer", name)
 	}
+	if minimum := config.IntegerMinimums[name]; n < minimum {
+		return fmt.Errorf("setting %s must be %d or more", name, minimum)
+	}
 	result, err := s.db.Exec("UPDATE settings SET "+column+" = ? WHERE id = 1", n)
 	if err != nil {
 		return err

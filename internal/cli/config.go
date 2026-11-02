@@ -37,7 +37,7 @@ func configListResultSchema() map[string]any {
 			"type": "object",
 			"properties": map[string]any{
 				"name":        map[string]any{"const": definition.Name},
-				"value":       map[string]any{"type": settingJSONTypes(definition.Name)},
+				"value":       settingValueSchema(definition.Name),
 				"description": map[string]any{"type": "string"},
 			},
 			"required":             []string{"name", "value", "description"},
@@ -82,6 +82,35 @@ func configSetResultSchema() map[string]any {
 				"additionalProperties": false,
 			},
 		},
+	}
+}
+
+// settingValueSchema describes one setting's serialized value. An integer
+// setting travels as a decimal string, so its lower limit goes into the
+// pattern: a validator that knows nothing about delegator then refuses a value
+// the store would refuse. x-minimum repeats the same number for a client that
+// wants to name the limit to a person rather than show it a regular
+// expression; both come from config.IntegerMinimums, so they cannot disagree.
+func settingValueSchema(name string) map[string]any {
+	schema := map[string]any{"type": settingJSONTypes(name)}
+	if minimum, ok := config.IntegerMinimums[name]; ok {
+		schema["pattern"] = integerPattern(minimum)
+		schema["x-minimum"] = minimum
+	}
+	return schema
+}
+
+// integerPattern matches the decimal integers of minimum or more. Every
+// setting limit is 0 or 1 today; a new one needs its own pattern here, which
+// the panic asks for rather than publishing a rule that is too permissive.
+func integerPattern(minimum int) string {
+	switch minimum {
+	case 0:
+		return `^(0|[1-9][0-9]*)$`
+	case 1:
+		return `^[1-9][0-9]*$`
+	default:
+		panic(fmt.Sprintf("no published pattern for setting minimum %d", minimum))
 	}
 }
 
