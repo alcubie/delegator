@@ -179,6 +179,8 @@ func rpcResultSchema(operation string) map[string]any {
 		return agentsResultSchema()
 	case "agents.add", "cancel", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
 		return nullResultSchema()
+	case "agents.models":
+		return agentModelsResultSchema()
 	case "config", "config.list":
 		return configListResultSchema()
 	case "config.get":

@@ -37,3 +37,4 @@ dg agents [flags]
 
 * [dg](dg.md)	 - Delegate tasks to coding agents
 * [dg agents add](dg_agents_add.md)	 - Add or update an Agent Client Protocol (ACP) command
+* [dg agents models](dg_agents_models.md)	 - List the models an agent offers

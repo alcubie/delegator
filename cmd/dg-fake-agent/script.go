@@ -13,9 +13,10 @@ const historyHeader = "history:"
 // script separates prompt actions from replay history. Blank lines are
 // ignored.
 type script struct {
-	models  []string
-	turn    []string
-	history []string
+	modelSelector bool
+	models        []string
+	turn          []string
+	history       []string
 }
 
 // readScript reads the script at path.
@@ -35,6 +36,7 @@ func readScript(path string) (script, error) {
 			section = &s.history
 		default:
 			if models, ok := strings.CutPrefix(line, "models:"); ok {
+				s.modelSelector = true
 				s.models = strings.Fields(models)
 			} else {
 				*section = append(*section, line)
