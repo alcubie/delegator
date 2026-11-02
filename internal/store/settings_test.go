@@ -2,7 +2,9 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/config"
@@ -80,6 +82,22 @@ func TestSettingsTableEnforcesItsConstraints(t *testing.T) {
 	}
 }
 
+// TestEveryIntegerSettingPublishesAMinimum guards the limit SetSetting reads
+// by name: an integer setting absent from config.IntegerMinimums would take
+// any value down to the one the database refuses.
+func TestEveryIntegerSettingPublishesAMinimum(t *testing.T) {
+	for name := range integerSettingColumns {
+		if _, ok := config.IntegerMinimums[name]; !ok {
+			t.Errorf("integer setting %s has no published minimum", name)
+		}
+	}
+	for name := range config.IntegerMinimums {
+		if _, ok := integerSettingColumns[name]; !ok {
+			t.Errorf("published minimum of %s names no integer setting", name)
+		}
+	}
+}
+
 func TestSettingUpdatesPersistAcrossOpen(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
@@ -154,5 +172,18 @@ func TestSettingUpdatesRejectInvalidValuesWithoutChangingSettings(t *testing.T) 
 				t.Errorf("settings changed to %+v, want %+v", after, before)
 			}
 		})
+	}
+}
+
+// TestSettingUpdatesNameTheLimitTheyRefuse keeps the refusal in Go. The CHECK
+// constraints refuse the same values, so the message is what shows which rule
+// ran, and that rule is the one discovery publishes.
+func TestSettingUpdatesNameTheLimitTheyRefuse(t *testing.T) {
+	s, _ := emptyStore(t)
+	for name, minimum := range config.IntegerMinimums {
+		want := fmt.Sprintf("setting %s must be %d or more", name, minimum)
+		if err := s.SetSetting(name, strconv.Itoa(minimum-1)); err == nil || err.Error() != want {
+			t.Errorf("SetSetting %s error = %v, want %q", name, err, want)
+		}
 	}
 }

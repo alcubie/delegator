@@ -45,6 +45,18 @@ var Definitions = []Definition{
 	{"telemetry", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},
 }
 
+// IntegerMinimums gives the lowest value each integer setting accepts. The
+// schema that discovery publishes and the check in SetSetting both read it, so
+// the rule a client enforces before saving cannot disagree with the rule dg
+// enforces on the way in. The CHECK constraints on the settings table hold the
+// same limits as the last line of defence.
+var IntegerMinimums = map[string]int{
+	"runs":                 1,
+	"timeout_minutes":      1,
+	"done_hours":           0,
+	"max_runs_per_project": 0,
+}
+
 // ProjectRuns returns the per-project limit, falling back to Runs when
 // MaxRunsPerProject is zero. This limit can prevent concurrent runs from
 // competing for shared resources such as databases or ports.

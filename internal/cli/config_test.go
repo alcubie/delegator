@@ -267,7 +267,8 @@ func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
 		{[]string{"config", "get", "run"}, `unknown setting "run"`},
 		{[]string{"config", "set", "run", "3"}, `unknown setting "run"`},
 		{[]string{"config", "set", "runs", "many"}, "setting runs must be an integer"},
-		{[]string{"config", "set", "runs", "0"}, "CHECK constraint failed: runs >= 1"},
+		{[]string{"config", "set", "runs", "0"}, "setting runs must be 1 or more"},
+		{[]string{"config", "set", "timeout_minutes", "0"}, "setting timeout_minutes must be 1 or more"},
 	} {
 		_, err := runIn(t, dataDir, t.TempDir(), tc.args...)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {

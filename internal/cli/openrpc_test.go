@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,31 @@ func openRPCMethodNamed(t *testing.T, document openRPCDocument, name string) ope
 	}
 	t.Fatalf("OpenRPC document has no method %q", name)
 	return openRPCMethod{}
+}
+
+// publishedSettingValueSchema returns the value schema that config.list
+// advertises for one setting.
+func publishedSettingValueSchema(t *testing.T, document openRPCDocument, name string) map[string]any {
+	t.Helper()
+	items, ok := openRPCMethodNamed(t, document, "config.list").Result.Schema["items"].(map[string]any)
+	if !ok {
+		t.Fatal("the config.list result schema has no items schema")
+	}
+	alternatives, ok := items["oneOf"].([]any)
+	if !ok {
+		t.Fatal("the config.list item schema has no oneOf alternatives")
+	}
+	for _, alternative := range alternatives {
+		properties, ok := alternative.(map[string]any)["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("config.list alternative %#v has no properties", alternative)
+		}
+		if properties["name"].(map[string]any)["const"] == name {
+			return properties["value"].(map[string]any)
+		}
+	}
+	t.Fatalf("config.list publishes no schema for setting %q", name)
+	return nil
 }
 
 func openRPCParamNamed(t *testing.T, method openRPCMethod, name string) openRPCContentDescriptor {
@@ -794,6 +820,44 @@ func TestRPCDiscoverConfigListResultContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	rpcProtocolError(t, out, 1, `unknown command "extra" for "dg config list"`)
+}
+
+// TestRPCDiscoverConfigListPublishesIntegerLimits holds the published rule and
+// the enforced rule to one table: every value the advertised schema takes is a
+// value SetSetting stores, and every value it refuses is one SetSetting
+// refuses. A client that checks the schema before saving then gets the same
+// answer dg would give it.
+func TestRPCDiscoverConfigListPublishesIntegerLimits(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "config.list")
+	result := func(name, value string) []any {
+		return []any{map[string]any{"name": name, "value": value, "description": "published limit"}}
+	}
+
+	for name, minimum := range config.IntegerMinimums {
+		t.Run(name, func(t *testing.T) {
+			if published := publishedSettingValueSchema(t, document, name)["x-minimum"]; published != float64(minimum) {
+				t.Errorf("published x-minimum of %s = %v, want %d", name, published, minimum)
+			}
+			s := testfix.OpenStore(t, t.TempDir())
+			for _, accepted := range []string{strconv.Itoa(minimum), strconv.Itoa(minimum + 1), "4096"} {
+				if err := validator.Validate(result(name, accepted)); err != nil {
+					t.Errorf("published schema refuses %s = %q: %v", name, accepted, err)
+				}
+				if err := s.SetSetting(name, accepted); err != nil {
+					t.Errorf("SetSetting refuses %s = %q: %v", name, accepted, err)
+				}
+			}
+			for _, refused := range []string{strconv.Itoa(minimum - 1), "-9", "many", "", "1.5"} {
+				if err := validator.Validate(result(name, refused)); err == nil {
+					t.Errorf("published schema takes %s = %q", name, refused)
+				}
+				if err := s.SetSetting(name, refused); err == nil {
+					t.Errorf("SetSetting takes %s = %q", name, refused)
+				}
+			}
+		})
+	}
 }
 
 func TestRPCDiscoverConfigGetResultContract(t *testing.T) {
