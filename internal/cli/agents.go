@@ -43,6 +43,7 @@ func agentsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false,
 		"include registered agents whose executable is missing (default: show available agents only)")
 	cmd.AddCommand(addAgentCommand(dataDir, cfg))
+	cmd.AddCommand(agentModelsCommand(dataDir, cfg))
 	return rpcOperationCommand("agents", cmd)
 }
 
@@ -92,6 +93,56 @@ func commandText(argv []string) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// agentModelsResultSchema describes the model IDs serialized by
+// agents.models. The list is whatever the agent advertises, so no alternative
+// enumerates it.
+func agentModelsResultSchema() map[string]any {
+	return map[string]any{
+		"type":  "array",
+		"items": map[string]any{"type": "string"},
+	}
+}
+
+// agentModelsCommand probes one agent for the models it offers, which are the
+// values default_model accepts while that agent is the default. The agent is
+// named rather than taken from default_agent, so a caller can read the models
+// of an agent it is about to select.
+func agentModelsCommand(dataDir *string, cfg *config.Config) *cobra.Command {
+	return rpcOperationCommand("agents.models", &cobra.Command{
+		Use:   "models <name>",
+		Short: "List the models an agent offers",
+		Long: "Start one registered Agent Client Protocol (ACP) command, list the model IDs it " +
+			"advertises, and stop it. Those IDs are the values that default_model accepts.",
+		Example: `  dg agents models claude`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
+				if err := checkAgent(s, args[0]); err != nil {
+					return err
+				}
+				agent, err := s.Agent(args[0])
+				if err != nil {
+					return err
+				}
+				models, err := probeModels(agent)
+				if err != nil {
+					return err
+				}
+				// A selector with no values must still read as an array,
+				// which is what discovery publishes.
+				if models == nil {
+					models = []string{}
+				}
+				return writeValue(cmd.OutOrStdout(), models, false, func(out io.Writer) {
+					for _, model := range models {
+						fmt.Fprintln(out, model)
+					}
+				})
+			})
+		},
+	})
 }
 
 func addAgentCommand(dataDir *string, cfg *config.Config) *cobra.Command {

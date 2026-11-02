@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -156,6 +157,10 @@ func TestAgentsCommandsAreRegisteredAsParentAndChild(t *testing.T) {
 	if err != nil || add.Name() != "add" || add.Parent() != agents {
 		t.Fatalf("agents add command = %v, error = %v, want agents child", add, err)
 	}
+	models, _, err := root.Find([]string{"agents", "models"})
+	if err != nil || models.Name() != "models" || models.Parent() != agents {
+		t.Fatalf("agents models command = %v, error = %v, want agents child", models, err)
+	}
 	if command, _, err := root.Find([]string{"agents", "default"}); err == nil && command.Name() == "default" {
 		t.Fatal("agents unexpectedly has a default subcommand")
 	}
@@ -173,5 +178,118 @@ func TestAgentsHelpSpellsOutAgentClientProtocol(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("dg agents --help does not contain %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestAgentsModelsListsWhatTheAgentOffers(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "agents", "models", "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "sonnet\nopus\n" {
+		t.Errorf("dg agents models wrote %q, want the advertised IDs in order", out)
+	}
+}
+
+// The models of an agent that is not the default are what the desktop
+// Settings view needs to fill its select before default_agent changes.
+func TestAgentsModelsProbesAnAgentThatIsNotTheDefault(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	registerFakeAgent(t, dataDir, "second", "models: haiku", "stop end_turn")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "agents", "models", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "haiku\n" {
+		t.Errorf("dg agents models second wrote %q, want the models of second", out)
+	}
+}
+
+// The desktop Settings view reads the select of default_model from this
+// result, so the models must be in the RPC result and not only in the text.
+func TestAgentsModelsReturnsTheProbedModelsOverRPC(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"agents.models","params":{"args":["fake"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, ok := response["result"].([]any)
+	if !ok {
+		t.Fatalf("agents.models response = %#v, want an array result", response)
+	}
+	if !reflect.DeepEqual(result, []any{"sonnet", "opus"}) {
+		t.Errorf("agents.models result = %#v, want sonnet and opus", result)
+	}
+}
+
+// An unregistered name is refused before anything is started, with the
+// command that registers one.
+func TestAgentsModelsRefusesAnUnregisteredAgent(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet", "stop end_turn")
+
+	_, err := runIn(t, dataDir, t.TempDir(), "agents", "models", "absent")
+	want := "agent \"absent\" is not registered.\n" +
+		"Add it with:\n" +
+		"    dg agents add absent --command /path/to/executable"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+// A probe that cannot run leaves the caller with an error rather than an
+// empty list, which would read as an agent that offers no model. Which stage
+// of the session fails depends on how far the agent gets, so the assertion is
+// on the agent it names.
+func TestAgentsModelsReportsAProbeThatFails(t *testing.T) {
+	dataDir := t.TempDir()
+	testfix.UseAgent(t, dataDir, "broken", testfix.FakeAgent(t), filepath.Join(t.TempDir(), "missing-script"))
+
+	out, err := runIn(t, dataDir, t.TempDir(), "agents", "models", "broken")
+	if err == nil || !strings.Contains(err.Error(), `agent "broken"`) {
+		t.Fatalf("error = %v, want a failure naming the agent", err)
+	}
+	if out != "" {
+		t.Errorf("dg agents models wrote %q for a failed probe, want nothing", out)
+	}
+}
+
+// An agent whose selector holds no model keeps the result an array, so the
+// desktop select reads an empty list rather than a null.
+func TestAgentsModelsReturnsAnArrayForAnEmptySelector(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models:", "stop end_turn")
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"agents.models","params":{"args":["fake"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	result, ok := response["result"].([]any)
+	if !ok || len(result) != 0 {
+		t.Fatalf("agents.models response = %#v, want an empty array result", response)
+	}
+}
+
+// An agent without a model selector offers nothing to choose from, which is
+// not the same as a probe that could not run.
+func TestAgentsModelsReportsAnAgentWithNoModelOption(t *testing.T) {
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "stop end_turn")
+
+	_, err := runIn(t, dataDir, t.TempDir(), "agents", "models", "fake")
+	want := "agent does not allow setting a specific model"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
 	}
 }

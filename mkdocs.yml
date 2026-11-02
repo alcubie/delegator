@@ -21,11 +21,11 @@ nav:
       - agents:
           - Overview: reference/dg_agents.md
           - add: reference/dg_agents_add.md
+          - models: reference/dg_agents_models.md
       - config:
           - Overview: reference/dg_config.md
           - get: reference/dg_config_get.md
           - list: reference/dg_config_list.md
-          - models: reference/dg_config_models.md
           - set: reference/dg_config_set.md
       - init: reference/dg_init.md
       - project:
