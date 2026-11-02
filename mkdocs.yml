@@ -25,6 +25,7 @@ nav:
           - Overview: reference/dg_config.md
           - get: reference/dg_config_get.md
           - list: reference/dg_config_list.md
+          - models: reference/dg_config_models.md
           - set: reference/dg_config_set.md
       - init: reference/dg_init.md
       - project:

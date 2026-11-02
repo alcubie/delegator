@@ -85,6 +85,16 @@ func configSetResultSchema() map[string]any {
 	}
 }
 
+// configModelsResultSchema describes the model IDs serialized by
+// config.models. The list is whatever the default agent advertises, so no
+// alternative enumerates it.
+func configModelsResultSchema() map[string]any {
+	return map[string]any{
+		"type":  "array",
+		"items": map[string]any{"type": "string"},
+	}
+}
+
 func settingJSONTypes(name string) []string {
 	enabled := true
 	populated := config.Config{
@@ -164,6 +174,36 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			return withStore(*dataDir, cfg, func(*store.Store) error {
 				return writeValue(cmd.OutOrStdout(), settingValue(*cfg, args[0]), false, func(out io.Writer) {
 					fmt.Fprintln(out, settingText(settingValue(*cfg, args[0])))
+				})
+			})
+		},
+	}))
+	cmd.AddCommand(rpcOperationCommand("config.models", &cobra.Command{
+		Use:   "models",
+		Short: "List the models the default agent offers.",
+		Long: "Start the default agent, list the model IDs it advertises, and stop it. Those " +
+			"IDs are the values that default_model accepts.",
+		Example: `  dg config models`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return withStore(*dataDir, cfg, func(s *store.Store) error {
+				agent, err := defaultAgent(s, "models cannot be listed")
+				if err != nil {
+					return err
+				}
+				models, err := probeModels(agent)
+				if err != nil {
+					return err
+				}
+				// A selector with no values must still read as an array,
+				// which is what discovery publishes.
+				if models == nil {
+					models = []string{}
+				}
+				return writeValue(cmd.OutOrStdout(), models, false, func(out io.Writer) {
+					for _, model := range models {
+						fmt.Fprintln(out, model)
+					}
 				})
 			})
 		},
@@ -336,6 +376,21 @@ func checkAgent(s *store.Store, name string) error {
 // that an agent which never answers cannot hold the command open.
 const modelProbeTimeout = time.Minute
 
+// defaultAgent resolves the agent that default_agent names. Work that needs
+// one is refused with what it could not do, followed by the command that
+// selects an agent.
+func defaultAgent(s *store.Store, attempt string) (store.Agent, error) {
+	name, err := s.DefaultAgent()
+	if err != nil {
+		return store.Agent{}, err
+	}
+	if name == "" {
+		selectAgent := commandText([]string{"dg", "config", "set", "default_agent", "NAME"})
+		return store.Agent{}, fmt.Errorf("%s while no default agent is selected.\nSelect one with:\n    %s", attempt, selectAgent)
+	}
+	return s.Agent(name)
+}
+
 // checkModel refuses a model the default agent does not offer, which a run
 // would otherwise discover when it set up its session and failed. The agent
 // default needs no agent to confirm it. The probe gets a temporary directory
@@ -345,15 +400,7 @@ func checkModel(s *store.Store, model string) error {
 	if model == "" || model == "null" {
 		return nil
 	}
-	name, err := s.DefaultAgent()
-	if err != nil {
-		return err
-	}
-	if name == "" {
-		selectAgent := commandText([]string{"dg", "config", "set", "default_agent", "NAME"})
-		return fmt.Errorf("model %q cannot be checked while no default agent is selected.\nSelect one with:\n    %s", model, selectAgent)
-	}
-	agent, err := s.Agent(name)
+	agent, err := defaultAgent(s, fmt.Sprintf("model %q cannot be checked", model))
 	if err != nil {
 		return err
 	}

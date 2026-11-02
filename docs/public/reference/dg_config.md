@@ -38,4 +38,5 @@ dg config [flags]
 * [dg](dg.md)	 - Delegate tasks to coding agents
 * [dg config get](dg_config_get.md)	 - Show one instance setting.
 * [dg config list](dg_config_list.md)	 - Show every supported instance setting.
+* [dg config models](dg_config_models.md)	 - List the models the default agent offers.
 * [dg config set](dg_config_set.md)	 - Change one instance setting.

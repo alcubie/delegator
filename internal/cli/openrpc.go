@@ -179,6 +179,8 @@ func rpcResultSchema(operation string) map[string]any {
 		return configListResultSchema()
 	case "config.get":
 		return configGetResultSchema()
+	case "config.models":
+		return configModelsResultSchema()
 	case "config.set":
 		return configSetResultSchema()
 	case "inbox":

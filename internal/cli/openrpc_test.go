@@ -485,7 +485,7 @@ func TestRPCDiscoverDescribesEveryCallableMethod(t *testing.T) {
 			t.Errorf("method %q advertised = %t, want %t", name, got, want)
 		}
 	})
-	for _, nested := range []string{"agents.add", "config.get", "config.list", "config.set"} {
+	for _, nested := range []string{"agents.add", "config.get", "config.list", "config.models", "config.set"} {
 		if !names[nested] {
 			t.Errorf("nested method %q is not advertised", nested)
 		}
@@ -874,6 +874,31 @@ func TestRPCDiscoverConfigGetResultContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	rpcProtocolError(t, out, codeUnknown, `unknown setting "unknown"`)
+}
+
+func TestRPCDiscoverConfigModelsResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "config.models")
+
+	dataDir := t.TempDir()
+	useFakeAgent(t, dataDir, "models: sonnet opus", "stop end_turn")
+	out, err := rpcIn(t, dataDir, t.TempDir(), `{"jsonrpc":"2.0","method":"config.models","params":{},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := rpcObject(t, out)["result"].([]any)
+	if !ok {
+		t.Fatalf("config.models result is not an array: %s", out)
+	}
+	if err := validator.Validate(result); err != nil {
+		t.Fatalf("config.models result does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, invalid := range []any{"sonnet", []any{float64(1)}, []any{nil}, map[string]any{"models": []any{"sonnet"}}} {
+		if err := validator.Validate(invalid); err == nil {
+			t.Errorf("invalid result %#v unexpectedly satisfies the advertised schema", invalid)
+		}
+	}
 }
 
 func TestRPCDiscoverTicketIDResultContract(t *testing.T) {

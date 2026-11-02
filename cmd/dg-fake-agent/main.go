@@ -17,7 +17,8 @@
 // Cancelling a wait ends the turn with the cancelled reason and skips the
 // remaining actions. A "history:" line starts replay actions, which run when
 // a client loads a session instead of sending a prompt.
-// A "models: <id> ..." line advertises selectable models; the first is the default.
+// A "models: <id> ..." line advertises a model selector holding those IDs; the
+// first is the default, and a line with no ID advertises a selector with none.
 //
 // Permission answers are recorded beside the script, one option ID per line,
 // so tests can inspect them without accessing the protocol pipes.

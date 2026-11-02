@@ -250,13 +250,13 @@ func (a *fakeAgent) SetSessionConfigOption(_ context.Context, p acp.SetSessionCo
 }
 
 func (a *fakeAgent) modelOptions() []acp.SessionConfigOption {
-	if len(a.script.models) == 0 {
+	if !a.script.modelSelector {
 		return nil
 	}
-	if a.model == "" {
+	if a.model == "" && len(a.script.models) != 0 {
 		a.model = a.script.models[0]
 	}
-	var values acp.SessionConfigSelectOptionsUngrouped
+	values := acp.SessionConfigSelectOptionsUngrouped{}
 	for _, model := range a.script.models {
 		values = append(values, acp.SessionConfigSelectOption{Value: acp.SessionConfigValueId(model), Name: model})
 	}
