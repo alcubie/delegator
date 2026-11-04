@@ -806,7 +806,7 @@ func (s *Store) ClaimableCount(cfg config.Config) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	args := append([]any{cfg.ProjectRuns(), Running, Ready}, claimableArgs(cfg)...)
+	args := append([]any{cfg.ProjectRuns(), Running, Ready, Failed}, claimableArgs(cfg)...)
 	var claimable int
 	err = s.db.QueryRow(`
 		SELECT COALESCE(SUM(MIN(waiting, room)), 0) FROM (
@@ -863,10 +863,12 @@ func (s *Store) ClaimNext(cfg config.Config, branch func(Ticket) string, agentID
 	return t, runID, nil
 }
 
-// placesHeld is a SQL fragment counting running and ready tickets in the
-// project of outer ticket t. It takes those two statuses as parameters.
+// placesHeld is a SQL fragment counting running, ready and failed tickets in
+// the project of outer ticket t. It takes those three statuses as parameters.
+// A failed ticket keeps its worktree, which can still hold a database or a
+// port the project shares, so it still holds its place.
 const placesHeld = `(SELECT COUNT(*) FROM tickets AS held
-		       WHERE held.project_id = t.project_id AND held.status IN (?, ?))`
+		       WHERE held.project_id = t.project_id AND held.status IN (?, ?, ?))`
 
 // claimableRule is the shared SQL eligibility predicate for claiming tickets
 // and counting supervisors to start. It refers to outer ticket t and takes
@@ -883,7 +885,7 @@ const claimableRule = `t.status = ? AND t.position IS NOT NULL
 // claimableArgs gives the parameters of claimableRule in the order it takes
 // them.
 func claimableArgs(cfg config.Config) []any {
-	return []any{Queued, Running, Ready, cfg.ProjectRuns(), Done}
+	return []any{Queued, Running, Ready, Failed, cfg.ProjectRuns(), Done}
 }
 
 // nextWithRoom returns the first queued ID satisfying claimableRule, or
