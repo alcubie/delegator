@@ -325,9 +325,10 @@ func showResultSchema() map[string]any {
 					"operation name of each command.",
 				"properties": map[string]any{
 					"accept": action,
+					"cancel": action,
 					"chat":   action,
 				},
-				"required":             []string{"accept", "chat"},
+				"required":             []string{"accept", "cancel", "chat"},
 				"additionalProperties": true,
 			},
 		},
@@ -451,6 +452,7 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	}
 	t.Actions = map[string]actionJSON{
 		"accept": actionValue(acceptAvailable(ticket)),
+		"cancel": actionValue(cancelAvailable(ticket)),
 		"chat":   actionValue(available, reason),
 	}
 

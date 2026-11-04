@@ -134,6 +134,16 @@ func acceptErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// cancelErrorIn runs dg cancel and returns the message it refuses with.
+func cancelErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := runIn(t, dataDir, workDir, "cancel", fmt.Sprint(id)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg cancel closed ticket %d", id)
+	return ""
+}
+
 // jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
@@ -1175,6 +1185,67 @@ func TestRunShowJSONGivesNoAcceptReasonForAValidationAcceptMakesItself(t *testin
 			assertAvailable(t, dataDir, repo, id, "accept")
 			if acceptErrorIn(t, dataDir, repo, id) == "" {
 				t.Error("dg accept refused with no message")
+			}
+		})
+	}
+}
+
+// The desktop app reads the cancel action before it offers its Cancel button,
+// and cancel closes a ticket in any status that is not closed already.
+func TestRunShowJSONGivesNoCancelReasonForATicketThatIsOpen(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo string)
+	}{
+		{"the ticket is queued", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket is running", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo, _ := runningTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket is ready", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := readyTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket failed", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := failedTicket(t, dataDir)
+			return id, repo
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := test.build(t, dataDir)
+
+			assertAvailable(t, dataDir, repo, id, "cancel")
+		})
+	}
+}
+
+// Stopping the agent is cancel's own work and no ticket refuses it for that
+// reason, so a closed status is the whole rule. show gives the words that
+// cancel would print for one.
+func TestRunShowJSONGivesTheStatusReasonCancelWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		want   string
+	}{
+		{store.Done, "invalid ticket state change: done to cancelled"},
+		{store.Cancelled, "invalid ticket state change: cancelled to cancelled"},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, id, repo := readyTicket(t, dataDir)
+			if err := s.ChangeStatus(id, test.status); err != nil {
+				t.Fatal(err)
+			}
+
+			if reason := refusalIn(t, dataDir, repo, id, "cancel"); reason != test.want {
+				t.Errorf("actions.cancel.reason = %q, want %q", reason, test.want)
+			}
+			if got := cancelErrorIn(t, dataDir, repo, id); got != test.want {
+				t.Errorf("dg cancel error = %q, want %q", got, test.want)
 			}
 		})
 	}
