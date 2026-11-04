@@ -718,9 +718,11 @@ func TestRPCDiscoverVersionResultContract(t *testing.T) {
 		invalid bool
 	}{
 		{"actual handler result", actual, false},
-		{"additive field", map[string]any{"version": "v1.2.3", "schema": float64(1), "future": true}, false},
-		{"missing version", map[string]any{"schema": float64(1)}, true},
-		{"wrong schema type", map[string]any{"version": "v1.2.3", "schema": "1"}, true},
+		{"additive field", map[string]any{"version": "v1.2.3", "schema": float64(1), "data_dir": "/data", "future": true}, false},
+		{"missing version", map[string]any{"schema": float64(1), "data_dir": "/data"}, true},
+		{"missing data_dir", map[string]any{"version": "v1.2.3", "schema": float64(1)}, true},
+		{"wrong schema type", map[string]any{"version": "v1.2.3", "schema": "1", "data_dir": "/data"}, true},
+		{"wrong data_dir type", map[string]any{"version": "v1.2.3", "schema": float64(1), "data_dir": 1}, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := validator.Validate(test.result)

@@ -20,11 +20,13 @@ var Version = "dev"
 // because consumers ignore unknown fields.
 const jsonSchema = 1
 
-// versionJSON exposes the binary version for display and schema version for
-// compatibility checks.
+// versionJSON exposes the binary version for display, the schema version for
+// compatibility checks, and the resolved data directory so that a client can
+// watch it without repeating dg's default-path rules.
 type versionJSON struct {
 	Version string `json:"version"`
 	Schema  int    `json:"schema"`
+	DataDir string `json:"data_dir"`
 }
 
 // versionResultSchema describes versionJSON for RPC discovery. Additional
@@ -33,16 +35,17 @@ func versionResultSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"version": map[string]any{"type": "string"},
-			"schema":  map[string]any{"type": "integer"},
+			"version":  map[string]any{"type": "string"},
+			"schema":   map[string]any{"type": "integer"},
+			"data_dir": map[string]any{"type": "string"},
 		},
-		"required":             []string{"version", "schema"},
+		"required":             []string{"version", "schema", "data_dir"},
 		"additionalProperties": true,
 	}
 }
 
 // versionCommand returns the command for dg version.
-func versionCommand() *cobra.Command {
+func versionCommand(dataDir *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "version",
 		Short:   "Show the version of dg.",
@@ -50,7 +53,8 @@ func versionCommand() *cobra.Command {
 		Example: `  dg version`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return writeValue(cmd.OutOrStdout(), versionJSON{Version: Version, Schema: jsonSchema}, false, func(out io.Writer) {
+			value := versionJSON{Version: Version, Schema: jsonSchema, DataDir: *dataDir}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
 				fmt.Fprintln(out, "dg", Version)
 			})
 		},

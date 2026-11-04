@@ -98,8 +98,30 @@ func TestVersionJSONWritesTheSchemaAsANumber(t *testing.T) {
 	if _, ok := got["schema"].(float64); !ok {
 		t.Errorf("schema is %T and holds %v, want a number", got["schema"], got["schema"])
 	}
-	if len(got) != 2 {
-		t.Errorf("the object holds %d keys (%v), want version and schema alone", len(got), got)
+	if len(got) != 3 {
+		t.Errorf("the object holds %d keys (%v), want version, schema and data_dir alone", len(got), got)
+	}
+}
+
+func TestVersionJSONHoldsTheSelectedDataDirectory(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "chosen")
+
+	got := rpcDocument(t, dataDir, t.TempDir(), "version")
+	if got["data_dir"] != dataDir {
+		t.Errorf("data_dir = %v, want %s", got["data_dir"], dataDir)
+	}
+}
+
+func TestVersionJSONHoldsTheDefaultDataDirectory(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	want, err := DataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := rpcDocument(t, "", t.TempDir(), "version")
+	if got["data_dir"] != want {
+		t.Errorf("data_dir = %v, want %s", got["data_dir"], want)
 	}
 }
 
