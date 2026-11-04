@@ -14,9 +14,9 @@ type Config struct {
 	// DoneHours is how long accepted tickets remain in the inbox.
 	// DoneWindow converts it to a duration.
 	DoneHours int
-	// MaxRunsPerProject limits running and ready tickets per project. The
-	// same limit applies to every project. Zero uses the global Runs
-	// limit; see ProjectRuns.
+	// MaxRunsPerProject limits running, ready and failed tickets per
+	// project. The same limit applies to every project. Zero uses the
+	// global Runs limit; see ProjectRuns.
 	MaxRunsPerProject int
 	// DefaultAgent is the registry name used for new runs. It is stored in
 	// SQLite as a reference to the agent registry.
@@ -39,7 +39,7 @@ var Definitions = []Definition{
 	{"runs", "the number of tickets that can be Running, Ready or Failed at a time."},
 	{"timeout_minutes", "the time in minutes that a run can take before delegator stops it."},
 	{"done_hours", "the time in hours that a ticket stays in DONE at the top of the inbox after dg accept closes it. A value of 0 leaves DONE empty."},
-	{"max_runs_per_project", "the number of tickets of one project that can be Running or Ready at a time. A value of 0 is ignored and runs is used as the limit."},
+	{"max_runs_per_project", "the number of tickets of one project that can be Running, Ready or Failed at a time. A value of 0 is ignored and runs is used as the limit."},
 	{"default_agent", "the registered agent used for new runs."},
 	{"default_model", "the ACP model ID used for runs. null uses the agent's default model."},
 	{"telemetry", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},

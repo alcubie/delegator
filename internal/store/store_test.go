@@ -2141,6 +2141,31 @@ func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	}
 }
 
+// A failed worktree can still hold the database or the port that the runs of
+// one project compete for, so it holds per-project capacity too.
+func TestClaimNextCountsAFailedTicketAgainstItsProject(t *testing.T) {
+	s, first, second := twoProjects(t)
+	if _, err := s.Claim(first[0], claimBranch(Ticket{ID: first[0]}), testAgentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(first[0], Failed); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Runs: 5, MaxRunsPerProject: 1}
+
+	if got := claimableCount(t, s, cfg); got != 1 {
+		t.Errorf("count = %d, want 1: only the project without a failed ticket has room", got)
+	}
+	claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != second[0] {
+		t.Errorf("claimed ticket %d, want the first ticket of the other project %d",
+			claimed.ID, second[0])
+	}
+}
+
 // A failed ticket keeps its branch, session and worktree for a restart, so it
 // holds its place against the limit.
 func TestClaimNextWithAFailedTicketClaimsNothing(t *testing.T) {
@@ -2227,6 +2252,27 @@ func TestClaimableCountStopsAtTheRoomOfOneProject(t *testing.T) {
 
 	if got != 1 {
 		t.Errorf("count = %d for three tickets of one project with a limit of one, want 1", got)
+	}
+}
+
+// The place a failed ticket holds comes off the room of its project, so two
+// eligible tickets under a limit of two count as one.
+func TestClaimableCountStopsAtTheRoomBesideAFailedTicket(t *testing.T) {
+	s, ids := threeTicketsFirstFailed(t)
+	cfg := config.Config{Runs: 5, MaxRunsPerProject: 2}
+
+	if got := claimableCount(t, s, cfg); got != 1 {
+		t.Errorf("count = %d for two queued tickets beside a failed one under a limit of two, want 1", got)
+	}
+	claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != ids[1] {
+		t.Errorf("claimed ticket %d, want the first ticket still queued %d", claimed.ID, ids[1])
+	}
+	if got := claimableCount(t, s, cfg); got != 0 {
+		t.Errorf("count = %d once the claim filled the room, want 0", got)
 	}
 }
 
