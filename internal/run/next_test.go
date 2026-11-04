@@ -150,7 +150,8 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	testfix.WaitForStarts(t, record, 0)
 }
 
-// A failed run frees a slot without disturbing other active runs.
+// A cancelled run frees a slot without disturbing other active runs. A failed
+// run keeps its slot, so cancelling is what gives the place back.
 func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	dataDir, ids := queueOf(t, 4)
 	s := testfix.OpenStore(t, dataDir)
@@ -160,6 +161,9 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 		}
 	}
 	if err := s.ChangeStatus(ids[0], store.Failed); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cancel(ids[0], 0); err != nil {
 		t.Fatal(err)
 	}
 	launch, record := testfix.RecordingLaunch(t)
