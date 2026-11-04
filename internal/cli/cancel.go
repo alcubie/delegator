@@ -32,6 +32,20 @@ func cancelCommand(dataDir *string, cfg *config.Config, commandPath string) *cob
 	})
 }
 
+// cancelAvailable reports whether the status of a ticket lets cancel run, and
+// the reason beside it for when it does not. The reason is the message cancel
+// itself would print, so the two cannot drift apart.
+//
+// Stopping the agent is cancel's own work, left to the run of cancel: only a
+// terminal status refuses it.
+func cancelAvailable(ticket store.Ticket) (bool, string) {
+	if !store.CanChange(ticket.Status, store.Cancelled) {
+		return false, fmt.Sprintf("%s: %s to %s",
+			store.ErrInvalidTicketStateChange, ticket.Status, store.Cancelled)
+	}
+	return true, ""
+}
+
 // cancelTicket stops a running supervisor before marking the ticket
 // cancelled. Reconciliation has already marked dead or timed-out runs failed;
 // do not signal those PIDs, which may now belong to unrelated processes.

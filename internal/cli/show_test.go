@@ -80,25 +80,46 @@ func showJSON(t *testing.T, dataDir, workDir string, args ...string) map[string]
 	return rpcDocument(t, dataDir, workDir, "show", args...)
 }
 
-// unavailableIn reads one of the fields of the show result that carry the
-// reason a command refuses a ticket, named by field.
-func unavailableIn(t *testing.T, dataDir, workDir string, id int64, field string) any {
+// actionIn reads one entry of the actions object of the show result, named by
+// the operation of its command.
+func actionIn(t *testing.T, dataDir, workDir string, id int64, operation string) map[string]any {
 	t.Helper()
 	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
-	value, held := got[field]
+	actions, held := got["actions"].(map[string]any)
 	if !held {
-		t.Fatalf("show result holds no %s: %#v", field, got)
+		t.Fatalf("show result holds no actions: %#v", got)
 	}
-	return value
+	action, held := actions[operation].(map[string]any)
+	if !held {
+		t.Fatalf("actions holds no %s: %#v", operation, actions)
+	}
+	return action
 }
 
-// refusalIn reads the reason that one of those fields holds.
-func refusalIn(t *testing.T, dataDir, workDir string, id int64, field string) string {
+// assertAvailable fails unless the entry of one command reports that the state
+// of the ticket lets it run.
+func assertAvailable(t *testing.T, dataDir, workDir string, id int64, operation string) {
 	t.Helper()
-	value := unavailableIn(t, dataDir, workDir, id, field)
-	reason, ok := value.(string)
+	action := actionIn(t, dataDir, workDir, id, operation)
+	if action["available"] != true {
+		t.Errorf("actions.%s.available = %#v, want true", operation, action["available"])
+	}
+	if action["reason"] != nil {
+		t.Errorf("actions.%s.reason = %#v, want null", operation, action["reason"])
+	}
+}
+
+// refusalIn reads the reason that the entry of one command holds, and fails
+// unless the entry refuses the ticket.
+func refusalIn(t *testing.T, dataDir, workDir string, id int64, operation string) string {
+	t.Helper()
+	action := actionIn(t, dataDir, workDir, id, operation)
+	if action["available"] != false {
+		t.Errorf("actions.%s.available = %#v, want false", operation, action["available"])
+	}
+	reason, ok := action["reason"].(string)
 	if !ok {
-		t.Fatalf("%s = %#v, want a reason", field, value)
+		t.Fatalf("actions.%s.reason = %#v, want a reason", operation, action["reason"])
 	}
 	return reason
 }
@@ -113,12 +134,22 @@ func acceptErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// cancelErrorIn runs dg cancel and returns the message it refuses with.
+func cancelErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := runIn(t, dataDir, workDir, "cancel", fmt.Sprint(id)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg cancel closed ticket %d", id)
+	return ""
+}
+
 // jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
-	"depends_on", "blocks", "chat_unavailable", "accept_unavailable",
+	"depends_on", "blocks", "actions",
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -981,15 +1012,13 @@ func TestRunShowJSONGivesNullForAFieldWithNoValue(t *testing.T) {
 	}
 }
 
-// The desktop app reads chat_unavailable before it opens a terminal, and a
+// The desktop app reads the chat action before it opens a terminal, and a
 // ticket whose conversation chat can continue gives no reason.
 func TestRunShowJSONGivesNoChatReasonForATicketThatCanChat(t *testing.T) {
 	dataDir := t.TempDir()
 	id, repo, _ := chattableTicket(t, dataDir)
 
-	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
-		t.Errorf("chat_unavailable = %#v, want null", value)
-	}
+	assertAvailable(t, dataDir, repo, id, "chat")
 }
 
 // show runs the checks of chat, and those checks must leave nothing behind:
@@ -1003,9 +1032,7 @@ func TestRunShowJSONMakesNoProjectCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if value := unavailableIn(t, dataDir, repo, id, "chat_unavailable"); value != nil {
-		t.Errorf("chat_unavailable = %#v, want null", value)
-	}
+	assertAvailable(t, dataDir, repo, id, "chat")
 	if _, err := os.Stat(cacheDir); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("dg show made the project cache at %q: %v", cacheDir, err)
 	}
@@ -1061,8 +1088,8 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo, want := test.build(t, dataDir)
 
-			if reason := refusalIn(t, dataDir, repo, id, "chat_unavailable"); reason != want {
-				t.Errorf("chat_unavailable = %q, want %q", reason, want)
+			if reason := refusalIn(t, dataDir, repo, id, "chat"); reason != want {
+				t.Errorf("actions.chat.reason = %q, want %q", reason, want)
 			}
 			useChat(t, "true")
 			_, err := runIn(t, dataDir, repo, "chat", fmt.Sprint(id))
@@ -1076,15 +1103,13 @@ func TestRunShowJSONGivesTheReasonChatWouldPrint(t *testing.T) {
 	}
 }
 
-// The desktop app reads accept_unavailable before it offers its Accept
-// button, and a ready ticket gives no reason.
+// The desktop app reads the accept action before it offers its Accept button,
+// and a ready ticket gives no reason.
 func TestRunShowJSONGivesNoAcceptReasonForAReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	_, id, repo := readyTicket(t, dataDir)
 
-	if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
-		t.Errorf("accept_unavailable = %#v, want null", value)
-	}
+	assertAvailable(t, dataDir, repo, id, "accept")
 }
 
 // show gives the words that accept would print for a status that refuses it,
@@ -1108,8 +1133,8 @@ func TestRunShowJSONGivesTheStatusReasonAcceptWouldPrint(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo, want := test.build(t, dataDir)
 
-			if reason := refusalIn(t, dataDir, repo, id, "accept_unavailable"); reason != want {
-				t.Errorf("accept_unavailable = %q, want %q", reason, want)
+			if reason := refusalIn(t, dataDir, repo, id, "accept"); reason != want {
+				t.Errorf("actions.accept.reason = %q, want %q", reason, want)
 			}
 			if got := acceptErrorIn(t, dataDir, repo, id); got != want {
 				t.Errorf("dg accept error = %q, want %q", got, want)
@@ -1157,11 +1182,70 @@ func TestRunShowJSONGivesNoAcceptReasonForAValidationAcceptMakesItself(t *testin
 			dataDir := t.TempDir()
 			id, repo := test.build(t, dataDir)
 
-			if value := unavailableIn(t, dataDir, repo, id, "accept_unavailable"); value != nil {
-				t.Errorf("accept_unavailable = %#v, want null", value)
-			}
+			assertAvailable(t, dataDir, repo, id, "accept")
 			if acceptErrorIn(t, dataDir, repo, id) == "" {
 				t.Error("dg accept refused with no message")
+			}
+		})
+	}
+}
+
+// The desktop app reads the cancel action before it offers its Cancel button,
+// and cancel closes a ticket in any status that is not closed already.
+func TestRunShowJSONGivesNoCancelReasonForATicketThatIsOpen(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		build func(t *testing.T, dataDir string) (id int64, repo string)
+	}{
+		{"the ticket is queued", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket is running", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo, _ := runningTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket is ready", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := readyTicket(t, dataDir)
+			return id, repo
+		}},
+		{"the ticket failed", func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := failedTicket(t, dataDir)
+			return id, repo
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := test.build(t, dataDir)
+
+			assertAvailable(t, dataDir, repo, id, "cancel")
+		})
+	}
+}
+
+// Stopping the agent is cancel's own work and no ticket refuses it for that
+// reason, so a closed status is the whole rule. show gives the words that
+// cancel would print for one.
+func TestRunShowJSONGivesTheStatusReasonCancelWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		want   string
+	}{
+		{store.Done, "invalid ticket state change: done to cancelled"},
+		{store.Cancelled, "invalid ticket state change: cancelled to cancelled"},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, id, repo := readyTicket(t, dataDir)
+			if err := s.ChangeStatus(id, test.status); err != nil {
+				t.Fatal(err)
+			}
+
+			if reason := refusalIn(t, dataDir, repo, id, "cancel"); reason != test.want {
+				t.Errorf("actions.cancel.reason = %q, want %q", reason, test.want)
+			}
+			if got := cancelErrorIn(t, dataDir, repo, id); got != test.want {
+				t.Errorf("dg cancel error = %q, want %q", got, test.want)
 			}
 		})
 	}

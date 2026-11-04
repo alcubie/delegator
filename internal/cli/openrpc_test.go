@@ -1090,23 +1090,37 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	if err := validator.Validate(accepted); err != nil {
 		t.Fatalf("result with an acceptance timestamp does not satisfy the advertised schema: %v", err)
 	}
-	// Accept takes the worktree away, so the accepted result carries a
-	// reason and the schema sees chat_unavailable with a string in it.
-	if _, ok := accepted["chat_unavailable"].(string); !ok {
-		t.Fatalf("chat_unavailable = %#v for an accepted ticket, want a reason", accepted["chat_unavailable"])
+	// Accept takes the worktree away and a closed ticket can be neither
+	// accepted nor cancelled, so every entry of the accepted result carries a
+	// reason and the schema sees a string in each.
+	for _, operation := range []string{"accept", "cancel", "chat"} {
+		action := accepted["actions"].(map[string]any)[operation]
+		if _, ok := action.(map[string]any)["reason"].(string); !ok {
+			t.Fatalf("actions.%s = %#v for an accepted ticket, want a reason", operation, action)
+		}
 	}
-	// A closed ticket cannot be accepted again, so the accepted result
-	// carries a reason and the schema sees accept_unavailable with a string
-	// in it.
-	if _, ok := accepted["accept_unavailable"].(string); !ok {
-		t.Fatalf("accept_unavailable = %#v for an accepted ticket, want a reason", accepted["accept_unavailable"])
+
+	// actionsWith and actionsWithout return the actions of the result with
+	// one entry changed, leaving the actions of the result as they were.
+	// maps.Clone is shallow, so a change inside an entry would reach the
+	// result itself.
+	actionsWith := func(operation string, action map[string]any) map[string]any {
+		actions := maps.Clone(actual["actions"].(map[string]any))
+		actions[operation] = action
+		return actions
+	}
+	actionsWithout := func(operation string) map[string]any {
+		actions := maps.Clone(actual["actions"].(map[string]any))
+		delete(actions, operation)
+		return actions
 	}
 
 	valid := maps.Clone(actual)
 	valid["id"] = float64(1 << 62)
 	valid["future"] = true
+	valid["actions"] = actionsWith("restart", map[string]any{"available": true, "reason": nil})
 	if err := validator.Validate(valid); err != nil {
-		t.Errorf("additive field or wide ticket identifier does not satisfy the advertised schema: %v", err)
+		t.Errorf("additive field, later action, or wide ticket identifier does not satisfy the advertised schema: %v", err)
 	}
 
 	for _, test := range []struct {
@@ -1124,10 +1138,23 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"null dependency links", func(result map[string]any) { result["depends_on"] = nil }},
 		{"nonpositive dependency identifier", func(result map[string]any) { result["depends_on"] = []any{float64(0)} }},
 		{"wrong reverse links type", func(result map[string]any) { result["blocks"] = "2" }},
-		{"missing chat_unavailable", func(result map[string]any) { delete(result, "chat_unavailable") }},
-		{"wrong chat_unavailable type", func(result map[string]any) { result["chat_unavailable"] = float64(1) }},
-		{"missing accept_unavailable", func(result map[string]any) { delete(result, "accept_unavailable") }},
-		{"wrong accept_unavailable type", func(result map[string]any) { result["accept_unavailable"] = float64(1) }},
+		{"missing actions", func(result map[string]any) { delete(result, "actions") }},
+		{"wrong actions type", func(result map[string]any) { result["actions"] = "accept" }},
+		{"missing the accept action", func(result map[string]any) { result["actions"] = actionsWithout("accept") }},
+		{"missing the cancel action", func(result map[string]any) { result["actions"] = actionsWithout("cancel") }},
+		{"missing the chat action", func(result map[string]any) { result["actions"] = actionsWithout("chat") }},
+		{"missing available", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"reason": nil})
+		}},
+		{"wrong available type", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"available": "true", "reason": nil})
+		}},
+		{"missing reason", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"available": true})
+		}},
+		{"wrong reason type", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"available": false, "reason": float64(1)})
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := maps.Clone(actual)

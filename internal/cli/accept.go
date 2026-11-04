@@ -21,7 +21,7 @@ import (
 // until dg changes it, while a branch merges and a worktree turns dirty
 // outside dg and a reported answer would already be stale.
 func acceptAvailable(ticket store.Ticket) (bool, string) {
-	if ticket.Status != store.Ready {
+	if !store.CanChange(ticket.Status, store.Done) {
 		return false, fmt.Sprintf("%s: %s to %s",
 			store.ErrInvalidTicketStateChange, ticket.Status, store.Done)
 	}
