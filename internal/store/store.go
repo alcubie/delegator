@@ -774,16 +774,17 @@ func (s *Store) Claim(id int64, branch string, agentID int64) (int64, error) {
 // treat this as a normal exit.
 var ErrNoRoom = errors.New("no ticket in the queue has room to run")
 
-// freeSlots returns global capacity minus running and ready tickets, clamped
-// to zero. A paused queue has no free slots. This counts capacity, not queued
-// work.
+// freeSlots returns global capacity minus running, ready and failed tickets,
+// clamped to zero. A paused queue has no free slots. This counts capacity, not
+// queued work. A failed ticket keeps its branch, session and worktree for a
+// restart or a chat repair, so it still holds its place.
 func freeSlots(q querier, cfg config.Config) (int, error) {
 	var running bool
 	var held int
 	err := q.QueryRow(`
 		SELECT (SELECT running FROM queue_state WHERE id = 1),
-		       (SELECT COUNT(*) FROM tickets WHERE status IN (?, ?))`,
-		Running, Ready).Scan(&running, &held)
+		       (SELECT COUNT(*) FROM tickets WHERE status IN (?, ?, ?))`,
+		Running, Ready, Failed).Scan(&running, &held)
 	if err != nil {
 		return 0, err
 	}

@@ -100,6 +100,20 @@ func threeTickets(t *testing.T) (*Store, []int64) {
 	return s, queuedTickets(t, s, projectID, "first", "second", "third")
 }
 
+// threeTicketsFirstFailed returns the store of threeTickets with the first
+// ticket claimed and then failed, and the ids of all three.
+func threeTicketsFirstFailed(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, ids := threeTickets(t)
+	if _, err := s.Claim(ids[0], claimBranch(Ticket{ID: ids[0]}), testAgentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(ids[0], Failed); err != nil {
+		t.Fatal(err)
+	}
+	return s, ids
+}
+
 // twoProjects returns a store that holds two projects with two tickets each,
 // and the ids of the tickets of each project. The queue holds the two tickets
 // of the first project and then the two of the second.
@@ -2124,6 +2138,44 @@ func TestClaimNextCountsAReadyTicketAgainstItsProject(t *testing.T) {
 	if claimed.ID != second[0] {
 		t.Errorf("claimed ticket %d, want the first ticket of the other project %d",
 			claimed.ID, second[0])
+	}
+}
+
+// A failed ticket keeps its branch, session and worktree for a restart, so it
+// holds its place against the limit.
+func TestClaimNextWithAFailedTicketClaimsNothing(t *testing.T) {
+	s, _ := threeTicketsFirstFailed(t)
+	cfg := config.Config{Runs: 1}
+
+	if got := claimableCount(t, s, cfg); got != 0 {
+		t.Errorf("count = %d, want 0: the failed ticket holds the only slot", got)
+	}
+	claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
+	if !errors.Is(err, ErrNoRoom) {
+		t.Fatalf("err = %v, want ErrNoRoom", err)
+	}
+	if claimed.ID != 0 {
+		t.Errorf("claimed ticket %d while a ticket is failed, want nothing", claimed.ID)
+	}
+}
+
+// Cancelling is how a failed ticket gives its place back.
+func TestClaimNextAfterTheFailedTicketIsCancelledClaimsTheNextTicket(t *testing.T) {
+	s, ids := threeTicketsFirstFailed(t)
+	cfg := config.Config{Runs: 1}
+	if err := s.Cancel(ids[0], 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := claimableCount(t, s, cfg); got != 1 {
+		t.Errorf("count = %d, want 1: cancelling freed the slot", got)
+	}
+	claimed, _, err := s.ClaimNext(cfg, claimBranch, testAgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != ids[1] {
+		t.Errorf("claimed ticket %d, want the first ticket still queued %d", claimed.ID, ids[1])
 	}
 }
 

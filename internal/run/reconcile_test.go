@@ -149,7 +149,7 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	testfix.AgeRun(t, dataDir, first, 2*time.Minute)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Reconcile(s, launch, config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
+	if err := Reconcile(s, launch, config.Config{Runs: 2, TimeoutMinutes: 1}); err != nil {
 		t.Fatal(err)
 	}
 
