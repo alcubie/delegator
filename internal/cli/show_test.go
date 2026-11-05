@@ -144,6 +144,27 @@ func cancelErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// closedTicket builds a ticket and moves it to a closed status, leaving the
+// worktree and the run that the command closing it would take away.
+func closedTicket(t *testing.T, dataDir string, status store.TicketStatus) (id int64, repo string) {
+	t.Helper()
+	s, id, repo := readyTicket(t, dataDir)
+	if err := s.ChangeStatus(id, status); err != nil {
+		t.Fatal(err)
+	}
+	return id, repo
+}
+
+// restartErrorIn runs dg restart and returns the message it refuses with.
+func restartErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := runIn(t, dataDir, workDir, "restart", fmt.Sprint(id)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg restart started ticket %d", id)
+	return ""
+}
+
 // jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
@@ -1236,16 +1257,63 @@ func TestRunShowJSONGivesTheStatusReasonCancelWouldPrint(t *testing.T) {
 	} {
 		t.Run(string(test.status), func(t *testing.T) {
 			dataDir := t.TempDir()
-			s, id, repo := readyTicket(t, dataDir)
-			if err := s.ChangeStatus(id, test.status); err != nil {
-				t.Fatal(err)
-			}
+			id, repo := closedTicket(t, dataDir, test.status)
 
 			if reason := refusalIn(t, dataDir, repo, id, "cancel"); reason != test.want {
 				t.Errorf("actions.cancel.reason = %q, want %q", reason, test.want)
 			}
 			if got := cancelErrorIn(t, dataDir, repo, id); got != test.want {
 				t.Errorf("dg cancel error = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// The desktop app reads the restart action before it offers its Restart
+// button, and a failed ticket is the one restart takes.
+func TestRunShowJSONGivesNoRestartReasonForAFailedTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := failedTicket(t, dataDir)
+
+	assertAvailable(t, dataDir, repo, id, "restart")
+}
+
+// The status is restart's whole rule, and show gives the words that restart
+// would print for a ticket in any other one.
+func TestRunShowJSONGivesTheStatusReasonRestartWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		build  func(t *testing.T, dataDir string) (id int64, repo string)
+		want   string
+	}{
+		{store.Queued, func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := queuedTicket(t, dataDir)
+			return id, repo
+		}, "invalid ticket state change: the ticket is queued, and only a failed ticket restarts"},
+		{store.Running, func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo, _ := runningTicket(t, dataDir)
+			return id, repo
+		}, "invalid ticket state change: the ticket is running, and only a failed ticket restarts"},
+		{store.Ready, func(t *testing.T, dataDir string) (int64, string) {
+			_, id, repo := readyTicket(t, dataDir)
+			return id, repo
+		}, "invalid ticket state change: the ticket is ready, and only a failed ticket restarts"},
+		{store.Done, func(t *testing.T, dataDir string) (int64, string) {
+			return closedTicket(t, dataDir, store.Done)
+		}, "invalid ticket state change: the ticket is done, and only a failed ticket restarts"},
+		{store.Cancelled, func(t *testing.T, dataDir string) (int64, string) {
+			return closedTicket(t, dataDir, store.Cancelled)
+		}, "invalid ticket state change: the ticket is cancelled, and only a failed ticket restarts"},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := test.build(t, dataDir)
+
+			if reason := refusalIn(t, dataDir, repo, id, "restart"); reason != test.want {
+				t.Errorf("actions.restart.reason = %q, want %q", reason, test.want)
+			}
+			if got := restartErrorIn(t, dataDir, repo, id); got != test.want {
+				t.Errorf("dg restart error = %q, want %q", got, test.want)
 			}
 		})
 	}
