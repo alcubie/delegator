@@ -515,6 +515,10 @@ type OpenTicket struct {
 	// exists. It determines the order of FAILED.
 	Changed time.Time
 
+	// Runs counts every recorded run of the ticket, including failed and
+	// cancelled ones.
+	Runs int
+
 	// DependsOn lists unfinished dependency IDs in ascending order.
 	// Completed dependencies are omitted so the inbox shows only
 	// blockers.
@@ -575,7 +579,8 @@ const inboxTicketQuery = `
 	       ` + createdTime + `, ` + acceptedTime + `,
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1),
-	       ` + lastChange + `
+	       ` + lastChange + `,
+	       (SELECT COUNT(*) FROM runs WHERE runs.ticket_id = tickets.id)
 	FROM tickets
 	JOIN projects ON projects.id = tickets.project_id
 	`
@@ -602,7 +607,8 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 		if err := rows.Scan(
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
 			timeColumn{&t.Created}, timeColumn{&t.Accepted},
-			timeColumn{&t.Started}, timeColumn{&t.Changed}); err != nil {
+			timeColumn{&t.Started}, timeColumn{&t.Changed},
+			&t.Runs); err != nil {
 			return nil, err
 		}
 		t.DependsOn = append([]int64{}, unmet[t.ID]...)
