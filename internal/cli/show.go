@@ -249,17 +249,20 @@ type ticketJSON struct {
 	shown shown
 }
 
-// actionJSON reports whether the state of a ticket lets one of its commands
-// run. Reason is null when it does.
+// actionJSON reports whether one of a ticket's commands applies to it in its
+// state and whether that state lets the command run. Reason is null when it
+// does.
 type actionJSON struct {
-	Available bool    `json:"available"`
-	Reason    *string `json:"reason"`
+	Applicable bool    `json:"applicable"`
+	Available  bool    `json:"available"`
+	Reason     *string `json:"reason"`
 }
 
 // actionValue turns the pair that an availability function returns into its
-// entry of the actions object.
+// entry of the actions object. A command that refuses on status alone is
+// inapplicable exactly when it is unavailable, so the one answer gives both.
 func actionValue(available bool, reason string) actionJSON {
-	return actionJSON{Available: available, Reason: nullable(reason)}
+	return actionJSON{Applicable: available, Available: available, Reason: nullable(reason)}
 }
 
 // showResultSchema describes ticketJSON for RPC discovery. Nullable fields
@@ -275,6 +278,12 @@ func showResultSchema() map[string]any {
 	action := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"applicable": map[string]any{
+				"type": "boolean",
+				"description": "Whether the command applies to a ticket in this state at all. " +
+					"A consumer that draws one control per action leaves an inapplicable one " +
+					"out instead of disabling it. False implies that available is false.",
+			},
 			"available": map[string]any{
 				"type": "boolean",
 				"description": "Whether the current state of the ticket lets the command run. " +
@@ -287,7 +296,7 @@ func showResultSchema() map[string]any {
 					"or null when available is true.",
 			},
 		},
-		"required":             []string{"available", "reason"},
+		"required":             []string{"applicable", "available", "reason"},
 		"additionalProperties": true,
 	}
 	return map[string]any{
@@ -454,7 +463,7 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 	t.Actions = map[string]actionJSON{
 		"accept":  actionValue(acceptAvailable(ticket)),
 		"cancel":  actionValue(cancelAvailable(ticket)),
-		"chat":    actionValue(available, reason),
+		"chat":    {Applicable: chatApplicable(ticket), Available: available, Reason: nullable(reason)},
 		"restart": actionValue(restartAvailable(ticket)),
 	}
 
