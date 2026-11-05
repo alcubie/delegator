@@ -520,14 +520,20 @@ func setPositions(tx *sql.Tx, l list, ids []int64) error {
 	return nil
 }
 
-// OpenTicket holds a ticket and its project path for inbox display. NULL
-// columns become zero values only where zero is not a valid stored value;
-// otherwise a nullable type is needed.
+// OpenTicket holds a ticket and the path and name of its project for inbox
+// display. NULL columns become zero values only where zero is not a valid
+// stored value; otherwise a nullable type is needed.
 type OpenTicket struct {
 	ID      int64
 	Project string
-	Title   string
-	Status  TicketStatus
+
+	// ProjectName is the given name of the project, or empty when it has
+	// none and the folder of the path stands in. The tag keeps it out of
+	// the JSON rows of dg list, which marshal an OpenTicket.
+	ProjectName string `json:"-"`
+
+	Title  string
+	Status TicketStatus
 
 	// Position is the ticket's queue or ready-list position, or zero for
 	// other statuses.
@@ -613,7 +619,8 @@ const inboxTicketQuery = `
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1),
 	       ` + lastChange + `,
-	       (SELECT COUNT(*) FROM runs WHERE runs.ticket_id = tickets.id)
+	       (SELECT COUNT(*) FROM runs WHERE runs.ticket_id = tickets.id),
+	       COALESCE(projects.name, '')
 	FROM tickets
 	JOIN projects ON projects.id = tickets.project_id
 	`
@@ -641,7 +648,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
 			timeColumn{&t.Created}, timeColumn{&t.Accepted},
 			timeColumn{&t.Started}, timeColumn{&t.Changed},
-			&t.Runs); err != nil {
+			&t.Runs, &t.ProjectName); err != nil {
 			return nil, err
 		}
 		t.DependsOn = append([]int64{}, unmet[t.ID]...)

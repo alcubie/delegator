@@ -102,6 +102,21 @@ func TestWriteListWritesOneRowForEachTicket(t *testing.T) {
 	})
 }
 
+// A row of dg list names a project as the desktop app does.
+func TestWriteListShowsTheNameOfARenamedProject(t *testing.T) {
+	var out bytes.Buffer
+	writeList(&out, []store.OpenTicket{
+		{ID: 4, Project: "/projects/one", ProjectName: "Widget",
+			Title: "the named title", Status: store.Queued},
+		{ID: 5, Project: "/projects/other", Title: "the unnamed title", Status: store.Queued},
+	})
+
+	wantLines(t, strings.Split(strings.TrimRight(out.String(), "\n"), "\n"), []string{
+		"  4 Widget  the named title                                  queued",
+		"  5 other   the unnamed title                                queued",
+	})
+}
+
 // Include accepted work even after it leaves the inbox window.
 func TestListHoldsATicketOfEveryStatus(t *testing.T) {
 	dataDir := t.TempDir()

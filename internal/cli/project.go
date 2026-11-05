@@ -23,16 +23,21 @@ type projectJSON struct {
 	Archived      bool   `json:"archived"`
 }
 
-// projectValue names a project after the folder of its path when it has no
-// given name, so that a client reads one field rather than a fallback.
-func projectValue(p store.Project) projectJSON {
-	name := p.Name
-	if name == "" {
-		name = filepath.Base(p.Path)
+// projectName names a project after the folder of its path when it has no
+// given name.
+func projectName(name, path string) string {
+	if name != "" {
+		return name
 	}
+	return filepath.Base(path)
+}
+
+// projectValue resolves the name, so that a client reads one field rather than
+// a fallback.
+func projectValue(p store.Project) projectJSON {
 	return projectJSON{
 		ID:            p.ID,
-		Name:          name,
+		Name:          projectName(p.Name, p.Path),
 		Path:          p.Path,
 		DefaultBranch: p.DefaultBranch,
 		Archived:      !p.ArchivedAt.IsZero(),

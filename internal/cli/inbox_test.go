@@ -533,6 +533,31 @@ func TestWriteInboxPutsDoneInTheSameColumns(t *testing.T) {
 	})
 }
 
+// The CLI must name a project as the desktop app does, so a stored name
+// replaces the folder of the path and widens the column.
+func TestWriteInboxShowsTheNameOfARenamedProject(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Queued: []store.OpenTicket{
+			{ID: 4, Project: "/projects/one", ProjectName: "Widget", Title: "the named title"},
+			{ID: 5, Project: "/projects/other", Title: "the unnamed title"},
+		},
+	}
+
+	wantLines(t, render(t, box), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  none",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  4 Widget  the named title",
+		"  5 other   the unnamed title",
+	})
+}
+
 // Use a nondefault window to detect hard-coded heading text.
 func TestWriteInboxSaysTheWindowOfDone(t *testing.T) {
 	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
