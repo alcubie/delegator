@@ -324,11 +324,12 @@ func showResultSchema() map[string]any {
 				"description": "Whether the ticket's commands can run on it, keyed by the " +
 					"operation name of each command.",
 				"properties": map[string]any{
-					"accept": action,
-					"cancel": action,
-					"chat":   action,
+					"accept":  action,
+					"cancel":  action,
+					"chat":    action,
+					"restart": action,
 				},
-				"required":             []string{"accept", "cancel", "chat"},
+				"required":             []string{"accept", "cancel", "chat", "restart"},
 				"additionalProperties": true,
 			},
 		},
@@ -451,9 +452,10 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		return ticketJSON{}, err
 	}
 	t.Actions = map[string]actionJSON{
-		"accept": actionValue(acceptAvailable(ticket)),
-		"cancel": actionValue(cancelAvailable(ticket)),
-		"chat":   actionValue(available, reason),
+		"accept":  actionValue(acceptAvailable(ticket)),
+		"cancel":  actionValue(cancelAvailable(ticket)),
+		"chat":    actionValue(available, reason),
+		"restart": actionValue(restartAvailable(ticket)),
 	}
 
 	t.DependsOn, err = s.Dependencies(id)

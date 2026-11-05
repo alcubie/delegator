@@ -10,6 +10,29 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
+// restartAvailable reports whether the status of a ticket lets restart run,
+// and the reason beside it for when it does not. The reason is the message
+// restart itself would print, so the two cannot drift apart.
+//
+// The session, the branch and the worktree are restart's own validation, left
+// to the run of restart: only the status refuses it here.
+func restartAvailable(ticket store.Ticket) (bool, string) {
+	if err := restartRefusal(ticket.Status); err != nil {
+		return false, err.Error()
+	}
+	return true, ""
+}
+
+// restartRefusal gives the error restart refuses a status with, and nil for
+// the failed status that restarts.
+func restartRefusal(status store.TicketStatus) error {
+	if status == store.Failed {
+		return nil
+	}
+	return fmt.Errorf("%w: the ticket is %s, and only a failed ticket restarts",
+		store.ErrInvalidTicketStateChange, status)
+}
+
 // restartCommand resumes an explicitly named failed ticket directly,
 // bypassing the queue. It preserves the branch, session, and worktree, and
 // writes nothing on success.
@@ -40,9 +63,8 @@ func restartCommand(dataDir *string, cfg *config.Config, commandPath string) *co
 				if err != nil {
 					return err
 				}
-				if ticket.Status != store.Failed {
-					return fmt.Errorf("%w: the ticket is %s, and only a failed ticket restarts",
-						store.ErrInvalidTicketStateChange, ticket.Status)
+				if err := restartRefusal(ticket.Status); err != nil {
+					return err
 				}
 				return run.Detach(launchIn(*dataDir, restartLaunch(id, model)))
 			})

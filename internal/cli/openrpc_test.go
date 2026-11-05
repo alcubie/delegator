@@ -1093,9 +1093,9 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		t.Fatalf("result with an acceptance timestamp does not satisfy the advertised schema: %v", err)
 	}
 	// Accept takes the worktree away and a closed ticket can be neither
-	// accepted nor cancelled, so every entry of the accepted result carries a
-	// reason and the schema sees a string in each.
-	for _, operation := range []string{"accept", "cancel", "chat"} {
+	// accepted, cancelled nor restarted, so every entry of the accepted result
+	// carries a reason and the schema sees a string in each.
+	for _, operation := range []string{"accept", "cancel", "chat", "restart"} {
 		action := accepted["actions"].(map[string]any)[operation]
 		if _, ok := action.(map[string]any)["reason"].(string); !ok {
 			t.Fatalf("actions.%s = %#v for an accepted ticket, want a reason", operation, action)
@@ -1120,7 +1120,7 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	valid := maps.Clone(actual)
 	valid["id"] = float64(1 << 62)
 	valid["future"] = true
-	valid["actions"] = actionsWith("restart", map[string]any{"available": true, "reason": nil})
+	valid["actions"] = actionsWith("pause", map[string]any{"available": true, "reason": nil})
 	if err := validator.Validate(valid); err != nil {
 		t.Errorf("additive field, later action, or wide ticket identifier does not satisfy the advertised schema: %v", err)
 	}
@@ -1145,6 +1145,7 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"missing the accept action", func(result map[string]any) { result["actions"] = actionsWithout("accept") }},
 		{"missing the cancel action", func(result map[string]any) { result["actions"] = actionsWithout("cancel") }},
 		{"missing the chat action", func(result map[string]any) { result["actions"] = actionsWithout("chat") }},
+		{"missing the restart action", func(result map[string]any) { result["actions"] = actionsWithout("restart") }},
 		{"missing available", func(result map[string]any) {
 			result["actions"] = actionsWith("chat", map[string]any{"reason": nil})
 		}},
