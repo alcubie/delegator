@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/alcubie/delegator/internal/store"
 )
 
 const (
@@ -210,6 +212,18 @@ func rpcResultSchema(operation string) map[string]any {
 // no value. JSON-RPC still includes their result member with an explicit null.
 func nullResultSchema() map[string]any {
 	return map[string]any{"type": "null"}
+}
+
+// ticketStatusSchema describes the status field of a ticket wherever a result
+// holds one, so a new status reaches every one of them at once.
+func ticketStatusSchema() map[string]any {
+	return map[string]any{
+		"type": "string",
+		"enum": []string{
+			string(store.Queued), string(store.Running), string(store.Ready),
+			string(store.Failed), string(store.Done), string(store.Cancelled),
+		},
+	}
 }
 
 // rpcArgumentBounds reads Cobra's conventional Use form. The JSON-RPC API
