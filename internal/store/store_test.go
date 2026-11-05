@@ -1342,6 +1342,111 @@ func TestProjectByPathReadsTheNameAndTheArchivalTime(t *testing.T) {
 	}
 }
 
+func TestSetProjectNameStoresTheNameAndReturnsTheRow(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.SetProjectName("/projects/path", "Widget")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ID != id || project.Name != "Widget" || project.DefaultBranch != "main" {
+		t.Errorf("project = %+v, want id %d named Widget on main", project, id)
+	}
+	stored, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Name != "Widget" {
+		t.Errorf("stored name = %q, want Widget", stored.Name)
+	}
+}
+
+// An empty name is written as null, which is the form that means the project
+// uses the folder name of its path.
+func TestSetProjectNameWritesAnEmptyNameAsNull(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetProjectName("/projects/path", "Widget"); err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.SetProjectName("/projects/path", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.Name != "" {
+		t.Errorf("name = %q, want it cleared", project.Name)
+	}
+	var name sql.Null[string]
+	row := s.db.QueryRow("SELECT name FROM projects WHERE id = ?", id)
+	if err := row.Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name.Valid {
+		t.Errorf("name = %v, want null", name)
+	}
+}
+
+func TestSetProjectNameRefusesAPathThatIsNotRegistered(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if _, err := s.ProjectID("/projects/path", "main"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.SetProjectName("/projects/path/sub", "Widget"); !errors.Is(err, ErrNoProject) {
+		t.Errorf("err = %v, want %v", err, ErrNoProject)
+	}
+}
+
+// Two projects may hold the same name, since only the person who gave it
+// knows whether that is a mistake.
+func TestSetProjectNameAllowsADuplicate(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, path := range []string{"/projects/health/backend", "/projects/sleep/backend"} {
+		if _, err := s.ProjectID(path, "main"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.SetProjectName(path, "Backend"); err != nil {
+			t.Fatalf("naming %s: %v", path, err)
+		}
+	}
+
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 2 || projects[0].Name != "Backend" || projects[1].Name != "Backend" {
+		t.Errorf("projects = %+v, want two named Backend", projects)
+	}
+}
+
 func TestProjectByPathRefusesAPathThatIsNotRegistered(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

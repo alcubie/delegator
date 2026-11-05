@@ -3,9 +3,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -14,6 +16,17 @@ import (
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
+
+// errNoProjectName requires one of the two forms, so a rename that lost its
+// argument to a shell does not clear the name it meant to set.
+var errNoProjectName = errors.New("dg project rename takes a name, or --clear to use the folder name again")
+
+// errProjectNameLineBreak keeps a name to the one line that a listing row and
+// a ticket heading give it.
+var errProjectNameLineBreak = errors.New("a project name is one line, and this one holds a line break")
+
+// errProjectNameAndClear rejects the two forms together.
+var errProjectNameAndClear = errors.New("dg project rename takes a name or --clear, and got both")
 
 type projectJSON struct {
 	ID            int64  `json:"id"`
@@ -44,9 +57,11 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Work with the registered projects.",
-		Long:  "Register a repository as a project, and show the repositories that this Delegator instance has registered.",
+		Long: "Register a repository as a project, name a project, and show the repositories " +
+			"that this Delegator instance has registered.",
 		Example: `  dg project add
-  dg project list`,
+  dg project list
+  dg project rename Backend`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -54,6 +69,7 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 	}
 	cmd.AddCommand(projectAddCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
+	cmd.AddCommand(projectRenameCommand(dataDir, workDir, cfg))
 	return cmd
 }
 
@@ -158,6 +174,74 @@ func projectValues(projects []store.Project) []projectJSON {
 		values = append(values, projectValue(p))
 	}
 	return values
+}
+
+// projectRenameCommand gives a project a name of its own, for an instance
+// where two projects share the folder name of their paths.
+func projectRenameCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	var projectDir string
+	var clear bool
+	cmd := &cobra.Command{
+		Use:   "rename [name]",
+		Short: "Give a project a name.",
+		Long: "Give the project registered at a directory a name of its own, for an instance " +
+			"where two projects share the folder name of their paths. Two projects may hold " +
+			"the same name. The directory matches the registered path of a project exactly, " +
+			"and need not exist, so a project whose repository moved or was deleted can " +
+			"still be renamed.",
+		Example: `  dg project rename Backend
+  dg project rename "Sleep backend" --project ~/projects/sleep/backend
+  dg project rename --clear`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name, err := projectName(args, clear)
+			if err != nil {
+				return err
+			}
+			dir := absoluteDir(workDir, projectDir)
+			var value projectJSON
+			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				p, err := s.SetProjectName(dir, name)
+				if err != nil {
+					return err
+				}
+				value = projectValue(p)
+				return nil
+			}); err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+				fmt.Fprintln(out, value.Name)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"rename the project registered at this directory (default: the current directory)")
+	cmd.Flags().BoolVar(&clear, "clear", false,
+		"remove the given name, so the project uses the folder name of its path again")
+	return rpcOperationCommand("project.rename", cmd)
+}
+
+// projectName reads the new name from the argument of dg project rename, and
+// gives the empty string for --clear.
+func projectName(args []string, clear bool) (string, error) {
+	if clear {
+		if len(args) == 1 {
+			return "", errProjectNameAndClear
+		}
+		return "", nil
+	}
+	if len(args) == 0 {
+		return "", errNoProjectName
+	}
+	name := strings.TrimSpace(args[0])
+	if name == "" {
+		return "", errNoProjectName
+	}
+	if strings.ContainsAny(name, "\r\n") {
+		return "", errProjectNameLineBreak
+	}
+	return name, nil
 }
 
 func writeProjects(out io.Writer, projects []projectJSON) {

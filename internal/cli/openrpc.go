@@ -197,7 +197,7 @@ func rpcResultSchema(operation string) map[string]any {
 		return listResultSchema()
 	case "map":
 		return mapResultSchema()
-	case "project.add":
+	case "project.add", "project.rename":
 		return projectResultSchema()
 	case "project.list":
 		return projectListResultSchema()

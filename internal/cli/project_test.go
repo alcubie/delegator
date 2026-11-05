@@ -81,6 +81,48 @@ func projectAddResult(t *testing.T, dataDir, workDir, dir string) map[string]any
 	return result
 }
 
+// projectRenameResult reads the object that project.rename returns through the
+// protocol for the given params.
+func projectRenameResult(t *testing.T, dataDir, workDir, params string) map[string]any {
+	t.Helper()
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"project.rename","params":%s,"id":1}`, params)
+	out, err := rpcIn(t, dataDir, workDir, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	if response["error"] != nil {
+		t.Fatalf("project.rename response = %#v, want a result", response)
+	}
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("project.rename result = %#v, want an object", response["result"])
+	}
+	return result
+}
+
+// listedName reads the name that project.list gives the project at path, so a
+// rename is observed through the listing rather than through the database.
+func listedName(t *testing.T, dataDir, path string) string {
+	t.Helper()
+	for _, value := range projectListResult(t, dataDir, t.TempDir()) {
+		row, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("project row = %#v, want an object", value)
+		}
+		if row["path"] != path {
+			continue
+		}
+		name, ok := row["name"].(string)
+		if !ok {
+			t.Fatalf("project row = %#v, want a name", row)
+		}
+		return name
+	}
+	t.Fatalf("project.list holds no project at %s", path)
+	return ""
+}
+
 // projectIDs maps each registered project to its ID, so a test can assert the
 // ID of a row it finds by path.
 func projectIDs(projects []store.Project) map[string]int64 {
@@ -435,5 +477,242 @@ func TestRPCDiscoverPublishesProjectAdd(t *testing.T) {
 		if advertised.Name == "project" {
 			t.Error("discovery advertises the project namespace as a method")
 		}
+	}
+}
+
+func TestProjectRenameChangesTheNameOfTheListedProject(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Sleep backend",
+		"--project", "/srv/sleep/backend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Sleep backend\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+	if got := listedName(t, dataDir, "/srv/sleep/backend"); got != "Sleep backend" {
+		t.Errorf("name = %q, want Sleep backend", got)
+	}
+}
+
+func TestProjectRenameClearsTheNameBackToTheFolderName(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend")
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Sleep backend",
+		"--project", "/srv/sleep/backend"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "--clear",
+		"--project", "/srv/sleep/backend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "backend\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+	if got := listedName(t, dataDir, "/srv/sleep/backend"); got != "backend" {
+		t.Errorf("name = %q, want the folder name backend", got)
+	}
+}
+
+// The path matches one project and not every project whose path begins with
+// it, so renaming /srv/sleep/backend leaves /srv/sleep/backend-api alone.
+func TestProjectRenameNamesOnlyTheProjectAtThePath(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend", "/srv/sleep/backend-api")
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Sleep backend",
+		"--project", "/srv/sleep/backend"); err != nil {
+		t.Fatal(err)
+	}
+	if got := listedName(t, dataDir, "/srv/sleep/backend-api"); got != "backend-api" {
+		t.Errorf("name of the sibling = %q, want the folder name backend-api", got)
+	}
+}
+
+// The directory of --project matches a registered path and nothing below it,
+// because dg project add registers the root of a repository.
+func TestProjectRenameDoesNotMatchASubdirectoryOfTheProject(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend")
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Sleep backend",
+		"--project", "/srv/sleep/backend/internal")
+	if !errors.Is(err, store.ErrNoProject) {
+		t.Fatalf("err = %v, want %v", err, store.ErrNoProject)
+	}
+	if got := listedName(t, dataDir, "/srv/sleep/backend"); got != "backend" {
+		t.Errorf("name = %q, and a subdirectory renamed the project", got)
+	}
+}
+
+func TestProjectRenameNamesAProjectWhoseDirectoryIsGone(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	if _, err := runIn(t, dataDir, repo, "project", "add"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(repo); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Widget", "--project", repo); err != nil {
+		t.Fatal(err)
+	}
+	if got := listedName(t, dataDir, repo); got != "Widget" {
+		t.Errorf("name = %q, want Widget", got)
+	}
+}
+
+func TestProjectRenameDefaultsToTheWorkingDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	workDir := t.TempDir()
+	registerProjects(t, dataDir, workDir)
+
+	if _, err := runIn(t, dataDir, workDir, "project", "rename", "Widget"); err != nil {
+		t.Fatal(err)
+	}
+	if got := listedName(t, dataDir, workDir); got != "Widget" {
+		t.Errorf("name = %q, want Widget", got)
+	}
+}
+
+// A relative --project resolves against the working directory of the command,
+// as the relative directory of every other command does.
+func TestProjectRenameResolvesARelativeProjectDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	parent := t.TempDir()
+	registered := filepath.Join(parent, "backend")
+	registerProjects(t, dataDir, registered)
+
+	if _, err := runIn(t, dataDir, parent, "project", "rename", "Widget", "--project", "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if got := listedName(t, dataDir, registered); got != "Widget" {
+		t.Errorf("name = %q, want Widget", got)
+	}
+}
+
+func TestProjectRenameTrimsTheName(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend")
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "  Sleep backend  ",
+		"--project", "/srv/sleep/backend"); err != nil {
+		t.Fatal(err)
+	}
+	if got := listedName(t, dataDir, "/srv/sleep/backend"); got != "Sleep backend" {
+		t.Errorf("name = %q, want it trimmed to Sleep backend", got)
+	}
+}
+
+// A person who names two projects the same has a reason the command cannot
+// know, so a duplicate is stored rather than refused.
+func TestProjectRenameAllowsTwoProjectsTheSameName(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/health/backend", "/srv/sleep/backend")
+
+	for _, path := range []string{"/srv/health/backend", "/srv/sleep/backend"} {
+		if _, err := runIn(t, dataDir, t.TempDir(), "project", "rename", "Backend", "--project", path); err != nil {
+			t.Fatalf("renaming %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{"/srv/health/backend", "/srv/sleep/backend"} {
+		if got := listedName(t, dataDir, path); got != "Backend" {
+			t.Errorf("name of %s = %q, want Backend", path, got)
+		}
+	}
+}
+
+func TestProjectRenameRefusesWhatItCannotStore(t *testing.T) {
+	for _, refusal := range []struct {
+		name string
+		args []string
+		err  error
+		code int
+	}{
+		{"an unregistered path", []string{"Backend", "--project", "/srv/elsewhere"},
+			store.ErrNoProject, codeNoProject},
+		{"a name of only space", []string{"   ", "--project", "/srv/sleep/backend"},
+			errNoProjectName, codeNoProjectName},
+		{"no name and no --clear", []string{"--project", "/srv/sleep/backend"},
+			errNoProjectName, codeNoProjectName},
+		{"a name holding a line break", []string{"Sleep\nbackend", "--project", "/srv/sleep/backend"},
+			errProjectNameLineBreak, codeProjectNameLineBreak},
+		{"a name and --clear together", []string{"Backend", "--clear", "--project", "/srv/sleep/backend"},
+			errProjectNameAndClear, codeProjectNameAndClear},
+	} {
+		t.Run(refusal.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			registerProjects(t, dataDir, "/srv/sleep/backend")
+
+			_, err := runIn(t, dataDir, t.TempDir(), append([]string{"project", "rename"}, refusal.args...)...)
+			if !errors.Is(err, refusal.err) {
+				t.Fatalf("err = %v, want %v", err, refusal.err)
+			}
+			if got := ErrorCode(err); got != refusal.code {
+				t.Errorf("code = %d, want %d", got, refusal.code)
+			}
+			if got := listedName(t, dataDir, "/srv/sleep/backend"); got != "backend" {
+				t.Errorf("name = %q, and the refused rename changed it", got)
+			}
+		})
+	}
+}
+
+func TestRPCDiscoverProjectRenameResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "project.rename")
+
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/sleep/backend")
+	result := projectRenameResult(t, dataDir, t.TempDir(),
+		`{"args":["Sleep backend"],"project":"/srv/sleep/backend"}`)
+	if result["name"] != "Sleep backend" || result["path"] != "/srv/sleep/backend" {
+		t.Errorf("result = %#v, want Sleep backend at /srv/sleep/backend", result)
+	}
+	if err := validator.Validate(result); err != nil {
+		t.Fatalf("project.rename result does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var copied map[string]any
+		if err := json.Unmarshal(encoded, &copied); err != nil {
+			t.Fatal(err)
+		}
+		delete(copied, field)
+		if err := validator.Validate(copied); err == nil {
+			t.Errorf("a result missing %q satisfies the schema", field)
+		}
+	}
+}
+
+func TestRPCProjectRenameReportsTheCodeOfAnUnregisteredPath(t *testing.T) {
+	dataDir := t.TempDir()
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"project.rename","params":{"args":["Backend"],"project":"/srv/elsewhere"},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	failure, ok := response["error"].(map[string]any)
+	if !ok || failure["code"] != float64(codeNoProject) {
+		t.Errorf("response = %#v, want error code %d", response, codeNoProject)
+	}
+}
+
+func TestRPCDiscoverPublishesProjectRename(t *testing.T) {
+	document := rpcDiscover(t)
+	method := openRPCMethodNamed(t, document, "project.rename")
+	if method.Summary == "" || method.Description == "" {
+		t.Errorf("project.rename method = %#v, want its help text", method)
 	}
 }

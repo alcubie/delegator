@@ -308,6 +308,22 @@ func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
 	return id, tx.Commit()
 }
 
+// SetProjectName names the project registered at exactly path and returns its
+// row, or ErrNoProject when no project is registered there: the update matches
+// no row and the read back refuses the path. An empty name is written as null,
+// so the project takes the folder name of its path again. Two projects may
+// hold the same name.
+func (s *Store) SetProjectName(path, name string) (Project, error) {
+	var stored any
+	if name != "" {
+		stored = name
+	}
+	if _, err := s.db.Exec("UPDATE projects SET name = ? WHERE path = ?", stored, path); err != nil {
+		return Project{}, err
+	}
+	return s.ProjectByPath(path)
+}
+
 // Projects returns each project, in the order of its path.
 func (s *Store) Projects() ([]Project, error) {
 	rows, err := s.db.Query("SELECT " + projectColumns + " FROM projects ORDER BY path")
