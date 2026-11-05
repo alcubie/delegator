@@ -1120,7 +1120,7 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	valid := maps.Clone(actual)
 	valid["id"] = float64(1 << 62)
 	valid["future"] = true
-	valid["actions"] = actionsWith("pause", map[string]any{"available": true, "reason": nil})
+	valid["actions"] = actionsWith("pause", map[string]any{"applicable": true, "available": true, "reason": nil})
 	if err := validator.Validate(valid); err != nil {
 		t.Errorf("additive field, later action, or wide ticket identifier does not satisfy the advertised schema: %v", err)
 	}
@@ -1146,17 +1146,23 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"missing the cancel action", func(result map[string]any) { result["actions"] = actionsWithout("cancel") }},
 		{"missing the chat action", func(result map[string]any) { result["actions"] = actionsWithout("chat") }},
 		{"missing the restart action", func(result map[string]any) { result["actions"] = actionsWithout("restart") }},
+		{"missing applicable", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"available": true, "reason": nil})
+		}},
+		{"wrong applicable type", func(result map[string]any) {
+			result["actions"] = actionsWith("chat", map[string]any{"applicable": "true", "available": true, "reason": nil})
+		}},
 		{"missing available", func(result map[string]any) {
-			result["actions"] = actionsWith("chat", map[string]any{"reason": nil})
+			result["actions"] = actionsWith("chat", map[string]any{"applicable": true, "reason": nil})
 		}},
 		{"wrong available type", func(result map[string]any) {
-			result["actions"] = actionsWith("chat", map[string]any{"available": "true", "reason": nil})
+			result["actions"] = actionsWith("chat", map[string]any{"applicable": true, "available": "true", "reason": nil})
 		}},
 		{"missing reason", func(result map[string]any) {
-			result["actions"] = actionsWith("chat", map[string]any{"available": true})
+			result["actions"] = actionsWith("chat", map[string]any{"applicable": true, "available": true})
 		}},
 		{"wrong reason type", func(result map[string]any) {
-			result["actions"] = actionsWith("chat", map[string]any{"available": false, "reason": float64(1)})
+			result["actions"] = actionsWith("chat", map[string]any{"applicable": false, "available": false, "reason": float64(1)})
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

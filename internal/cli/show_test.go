@@ -155,6 +155,36 @@ func closedTicket(t *testing.T, dataDir string, status store.TicketStatus) (id i
 	return id, repo
 }
 
+// ticketWithStatus builds a ticket in one status, so that a test of a rule
+// that reads the status alone can walk every one of them.
+func ticketWithStatus(t *testing.T, dataDir string, status store.TicketStatus) (id int64, repo string) {
+	t.Helper()
+	switch status {
+	case store.Queued:
+		_, id, repo := queuedTicket(t, dataDir)
+		return id, repo
+	case store.Running:
+		_, id, repo, _ := runningTicket(t, dataDir)
+		return id, repo
+	case store.Ready:
+		_, id, repo := readyTicket(t, dataDir)
+		return id, repo
+	case store.Failed:
+		_, id, repo := failedTicket(t, dataDir)
+		return id, repo
+	case store.Done, store.Cancelled:
+		return closedTicket(t, dataDir, status)
+	}
+	t.Fatalf("no fixture builds a %s ticket", status)
+	return 0, ""
+}
+
+// everyStatus is the statuses a ticket can hold, for a test of a rule that
+// must answer for all of them.
+var everyStatus = []store.TicketStatus{
+	store.Queued, store.Running, store.Ready, store.Failed, store.Done, store.Cancelled,
+}
+
 // restartErrorIn runs dg restart and returns the message it refuses with.
 func restartErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	t.Helper()
@@ -1314,6 +1344,54 @@ func TestRunShowJSONGivesTheStatusReasonRestartWouldPrint(t *testing.T) {
 			}
 			if got := restartErrorIn(t, dataDir, repo, id); got != test.want {
 				t.Errorf("dg restart error = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// A consumer that draws one control per action needs to know which actions a
+// ticket has no subject for, and for chat that is not the same question as
+// whether chat can run: a running ticket refuses chat and still holds the
+// conversation the person wants back when the run ends.
+func TestRunShowJSONReportsWhetherChatAppliesToTheStatus(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		want   bool
+	}{
+		{store.Queued, false},
+		{store.Running, true},
+		{store.Ready, true},
+		{store.Failed, true},
+		{store.Done, false},
+		{store.Cancelled, true},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, test.status)
+
+			action := actionIn(t, dataDir, repo, id, "chat")
+			if action["applicable"] != test.want {
+				t.Errorf("actions.chat.applicable = %#v, want %v", action["applicable"], test.want)
+			}
+		})
+	}
+}
+
+// Accept, cancel and restart each refuse on the status alone, so a refusal and
+// an absence say the same thing and the two fields of an entry hold the same
+// answer.
+func TestRunShowJSONReportsTheStatusActionsApplicableWhenAvailable(t *testing.T) {
+	for _, status := range everyStatus {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+
+			for _, operation := range []string{"accept", "cancel", "restart"} {
+				action := actionIn(t, dataDir, repo, id, operation)
+				if action["applicable"] != action["available"] {
+					t.Errorf("actions.%s.applicable = %#v, want %#v, the value of available",
+						operation, action["applicable"], action["available"])
+				}
 			}
 		})
 	}

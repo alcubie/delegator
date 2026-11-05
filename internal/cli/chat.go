@@ -161,6 +161,18 @@ func chatAvailable(s *store.Store, dataDir string, id int64) (bool, string, erro
 	return true, "", nil
 }
 
+// chatApplicable reports whether a ticket in this status has a conversation to
+// continue at all, which a refusal from chatAvailable does not separate from a
+// conversation that exists and cannot be reached. A queued ticket has never
+// run and nextStates has no path back to queued, so no session has ever
+// existed. Accept takes away the worktree that resumable needs, so the
+// conversation of a done ticket cannot be reached again, and the rule follows
+// the status rather than the directory so that every done ticket answers the
+// same. Cancel keeps the worktree, so a cancelled ticket still applies.
+func chatApplicable(ticket store.Ticket) bool {
+	return ticket.Status != store.Queued && ticket.Status != store.Done
+}
+
 // resumeOf returns resume arguments, the worktree, and the project cache of a
 // ticket whose conversation can continue.
 func resumeOf(s *store.Store, dataDir string, id int64) ([]string, string, string, error) {
