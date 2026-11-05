@@ -822,10 +822,10 @@ clients, but omits the agent metadata, dependency links, and run history shown i
 terminal. Adding those values is follow-up payload work rather than part of publishing
 the existing result contract.
 
-The `search`, `map`, and `agents` commands currently write only terminal text, which
-`dg rpc` discards, so their successful structured results are `null`. Exposing search
-matches, dependency graphs, or agent lists is future payload work. Each result needs a
-separate response compatibility decision before clients can depend on its shape.
+The `search` command currently writes only terminal text, which `dg rpc` discards, so its
+successful structured result is `null`. Exposing search matches is future payload work,
+and that result needs a separate response compatibility decision before clients can
+depend on its shape.
 
 The agent uses two commands only, and one of them is a command of the person:
 

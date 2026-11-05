@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -35,6 +37,21 @@ func mermaidMapIn(t *testing.T, dataDir, repo string, id int64) string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// rpcMapIn calls map over RPC and decodes its result, so a test can compare
+// whole rows rather than reach through the generic JSON of the response.
+func rpcMapIn(t *testing.T, dataDir, repo string, id int64) mapJSON {
+	t.Helper()
+	encoded, err := json.Marshal(rpcDocument(t, dataDir, repo, "map", fmt.Sprint(id)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value mapJSON
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }
 
 func TestMapAChain(t *testing.T) {
@@ -385,5 +402,124 @@ func TestMermaidMapCarriesStatusAsAClass(t *testing.T) {
 		if got := strings.Count(out.String(), ":::"+string(status)); got != 1 {
 			t.Errorf("class %q occurs %d times:\n%s", status, got, out.String())
 		}
+	}
+}
+
+func TestMapRPCResultHoldsTheWholeComponentInOrder(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	third, err := ticketIn(t, dataDir, repo, "Deploy it", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	separate, err := ticketIn(t, dataDir, repo, "Separate work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(third, first, second); err != nil {
+		t.Fatal(err)
+	}
+	claimIn(t, s, second)
+
+	want := mapJSON{Tickets: []mapTicketJSON{
+		{ID: first, Title: "Remove staging infrastructure", Status: "queued", Project: repo, DependsOn: []int64{}},
+		{ID: second, Title: "Add rate limiting", Status: "running", Project: repo, DependsOn: []int64{first}},
+		{ID: third, Title: "Deploy it", Status: "queued", Project: repo, DependsOn: []int64{first, second}},
+	}}
+	if got := rpcMapIn(t, dataDir, repo, third); !reflect.DeepEqual(got, want) {
+		t.Errorf("map result = %#v, want %#v", got, want)
+	}
+	for _, ticket := range rpcMapIn(t, dataDir, repo, third).Tickets {
+		if ticket.ID == separate {
+			t.Errorf("map result holds the separate component: %#v", ticket)
+		}
+	}
+}
+
+func TestMapRPCResultHoldsADoneDependency(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	s := testfix.OpenStore(t, dataDir)
+	finishIn(t, s, first)
+	if err := s.ChangeStatus(first, store.Done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+
+	want := mapJSON{Tickets: []mapTicketJSON{
+		{ID: first, Title: "Remove staging infrastructure", Status: "done", Project: repo, DependsOn: []int64{}},
+		{ID: second, Title: "Add rate limiting", Status: "queued", Project: repo, DependsOn: []int64{first}},
+	}}
+	if got := rpcMapIn(t, dataDir, repo, second); !reflect.DeepEqual(got, want) {
+		t.Errorf("map result = %#v, want %#v", got, want)
+	}
+}
+
+func TestRPCDiscoverMapResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	descriptor := openRPCMethodNamed(t, document, "map").Result
+	if !strings.Contains(descriptor.Description, "dependency graph") ||
+		strings.Contains(descriptor.Description, "not yet exposed") {
+		t.Errorf("map result description = %q, want the structured result", descriptor.Description)
+	}
+	validator := openRPCResultValidator(t, document, "map")
+
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	first, second := twoTickets(t, dataDir, repo)
+	s := testfix.OpenStore(t, dataDir)
+	if err := s.AddDependencies(second, first); err != nil {
+		t.Fatal(err)
+	}
+	actual := rpcDocument(t, dataDir, repo, "map", fmt.Sprint(second))
+	if err := validator.Validate(actual); err != nil {
+		t.Fatalf("map result does not satisfy its advertised schema: %v", err)
+	}
+
+	encoded, err := json.Marshal(actual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []any{nil, false, "", []any{}} {
+		if err := validator.Validate(invalid); err == nil {
+			t.Errorf("map schema accepts %#v", invalid)
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		change func(map[string]any)
+	}{
+		{"no tickets member", func(result map[string]any) { delete(result, "tickets") }},
+		{"nonpositive identifier", func(result map[string]any) {
+			result["tickets"].([]any)[0].(map[string]any)["id"] = float64(0)
+		}},
+		{"unknown status", func(result map[string]any) {
+			result["tickets"].([]any)[0].(map[string]any)["status"] = "waiting"
+		}},
+		{"null dependencies", func(result map[string]any) {
+			result["tickets"].([]any)[0].(map[string]any)["depends_on"] = nil
+		}},
+		{"missing title", func(result map[string]any) {
+			delete(result["tickets"].([]any)[0].(map[string]any), "title")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var result map[string]any
+			if err := json.Unmarshal(encoded, &result); err != nil {
+				t.Fatal(err)
+			}
+			test.change(result)
+			if err := validator.Validate(result); err == nil {
+				t.Error("invalid result satisfies the schema")
+			}
+		})
 	}
 }

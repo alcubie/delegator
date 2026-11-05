@@ -304,7 +304,7 @@ func showResultSchema() map[string]any {
 		"properties": map[string]any{
 			"id":       map[string]any{"type": "integer", "minimum": 1},
 			"title":    map[string]any{"type": "string"},
-			"status":   map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"status":   ticketStatusSchema(),
 			"project":  map[string]any{"type": "string"},
 			"ticket":   map[string]any{"type": "string"},
 			"worktree": nullableString,

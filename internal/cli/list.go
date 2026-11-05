@@ -79,7 +79,7 @@ func listResultSchema() map[string]any {
 			"ID":        map[string]any{"type": "integer", "minimum": 1},
 			"Project":   map[string]any{"type": "string"},
 			"Title":     map[string]any{"type": "string"},
-			"Status":    map[string]any{"type": "string", "enum": []string{string(store.Queued), string(store.Running), string(store.Ready), string(store.Failed), string(store.Done), string(store.Cancelled)}},
+			"Status":    ticketStatusSchema(),
 			"Position":  map[string]any{"type": "integer", "minimum": 0},
 			"Created":   timestamp,
 			"Accepted":  timestamp,

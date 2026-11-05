@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/alcubie/delegator/internal/store"
 )
 
 const (
@@ -103,8 +105,10 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	if description, ok := internalResults[operation]; ok {
 		method.Result.Description = description
 	}
+	if operation == "map" {
+		method.Result.Description = "The connected dependency graph that contains the ticket. The `mermaid` flag selects what the terminal writes and leaves this result alone."
+	}
 	terminalOnlyResults := map[string]string{
-		"map":    "The dependency map is currently written only as terminal text; its structured JSON-RPC result is not yet exposed and is null.",
 		"search": "Search matches are currently written only as terminal text; their structured JSON-RPC result is not yet exposed and is null.",
 	}
 	if description, ok := terminalOnlyResults[operation]; ok {
@@ -177,7 +181,7 @@ func rpcResultSchema(operation string) map[string]any {
 		return ticketIDResultSchema()
 	case "agents":
 		return agentsResultSchema()
-	case "agents.add", "cancel", "depend", "edit", "finish", "map", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
+	case "agents.add", "cancel", "depend", "edit", "finish", "move", "pause", "restart", "run", "search", "start", "telemetry-send":
 		return nullResultSchema()
 	case "agents.models":
 		return agentModelsResultSchema()
@@ -191,6 +195,8 @@ func rpcResultSchema(operation string) map[string]any {
 		return inboxResultSchema()
 	case "list":
 		return listResultSchema()
+	case "map":
+		return mapResultSchema()
 	case "project.add":
 		return projectResultSchema()
 	case "project.list":
@@ -210,6 +216,18 @@ func rpcResultSchema(operation string) map[string]any {
 // no value. JSON-RPC still includes their result member with an explicit null.
 func nullResultSchema() map[string]any {
 	return map[string]any{"type": "null"}
+}
+
+// ticketStatusSchema describes the status field of a ticket wherever a result
+// holds one, so a new status reaches every one of them at once.
+func ticketStatusSchema() map[string]any {
+	return map[string]any{
+		"type": "string",
+		"enum": []string{
+			string(store.Queued), string(store.Running), string(store.Ready),
+			string(store.Failed), string(store.Done), string(store.Cancelled),
+		},
+	}
 }
 
 // rpcArgumentBounds reads Cobra's conventional Use form. The JSON-RPC API
