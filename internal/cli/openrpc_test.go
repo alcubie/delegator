@@ -288,7 +288,6 @@ func TestRPCDiscoverNullResultContracts(t *testing.T) {
 func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
 	document := rpcDiscover(t)
 	descriptions := map[string]string{
-		"map":    "dependency map",
 		"search": "Search matches",
 	}
 	validators := make(map[string]*jsonschema.Schema, len(descriptions))
@@ -316,13 +315,6 @@ func TestRPCDiscoverTerminalOnlyNullResultContracts(t *testing.T) {
 		for _, pattern := range []string{"lighthouse", "absent phrase"} {
 			rpcNullResult(t, validators["search"], dataDir, repo, "search", map[string]any{"args": []any{pattern}})
 		}
-	})
-
-	t.Run("map default and mermaid", func(t *testing.T) {
-		dataDir := t.TempDir()
-		_, id, repo := queuedTicket(t, dataDir)
-		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}})
-		rpcNullResult(t, validators["map"], dataDir, repo, "map", map[string]any{"args": []any{id}, "mermaid": true})
 	})
 }
 

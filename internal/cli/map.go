@@ -24,6 +24,70 @@ type mappedTicket struct {
 	DependsOn []int64
 }
 
+// mapTicketJSON is one ticket of the structured map result. depends_on is
+// always an array and holds done dependencies too, as the text tree does.
+type mapTicketJSON struct {
+	ID        int64   `json:"id"`
+	Title     string  `json:"title"`
+	Status    string  `json:"status"`
+	Project   string  `json:"project"`
+	DependsOn []int64 `json:"depends_on"`
+}
+
+// mapJSON is the structured map result. tickets keeps the order that
+// topologicalMap gives, so a consumer can draw the graph top down.
+type mapJSON struct {
+	Tickets []mapTicketJSON `json:"tickets"`
+}
+
+func mapValue(tickets []mappedTicket) mapJSON {
+	value := mapJSON{Tickets: make([]mapTicketJSON, 0, len(tickets))}
+	for _, ticket := range tickets {
+		value.Tickets = append(value.Tickets, mapTicketJSON{
+			ID:        ticket.ID,
+			Title:     ticket.Title,
+			Status:    string(ticket.Status),
+			Project:   ticket.Project.Path,
+			DependsOn: append([]int64{}, ticket.DependsOn...),
+		})
+	}
+	return value
+}
+
+// mapResultSchema describes mapJSON for RPC discovery. Additional properties
+// stay valid because adding fields does not change jsonSchema.
+func mapResultSchema() map[string]any {
+	ticket := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":      map[string]any{"type": "integer", "minimum": 1},
+			"title":   map[string]any{"type": "string"},
+			"status":  ticketStatusSchema(),
+			"project": map[string]any{"type": "string"},
+			"depends_on": map[string]any{
+				"description": "Every prerequisite ticket ID, done ones included, in ascending order.",
+				"type":        "array",
+				"items":       map[string]any{"type": "integer", "minimum": 1},
+			},
+		},
+		"required":             []string{"id", "title", "status", "project", "depends_on"},
+		"additionalProperties": true,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"tickets": map[string]any{
+				"description": "Every ticket of the connected dependency graph, each blocker " +
+					"before the tickets that wait on it and ties broken by ascending ID.",
+				"type":  "array",
+				"items": ticket,
+			},
+		},
+		"required":             []string{"tickets"},
+		"additionalProperties": true,
+	}
+}
+
 // mapCommand writes the component that contains one ticket. With no id it
 // starts at the head of READY, as dg show does.
 func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
@@ -48,12 +112,13 @@ func mapCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Comm
 				if err != nil {
 					return err
 				}
-				if mermaid {
-					writeMermaid(cmd.OutOrStdout(), tickets)
-				} else {
-					writeMap(cmd.OutOrStdout(), tickets)
-				}
-				return nil
+				return writeValue(cmd.OutOrStdout(), mapValue(tickets), false, func(out io.Writer) {
+					if mermaid {
+						writeMermaid(out, tickets)
+					} else {
+						writeMap(out, tickets)
+					}
+				})
 			})
 		},
 	}
