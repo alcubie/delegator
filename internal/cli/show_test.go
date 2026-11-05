@@ -144,6 +144,17 @@ func cancelErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// closedTicket builds a ticket and moves it to a closed status, leaving the
+// worktree and the run that the command closing it would take away.
+func closedTicket(t *testing.T, dataDir string, status store.TicketStatus) (id int64, repo string) {
+	t.Helper()
+	s, id, repo := readyTicket(t, dataDir)
+	if err := s.ChangeStatus(id, status); err != nil {
+		t.Fatal(err)
+	}
+	return id, repo
+}
+
 // jsonFields is every key that RPC show result writes, in the order that the
 // text form gives the fields.
 var jsonFields = []string{
@@ -1236,10 +1247,7 @@ func TestRunShowJSONGivesTheStatusReasonCancelWouldPrint(t *testing.T) {
 	} {
 		t.Run(string(test.status), func(t *testing.T) {
 			dataDir := t.TempDir()
-			s, id, repo := readyTicket(t, dataDir)
-			if err := s.ChangeStatus(id, test.status); err != nil {
-				t.Fatal(err)
-			}
+			id, repo := closedTicket(t, dataDir, test.status)
 
 			if reason := refusalIn(t, dataDir, repo, id, "cancel"); reason != test.want {
 				t.Errorf("actions.cancel.reason = %q, want %q", reason, test.want)
