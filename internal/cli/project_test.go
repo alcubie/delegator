@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
@@ -126,14 +127,34 @@ func TestProjectListWritesEveryProjectInAlphabeticalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != len(want)+1 || !strings.HasPrefix(lines[0], "PATH") || !strings.Contains(lines[0], "DEFAULT BRANCH") {
-		t.Fatalf("output has no PATH and DEFAULT BRANCH header:\n%s", out)
+	if len(lines) != len(want)+1 || !strings.HasPrefix(lines[0], "NAME") ||
+		!strings.Contains(lines[0], "PATH") || !strings.Contains(lines[0], "DEFAULT BRANCH") {
+		t.Fatalf("output has no NAME, PATH and DEFAULT BRANCH header:\n%s", out)
 	}
 	for i, path := range want {
 		fields := strings.Fields(lines[i+1])
-		if len(fields) != 2 || fields[0] != path || fields[1] != repoBranch {
-			t.Errorf("row %d = %q, want %s and %s", i, lines[i+1], path, repoBranch)
+		if len(fields) != 3 || fields[0] != filepath.Base(path) || fields[1] != path || fields[2] != repoBranch {
+			t.Errorf("row %d = %q, want %s, %s and %s", i, lines[i+1], filepath.Base(path), path, repoBranch)
 		}
+	}
+}
+
+func TestProjectListMarksAnArchivedProject(t *testing.T) {
+	var out strings.Builder
+	writeProjects(&out, []projectJSON{
+		{ID: 1, Name: "alpha", Path: "/srv/alpha", DefaultBranch: repoBranch},
+		{ID: 2, Name: "zulu", Path: "/srv/zulu", DefaultBranch: repoBranch, Archived: true},
+	})
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("output = %q, want a header and two rows", out.String())
+	}
+	if strings.Contains(lines[1], "archived") {
+		t.Errorf("the active row = %q, and it is marked archived", lines[1])
+	}
+	if !strings.Contains(lines[2], "archived") {
+		t.Errorf("the archived row = %q, want it marked archived", lines[2])
 	}
 }
 
@@ -155,6 +176,24 @@ func TestProjectListValueHoldsEveryFieldInAlphabeticalOrder(t *testing.T) {
 			row["default_branch"] != repoBranch {
 			t.Errorf("row %d = %#v, want %s with id %d", i, row, want[i], ids[want[i]])
 		}
+		if row["name"] != filepath.Base(want[i]) || row["archived"] != false {
+			t.Errorf("row %d = %#v, want name %s and archived false", i, row, filepath.Base(want[i]))
+		}
+	}
+}
+
+func TestProjectValueReportsAGivenNameAndAnArchivedProject(t *testing.T) {
+	archived := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+
+	value := projectValue(store.Project{
+		ID: 1, Path: "/srv/alpha", DefaultBranch: repoBranch, Name: "Widget", ArchivedAt: archived,
+	})
+
+	if value.Name != "Widget" {
+		t.Errorf("name = %q, want the given name Widget", value.Name)
+	}
+	if !value.Archived {
+		t.Errorf("value = %#v, want it archived", value)
 	}
 }
 
@@ -174,7 +213,7 @@ func TestRPCDiscoverProjectListResultContract(t *testing.T) {
 		t.Fatalf("project list does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "path", "default_branch"} {
+	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
 		encoded, err := json.Marshal(result)
 		if err != nil {
 			t.Fatal(err)
@@ -220,6 +259,9 @@ func TestProjectAddRegistersANewRepositoryAndReturnsItsRecord(t *testing.T) {
 	}
 	if result["id"] != float64(rows[0].ID) || result["path"] != repo || result["default_branch"] != repoBranch {
 		t.Errorf("result = %#v, want id %d, path %q, default_branch %q", result, rows[0].ID, repo, repoBranch)
+	}
+	if result["name"] != filepath.Base(repo) || result["archived"] != false {
+		t.Errorf("result = %#v, want name %q and archived false", result, filepath.Base(repo))
 	}
 }
 
@@ -367,7 +409,7 @@ func TestRPCDiscoverProjectAddResultContract(t *testing.T) {
 		t.Fatalf("project.add result does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "path", "default_branch"} {
+	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
 		encoded, err := json.Marshal(result)
 		if err != nil {
 			t.Fatal(err)

@@ -6,7 +6,7 @@ List every registered project.
 
 ### Synopsis
 
-List every project that this Delegator instance has registered, in alphabetical order of directory, with the branch its worktrees start from.
+List every project that this Delegator instance has registered, in alphabetical order of directory, with its name, the branch its worktrees start from, and a mark on an archived project. A project without a given name takes the name of its folder.
 
 ```
 dg project list [flags]

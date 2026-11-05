@@ -101,6 +101,11 @@ func (c timeColumn) Scan(v any) error {
 	return nil
 }
 
+// rowScanner lets a row helper accept either *sql.Row or *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
 // querier lets read helpers accept either *sql.DB or *sql.Tx.
 type querier interface {
 	Query(query string, args ...any) (*sql.Rows, error)
@@ -238,11 +243,39 @@ func (s *Store) AddProject(path, defaultBranch string) (int64, error) {
 	return s.create(query, args...)
 }
 
-// Project is one row of the table projects.
+// Project is one row of the table projects. An empty Name means that the
+// project uses the folder name of its path, and a zero ArchivedAt means that
+// the project is active.
 type Project struct {
 	ID            int64
 	Path          string
 	DefaultBranch string
+	Name          string
+	ArchivedAt    time.Time
+}
+
+const projectColumns = "id, path, default_branch, COALESCE(name, ''), archived_at"
+
+func scanProject(row rowScanner, p *Project) error {
+	return row.Scan(&p.ID, &p.Path, &p.DefaultBranch, &p.Name, timeColumn{&p.ArchivedAt})
+}
+
+// ErrNoProject means that no project is registered at the path.
+var ErrNoProject = errors.New("no project is registered at that path")
+
+// ProjectByPath returns the project registered at exactly path, or
+// ErrNoProject. It does not resolve a subdirectory or a linked worktree to the
+// root of its repository.
+func (s *Store) ProjectByPath(path string) (Project, error) {
+	var p Project
+	err := scanProject(s.db.QueryRow("SELECT "+projectColumns+" FROM projects WHERE path = ?", path), &p)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, fmt.Errorf("%w: %s", ErrNoProject, path)
+	}
+	if err != nil {
+		return Project{}, err
+	}
+	return p, nil
 }
 
 // ProjectID returns the project ID for path, creating the project if needed.
@@ -277,7 +310,7 @@ func (s *Store) ProjectID(path, defaultBranch string) (int64, error) {
 
 // Projects returns each project, in the order of its path.
 func (s *Store) Projects() ([]Project, error) {
-	rows, err := s.db.Query("SELECT id, path, default_branch FROM projects ORDER BY path")
+	rows, err := s.db.Query("SELECT " + projectColumns + " FROM projects ORDER BY path")
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +319,7 @@ func (s *Store) Projects() ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Path, &p.DefaultBranch); err != nil {
+		if err := scanProject(rows, &p); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
@@ -677,6 +710,7 @@ func ticket(q querier, id int64) (Ticket, error) {
 	var t Ticket
 	err := q.QueryRow(`
 		SELECT tickets.id, projects.id, projects.path, projects.default_branch,
+		       COALESCE(projects.name, ''), projects.archived_at,
 		       tickets.title, tickets.status,
 		       COALESCE(tickets.position, 0), COALESCE(tickets.branch, ''),
 		       COALESCE(tickets.session, ''), COALESCE(tickets.commit_id, ''),
@@ -685,6 +719,7 @@ func ticket(q querier, id int64) (Ticket, error) {
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.id = ?`, id).Scan(
 		&t.ID, &t.Project.ID, &t.Project.Path, &t.Project.DefaultBranch,
+		&t.Project.Name, timeColumn{&t.Project.ArchivedAt},
 		&t.Title, &t.Status, &t.Position, &t.Branch,
 		&t.Session, &t.Commit,
 		timeColumn{&t.Created}, timeColumn{&t.Accepted}, timeColumn{&t.Changed})

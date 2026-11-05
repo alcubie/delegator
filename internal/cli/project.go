@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -16,8 +17,26 @@ import (
 
 type projectJSON struct {
 	ID            int64  `json:"id"`
+	Name          string `json:"name"`
 	Path          string `json:"path"`
 	DefaultBranch string `json:"default_branch"`
+	Archived      bool   `json:"archived"`
+}
+
+// projectValue names a project after the folder of its path when it has no
+// given name, so that a client reads one field rather than a fallback.
+func projectValue(p store.Project) projectJSON {
+	name := p.Name
+	if name == "" {
+		name = filepath.Base(p.Path)
+	}
+	return projectJSON{
+		ID:            p.ID,
+		Name:          name,
+		Path:          p.Path,
+		DefaultBranch: p.DefaultBranch,
+		Archived:      !p.ArchivedAt.IsZero(),
+	}
 }
 
 // projectCommand is the namespace for the projects of the instance.
@@ -66,7 +85,7 @@ func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cob
 				if err != nil {
 					return err
 				}
-				value = projectJSON{ID: p.ID, Path: p.Path, DefaultBranch: p.DefaultBranch}
+				value = projectValue(p)
 				return nil
 			}); err != nil {
 				return err
@@ -80,7 +99,9 @@ func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cob
 
 // registerProject resolves dir to its repository root and registers it with
 // the store, creating the project row if needed. It refuses a repository
-// with no commit, since that leaves no branch to start a worktree from.
+// with no commit, since that leaves no branch to start a worktree from. It
+// returns the stored row, so a project registered earlier reports the branch
+// of that registration rather than the branch git reports today.
 func registerProject(s *store.Store, dir string) (store.Project, error) {
 	root, err := project.Root(dir)
 	if err != nil {
@@ -93,11 +114,10 @@ func registerProject(s *store.Store, dir string) (store.Project, error) {
 	if err != nil {
 		return store.Project{}, err
 	}
-	id, err := s.ProjectID(root, branch)
-	if err != nil {
+	if _, err := s.ProjectID(root, branch); err != nil {
 		return store.Project{}, err
 	}
-	return store.Project{ID: id, Path: root, DefaultBranch: branch}, nil
+	return s.ProjectByPath(root)
 }
 
 // projectListCommand writes every registered project, including those whose
@@ -107,7 +127,9 @@ func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		Use:   "list",
 		Short: "List every registered project.",
 		Long: "List every project that this Delegator instance has registered, in " +
-			"alphabetical order of directory, with the branch its worktrees start from.",
+			"alphabetical order of directory, with its name, the branch its worktrees start " +
+			"from, and a mark on an archived project. A project without a given name takes " +
+			"the name of its folder.",
 		Example: `  dg project list`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -133,7 +155,7 @@ func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 func projectValues(projects []store.Project) []projectJSON {
 	values := make([]projectJSON, 0, len(projects))
 	for _, p := range projects {
-		values = append(values, projectJSON{ID: p.ID, Path: p.Path, DefaultBranch: p.DefaultBranch})
+		values = append(values, projectValue(p))
 	}
 	return values
 }
@@ -144,9 +166,13 @@ func writeProjects(out io.Writer, projects []projectJSON) {
 		return
 	}
 	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "PATH\tDEFAULT BRANCH")
+	fmt.Fprintln(w, "NAME\tPATH\tDEFAULT BRANCH\tSTATUS")
 	for _, p := range projects {
-		fmt.Fprintf(w, "%s\t%s\n", p.Path, p.DefaultBranch)
+		status := ""
+		if p.Archived {
+			status = "archived"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, p.Path, p.DefaultBranch, status)
 	}
 	_ = w.Flush()
 }
@@ -158,10 +184,12 @@ func projectResultSchema() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"id":             map[string]any{"type": "integer", "minimum": 1},
+			"name":           map[string]any{"type": "string"},
 			"path":           map[string]any{"type": "string"},
 			"default_branch": map[string]any{"type": "string"},
+			"archived":       map[string]any{"type": "boolean"},
 		},
-		"required":             []string{"id", "path", "default_branch"},
+		"required":             []string{"id", "name", "path", "default_branch", "archived"},
 		"additionalProperties": true,
 	}
 }

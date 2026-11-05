@@ -264,6 +264,22 @@ func openRaw(t *testing.T, dataDir string) *sql.DB {
 	return db
 }
 
+// databaseAtVersion creates a database that has had its first version
+// migrations applied and no more, so that a test can migrate a real old
+// schema forward rather than rewind the version of a current one.
+func databaseAtVersion(t *testing.T, dataDir string, version int) {
+	t.Helper()
+	db := openRaw(t, dataDir)
+	for i := range version {
+		if err := applyStep(db, i); err != nil {
+			t.Fatalf("migration step %d: %v", i+1, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func userVersion(t *testing.T, db *sql.DB) int {
 	t.Helper()
 	var version int
@@ -996,16 +1012,9 @@ func TestCodexResumeMigrationsPreserveCustomCommands(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dataDir := t.TempDir()
-			s, err := Open(dataDir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			s.Close()
+			databaseAtVersion(t, dataDir, tc.version)
 			db := openRaw(t, dataDir)
 			if _, err := db.Exec("UPDATE agents SET resume_argv = ? WHERE name = 'codex'", tc.old); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", tc.version)); err != nil {
 				t.Fatal(err)
 			}
 			db.Close()
@@ -1266,6 +1275,86 @@ func TestProjectsAreInTheOrderOfTheirPath(t *testing.T) {
 	}
 	if want := []string{"/projects/alpha", "/projects/mike", "/projects/zulu"}; !slices.Equal(paths, want) {
 		t.Errorf("paths = %v, want %v", paths, want)
+	}
+}
+
+func TestANewProjectHasNoNameAndIsActive(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var name, archivedAt sql.Null[string]
+	row := s.db.QueryRow("SELECT name, archived_at FROM projects WHERE id = ?", id)
+	if err := row.Scan(&name, &archivedAt); err != nil {
+		t.Fatal(err)
+	}
+	if name.Valid || archivedAt.Valid {
+		t.Errorf("name = %v and archived_at = %v, want both null", name, archivedAt)
+	}
+
+	projects, err := s.Projects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("the database holds %d projects, want 1", len(projects))
+	}
+	if projects[0].Name != "" || !projects[0].ArchivedAt.IsZero() {
+		t.Errorf("name = %q and archived at %v, want no name and no archival",
+			projects[0].Name, projects[0].ArchivedAt)
+	}
+}
+
+func TestProjectByPathReadsTheNameAndTheArchivalTime(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	if _, err := s.db.Exec("UPDATE projects SET name = ?, archived_at = ? WHERE id = ?",
+		"Widget", rfc3339(archived), id); err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ID != id || project.DefaultBranch != "main" {
+		t.Errorf("project = %+v, want id %d on main", project, id)
+	}
+	if project.Name != "Widget" || !project.ArchivedAt.Equal(archived) {
+		t.Errorf("name = %q and archived at %v, want Widget archived at %v",
+			project.Name, project.ArchivedAt, archived)
+	}
+}
+
+func TestProjectByPathRefusesAPathThatIsNotRegistered(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if _, err := s.ProjectID("/projects/path", "main"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.ProjectByPath("/projects/path/sub"); !errors.Is(err, ErrNoProject) {
+		t.Errorf("err = %v, want %v", err, ErrNoProject)
 	}
 }
 
@@ -1599,6 +1688,23 @@ func TestTicketReturnsEachFieldOfOneRow(t *testing.T) {
 	}
 	if got.ID != ids[1] {
 		t.Errorf("id = %d, want %d", got.ID, ids[1])
+	}
+}
+
+func TestTicketCarriesTheNameAndTheArchivalOfItsProject(t *testing.T) {
+	s, id := oneTicket(t)
+	archived := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	if _, err := s.db.Exec("UPDATE projects SET name = ?, archived_at = ?",
+		"Widget", rfc3339(archived)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Project.Name != "Widget" || !got.Project.ArchivedAt.Equal(archived) {
+		t.Errorf("project = %+v, want Widget archived at %v", got.Project, archived)
 	}
 }
 
