@@ -308,10 +308,11 @@ func rpcArgv(command *cobra.Command, request rpcRequest) ([]string, error) {
 	if operation == "ticket" && len(positional) == 0 {
 		return nil, fmt.Errorf("editor is not available through rpc")
 	}
-	// The working directory of dg rpc means nothing to a remote caller, so
-	// project.add cannot default to it the way dg project add does.
-	if operation == "project.add" && (len(positional) != 1 || !filepath.IsAbs(positional[0])) {
-		return nil, fmt.Errorf("project.add requires one absolute path")
+	// The working directory of dg rpc means nothing to a remote caller, so the
+	// operations that name a project cannot default to it the way the commands
+	// do.
+	if projectPathOperations[operation] && (len(positional) != 1 || !filepath.IsAbs(positional[0])) {
+		return nil, fmt.Errorf("%s requires one absolute path", operation)
 	}
 
 	for name, raw := range params {

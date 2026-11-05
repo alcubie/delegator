@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,43 @@ func projectAddResult(t *testing.T, dataDir, workDir, dir string) map[string]any
 		t.Fatalf("project.add result = %#v, want an object", response["result"])
 	}
 	return result
+}
+
+// projectArchiveResult reads the object that project.archive returns through
+// the protocol for the project registered at dir.
+func projectArchiveResult(t *testing.T, dataDir, workDir, dir string) map[string]any {
+	t.Helper()
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"project.archive","params":{"args":[%q]},"id":1}`, dir)
+	out, err := rpcIn(t, dataDir, workDir, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := rpcObject(t, out)
+	if response["error"] != nil {
+		t.Fatalf("project.archive response = %#v, want a result", response)
+	}
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("project.archive result = %#v, want an object", response["result"])
+	}
+	return result
+}
+
+// archivedPaths returns the path of every project that project.list reports as
+// archived.
+func archivedPaths(t *testing.T, dataDir string) []string {
+	t.Helper()
+	var paths []string
+	for _, value := range projectListResult(t, dataDir, t.TempDir()) {
+		row, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("project row = %#v, want an object", value)
+		}
+		if row["archived"] == true {
+			paths = append(paths, fmt.Sprint(row["path"]))
+		}
+	}
+	return paths
 }
 
 // projectIDs maps each registered project to its ID, so a test can assert the
@@ -435,5 +473,212 @@ func TestRPCDiscoverPublishesProjectAdd(t *testing.T) {
 		if advertised.Name == "project" {
 			t.Error("discovery advertises the project namespace as a method")
 		}
+	}
+}
+
+func TestProjectArchiveMakesProjectListReportItArchived(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha", "/srv/zulu")
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", "/srv/zulu"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := archivedPaths(t, dataDir); !slices.Equal(got, []string{"/srv/zulu"}) {
+		t.Errorf("archived projects = %v, want only /srv/zulu", got)
+	}
+}
+
+func TestProjectArchiveReturnsTheArchivedRecord(t *testing.T) {
+	dataDir := t.TempDir()
+	projects := registerProjects(t, dataDir, "/srv/alpha")
+
+	result := projectArchiveResult(t, dataDir, t.TempDir(), "/srv/alpha")
+
+	if result["id"] != float64(projects[0].ID) || result["path"] != "/srv/alpha" ||
+		result["default_branch"] != repoBranch {
+		t.Errorf("result = %#v, want id %d at /srv/alpha on %s", result, projects[0].ID, repoBranch)
+	}
+	if result["name"] != "alpha" || result["archived"] != true {
+		t.Errorf("result = %#v, want name alpha and archived true", result)
+	}
+}
+
+func TestProjectArchivePrintsThePathAsTextOutput(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha")
+
+	out, err := runIn(t, dataDir, t.TempDir(), "project", "archive", "/srv/alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "/srv/alpha") {
+		t.Errorf("output = %q, and it does not name the project", out)
+	}
+}
+
+func TestProjectArchiveDefaultsToTheCurrentWorkingDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	registerProjects(t, dataDir, projectPath(t, repo))
+
+	if _, err := runIn(t, dataDir, repo, "project", "archive"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := archivedPaths(t, dataDir); !slices.Equal(got, []string{projectPath(t, repo)}) {
+		t.Errorf("archived projects = %v, want only %q", got, projectPath(t, repo))
+	}
+}
+
+func TestProjectArchiveTakesAPathRelativeToTheWorkingDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	parent := t.TempDir()
+	registered := filepath.Join(parent, "widget")
+	registerProjects(t, dataDir, registered)
+
+	if _, err := runIn(t, dataDir, parent, "project", "archive", "widget"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := archivedPaths(t, dataDir); !slices.Equal(got, []string{registered}) {
+		t.Errorf("archived projects = %v, want only %q", got, registered)
+	}
+}
+
+func TestProjectArchiveFindsARegisteredPathWithNoDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	gone := filepath.Join(t.TempDir(), "deleted")
+	registerProjects(t, dataDir, gone)
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", gone); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := archivedPaths(t, dataDir); !slices.Equal(got, []string{gone}) {
+		t.Errorf("archived projects = %v, want only %q", got, gone)
+	}
+}
+
+func TestProjectArchiveLeavesTheTicketsOfTheProjectAlone(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	queued, running := twoTickets(t, dataDir, repo)
+	if err := testfix.OpenStore(t, dataDir).ChangeStatus(running, store.Running); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	if status := testfix.ReadTicket(t, dataDir, queued).Status; status != store.Queued {
+		t.Errorf("the queued ticket is %q, want %q", status, store.Queued)
+	}
+	if status := testfix.ReadTicket(t, dataDir, running).Status; status != store.Running {
+		t.Errorf("the running ticket is %q, want %q", status, store.Running)
+	}
+	box := readInboxJSON(t, dataDir, t.TempDir())
+	if got := jsonGroupIDs(t, box, "queued"); !slices.Equal(got, []int64{queued}) {
+		t.Errorf("the queued group holds %v, want %v", got, []int64{queued})
+	}
+	if got := jsonGroupIDs(t, box, "running"); !slices.Equal(got, []int64{running}) {
+		t.Errorf("the running group holds %v, want %v", got, []int64{running})
+	}
+}
+
+func TestProjectArchiveOfAnArchivedProjectIsNotAnError(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha")
+
+	first := projectArchiveResult(t, dataDir, t.TempDir(), "/srv/alpha")
+	second := projectArchiveResult(t, dataDir, t.TempDir(), "/srv/alpha")
+
+	if second["archived"] != true || second["id"] != first["id"] {
+		t.Errorf("the second archive returned %#v, want %#v", second, first)
+	}
+}
+
+func TestProjectArchiveRefusesAPathThatIsNotRegistered(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	registerProjects(t, dataDir, projectPath(t, repo))
+	sub := filepath.Join(projectPath(t, repo), "sub")
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "archive", sub)
+
+	if !errors.Is(err, store.ErrNoProject) {
+		t.Fatalf("err = %v, want %v", err, store.ErrNoProject)
+	}
+	if code := ErrorCode(err); code != codeNoProject {
+		t.Errorf("error code = %d, want %d", code, codeNoProject)
+	}
+	if got := archivedPaths(t, dataDir); got != nil {
+		t.Errorf("archived projects = %v, want none", got)
+	}
+}
+
+func TestRPCProjectArchiveRejectsARelativePath(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha")
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"project.archive","params":{"args":["relative/path"]},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+	if got := archivedPaths(t, dataDir); got != nil {
+		t.Errorf("archived projects = %v, want none", got)
+	}
+}
+
+func TestRPCProjectArchiveRejectsAMissingPath(t *testing.T) {
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha")
+
+	out, err := rpcIn(t, dataDir, t.TempDir(),
+		`{"jsonrpc":"2.0","method":"project.archive","params":{},"id":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rpcProtocolError(t, out, rpcInvalidParams, "Invalid params")
+	if got := archivedPaths(t, dataDir); got != nil {
+		t.Errorf("archived projects = %v, want none", got)
+	}
+}
+
+func TestRPCDiscoverProjectArchiveResultContract(t *testing.T) {
+	document := rpcDiscover(t)
+	validator := openRPCResultValidator(t, document, "project.archive")
+
+	dataDir := t.TempDir()
+	registerProjects(t, dataDir, "/srv/alpha")
+	result := projectArchiveResult(t, dataDir, t.TempDir(), "/srv/alpha")
+	if err := validator.Validate(result); err != nil {
+		t.Fatalf("project.archive result does not satisfy the advertised schema: %v", err)
+	}
+
+	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var copied map[string]any
+		if err := json.Unmarshal(encoded, &copied); err != nil {
+			t.Fatal(err)
+		}
+		delete(copied, field)
+		if err := validator.Validate(copied); err == nil {
+			t.Errorf("a result missing %q satisfies the schema", field)
+		}
+	}
+}
+
+func TestRPCDiscoverPublishesProjectArchive(t *testing.T) {
+	document := rpcDiscover(t)
+	method := openRPCMethodNamed(t, document, "project.archive")
+	if method.Summary == "" || method.Description == "" {
+		t.Errorf("project.archive method = %#v, want its help text", method)
 	}
 }
