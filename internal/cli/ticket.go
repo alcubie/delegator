@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -196,10 +195,7 @@ func ticketProject(workDir, flag string) (string, error) {
 	if flag == "" {
 		return workDir, nil
 	}
-	dir := flag
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(workDir, dir)
-	}
+	dir := absoluteDir(workDir, flag)
 	info, err := os.Stat(dir)
 	if err != nil {
 		return "", err
