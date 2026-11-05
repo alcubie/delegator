@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,8 +21,12 @@ var jsonGroups = []string{"done", "ready", "running", "failed", "queued"}
 
 // jsonInboxFields is every key that one ticket of RPC inbox result holds.
 var jsonInboxFields = []string{
-	"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "created", "accepted", "started",
+	"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "runs",
+	"created", "accepted", "started",
 }
+
+// inboxOnlyFields is every key of an inbox row that the show result lacks.
+var inboxOnlyFields = []string{"depends_on", "all_depends_on", "blocks", "runs", "started"}
 
 // eachGroup creates one ticket per inbox group and returns the store,
 // repository, and IDs keyed by group name.
@@ -316,6 +321,29 @@ func TestRunJSONGivesTheTimesOfATicket(t *testing.T) {
 	}
 }
 
+// A card distinguishes a ticket that went back for changes from one awaiting
+// a first review, so each row carries the number of runs it has had.
+func TestRunJSONCountsTheRunsOfATicket(t *testing.T) {
+	dataDir := t.TempDir()
+	s, _, repo := queuedTicket(t, dataDir)
+	reviewed := queuedIn(t, s, repo, "a ticket sent back for changes")
+	finishIn(t, s, reviewed)
+	// The inbox sweeps a running ticket whose supervisor died into FAILED,
+	// so the rerun holds a PID that is alive.
+	if _, err := s.Rerun(reviewed, testAgentID, os.Getpid()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readInboxJSON(t, dataDir, repo)
+
+	if runs := one(t, got, "running")["runs"]; runs != float64(2) {
+		t.Errorf("runs = %v for a ticket that ran twice, want 2", runs)
+	}
+	if runs := one(t, got, "queued")["runs"]; runs != float64(0) {
+		t.Errorf("runs = %v for a ticket that never ran, want 0", runs)
+	}
+}
+
 func TestRunJSONGivesNullForATimeWithNoValue(t *testing.T) {
 	dataDir := t.TempDir()
 	_, _, repo := queuedTicket(t, dataDir)
@@ -391,8 +419,7 @@ func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	}
 }
 
-// Shared fields must match the show result. Started and depends_on are
-// inbox-specific; show does not yet expose either value.
+// Shared fields must match the show result; the rest are inbox-specific.
 func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	dataDir := t.TempDir()
 	_, repo, ids := eachGroup(t, dataDir)
@@ -401,7 +428,7 @@ func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	shown := showJSON(t, dataDir, repo, fmt.Sprint(ids["done"]))
 
 	for key, want := range row {
-		if key == "started" || key == "depends_on" || key == "all_depends_on" || key == "blocks" {
+		if slices.Contains(inboxOnlyFields, key) {
 			continue
 		}
 		got, there := shown[key]

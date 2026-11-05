@@ -1256,6 +1256,21 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 			row["blocks"] = []any{float64(0)}
 			result["queued"] = []any{row}
 		}},
+		{"missing runs", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "runs")
+			result["queued"] = []any{row}
+		}},
+		{"negative runs", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["runs"] = -1.0
+			result["queued"] = []any{row}
+		}},
+		{"fractional runs", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["runs"] = 1.5
+			result["queued"] = []any{row}
+		}},
 		{"wrong dependency type", func(result map[string]any) {
 			row := maps.Clone(queued)
 			row["depends_on"] = []any{"2"}

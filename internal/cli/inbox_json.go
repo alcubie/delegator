@@ -41,6 +41,7 @@ type inboxTicketJSON struct {
 	DependsOn    []int64 `json:"depends_on"`
 	AllDependsOn []int64 `json:"all_depends_on"`
 	Blocks       []int64 `json:"blocks"`
+	Runs         int     `json:"runs"`
 
 	// Timestamps use RFC 3339; absent times are null. Started is the
 	// latest run start, allowing clients to update elapsed time without
@@ -72,11 +73,12 @@ func inboxResultSchema() map[string]any {
 			},
 			"all_depends_on": map[string]any{"description": "All prerequisite ticket IDs, including completed tickets and tickets outside the inbox, in ascending order.", "type": "array", "items": map[string]any{"type": "integer", "minimum": 1}},
 			"blocks":         map[string]any{"description": "All dependent ticket IDs, including completed tickets and tickets outside the inbox, in ascending order.", "type": "array", "items": map[string]any{"type": "integer", "minimum": 1}},
+			"runs":           map[string]any{"description": "Number of recorded runs of the ticket, including failed and cancelled runs.", "type": "integer", "minimum": 0},
 			"created":        timestamp,
 			"accepted":       timestamp,
 			"started":        timestamp,
 		},
-		"required":             []string{"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "created", "accepted", "started"},
+		"required":             []string{"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "runs", "created", "accepted", "started"},
 		"additionalProperties": true,
 	}
 	groups := map[string]any{}
@@ -110,6 +112,7 @@ func inboxTickets(tickets []store.OpenTicket) []inboxTicketJSON {
 			DependsOn:    append([]int64{}, t.DependsOn...),
 			AllDependsOn: append([]int64{}, t.AllDependsOn...),
 			Blocks:       append([]int64{}, t.Blocks...),
+			Runs:         t.Runs,
 			Created:      nullableTime(t.Created),
 			Accepted:     nullableTime(t.Accepted),
 			Started:      nullableTime(t.Started),

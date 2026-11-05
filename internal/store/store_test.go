@@ -1502,6 +1502,36 @@ func TestOpenTicketsGivesTheStartOfTheLastRun(t *testing.T) {
 	}
 }
 
+// A ticket that went back for changes has more than one run, and the inbox
+// row carries the count so that the caller needs no query per ticket.
+func TestOpenTicketsCountsEveryRunOfATicket(t *testing.T) {
+	s, ids := threeTickets(t)
+	if _, err := s.Claim(ids[0], "delegator/1-first", testAgentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangeStatus(ids[0], Failed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Restart(ids[0], testAgentID, sql.Null[int64]{}); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]OpenTicket{}
+	for _, ticket := range open {
+		byID[ticket.ID] = ticket
+	}
+	if got := byID[ids[0]].Runs; got != 2 {
+		t.Errorf("runs = %d for a restarted ticket, want 2", got)
+	}
+	if got := byID[ids[2]].Runs; got != 0 {
+		t.Errorf("runs = %d for a ticket that never ran, want 0", got)
+	}
+}
+
 // setFailed inserts a failure transition to check which timestamp the inbox
 // reads.
 func setFailed(t *testing.T, s *Store, id int64, failed string) {
