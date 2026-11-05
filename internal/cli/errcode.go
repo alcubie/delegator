@@ -46,6 +46,7 @@ const (
 	codeNoRoom
 	codeNoRun
 	codeInvalidAgent
+	codeNoProject
 )
 
 // errorCodes maps CLI, project, and store errors to stable machine-readable
@@ -77,6 +78,7 @@ var errorCodes = map[error]int{
 	store.ErrNoRoom:                   codeNoRoom,
 	store.ErrNoRun:                    codeNoRun,
 	store.ErrInvalidAgent:             codeInvalidAgent,
+	store.ErrNoProject:                codeNoProject,
 }
 
 // ErrorCode finds a recognized wrapped error, falling back to codeUnknown.

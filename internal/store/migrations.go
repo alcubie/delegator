@@ -15,7 +15,14 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema, projectNameArchivedSchema}
+
+// A null name means that the project uses the folder name of its path, and a
+// null archived_at means that it is active.
+const projectNameArchivedSchema = `
+ALTER TABLE projects ADD COLUMN name TEXT;
+ALTER TABLE projects ADD COLUMN archived_at TEXT;
+`
 
 // Adding writable directories requires a compatible sandbox during interactive
 // startup, even when the original session already used workspace-write.
