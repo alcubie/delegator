@@ -61,7 +61,7 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config, commandP
 				var worktree run.AcceptanceWorktree
 				err = s.ChangeStatusWith(id, store.Done, func() error {
 					if !force {
-						if err := project.RequireBranchMerged(ticket.Project.Path, ticket.Branch); err != nil {
+						if err := project.RequireBranchMerged(ticket.Project.Path, ticket.Branch, ticket.Project.DefaultBranch); err != nil {
 							return err
 						}
 					}

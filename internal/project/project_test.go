@@ -346,7 +346,19 @@ func TestRequireBranchMergedAcceptsAnOrdinaryMerge(t *testing.T) {
 	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"merge", "-q", "--no-ff", "-m", "merge ticket", branch)
 
-	if err := RequireBranchMerged(dir, branch); err != nil {
+	if err := RequireBranchMerged(dir, branch, "trunk"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequireBranchMergedAcceptsAMergeWhileAnotherBranchIsCheckedOut(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "branch", "feature")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", branch)
+	gitIn(t, dir, "checkout", "-q", "feature")
+
+	if err := RequireBranchMerged(dir, branch, "trunk"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -354,12 +366,30 @@ func TestRequireBranchMergedAcceptsAnOrdinaryMerge(t *testing.T) {
 func TestRequireBranchMergedRefusesAnUnmergedBranch(t *testing.T) {
 	dir, branch := mergedBranch(t)
 
-	err := RequireBranchMerged(dir, branch)
+	err := RequireBranchMerged(dir, branch, "trunk")
 	if !errors.Is(err, ErrBranchNotMerged) {
 		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
 	}
 	if !strings.Contains(err.Error(), "--force") {
 		t.Errorf("err = %q, want the force override", err)
+	}
+}
+
+// Ticket 597: the checkout was on a feature branch, the ticket branch reached
+// only that branch, and accept closed the ticket although the branch the next
+// worktree starts from did not hold the work.
+func TestRequireBranchMergedRefusesAMergeIntoOnlyTheCheckedOutBranch(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "checkout", "-q", "-b", "feature")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", branch)
+
+	err := RequireBranchMerged(dir, branch, "trunk")
+	if !errors.Is(err, ErrBranchNotMerged) {
+		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
+	}
+	if !strings.Contains(err.Error(), "trunk") {
+		t.Errorf("err = %q, want the branch it checked", err)
 	}
 }
 
@@ -372,7 +402,45 @@ func TestRequireBranchMergedAcceptsAnEquivalentSquash(t *testing.T) {
 	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"commit", "-q", "-m", "squash ticket")
 
-	if err := RequireBranchMerged(dir, branch); err != nil {
+	if err := RequireBranchMerged(dir, branch, "trunk"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequireBranchMergedAcceptsAnEquivalentSquashWhileAnotherBranchIsCheckedOut(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "checkout", "-q", branch)
+	commitFile(t, dir, "second.txt", "the other part\n", "more ticket work")
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	gitIn(t, dir, "branch", "feature")
+	gitIn(t, dir, "merge", "-q", "--squash", "--ff", branch)
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "-q", "-m", "squash ticket")
+	gitIn(t, dir, "checkout", "-q", "feature")
+
+	if err := RequireBranchMerged(dir, branch, "trunk"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The recovery from ticket 597: the branch sits in the feature branch that the
+// checkout has open and reaches the default branch as a squash. The merge base
+// that the squash has to cover is the one with the default branch, so the
+// commits already in the checkout do not hide it.
+func TestRequireBranchMergedAcceptsASquashWhenTheCheckoutHoldsTheBranchToo(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	gitIn(t, dir, "checkout", "-q", branch)
+	commitFile(t, dir, "second.txt", "the other part\n", "more ticket work")
+	gitIn(t, dir, "checkout", "-q", "-b", "feature", "trunk")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"merge", "-q", "--no-ff", "-m", "merge ticket", branch)
+	gitIn(t, dir, "checkout", "-q", "trunk")
+	gitIn(t, dir, "merge", "-q", "--squash", "--ff", branch)
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+		"commit", "-q", "-m", "squash ticket")
+	gitIn(t, dir, "checkout", "-q", "feature")
+
+	if err := RequireBranchMerged(dir, branch, "trunk"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -384,7 +452,7 @@ func TestRequireBranchMergedRefusesOnlyPartOfTheChange(t *testing.T) {
 	gitIn(t, dir, "checkout", "-q", "trunk")
 	commitFile(t, dir, "ticket.txt", "the complete ticket\n", "only one part")
 
-	if err := RequireBranchMerged(dir, branch); !errors.Is(err, ErrBranchNotMerged) {
+	if err := RequireBranchMerged(dir, branch, "trunk"); !errors.Is(err, ErrBranchNotMerged) {
 		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
 	}
 }
@@ -401,7 +469,7 @@ func TestRequireBranchMergedRefusesTheChangeBundledWithOtherWork(t *testing.T) {
 	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
 		"commit", "-q", "-m", "ticket and other work")
 
-	if err := RequireBranchMerged(dir, branch); !errors.Is(err, ErrBranchNotMerged) {
+	if err := RequireBranchMerged(dir, branch, "trunk"); !errors.Is(err, ErrBranchNotMerged) {
 		t.Fatalf("err = %v, want ErrBranchNotMerged", err)
 	}
 }
@@ -413,7 +481,7 @@ func TestRequireBranchMergedPreservesOtherGitFailures(t *testing.T) {
 	dir := trunkRepo(t)
 	commitIn(t, dir)
 
-	err := RequireBranchMerged(dir, "missing")
+	err := RequireBranchMerged(dir, "missing", "trunk")
 	if errors.Is(err, ErrBranchNotMerged) {
 		t.Fatalf("err = %v, want the Git failure", err)
 	}
