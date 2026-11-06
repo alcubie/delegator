@@ -21,6 +21,9 @@ const (
 	codeEditTwoBodies
 	codeEditorAndText
 	codeEditNoForm
+	codeNoProjectName
+	codeProjectNameLineBreak
+	codeProjectNameAndClear
 )
 
 const (
@@ -59,6 +62,9 @@ var errorCodes = map[error]int{
 	errEditTwoBodies:                  codeEditTwoBodies,
 	errEditorAndText:                  codeEditorAndText,
 	errEditNoForm:                     codeEditNoForm,
+	errNoProjectName:                  codeNoProjectName,
+	errProjectNameLineBreak:           codeProjectNameLineBreak,
+	errProjectNameAndClear:            codeProjectNameAndClear,
 	project.ErrGitNotOnPath:           codeGitNotOnPath,
 	project.ErrNoCommit:               codeNoCommit,
 	project.ErrUnknownCommit:          codeUnknownCommit,

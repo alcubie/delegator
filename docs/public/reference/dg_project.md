@@ -6,7 +6,7 @@ Work with the registered projects.
 
 ### Synopsis
 
-Register a repository as a project, archive one to hide it from the lists, restore an archived one, and show the repositories that this Delegator instance has registered.
+Register a repository as a project, name a project, archive one to hide it from the lists, restore an archived one, and show the repositories that this Delegator instance has registered.
 
 ```
 dg project [flags]
@@ -17,6 +17,7 @@ dg project [flags]
 ```
   dg project add
   dg project list
+  dg project rename Backend
   dg project archive
   dg project restore
 ```
@@ -40,4 +41,5 @@ dg project [flags]
 * [dg project add](dg_project_add.md)	 - Register a repository as a project.
 * [dg project archive](dg_project_archive.md)	 - Archive a project so it leaves the lists.
 * [dg project list](dg_project_list.md)	 - List every registered project.
+* [dg project rename](dg_project_rename.md)	 - Give a project a name.
 * [dg project restore](dg_project_restore.md)	 - Restore an archived project to the lists.

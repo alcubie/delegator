@@ -33,6 +33,7 @@ nav:
           - add: reference/dg_project_add.md
           - archive: reference/dg_project_archive.md
           - list: reference/dg_project_list.md
+          - rename: reference/dg_project_rename.md
           - restore: reference/dg_project_restore.md
       - rpc: reference/dg_rpc.md
       - ticket:
