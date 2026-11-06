@@ -51,6 +51,9 @@ const (
 	codeNoRun
 	codeInvalidAgent
 	codeNoProject
+	codeTicketTwice
+	codeMoveBeforeItself
+	codeOneTicketUpOrDown
 )
 
 // errorCodes maps CLI, project, and store errors to stable machine-readable
@@ -87,6 +90,9 @@ var errorCodes = map[error]int{
 	store.ErrNoRun:                    codeNoRun,
 	store.ErrInvalidAgent:             codeInvalidAgent,
 	store.ErrNoProject:                codeNoProject,
+	store.ErrTicketTwice:              codeTicketTwice,
+	store.ErrMoveBeforeItself:         codeMoveBeforeItself,
+	store.ErrOneTicketUpOrDown:        codeOneTicketUpOrDown,
 }
 
 // ErrorCode finds a recognized wrapped error, falling back to codeUnknown.

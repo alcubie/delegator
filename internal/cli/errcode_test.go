@@ -57,6 +57,9 @@ var namedErrors = map[string]error{
 	"ErrNoRoom":                   store.ErrNoRoom,
 	"ErrNoRun":                    store.ErrNoRun,
 	"ErrNoProject":                store.ErrNoProject,
+	"ErrTicketTwice":              store.ErrTicketTwice,
+	"ErrMoveBeforeItself":         store.ErrMoveBeforeItself,
+	"ErrOneTicketUpOrDown":        store.ErrOneTicketUpOrDown,
 }
 
 // declaredErrors parses package-level errors.New and fmt.Errorf declarations;

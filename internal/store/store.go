@@ -168,6 +168,16 @@ var ErrNotMovable = errors.New("only a queued ticket and a ready ticket can move
 // Queued and ready tickets have separate orderings.
 var ErrNotInTheSameList = errors.New("a ticket moves inside its own list")
 
+// ErrTicketTwice means one move names a ticket more than once.
+var ErrTicketTwice = errors.New("a move names each ticket once")
+
+// ErrMoveBeforeItself means the destination of a move is one of the tickets
+// that move.
+var ErrMoveBeforeItself = errors.New("a ticket does not move before itself")
+
+// ErrOneTicketUpOrDown means up or down was given more than one ticket.
+var ErrOneTicketUpOrDown = errors.New("up and down move one ticket")
+
 // Open returns the database below dataDir. It makes the data directory, the
 // directories below it, and the database, if they are not present.
 func Open(dataDir string) (*Store, error) {
@@ -453,55 +463,97 @@ var lists = []list{
 	{Ready, "ready_position"},
 }
 
-// MoveTicket reorders a ticket within its list. Reading and updating
-// positions share one transaction.
-func (s *Store) MoveTicket(id int64, move Move) error {
-	return s.move(id, func(_ list, ids []int64, from int) ([]int64, error) {
-		return reorder(ids, []int64{ids[from]}, move), nil
+// MoveTickets reorders tickets within their list, landing them together as
+// one block. Reading and updating positions share one transaction. Up and
+// down take one ticket.
+func (s *Store) MoveTickets(ids []int64, move Move) error {
+	if (move == Up || move == Down) && len(ids) > 1 {
+		return fmt.Errorf("%w: %d were given", ErrOneTicketUpOrDown, len(ids))
+	}
+	return s.move(ids, func(_ list, listed, moved []int64) ([]int64, error) {
+		return reorder(listed, moved, move), nil
 	})
 }
 
-// MoveTicketBefore places a ticket immediately before target, shifting later
-// entries down. Moving a ticket before itself does nothing.
-func (s *Store) MoveTicketBefore(id, target int64) error {
-	return s.move(id, func(where list, ids []int64, from int) ([]int64, error) {
-		if !slices.Contains(ids, target) {
+// MoveTicketsBefore places tickets immediately before target as one block,
+// shifting later entries down.
+func (s *Store) MoveTicketsBefore(ids []int64, target int64) error {
+	return s.move(ids, func(where list, listed, moved []int64) ([]int64, error) {
+		if slices.Contains(moved, target) {
+			return nil, fmt.Errorf("%w: ticket %d", ErrMoveBeforeItself, target)
+		}
+		if !slices.Contains(listed, target) {
 			return nil, fmt.Errorf("%w: ticket %d is not %s", ErrNotInTheSameList, target, where.status)
 		}
-		return reorderBefore(ids, []int64{ids[from]}, target), nil
+		return reorderBefore(listed, moved, target), nil
 	})
 }
 
-// move applies order to the ticket's list and saves the result in one
-// transaction.
-func (s *Store) move(id int64, order func(where list, ids []int64, from int) ([]int64, error)) error {
+// move applies order to the list that holds the moved tickets and saves the
+// result in one transaction. Moving no ticket changes nothing.
+func (s *Store) move(ids []int64, order func(where list, listed, moved []int64) ([]int64, error)) error {
+	if len(ids) == 0 {
+		return nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	where, err := listOf(tx, id)
+	where, err := listOf(tx, ids[0])
 	if err != nil {
 		return err
 	}
-	ids, err := listIDs(tx, where)
+	for _, id := range ids[1:] {
+		other, err := listOf(tx, id)
+		if err != nil {
+			return err
+		}
+		if other != where {
+			return fmt.Errorf("%w: ticket %d is %s", ErrNotInTheSameList, id, other.status)
+		}
+	}
+	listed, err := listIDs(tx, where)
 	if err != nil {
 		return err
 	}
-	from := slices.Index(ids, id)
-	if from < 0 {
-		return fmt.Errorf("%w: ticket %d", ErrNotMovable, id)
+	moved, err := inListOrder(listed, ids)
+	if err != nil {
+		return err
 	}
 
-	moved, err := order(where, ids, from)
+	ordered, err := order(where, listed, moved)
 	if err != nil {
 		return err
 	}
-	if err := setPositions(tx, where, moved); err != nil {
+	if err := setPositions(tx, where, ordered); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// inListOrder returns ids in the order that the list holds them, so the
+// tickets land in that order whatever order they were given in. It refuses a
+// ticket named twice and one that the list does not hold.
+func inListOrder(listed, ids []int64) ([]int64, error) {
+	at := make([]int, 0, len(ids))
+	for _, id := range ids {
+		found := slices.Index(listed, id)
+		if found < 0 {
+			return nil, fmt.Errorf("%w: ticket %d", ErrNotMovable, id)
+		}
+		if slices.Contains(at, found) {
+			return nil, fmt.Errorf("%w: ticket %d", ErrTicketTwice, id)
+		}
+		at = append(at, found)
+	}
+	slices.Sort(at)
+	moved := make([]int64, 0, len(at))
+	for _, found := range at {
+		moved = append(moved, listed[found])
+	}
+	return moved, nil
 }
 
 // listOf returns the ticket's reorderable list, or ErrNotMovable if the

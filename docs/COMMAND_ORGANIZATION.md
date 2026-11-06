@@ -41,7 +41,7 @@ Angle brackets denote required arguments; square brackets denote optional ones. 
 | Inspect | `dg ticket show [id]` | `dg show [id]` |
 | Dependency graph | `dg ticket map [id]` | `dg map [id]` |
 | Edit | `dg ticket edit <id>` | `dg edit <id>` |
-| Ordering | `dg ticket move <id> <where>` | `dg move <id> <where>` |
+| Ordering | `dg ticket move <id>... <where>` | `dg move <id>... <where>` |
 | Dependencies | `dg ticket depend <id>` | `dg depend <id>` |
 | Record completion | `dg ticket finish <id> <commit>` | `dg finish <id> <commit>` |
 | Accept | `dg ticket accept [id]` | `dg accept [id]` |

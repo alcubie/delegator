@@ -2,14 +2,14 @@
 
 ## dg ticket move
 
-Reorder a ticket in its queue or ready list.
+Reorder tickets in their queue or ready list.
 
 ### Synopsis
 
-Move a ticket within QUEUED or READY. The destination may be up, down, top, bottom, or the ID of another ticket in the same list, which places the ticket immediately before it.
+Move one or more tickets within QUEUED or READY. Every ticket must be in the same list, and they land together as one block in the order that the list already holds them. The destination may be up, down, top, bottom, or the ID of another ticket in the same list, which places the tickets immediately before it. Up and down take one ticket.
 
 ```
-dg ticket move <id> <where> [flags]
+dg ticket move <id>... <where> [flags]
 ```
 
 ### Examples
@@ -18,6 +18,8 @@ dg ticket move <id> <where> [flags]
   dg ticket move 42 top
   dg ticket move 42 down
   dg ticket move 42 57
+  dg ticket move 42 57 93 bottom
+  dg ticket move 42 57 93 18
 ```
 
 ### Options

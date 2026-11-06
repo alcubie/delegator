@@ -100,6 +100,30 @@ func threeTickets(t *testing.T) (*Store, []int64) {
 	return s, queuedTickets(t, s, projectID, "first", "second", "third")
 }
 
+// eightTickets returns a store that holds one project and eight queued
+// tickets titled A to H, in that order, with their ids.
+func eightTickets(t *testing.T) (*Store, []int64) {
+	t.Helper()
+	s, projectID := emptyStore(t)
+	return s, queuedTickets(t, s, projectID, "A", "B", "C", "D", "E", "F", "G", "H")
+}
+
+// titled returns the ids of the tickets of eightTickets named by each letter
+// of titles, so a test names the tickets of a move the way the queue shows
+// them.
+func titled(ids []int64, titles string) []int64 {
+	named := make([]int64, 0, len(titles))
+	for _, title := range titles {
+		named = append(named, ids[title-'A'])
+	}
+	return named
+}
+
+// oneTitled returns the id of the one ticket that title names.
+func oneTitled(ids []int64, title string) int64 {
+	return titled(ids, title)[0]
+}
+
 // threeTicketsFirstFailed returns the store of threeTickets with the first
 // ticket claimed and then failed, and the ids of all three.
 func threeTicketsFirstFailed(t *testing.T) (*Store, []int64) {
@@ -1083,7 +1107,7 @@ func TestChangeStatusFromQueuedToAStatusItCannotReach(t *testing.T) {
 func TestMoveTicketWritesTheNewOrder(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	if err := s.MoveTicket(ids[2], Top); err != nil {
+	if err := s.MoveTickets([]int64{ids[2]}, Top); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1110,7 +1134,7 @@ func TestMoveTicketMovesInEachDirection(t *testing.T) {
 	for _, test := range tests {
 		t.Run(string(test.move), func(t *testing.T) {
 			s, ids := threeTickets(t)
-			if err := s.MoveTicket(ids[1], test.move); err != nil {
+			if err := s.MoveTickets([]int64{ids[1]}, test.move); err != nil {
 				t.Fatal(err)
 			}
 			if got := queueTitles(t, s); !slices.Equal(got, test.want) {
@@ -1127,7 +1151,7 @@ func TestMoveTicketThatIsInNoListChangesNothing(t *testing.T) {
 	}
 	before := queueTitles(t, s)
 
-	err := s.MoveTicket(ids[1], Top)
+	err := s.MoveTickets([]int64{ids[1]}, Top)
 	if !errors.Is(err, ErrNotMovable) {
 		t.Errorf("err = %v, want ErrNotMovable", err)
 	}
@@ -1186,7 +1210,7 @@ func TestTwoProgramsThatWriteAtTheSameTimeLoseNoTicket(t *testing.T) {
 		wg.Add(1)
 		go func(s *Store, n int) {
 			defer wg.Done()
-			if err := s.MoveTicket(ids[n%len(ids)], Top); err != nil {
+			if err := s.MoveTickets([]int64{ids[n%len(ids)]}, Top); err != nil {
 				errs <- err
 			}
 		}(program, i)
@@ -2041,7 +2065,7 @@ func TestMoveTicketBeforePutsItWhereTheTargetIs(t *testing.T) {
 	s, ids := threeTickets(t)
 
 	// first goes where third is, so third goes down one place
-	if err := s.MoveTicketBefore(ids[0], ids[2]); err != nil {
+	if err := s.MoveTicketsBefore([]int64{ids[0]}, ids[2]); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"second", "first", "third"}
@@ -2053,7 +2077,7 @@ func TestMoveTicketBeforePutsItWhereTheTargetIs(t *testing.T) {
 func TestMoveTicketBeforeUpTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
 
-	if err := s.MoveTicketBefore(ids[2], ids[0]); err != nil {
+	if err := s.MoveTicketsBefore([]int64{ids[2]}, ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"third", "first", "second"}
@@ -2066,8 +2090,9 @@ func TestMoveTicketBeforeItself(t *testing.T) {
 	s, ids := threeTickets(t)
 	before := queueTitles(t, s)
 
-	if err := s.MoveTicketBefore(ids[1], ids[1]); err != nil {
-		t.Fatal(err)
+	err := s.MoveTicketsBefore([]int64{ids[1]}, ids[1])
+	if !errors.Is(err, ErrMoveBeforeItself) {
+		t.Errorf("err = %v, want ErrMoveBeforeItself", err)
 	}
 	if got := queueTitles(t, s); !slices.Equal(got, before) {
 		t.Errorf("the queue is %v, want %v", got, before)
@@ -2081,7 +2106,7 @@ func TestMoveTicketBeforeWithATargetThatIsNotInTheQueue(t *testing.T) {
 	}
 	before := queueTitles(t, s)
 
-	err := s.MoveTicketBefore(ids[0], ids[2])
+	err := s.MoveTicketsBefore([]int64{ids[0]}, ids[2])
 	if !errors.Is(err, ErrNotInTheSameList) {
 		t.Errorf("err = %v, want ErrNotInTheSameList", err)
 	}
@@ -2096,8 +2121,132 @@ func TestMoveTicketBeforeWithATicketThatIsInNoList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.MoveTicketBefore(ids[0], ids[2]); !errors.Is(err, ErrNotMovable) {
+	if err := s.MoveTicketsBefore([]int64{ids[0]}, ids[2]); !errors.Is(err, ErrNotMovable) {
 		t.Errorf("err = %v, want ErrNotMovable", err)
+	}
+}
+
+func TestMoveTicketsBeforeATicketAsOneBlock(t *testing.T) {
+	tests := []struct {
+		name   string
+		moved  string
+		target string
+		want   []string
+	}{
+		{"up the queue", "DFH", "B", []string{"A", "D", "F", "H", "B", "C", "E", "G"}},
+		{"down the queue", "BD", "G", []string{"A", "C", "E", "F", "B", "D", "G", "H"}},
+		{"named out of queue order", "HDF", "B", []string{"A", "D", "F", "H", "B", "C", "E", "G"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ids := eightTickets(t)
+
+			if err := s.MoveTicketsBefore(titled(ids, test.moved), oneTitled(ids, test.target)); err != nil {
+				t.Fatal(err)
+			}
+			if got := queueTitles(t, s); !slices.Equal(got, test.want) {
+				t.Errorf("the queue is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMoveTicketsToAnEndAsOneBlock(t *testing.T) {
+	tests := []struct {
+		move Move
+		want []string
+	}{
+		{Top, []string{"D", "F", "H", "A", "B", "C", "E", "G"}},
+		{Bottom, []string{"A", "B", "C", "E", "G", "D", "F", "H"}},
+	}
+	for _, test := range tests {
+		t.Run(string(test.move), func(t *testing.T) {
+			s, ids := eightTickets(t)
+
+			if err := s.MoveTickets(titled(ids, "HDF"), test.move); err != nil {
+				t.Fatal(err)
+			}
+			if got := queueTitles(t, s); !slices.Equal(got, test.want) {
+				t.Errorf("the queue is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMoveTicketsBeforeOneOfThem(t *testing.T) {
+	s, ids := eightTickets(t)
+	before := queueTitles(t, s)
+
+	err := s.MoveTicketsBefore(titled(ids, "DFH"), oneTitled(ids, "F"))
+	if !errors.Is(err, ErrMoveBeforeItself) {
+		t.Errorf("err = %v, want ErrMoveBeforeItself", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+func TestMoveATicketNamedTwice(t *testing.T) {
+	s, ids := eightTickets(t)
+	before := queueTitles(t, s)
+
+	err := s.MoveTicketsBefore(titled(ids, "DFD"), oneTitled(ids, "B"))
+	if !errors.Is(err, ErrTicketTwice) {
+		t.Errorf("err = %v, want ErrTicketTwice", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+}
+
+func TestMoveTicketsOfTwoLists(t *testing.T) {
+	s, ids := eightTickets(t)
+	for _, status := range []TicketStatus{Running, Ready} {
+		if err := s.ChangeStatus(oneTitled(ids, "B"), status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := queueTitles(t, s)
+
+	err := s.MoveTickets(titled(ids, "AB"), Top)
+	if !errors.Is(err, ErrNotInTheSameList) {
+		t.Errorf("err = %v, want ErrNotInTheSameList", err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
+	}
+	if got := readyTitles(t, s); !slices.Equal(got, []string{"B"}) {
+		t.Errorf("READY is %v, want [B]", got)
+	}
+}
+
+func TestMoveSeveralTicketsUpOrDown(t *testing.T) {
+	for _, move := range []Move{Up, Down} {
+		t.Run(string(move), func(t *testing.T) {
+			s, ids := eightTickets(t)
+			before := queueTitles(t, s)
+
+			err := s.MoveTickets(titled(ids, "DF"), move)
+			if !errors.Is(err, ErrOneTicketUpOrDown) {
+				t.Errorf("err = %v, want ErrOneTicketUpOrDown", err)
+			}
+			if got := queueTitles(t, s); !slices.Equal(got, before) {
+				t.Errorf("the queue is %v, want %v", got, before)
+			}
+		})
+	}
+}
+
+// Moving no ticket is not a fault, so the list keeps the order it had.
+func TestMoveNoTickets(t *testing.T) {
+	s, _ := threeTickets(t)
+	before := queueTitles(t, s)
+
+	if err := s.MoveTickets(nil, Top); err != nil {
+		t.Fatal(err)
+	}
+	if got := queueTitles(t, s); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
 	}
 }
 
@@ -2115,7 +2264,7 @@ func TestMoveTicketMovesInEachDirectionInReady(t *testing.T) {
 	for _, test := range tests {
 		t.Run(string(test.move), func(t *testing.T) {
 			s, ids := threeReady(t)
-			if err := s.MoveTicket(ids[1], test.move); err != nil {
+			if err := s.MoveTickets([]int64{ids[1]}, test.move); err != nil {
 				t.Fatal(err)
 			}
 			if got := readyTitles(t, s); !slices.Equal(got, test.want) {
@@ -2128,7 +2277,7 @@ func TestMoveTicketMovesInEachDirectionInReady(t *testing.T) {
 func TestMoveTicketBeforeInReady(t *testing.T) {
 	s, ids := threeReady(t)
 
-	if err := s.MoveTicketBefore(ids[2], ids[0]); err != nil {
+	if err := s.MoveTicketsBefore([]int64{ids[2]}, ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"third", "first", "second"}
@@ -2154,7 +2303,7 @@ func TestMoveTicketBeforeATargetInTheOtherList(t *testing.T) {
 		}
 	}
 
-	if err := s.MoveTicketBefore(ready, queued); !errors.Is(err, ErrNotInTheSameList) {
+	if err := s.MoveTicketsBefore([]int64{ready}, queued); !errors.Is(err, ErrNotInTheSameList) {
 		t.Errorf("err = %v, want ErrNotInTheSameList", err)
 	}
 	if got := queueTitles(t, s); !slices.Equal(got, []string{"queued"}) {
@@ -2179,7 +2328,7 @@ func TestMoveTicketInReadyLeavesTheQueue(t *testing.T) {
 	}
 	before := queueTitles(t, s)
 
-	if err := s.MoveTicket(ids[1], Top); err != nil {
+	if err := s.MoveTickets([]int64{ids[1]}, Top); err != nil {
 		t.Fatal(err)
 	}
 	if got := readyTitles(t, s); !slices.Equal(got, []string{"second", "first"}) {
@@ -2231,7 +2380,7 @@ func TestChangeStatusFromAnEnd(t *testing.T) {
 // New ready tickets append after existing review work.
 func TestChangeStatusIntoReadyPutsTheTicketAtTheEnd(t *testing.T) {
 	s, ids := threeReady(t)
-	if err := s.MoveTicket(ids[2], Top); err != nil {
+	if err := s.MoveTickets([]int64{ids[2]}, Top); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2353,7 +2502,7 @@ func TestClaimThatIsRefusedWritesNoRun(t *testing.T) {
 func TestClaimNextTakesTheFirstTicketOfTheQueue(t *testing.T) {
 	s, ids := threeTickets(t)
 	// User-set position, not ID, determines which ticket runs first.
-	if err := s.MoveTicket(ids[2], Top); err != nil {
+	if err := s.MoveTickets([]int64{ids[2]}, Top); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3840,7 +3989,7 @@ func TestAllTicketsGivesEveryTicketWhateverItsStatus(t *testing.T) {
 
 func TestAllTicketsComesInTheOrderOfTheIDs(t *testing.T) {
 	s, ids := threeTickets(t)
-	if err := s.MoveTicket(ids[2], Top); err != nil {
+	if err := s.MoveTickets([]int64{ids[2]}, Top); err != nil {
 		t.Fatal(err)
 	}
 
