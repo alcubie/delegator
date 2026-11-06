@@ -1423,6 +1423,87 @@ func TestArchiveProjectRefusesAPathThatIsNotRegistered(t *testing.T) {
 	}
 }
 
+func TestRestoreProjectClearsTheTimeAndReturnsTheRow(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ArchiveProject("/projects/path"); err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.RestoreProject("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ID != id || project.Path != "/projects/path" || project.DefaultBranch != "main" {
+		t.Errorf("project = %+v, want id %d at /projects/path on main", project, id)
+	}
+	if !project.ArchivedAt.IsZero() {
+		t.Errorf("archived at %v, want no archival time", project.ArchivedAt)
+	}
+	stored, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.ArchivedAt.IsZero() {
+		t.Errorf("the stored project is archived at %v, want it active", stored.ArchivedAt)
+	}
+}
+
+func TestRestoreProjectOfAnActiveProjectIsNotAnError(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.RestoreProject("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ID != id || !project.ArchivedAt.IsZero() {
+		t.Errorf("project = %+v, want id %d with no archival time", project, id)
+	}
+}
+
+func TestRestoreProjectRefusesAPathThatIsNotRegistered(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if _, err := s.ProjectID("/projects/path", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ArchiveProject("/projects/path"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.RestoreProject("/projects/path/sub"); !errors.Is(err, ErrNoProject) {
+		t.Errorf("err = %v, want %v", err, ErrNoProject)
+	}
+	project, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ArchivedAt.IsZero() {
+		t.Errorf("the registered project is active, want it still archived")
+	}
+}
+
 func TestProjectByPathRefusesAPathThatIsNotRegistered(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

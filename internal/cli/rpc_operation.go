@@ -33,7 +33,11 @@ var rpcRefusedOperations = map[string]bool{"chat": true, "init": true, "rerun": 
 
 // projectPathOperations take the directory of a project as their one
 // positional argument.
-var projectPathOperations = map[string]bool{"project.add": true, "project.archive": true}
+var projectPathOperations = map[string]bool{
+	"project.add":     true,
+	"project.archive": true,
+	"project.restore": true,
+}
 
 func rpcCallable(command *cobra.Command) bool {
 	operation, ok := rpcOperation(command)
