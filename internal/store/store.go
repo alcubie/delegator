@@ -457,7 +457,7 @@ var lists = []list{
 // positions share one transaction.
 func (s *Store) MoveTicket(id int64, move Move) error {
 	return s.move(id, func(_ list, ids []int64, from int) ([]int64, error) {
-		return reorder(ids, from, move), nil
+		return reorder(ids, []int64{ids[from]}, move), nil
 	})
 }
 
@@ -468,7 +468,7 @@ func (s *Store) MoveTicketBefore(id, target int64) error {
 		if !slices.Contains(ids, target) {
 			return nil, fmt.Errorf("%w: ticket %d is not %s", ErrNotInTheSameList, target, where.status)
 		}
-		return reorderBefore(ids, from, target), nil
+		return reorderBefore(ids, []int64{ids[from]}, target), nil
 	})
 }
 

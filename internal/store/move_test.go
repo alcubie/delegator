@@ -29,7 +29,7 @@ func TestReorder(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ids := []int64{10, 20, 30, 40}
-			got := reorder(ids, test.from, test.move)
+			got := reorder(ids, []int64{ids[test.from]}, test.move)
 			if !slices.Equal(got, test.want) {
 				t.Errorf("reorder(%v, %d, %s) = %v, want %v", ids, test.from, test.move, got, test.want)
 			}
@@ -39,7 +39,7 @@ func TestReorder(t *testing.T) {
 
 func TestReorderLeavesTheGivenSliceAlone(t *testing.T) {
 	ids := []int64{10, 20, 30, 40}
-	reorder(ids, 3, Top)
+	reorder(ids, []int64{ids[3]}, Top)
 	if want := []int64{10, 20, 30, 40}; !slices.Equal(ids, want) {
 		t.Errorf("the slice that reorder got is now %v, want %v", ids, want)
 	}
@@ -47,7 +47,7 @@ func TestReorderLeavesTheGivenSliceAlone(t *testing.T) {
 
 func TestReorderWithOneTicket(t *testing.T) {
 	for _, move := range []Move{Up, Down, Top, Bottom} {
-		got := reorder([]int64{10}, 0, move)
+		got := reorder([]int64{10}, []int64{10}, move)
 		if want := []int64{10}; !slices.Equal(got, want) {
 			t.Errorf("reorder with %s = %v, want %v", move, got, want)
 		}
@@ -72,7 +72,7 @@ func TestReorderBefore(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ids := []int64{10, 20, 30, 40}
-			got := reorderBefore(ids, test.from, test.target)
+			got := reorderBefore(ids, []int64{ids[test.from]}, test.target)
 			if !slices.Equal(got, test.want) {
 				t.Errorf("reorderBefore(%v, %d, %d) = %v, want %v",
 					ids, test.from, test.target, got, test.want)
@@ -85,7 +85,7 @@ func TestReorderBefore(t *testing.T) {
 // keyword bottom and not an id.
 func TestReorderBeforeLeavesTheGivenSliceAlone(t *testing.T) {
 	ids := []int64{10, 20, 30, 40}
-	reorderBefore(ids, 3, 10)
+	reorderBefore(ids, []int64{ids[3]}, 10)
 	if want := []int64{10, 20, 30, 40}; !slices.Equal(ids, want) {
 		t.Errorf("the slice that reorderBefore got is now %v, want %v", ids, want)
 	}
@@ -95,7 +95,7 @@ func TestReorderBeforeLeavesTheGivenSliceAlone(t *testing.T) {
 // selection.
 func TestReorderBeforeWithATargetThatIsNotThere(t *testing.T) {
 	ids := []int64{10, 20, 30}
-	got := reorderBefore(ids, 0, 99)
+	got := reorderBefore(ids, []int64{ids[0]}, 99)
 	if want := []int64{10, 20, 30}; !slices.Equal(got, want) {
 		t.Errorf("reorderBefore = %v, want %v", got, want)
 	}
