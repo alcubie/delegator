@@ -16,6 +16,8 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
+var projectResultFields = []string{"id", "name", "path", "default_branch", "archived"}
+
 // registerProjects adds projects to a data directory in the given order, as
 // the first ticket of a repository registers one, and returns them in the
 // order of their IDs.
@@ -251,20 +253,7 @@ func TestRPCDiscoverProjectListResultContract(t *testing.T) {
 		t.Fatalf("project list does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var copied []any
-		if err := json.Unmarshal(encoded, &copied); err != nil {
-			t.Fatal(err)
-		}
-		delete(copied[0].(map[string]any), field)
-		if err := validator.Validate(copied); err == nil {
-			t.Errorf("a result missing %q satisfies the schema", field)
-		}
-	}
+	requiredResultFields(t, validator, result, firstResultRow, projectResultFields...)
 }
 
 func TestRPCDiscoverPublishesProjectList(t *testing.T) {
@@ -447,20 +436,7 @@ func TestRPCDiscoverProjectAddResultContract(t *testing.T) {
 		t.Fatalf("project.add result does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var copied map[string]any
-		if err := json.Unmarshal(encoded, &copied); err != nil {
-			t.Fatal(err)
-		}
-		delete(copied, field)
-		if err := validator.Validate(copied); err == nil {
-			t.Errorf("a result missing %q satisfies the schema", field)
-		}
-	}
+	requiredResultFields(t, validator, result, resultObject, projectResultFields...)
 }
 
 func TestRPCDiscoverPublishesProjectAdd(t *testing.T) {
@@ -659,20 +635,7 @@ func TestRPCDiscoverProjectArchiveResultContract(t *testing.T) {
 		t.Fatalf("project.archive result does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var copied map[string]any
-		if err := json.Unmarshal(encoded, &copied); err != nil {
-			t.Fatal(err)
-		}
-		delete(copied, field)
-		if err := validator.Validate(copied); err == nil {
-			t.Errorf("a result missing %q satisfies the schema", field)
-		}
-	}
+	requiredResultFields(t, validator, result, resultObject, projectResultFields...)
 }
 
 func TestRPCDiscoverPublishesProjectArchive(t *testing.T) {

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -217,20 +216,7 @@ func TestRPCDiscoverAgentsResultContract(t *testing.T) {
 		}
 	}
 
-	for _, field := range []string{"name", "argv", "found"} {
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var copied []any
-		if err := json.Unmarshal(encoded, &copied); err != nil {
-			t.Fatal(err)
-		}
-		delete(copied[0].(map[string]any), field)
-		if err := validator.Validate(copied); err == nil {
-			t.Errorf("a result missing %q satisfies the schema", field)
-		}
-	}
+	requiredResultFields(t, validator, result, firstResultRow, "name", "argv", "found")
 }
 
 func TestRPCDiscoverPublishesTheAgentsResultSchema(t *testing.T) {
