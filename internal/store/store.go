@@ -278,6 +278,20 @@ func (s *Store) ProjectByPath(path string) (Project, error) {
 	return p, nil
 }
 
+// ArchiveProject marks the project registered at exactly path archived and
+// returns its row, or ErrNoProject when no project is registered there: the
+// update matches no row and the read back refuses the path. An archived
+// project keeps the time of its first archive, so a repeat call is not an
+// error. Nothing about the tickets of the project changes.
+func (s *Store) ArchiveProject(path string) (Project, error) {
+	if _, err := s.db.Exec(
+		"UPDATE projects SET archived_at = COALESCE(archived_at, ?) WHERE path = ?",
+		rfc3339(time.Now()), path); err != nil {
+		return Project{}, err
+	}
+	return s.ProjectByPath(path)
+}
+
 // ProjectID returns the project ID for path, creating the project if needed.
 // The first ticket sets its default branch; later tickets preserve that
 // choice.

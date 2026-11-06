@@ -49,15 +49,18 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Work with the registered projects.",
-		Long:  "Register a repository as a project, and show the repositories that this Delegator instance has registered.",
+		Long: "Register a repository as a project, archive one to hide it from the lists, and show the " +
+			"repositories that this Delegator instance has registered.",
 		Example: `  dg project add
-  dg project list`,
+  dg project list
+  dg project archive`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 	cmd.AddCommand(projectAddCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(projectArchiveCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
 	return cmd
 }
@@ -125,6 +128,56 @@ func registerProject(s *store.Store, dir string) (store.Project, error) {
 	return s.ProjectByPath(root)
 }
 
+// projectArchiveCommand hides a project from the lists without deleting it.
+// dir defaults to the current working directory.
+func projectArchiveCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	return rpcOperationCommand("project.archive", &cobra.Command{
+		Use:   "archive [dir]",
+		Short: "Archive a project so it leaves the lists.",
+		Long: "Archive the project registered at dir, or at the current working directory, so that it " +
+			"leaves the lists of the desktop app without being deleted from Delegator. dir has to match " +
+			"the registered path of a project exactly: it is not resolved through Git, and it does not " +
+			"have to exist, so a project whose repository was deleted can still be archived. The tickets " +
+			"of the project are untouched, and an open ticket keeps running and stays in the inbox. " +
+			"Archiving an archived project keeps the time of its first archive.",
+		Example: `  dg project archive
+  dg project archive ~/projects/widget`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var arg string
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			var value projectJSON
+			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				p, err := s.ArchiveProject(namedProjectPath(workDir, arg))
+				if err != nil {
+					return err
+				}
+				value = projectValue(p)
+				return nil
+			}); err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+				fmt.Fprintf(out, "Archived %s\n", value.Path)
+			})
+		},
+	})
+}
+
+// namedProjectPath makes arg absolute against workDir and cleans it, so that
+// it can be matched against the registered path of a project. It neither
+// resolves the path through Git nor requires it to exist, because a command
+// that names a registered project has to reach one whose repository was
+// deleted.
+func namedProjectPath(workDir, arg string) string {
+	if filepath.IsAbs(arg) {
+		return filepath.Clean(arg)
+	}
+	return filepath.Join(workDir, arg)
+}
+
 // projectListCommand writes every registered project, including those whose
 // tickets have all left the inbox.
 func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
@@ -183,7 +236,7 @@ func writeProjects(out io.Writer, projects []projectJSON) {
 }
 
 // projectResultSchema describes the object that identifies a registered
-// project, as project.add returns it.
+// project, as project.add and project.archive return it.
 func projectResultSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
