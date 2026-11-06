@@ -32,6 +32,22 @@ var errProjectNameAndClear = errors.New("dg project rename takes a name or --cle
 // restoring the project as a side effect of the work.
 var errProjectArchived = errors.New("the project is archived")
 
+// refuseArchived refuses the project registered at path when it is archived.
+// A path that no project holds is not archived.
+func refuseArchived(s *store.Store, path string) error {
+	p, err := s.ProjectByPath(path)
+	if errors.Is(err, store.ErrNoProject) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if p.ArchivedAt.IsZero() {
+		return nil
+	}
+	return fmt.Errorf("%w: %s; restore it with dg project restore", errProjectArchived, path)
+}
+
 type projectJSON struct {
 	ID            int64  `json:"id"`
 	Name          string `json:"name"`
@@ -105,12 +121,12 @@ func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cob
 			if len(args) == 1 {
 				arg = args[0]
 			}
-			dir, err := ticketProject(workDir, arg)
-			if err != nil {
-				return err
-			}
 			var value projectJSON
 			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				dir, err := ticketProjectDir(s, workDir, arg)
+				if err != nil {
+					return err
+				}
 				p, err := registerProject(s, dir)
 				if err != nil {
 					return err
@@ -138,13 +154,8 @@ func registerProject(s *store.Store, dir string) (store.Project, error) {
 	if err != nil {
 		return store.Project{}, err
 	}
-	registered, err := s.ProjectByPath(root)
-	if err != nil && !errors.Is(err, store.ErrNoProject) {
+	if err := refuseArchived(s, root); err != nil {
 		return store.Project{}, err
-	}
-	if err == nil && !registered.ArchivedAt.IsZero() {
-		return store.Project{}, fmt.Errorf("%w: %s; restore it with dg project restore",
-			errProjectArchived, root)
 	}
 	if _, err := project.FirstCommit(root); err != nil {
 		return store.Project{}, err

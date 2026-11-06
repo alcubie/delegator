@@ -125,17 +125,16 @@ func ticketCreateCommand(dataDir *string, workDir string, cfg *config.Config) *c
 					return err
 				}
 			}
-			dir, err := ticketProject(workDir, projectDir)
-			if err != nil {
-				return err
-			}
 			title := ""
 			if len(args) > 0 {
 				title = args[0]
 			}
 			return withStore(*dataDir, cfg, func(s *store.Store) error {
+				dir, err := ticketProjectDir(s, workDir, projectDir)
+				if err != nil {
+					return err
+				}
 				var id int64
-				var err error
 				switch {
 				case bodyFile != "":
 					id, err = Ticket(s, dir, title, fileBody, after...)
@@ -186,6 +185,16 @@ func ticketProse(cmd *cobra.Command, path string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// ticketProjectDir resolves --project with the store open, so that an
+// archived project is refused before the missing path of its deleted
+// repository is.
+func ticketProjectDir(s *store.Store, workDir, flag string) (string, error) {
+	if err := refuseArchived(s, absoluteDir(workDir, flag)); err != nil {
+		return "", err
+	}
+	return ticketProject(workDir, flag)
 }
 
 // ticketProject resolves --project relative to the command's working

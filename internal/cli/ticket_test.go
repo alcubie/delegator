@@ -347,6 +347,24 @@ func TestTicketForAnArchivedProjectWritesNothing(t *testing.T) {
 	}
 }
 
+func TestTicketCreateForAnArchivedProjectWithoutItsRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	path := archivedGoneProject(t, dataDir)
+
+	_, err := runIn(t, dataDir, t.TempDir(), "ticket", "create", "--project", path, "Add rate limiting", "--no-body")
+
+	if !errors.Is(err, errProjectArchived) {
+		t.Fatalf("err = %v, want %v", err, errProjectArchived)
+	}
+	if code := ErrorCode(err); code != codeProjectArchived {
+		t.Errorf("error code = %d, want %d", code, codeProjectArchived)
+	}
+	if message := err.Error(); !strings.Contains(message, path) ||
+		!strings.Contains(message, "dg project restore") {
+		t.Errorf("err = %q, want the path and dg project restore", message)
+	}
+}
+
 func TestTicketForARestoredProjectJoinsTheQueue(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

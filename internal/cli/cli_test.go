@@ -23,6 +23,22 @@ func ticketIn(t *testing.T, dataDir, workDir, title, body string) (int64, error)
 	return Ticket(testfix.OpenStore(t, dataDir), workDir, title, body)
 }
 
+// archivedGoneProject registers a project, archives it and deletes its
+// repository, and returns the path the archive holds.
+func archivedGoneProject(t *testing.T, dataDir string) string {
+	t.Helper()
+	repo := testfix.Repo(t, repoBranch)
+	path := projectPath(t, repo)
+	registerProjects(t, dataDir, path)
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(repo); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // ticketFromEditorIn creates an editor-based ticket using a test-owned store.
 func ticketFromEditorIn(t *testing.T, dataDir, workDir string) (int64, error) {
 	t.Helper()
