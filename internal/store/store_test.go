@@ -1458,6 +1458,41 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 }
 
+// The rows of the CLI name a project as the desktop app does, so an inbox
+// ticket carries the name beside the path.
+func TestOpenTicketsCarriesTheNameOfTheProject(t *testing.T) {
+	s, projectID := emptyStore(t)
+	unnamed, err := s.ProjectID("/projects/other", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("UPDATE projects SET name = ? WHERE id = ?",
+		"Widget", projectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(projectID, "one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(unnamed, "two"); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byTitle := map[string]string{}
+	for _, ticket := range open {
+		byTitle[ticket.Title] = ticket.ProjectName
+	}
+	if got := byTitle["one"]; got != "Widget" {
+		t.Errorf("the ticket one has the project name %q, want Widget", got)
+	}
+	if got := byTitle["two"]; got != "" {
+		t.Errorf("the ticket two has the project name %q, want none", got)
+	}
+}
+
 // setAccepted inserts an acceptance transition without running the full
 // command workflow.
 func setAccepted(t *testing.T, s *Store, id int64, accepted string) {

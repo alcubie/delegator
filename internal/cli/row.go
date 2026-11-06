@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -73,7 +72,7 @@ func ticketWidths(tickets []store.OpenTicket) (id, project int) {
 		if w := len(strconv.FormatInt(t.ID, 10)); w > id {
 			id = w
 		}
-		if w := len(filepath.Base(t.Project)); w > project {
+		if w := len(projectName(t.ProjectName, t.Project)); w > project {
 			project = w
 		}
 	}
@@ -85,7 +84,7 @@ func ticketWidths(tickets []store.OpenTicket) (id, project int) {
 // its title.
 func ticketRow(t store.OpenTicket, idWidth, projectWidth, width int, note string) string {
 	left := fmt.Sprintf(" %*d %-*s  ",
-		idWidth, t.ID, projectWidth, filepath.Base(t.Project))
+		idWidth, t.ID, projectWidth, projectName(t.ProjectName, t.Project))
 	if note == "" {
 		return left + t.Title
 	}
