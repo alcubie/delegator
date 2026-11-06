@@ -486,9 +486,9 @@ removes the file lock of the earlier design. It also keeps the answer to lesson 
 comes from the operating system, so it cannot become out of date.
 
 **How the person changes the sequence.** The command `dg ticket move <id> up` moves one ticket
-above the ticket that is above it. The other directions are `down`, `top` and `bottom`.
-Delegator reads the sequence, moves the one ticket, and writes each new position, all in
-one transaction.
+above the ticket that is above it. The other directions are `down`, `top` and `bottom`, and
+`top` and `bottom` take more than one ticket. Delegator reads the sequence, moves the
+tickets, and writes each new position, all in one transaction.
 
 An earlier design put the sequence in `$EDITOR`, as `git rebase -i` does. The person can
 hold that file open for a long time, and the queue can change while it is open: a
@@ -772,7 +772,7 @@ Other former root commands and remote methods remain available as compatibility 
 | `dg ticket edit <id>` | Change the title and the prose of one ticket of the queue. The flag `--editor` opens `$EDITOR` on the two as one text, in the form that `dg ticket create` with no arguments takes: the title on the first line, and the prose after it. The first line goes to the column `title`, and each line below it goes to the file of prose. A caller that is not a person has the text already and no editor, so `--title <text>` sets the title alone, `--body <text>` sets the prose alone, and `--body-file <path>` reads the prose from a file, with `-` for the standard input, as it does for `dg ticket create`. `--title` beside one of the two prose flags sets both. `--body` beside `--body-file` is an error, `--editor` beside any of the three is an error, and the command with no flag at all is an error that names the four. An empty title is the error that an editor with no first line gives. The command refuses a ticket that the queue does not hold, because the agent read the ticket as its run started. |
 | `dg open <name> <id>` | Start a command of the person. See §9.2. |
 | `dg queue start` and `dg queue pause` | Start or stop work on the queue. |
-| `dg ticket move <id> <where>` | Move one ticket in the queue, or in READY. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a different ticket of the same list. |
+| `dg ticket move <id>... <where>` | Move one or more tickets in the queue, or in READY. Every ticket must be in the same list, and they land together as one block in the order that the list already holds them. `<where>` is `up`, `down`, `top`, `bottom`, or the id of a ticket of the same list that is not one of those that move. `up` and `down` take one ticket. |
 | `dg ticket depend <id> --after <other>` | Make a ticket that is already in the queue depend on another one, which `dg ticket create --after` does as the ticket is made. The flag repeats, as it does there, and it takes a comma list. A link that is there already is not an error. The command refuses a ticket that depends on itself, and a link that would make a ring of tickets that each depend on the next, because no ticket of a ring can ever start. It refuses a ticket that is not queued, because a link holds a ticket back in the queue and nowhere else. The flag `--remove` takes a link away instead, which is the way out for a ticket that depends on one that was cancelled, and it is an error when no such link is there. The command writes nothing when it works. |
 | `dg ticket restart <id>` | Start a failed run again. See §6.3. |
 | `dg ticket cancel <id>` | Stop the work on a ticket, from each state that is not the end. |

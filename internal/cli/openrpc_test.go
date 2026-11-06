@@ -244,9 +244,11 @@ func TestRPCDiscoverNullResultContracts(t *testing.T) {
 
 	t.Run("move", func(t *testing.T) {
 		dataDir := t.TempDir()
-		_, _, repo := queuedTicket(t, dataDir)
-		id := testfix.SecondTicket(t, dataDir)
-		rpcNullResult(t, validators["move"], dataDir, repo, "move", map[string]any{"args": []any{id, "top"}})
+		_, first, repo := queuedTicket(t, dataDir)
+		second := testfix.SecondTicket(t, dataDir)
+		rpcNullResult(t, validators["move"], dataDir, repo, "move", map[string]any{"args": []any{second, "top"}})
+		rpcNullResult(t, validators["move"], dataDir, repo, "move",
+			map[string]any{"args": []any{second, first, "bottom"}})
 	})
 
 	t.Run("depend add and remove", func(t *testing.T) {
@@ -706,6 +708,21 @@ func TestRPCDiscoverDescribesArgumentsAndFlags(t *testing.T) {
 	}
 	if got := openRPCMethodNamed(t, document, "rpc.discover").Params; len(got) != 0 {
 		t.Errorf("rpc.discover params = %#v, want none", got)
+	}
+}
+
+// A Use form that ends an argument in ... takes any number of them, so
+// discovery publishes a minimum with no maximum beside it.
+func TestRPCDiscoverDescribesUnboundedArguments(t *testing.T) {
+	document := rpcDiscover(t)
+	for _, name := range []string{"move", "ticket.move"} {
+		args := openRPCParamNamed(t, openRPCMethodNamed(t, document, name), "args")
+		if !args.Required || args.Schema["minItems"] != float64(2) {
+			t.Errorf("%s args = %#v, want two required items", name, args)
+		}
+		if _, there := args.Schema["maxItems"]; there {
+			t.Errorf("%s args = %#v, want no maxItems", name, args)
+		}
 	}
 }
 

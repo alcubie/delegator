@@ -119,7 +119,7 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 	if operation == "ticket" {
 		minimum = 1
 	}
-	if maximum > 0 {
+	if maximum != 0 {
 		use := command.CommandPath()
 		if arguments := strings.TrimSpace(strings.TrimPrefix(command.Use, command.Name())); arguments != "" {
 			use += " " + arguments
@@ -130,7 +130,9 @@ func rpcOpenRPCMethod(name string, command *cobra.Command) openRPCMethod {
 				"type": []string{"string", "number", "boolean", "null"},
 			},
 			"minItems": minimum,
-			"maxItems": maximum,
+		}
+		if maximum != unboundedArguments {
+			schema["maxItems"] = maximum
 		}
 		method.Params = append(method.Params, openRPCContentDescriptor{
 			Name:        "args",
@@ -230,11 +232,17 @@ func ticketStatusSchema() map[string]any {
 	}
 }
 
+// unboundedArguments is the maximum of a Use form that ends one of its
+// arguments in ..., which takes any number of them. Discovery then publishes
+// a minItems with no maxItems beside it.
+const unboundedArguments = -1
+
 // rpcArgumentBounds reads Cobra's conventional Use form. The JSON-RPC API
 // carries positional arguments in one array, because their names are not JSON
 // object keys in the command-line API.
 func rpcArgumentBounds(use string) (minimum, maximum int) {
 	fields := strings.Fields(use)
+	unbounded := false
 	for i := 1; i < len(fields); i++ {
 		field := fields[i]
 		if strings.HasPrefix(field, "-") {
@@ -250,6 +258,10 @@ func rpcArgumentBounds(use string) (minimum, maximum int) {
 		case strings.HasPrefix(field, "["):
 			maximum++
 		}
+		unbounded = unbounded || strings.HasSuffix(field, "...")
+	}
+	if unbounded {
+		maximum = unboundedArguments
 	}
 	return minimum, maximum
 }

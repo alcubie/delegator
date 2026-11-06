@@ -13,14 +13,14 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// threeInTheQueue makes three tickets and returns the store and their ids, in
-// the order that the queue holds them.
-func threeInTheQueue(t *testing.T) (string, string, []int64) {
+// queueOf makes one ticket per title and returns the data directory, the
+// repository and the ids, in the order that the queue holds them.
+func queueOf(t *testing.T, titles ...string) (string, string, []int64) {
 	t.Helper()
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	var ids []int64
-	for _, title := range []string{"first", "second", "third"} {
+	for _, title := range titles {
 		out, err := runIn(t, dataDir, repo, "ticket", "create", title, "--no-body")
 		if err != nil {
 			t.Fatal(err)
@@ -32,6 +32,34 @@ func threeInTheQueue(t *testing.T) (string, string, []int64) {
 		ids = append(ids, id)
 	}
 	return dataDir, repo, ids
+}
+
+// threeInTheQueue makes three tickets and returns the store and their ids, in
+// the order that the queue holds them.
+func threeInTheQueue(t *testing.T) (string, string, []int64) {
+	t.Helper()
+	return queueOf(t, "first", "second", "third")
+}
+
+// eightInTheQueue makes the eight tickets A to H of the examples of
+// dg ticket move, and returns their ids in the order of the queue.
+func eightInTheQueue(t *testing.T) (string, string, []int64) {
+	t.Helper()
+	return queueOf(t, "A", "B", "C", "D", "E", "F", "G", "H")
+}
+
+// moveArgs names each ticket that titles selects out of the queue of
+// eightInTheQueue, and ends with where: a direction, or the title of the
+// ticket to move them before.
+func moveArgs(ids []int64, titles, where string) []string {
+	args := []string{"move"}
+	for _, title := range titles {
+		args = append(args, fmt.Sprint(ids[title-'A']))
+	}
+	if _, there := directions[where]; there {
+		return append(args, where)
+	}
+	return append(args, fmt.Sprint(ids[where[0]-'A']))
 }
 
 // threeInReady makes three ready tickets and returns the data directory, the
@@ -162,7 +190,6 @@ func TestRunMoveBeforeATicket(t *testing.T) {
 	}{
 		{"down the queue", 0, 2, []string{"second", "first", "third"}},
 		{"up the queue", 2, 0, []string{"third", "first", "second"}},
-		{"itself changes nothing", 1, 1, []string{"first", "second", "third"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -180,6 +207,78 @@ func TestRunMoveBeforeATicket(t *testing.T) {
 				t.Errorf("the queue is %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestRunMoveSeveralTickets(t *testing.T) {
+	tests := []struct {
+		name   string
+		titles string
+		where  string
+		want   []string
+	}{
+		{"before a ticket", "DFH", "B", []string{"A", "D", "F", "H", "B", "C", "E", "G"}},
+		{"before a ticket below them", "BD", "G", []string{"A", "C", "E", "F", "B", "D", "G", "H"}},
+		{"named out of queue order", "HDF", "B", []string{"A", "D", "F", "H", "B", "C", "E", "G"}},
+		{"to the top", "DFH", "top", []string{"D", "F", "H", "A", "B", "C", "E", "G"}},
+		{"to the bottom", "DFH", "bottom", []string{"A", "B", "C", "E", "G", "D", "F", "H"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir, repo, ids := eightInTheQueue(t)
+
+			out, err := runIn(t, dataDir, repo, moveArgs(ids, test.titles, test.where)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out != "" {
+				t.Errorf("dg move wrote %q, want nothing", out)
+			}
+			if got := queueTitlesOf(t, dataDir); !slices.Equal(got, test.want) {
+				t.Errorf("the queue is %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRunMoveSeveralTicketsIsRefused(t *testing.T) {
+	tests := []struct {
+		name   string
+		titles string
+		where  string
+		want   error
+	}{
+		{"up", "DF", "up", store.ErrOneTicketUpOrDown},
+		{"down", "DF", "down", store.ErrOneTicketUpOrDown},
+		{"before one of them", "DFH", "F", store.ErrMoveBeforeItself},
+		{"a ticket named twice", "DFD", "B", store.ErrTicketTwice},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir, repo, ids := eightInTheQueue(t)
+			before := queueTitlesOf(t, dataDir)
+
+			_, err := runIn(t, dataDir, repo, moveArgs(ids, test.titles, test.where)...)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("err = %v, want %v", err, test.want)
+			}
+			if got := queueTitlesOf(t, dataDir); !slices.Equal(got, before) {
+				t.Errorf("the queue is %v, want %v", got, before)
+			}
+		})
+	}
+}
+
+func TestRunMoveBeforeItself(t *testing.T) {
+	dataDir, repo, ids := threeInTheQueue(t)
+	before := queueTitlesOf(t, dataDir)
+
+	_, err := runIn(t, dataDir, repo, "move", fmt.Sprint(ids[1]), fmt.Sprint(ids[1]))
+	if !errors.Is(err, store.ErrMoveBeforeItself) {
+		t.Fatalf("err = %v, want ErrMoveBeforeItself", err)
+	}
+	if got := queueTitlesOf(t, dataDir); !slices.Equal(got, before) {
+		t.Errorf("the queue is %v, want %v", got, before)
 	}
 }
 

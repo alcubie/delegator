@@ -50,7 +50,7 @@ dg ticket [flags]
 * [dg ticket finish](dg_ticket_finish.md)	 - Record the commit of a ticket and mark it Ready.
 * [dg ticket list](dg_ticket_list.md)	 - List every ticket, whatever its status
 * [dg ticket map](dg_ticket_map.md)	 - Show the dependency graph of a ticket
-* [dg ticket move](dg_ticket_move.md)	 - Reorder a ticket in its queue or ready list.
+* [dg ticket move](dg_ticket_move.md)	 - Reorder tickets in their queue or ready list.
 * [dg ticket restart](dg_ticket_restart.md)	 - Start a failed ticket again.
 * [dg ticket runs](dg_ticket_runs.md)	 - Show the recorded runs of a ticket.
 * [dg ticket search](dg_ticket_search.md)	 - Find tickets by their text
