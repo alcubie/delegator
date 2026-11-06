@@ -27,9 +27,9 @@ var ErrUnknownCommit = errors.New("git does not know the commit")
 // ErrCommitNotOnBranch shows that a branch does not contain the commit.
 var ErrCommitNotOnBranch = errors.New("the ticket branch does not hold the commit")
 
-// ErrBranchNotMerged shows that HEAD does not contain the ticket branch or an
-// equivalent squash of all its changes.
-var ErrBranchNotMerged = errors.New("the ticket branch is not merged into HEAD")
+// ErrBranchNotMerged shows that the branch it was checked against does not
+// contain the ticket branch or an equivalent squash of all its changes.
+var ErrBranchNotMerged = errors.New("branch not merged")
 
 // ErrWorktreeDirty shows that a worktree has staged, unstaged, or untracked
 // changes which acceptance would discard.
@@ -221,15 +221,13 @@ func CommitOnBranch(root, revision, branch string) (string, error) {
 	return "", err
 }
 
-// RequireBranchMerged checks that HEAD contains branch, either by ancestry or
+// RequireBranchMerged checks that into contains branch, either by ancestry or
 // by a single commit with an equivalent patch for the entire branch. Partial
 // squashes and squashes containing unrelated changes do not qualify.
-//
-// The caller must pass the primary checkout so HEAD refers to the project
-// checkout, not the ticket worktree.
-func RequireBranchMerged(root, branch string) error {
+func RequireBranchMerged(root, branch, into string) error {
 	ref := "refs/heads/" + branch
-	merged, err := isAncestor(root, ref, "HEAD")
+	intoRef := "refs/heads/" + into
+	merged, err := isAncestor(root, ref, intoRef)
 	if err != nil {
 		return err
 	}
@@ -237,14 +235,14 @@ func RequireBranchMerged(root, branch string) error {
 		return nil
 	}
 
-	equivalent, err := hasEquivalentSquash(root, ref)
+	equivalent, err := hasEquivalentSquash(root, ref, intoRef)
 	if err != nil {
 		return err
 	}
 	if equivalent {
 		return nil
 	}
-	return fmt.Errorf("%w: %s; use dg accept --force to accept it anyway", ErrBranchNotMerged, branch)
+	return fmt.Errorf("%w: %s is not in %s; use dg accept --force to accept it anyway", ErrBranchNotMerged, branch, into)
 }
 
 // RequireCleanWorktree checks tracked changes and all non-ignored untracked
@@ -278,9 +276,9 @@ func isAncestor(root, ancestor, descendant string) (bool, error) {
 }
 
 // hasEquivalentSquash compares the full branch diff with each commit added to
-// HEAD since the merge base. A match must cover all branch changes.
-func hasEquivalentSquash(root, branch string) (bool, error) {
-	base, err := gitOutput(root, "merge-base", branch, "HEAD")
+// into since the merge base. A match must cover all branch changes.
+func hasEquivalentSquash(root, branch, into string) (bool, error) {
+	base, err := gitOutput(root, "merge-base", branch, into)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -293,7 +291,7 @@ func hasEquivalentSquash(root, branch string) (bool, error) {
 		return false, err
 	}
 
-	commits, err := gitOutput(root, "rev-list", "--no-merges", base+"..HEAD")
+	commits, err := gitOutput(root, "rev-list", "--no-merges", base+".."+into)
 	if err != nil {
 		return false, err
 	}
