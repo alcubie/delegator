@@ -83,7 +83,7 @@ func TestSessionOptionsGiveOnlyTheProjectCacheToTheAgent(t *testing.T) {
 	}
 }
 
-// A normal turn must record exit code zero and its event stream.
+// A normal turn must record exit code zero, no error and its event stream.
 func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "text "+acpSaid, "stop end_turn")
@@ -105,6 +105,48 @@ func TestTheACPRunnerTakesATurnThatEndedAsASuccess(t *testing.T) {
 	}
 	if !run.ExitCode.Valid || run.ExitCode.V != 0 {
 		t.Errorf("exit code = %+v, want 0", run.ExitCode)
+	}
+	if run.Error != "" {
+		t.Errorf("recorded error = %q, want none", run.Error)
+	}
+}
+
+// A model the agent does not offer fails the run before the first prompt,
+// where no event stream carries the reason.
+func TestTheACPRunnerRecordsAModelThatTheAgentDoesNotOffer(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := acpConfig(t, dataDir, "models: model-v1 model-v2", "stop end_turn")
+	cfg.DefaultModel = "model-v9"
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
+		t.Fatal("err = nil, want the run to fail before it prompts")
+	}
+
+	run, err := testfix.OpenStore(t, dataDir).Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(run.Error, `model "model-v9" is unavailable`) {
+		t.Errorf("recorded error = %q, want the unavailable model", run.Error)
+	}
+}
+
+// An agent that fails the turn, as one over its spend limit does, must leave
+// its reason on the run.
+func TestTheACPRunnerRecordsTheErrorTheAgentReturned(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	cfg := acpConfig(t, dataDir, "no-such-action")
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, cfg); err == nil {
+		t.Fatal("err = nil, want the error the agent returned")
+	}
+
+	run, err := testfix.OpenStore(t, dataDir).Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(run.Error, "the script has no action") {
+		t.Errorf("recorded error = %q, want the error the agent returned", run.Error)
 	}
 }
 

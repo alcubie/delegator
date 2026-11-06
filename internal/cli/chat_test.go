@@ -193,7 +193,7 @@ func TestChatCanFinishAFailedTicketWithoutStartingAnotherRun(t *testing.T) {
 	if err := s.ChangeStatus(ticketID, store.Failed); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(held.ID, 1); err != nil {
+	if err := s.EndRun(held.ID, 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	worktree := run.WorktreePath(dataDir, ticketID)

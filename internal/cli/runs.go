@@ -18,6 +18,7 @@ type runJSON struct {
 	Started  *time.Time `json:"started"`
 	Ended    *time.Time `json:"ended"`
 	ExitCode *int       `json:"exit_code"`
+	Error    *string    `json:"error"`
 }
 
 type runsJSON struct {
@@ -40,8 +41,9 @@ func runsResultSchema() map[string]any {
 			"started":   timestamp,
 			"ended":     timestamp,
 			"exit_code": map[string]any{"type": []string{"integer", "null"}},
+			"error":     nullableString,
 		},
-		"required":             []string{"id", "agent", "model", "started", "ended", "exit_code"},
+		"required":             []string{"id", "agent", "model", "started", "ended", "exit_code", "error"},
 		"additionalProperties": true,
 	}
 	return map[string]any{
@@ -96,6 +98,7 @@ func runsValue(ticketID int64, runs []store.Run) runsJSON {
 			Agent:   nullable(run.Agent),
 			Started: nullableTime(run.StartedAt),
 			Ended:   nullableTime(run.EndedAt),
+			Error:   nullable(run.Error),
 		}
 		if run.ModelID.Valid {
 			row.Model = nullable(run.Model)
@@ -115,11 +118,11 @@ func writeRuns(out io.Writer, value runsJSON) {
 		return
 	}
 	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "RUN\tAGENT\tMODEL\tSTARTED\tENDED\tEXIT CODE")
+	fmt.Fprintln(w, "RUN\tAGENT\tMODEL\tSTARTED\tENDED\tEXIT CODE\tERROR")
 	for _, run := range value.Runs {
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", run.ID,
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", run.ID,
 			stringValue(run.Agent), stringValue(run.Model), timeValue(run.Started),
-			timeValue(run.Ended), intValue(run.ExitCode))
+			timeValue(run.Ended), intValue(run.ExitCode), stringValue(run.Error))
 	}
 	w.Flush()
 }

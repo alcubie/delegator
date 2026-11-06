@@ -1279,6 +1279,7 @@ type Run struct {
 	StartedAt time.Time
 	EndedAt   time.Time
 	ExitCode  sql.Null[int]
+	Error     string
 }
 
 // Run returns the ticket's latest run, or ErrNoRun if it has none.
@@ -1287,14 +1288,14 @@ func (s *Store) Run(ticketID int64) (Run, error) {
 	err := s.db.QueryRow(`
 		SELECT runs.id, runs.ticket_id, COALESCE(runs.agent_id, 0), COALESCE(agents.name, ''),
 		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code,
-		       runs.model_id, COALESCE(models.name, '')
+		       runs.model_id, COALESCE(models.name, ''), COALESCE(runs.error, '')
 		FROM runs LEFT JOIN agents ON agents.id = runs.agent_id
 		LEFT JOIN models ON models.id = runs.model_id
 		WHERE runs.ticket_id = ?
 		ORDER BY runs.id DESC
 		LIMIT 1`, ticketID).Scan(
 		&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
-		timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model)
+		timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model, &r.Error)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: ticket %d", ErrNoRun, ticketID)
 	}
@@ -1312,7 +1313,7 @@ func (s *Store) Runs(ticketID int64) ([]Run, error) {
 	rows, err := s.db.Query(`
 		SELECT runs.id, runs.ticket_id, COALESCE(runs.agent_id, 0), COALESCE(agents.name, ''),
 		       COALESCE(runs.pid, 0), runs.started_at, runs.ended_at, runs.exit_code,
-		       runs.model_id, COALESCE(models.name, '')
+		       runs.model_id, COALESCE(models.name, ''), COALESCE(runs.error, '')
 		FROM runs LEFT JOIN agents ON agents.id = runs.agent_id
 		LEFT JOIN models ON models.id = runs.model_id
 		WHERE runs.ticket_id = ?
@@ -1327,7 +1328,7 @@ func (s *Store) Runs(ticketID int64) ([]Run, error) {
 		var r Run
 		if err := rows.Scan(
 			&r.ID, &r.TicketID, &r.AgentID, &r.Agent, &r.PID,
-			timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model,
+			timeColumn{&r.StartedAt}, timeColumn{&r.EndedAt}, &r.ExitCode, &r.ModelID, &r.Model, &r.Error,
 		); err != nil {
 			return nil, err
 		}
@@ -1344,12 +1345,17 @@ func (s *Store) Runs(ticketID int64) ([]Run, error) {
 	return runs, nil
 }
 
-// EndRun records the end time and exit code for the supervisor's claimed run
-// ID. It returns ErrNoRun if that run does not exist.
-func (s *Store) EndRun(runID int64, exitCode int) error {
+// EndRun records the end time, the exit code and the error that ended the
+// supervisor's claimed run ID. A nil runErr stores NULL. It returns ErrNoRun
+// if that run does not exist.
+func (s *Store) EndRun(runID int64, exitCode int, runErr error) error {
+	var message sql.Null[string]
+	if runErr != nil {
+		message = sql.Null[string]{V: runErr.Error(), Valid: true}
+	}
 	result, err := s.db.Exec(
-		"UPDATE runs SET ended_at = ?, exit_code = ? WHERE id = ?",
-		rfc3339(time.Now()), exitCode, runID)
+		"UPDATE runs SET ended_at = ?, exit_code = ?, error = ? WHERE id = ?",
+		rfc3339(time.Now()), exitCode, message, runID)
 	if err != nil {
 		return err
 	}

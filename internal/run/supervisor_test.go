@@ -190,7 +190,8 @@ func TestStartRefusesATicketThatIsAlreadyRunning(t *testing.T) {
 
 func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
-	if err := os.RemoveAll(testfix.ReadTicket(t, dataDir, id).Project.Path); err != nil {
+	project := testfix.ReadTicket(t, dataDir, id).Project.Path
+	if err := os.RemoveAll(project); err != nil {
 		t.Fatal(err)
 	}
 	s := testfix.OpenStore(t, dataDir)
@@ -209,6 +210,9 @@ func TestStartThatCannotMakeTheWorktreeLeavesTheTicketFailed(t *testing.T) {
 	}
 	if failed.Agent != "fake" {
 		t.Errorf("agent = %q, want %q even though setup failed", failed.Agent, "fake")
+	}
+	if !strings.Contains(failed.Error, project) {
+		t.Errorf("recorded error = %q, want what git said about %q", failed.Error, project)
 	}
 }
 

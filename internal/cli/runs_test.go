@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -9,6 +10,9 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
+
+// historyError is what ended the oldest run of the history.
+const historyError = `model "opus" is unavailable; available model IDs: sonnet`
 
 func runHistory(t *testing.T, dataDir, repo string) (int64, []store.Run) {
 	t.Helper()
@@ -31,7 +35,7 @@ func runHistory(t *testing.T, dataDir, repo string) (int64, []store.Run) {
 	if err := s.RecordSession(first, "session", "history-model"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(first, 7); err != nil {
+	if err := s.EndRun(first, 7, errors.New(historyError)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, store.Failed); err != nil {
@@ -45,7 +49,7 @@ func runHistory(t *testing.T, dataDir, repo string) (int64, []store.Run) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(second, 0); err != nil {
+	if err := s.EndRun(second, 0, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, store.Failed); err != nil {
@@ -98,7 +102,7 @@ func TestTicketRunsRendersEveryRecordedValueNewestFirst(t *testing.T) {
 		fmt.Sprint(newer.ID), "history-agent", "history-model",
 		newer.StartedAt.Format("2006-01-02T15:04:05Z07:00"), "-",
 		older.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
-		older.EndedAt.Format("2006-01-02T15:04:05Z07:00"), "0", "7",
+		older.EndedAt.Format("2006-01-02T15:04:05Z07:00"), "0", "7", historyError,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not contain %q:\n%s", want, out)
@@ -129,8 +133,14 @@ func TestTicketRunsStructuredOutputMatchesTerminalValues(t *testing.T) {
 	active := gotRuns[0].(map[string]any)
 	if active["id"] != float64(runs[0].ID) || active["agent"] != "history-agent" ||
 		active["model"] != "history-model" || active["started"] != runs[0].StartedAt.Format("2006-01-02T15:04:05Z07:00") ||
-		active["ended"] != nil || active["exit_code"] != nil {
+		active["ended"] != nil || active["exit_code"] != nil || active["error"] != nil {
 		t.Errorf("active run = %#v, want recorded values and null end metadata", active)
+	}
+	if clean := gotRuns[1].(map[string]any); clean["exit_code"] != float64(0) || clean["error"] != nil {
+		t.Errorf("clean run = %#v, want exit code 0 and a null error", clean)
+	}
+	if failed := gotRuns[2].(map[string]any); failed["error"] != historyError {
+		t.Errorf("failed run = %#v, want the error that ended it", failed)
 	}
 }
 
@@ -140,7 +150,7 @@ func TestRunsValuePreservesUnavailableRecordedMetadataAsNull(t *testing.T) {
 		t.Fatalf("runs = %#v, want one", value.Runs)
 	}
 	run := value.Runs[0]
-	if run.Agent != nil || run.Model != nil || run.Started != nil || run.Ended != nil || run.ExitCode != nil {
+	if run.Agent != nil || run.Model != nil || run.Started != nil || run.Ended != nil || run.ExitCode != nil || run.Error != nil {
 		t.Errorf("run = %#v, want every unavailable value to be null", run)
 	}
 }
@@ -177,14 +187,15 @@ func TestTicketRunsResultSchemaValidatesCompleteResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var copied map[string]any
-	if err := json.Unmarshal(encoded, &copied); err != nil {
-		t.Fatal(err)
-	}
-	first := copied["runs"].([]any)[0].(map[string]any)
-	delete(first, "ended")
-	if err := validator.Validate(copied); err == nil {
-		t.Error("result missing a nullable run field satisfies the schema")
+	for _, field := range []string{"ended", "error"} {
+		var copied map[string]any
+		if err := json.Unmarshal(encoded, &copied); err != nil {
+			t.Fatal(err)
+		}
+		delete(copied["runs"].([]any)[0].(map[string]any), field)
+		if err := validator.Validate(copied); err == nil {
+			t.Errorf("a result without the run field %q satisfies the schema", field)
+		}
 	}
 
 	nulls := runsValue(1, []store.Run{{ID: 1}})
@@ -208,6 +219,7 @@ func TestTicketRunsResultSchemaValidatesCompleteResults(t *testing.T) {
 		{"wrong agent type", func(result map[string]any) { result["runs"].([]any)[0].(map[string]any)["agent"] = float64(1) }},
 		{"malformed start", func(result map[string]any) { result["runs"].([]any)[0].(map[string]any)["started"] = "yesterday" }},
 		{"wrong exit code type", func(result map[string]any) { result["runs"].([]any)[0].(map[string]any)["exit_code"] = "zero" }},
+		{"wrong error type", func(result map[string]any) { result["runs"].([]any)[0].(map[string]any)["error"] = float64(1) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var result map[string]any
