@@ -20,9 +20,9 @@ import (
 // process-group termination.
 func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket store.Ticket, runID int64, worktree, cacheDir, model string, log io.Writer) (err error) {
 	// Always close the claimed run. Use noExitCode unless the turn
-	// completes normally.
+	// completes normally, and record the error that ended it.
 	code := noExitCode
-	defer func() { err = errors.Join(err, s.EndRun(runID, code)) }()
+	defer func() { err = errors.Join(err, s.EndRun(runID, code, err)) }()
 	id := ticket.ID
 
 	options := sessionOptions(cacheDir, model)

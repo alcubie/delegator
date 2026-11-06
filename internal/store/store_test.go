@@ -347,6 +347,7 @@ type runRow struct {
 	startedAt string
 	endedAt   sql.NullString
 	exitCode  sql.Null[int]
+	runError  sql.NullString
 }
 
 // runRows returns each row of runs that belongs to one ticket, in the order of
@@ -354,7 +355,7 @@ type runRow struct {
 func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	t.Helper()
 	rows, err := s.db.Query(
-		"SELECT id, pid, started_at, ended_at, exit_code FROM runs WHERE ticket_id = ? ORDER BY id",
+		"SELECT id, pid, started_at, ended_at, exit_code, error FROM runs WHERE ticket_id = ? ORDER BY id",
 		ticketID)
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +365,7 @@ func runRows(t *testing.T, s *Store, ticketID int64) []runRow {
 	var runs []runRow
 	for rows.Next() {
 		var r runRow
-		if err := rows.Scan(&r.id, &r.pid, &r.startedAt, &r.endedAt, &r.exitCode); err != nil {
+		if err := rows.Scan(&r.id, &r.pid, &r.startedAt, &r.endedAt, &r.exitCode, &r.runError); err != nil {
 			t.Fatal(err)
 		}
 		runs = append(runs, r)
@@ -444,7 +445,7 @@ func TestOpenMakesTheDatabaseAndTheTables(t *testing.T) {
 func TestOpenMakesTheTableRunsWithItsColumns(t *testing.T) {
 	s, _ := emptyStore(t)
 
-	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id", "model_id"}
+	want := []string{"id", "ticket_id", "pid", "started_at", "ended_at", "exit_code", "agent_id", "model_id", "error"}
 	if got := columnsOf(t, s.db, "runs"); !slices.Equal(got, want) {
 		t.Errorf("the columns of runs = %v, want %v", got, want)
 	}
@@ -3176,7 +3177,7 @@ func TestEndRunWritesTheEndTimeAndTheExitCode(t *testing.T) {
 		}
 		before := time.Now().UTC().Truncate(time.Second)
 
-		if err := s.EndRun(runID, exitCode); err != nil {
+		if err := s.EndRun(runID, exitCode, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -3225,7 +3226,7 @@ func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.EndRun(first, 1); err != nil {
+	if err := s.EndRun(first, 1, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3241,10 +3242,51 @@ func TestEndRunEndsTheRunItWasGiven(t *testing.T) {
 	}
 }
 
+// A reader of the history tells a clean end from a failure by the NULL, so a
+// run that ended without an error must not store an empty message.
+func TestEndRunWritesTheErrorThatEndedTheRun(t *testing.T) {
+	const message = `model "opus" is unavailable; available model IDs: sonnet`
+	for _, test := range []struct {
+		name   string
+		runErr error
+		want   sql.NullString
+	}{
+		{"a failure", errors.New(message), sql.NullString{String: message, Valid: true}},
+		{"a clean end", nil, sql.NullString{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, id := oneTicket(t)
+			runID, err := s.Claim(id, "delegator/1-my-ticket", testAgentID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := s.EndRun(runID, 0, test.runErr); err != nil {
+				t.Fatal(err)
+			}
+
+			rows := runRows(t, s, id)
+			if len(rows) != 1 {
+				t.Fatalf("runs = %+v, want one", rows)
+			}
+			if rows[0].runError != test.want {
+				t.Errorf("error = %+v, want %+v", rows[0].runError, test.want)
+			}
+			got, err := s.Run(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Error != test.want.String {
+				t.Errorf("Run gives the error %q, want %q", got.Error, test.want.String)
+			}
+		})
+	}
+}
+
 func TestEndRunOnARunThatIsNotThere(t *testing.T) {
 	s, _ := oneTicket(t)
 
-	if err := s.EndRun(404, 0); !errors.Is(err, ErrNoRun) {
+	if err := s.EndRun(404, 0, nil); !errors.Is(err, ErrNoRun) {
 		t.Errorf("err = %v, want ErrNoRun", err)
 	}
 }
@@ -3401,7 +3443,7 @@ func TestFailUnfinishedKeepsTheEndThatTheRunHas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(runID, 2); err != nil {
+	if err := s.EndRun(runID, 2, nil); err != nil {
 		t.Fatal(err)
 	}
 	const ended = "2026-08-28T09:00:00Z"

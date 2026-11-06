@@ -173,7 +173,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 
 	worktree, err := Worktree(dataDir, ticket)
 	if err != nil {
-		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(runID, noExitCode))
+		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(runID, noExitCode, err))
 	}
 	cacheDir, err := ProjectCache(dataDir, ticket.Project.ID)
 	if err != nil {

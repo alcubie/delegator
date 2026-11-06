@@ -28,6 +28,9 @@ func TestRunsRejectsATicketThatDoesNotExist(t *testing.T) {
 	}
 }
 
+// firstError is what ended the first run of the history.
+const firstError = `model "opus" is unavailable; available model IDs: sonnet`
+
 func TestRunsReturnsTheCompleteHistoryNewestFirst(t *testing.T) {
 	s, id := oneTicket(t)
 	if err := s.SaveAgent(Agent{Name: "history-agent", Argv: []string{"history-agent"}}); err != nil {
@@ -49,7 +52,7 @@ func TestRunsReturnsTheCompleteHistoryNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(firstID, 7); err != nil {
+	if err := s.EndRun(firstID, 7, errors.New(firstError)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
@@ -60,7 +63,7 @@ func TestRunsReturnsTheCompleteHistoryNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EndRun(secondID, 0); err != nil {
+	if err := s.EndRun(secondID, 0, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ChangeStatus(id, Failed); err != nil {
@@ -110,13 +113,16 @@ func TestRunsReturnsTheCompleteHistoryNewestFirst(t *testing.T) {
 		finished.ModelID != first.ModelID || finished.Model != "history-model" {
 		t.Errorf("finished run identity = %+v, want recorded agent and model", finished)
 	}
-	if finished.EndedAt.IsZero() || !finished.ExitCode.Valid || finished.ExitCode.V != 0 {
-		t.Errorf("finished run = %+v, want an end and exit code 0", finished)
+	if finished.EndedAt.IsZero() || !finished.ExitCode.Valid || finished.ExitCode.V != 0 || finished.Error != "" {
+		t.Errorf("finished run = %+v, want an end, exit code 0 and no error", finished)
 	}
 
 	failed := runs[2]
 	if failed.EndedAt.IsZero() || !failed.ExitCode.Valid || failed.ExitCode.V != 7 {
 		t.Errorf("failed run = %+v, want an end and exit code 7", failed)
+	}
+	if failed.Error != firstError {
+		t.Errorf("failed run error = %q, want %q", failed.Error, firstError)
 	}
 }
 
