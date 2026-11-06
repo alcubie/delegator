@@ -336,9 +336,10 @@ func showResultSchema() map[string]any {
 					"accept":  action,
 					"cancel":  action,
 					"chat":    action,
+					"edit":    action,
 					"restart": action,
 				},
-				"required":             []string{"accept", "cancel", "chat", "restart"},
+				"required":             []string{"accept", "cancel", "chat", "edit", "restart"},
 				"additionalProperties": true,
 			},
 		},
@@ -456,14 +457,16 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		t.Worktree = ""
 	}
 
-	available, reason, err := chatAvailable(s, dataDir, id)
+	canChat, chatReason, err := chatAvailable(s, dataDir, id)
 	if err != nil {
 		return ticketJSON{}, err
 	}
+	canEdit, editReason := editAvailable(ticket)
 	t.Actions = map[string]actionJSON{
 		"accept":  actionValue(acceptAvailable(ticket)),
 		"cancel":  actionValue(cancelAvailable(ticket)),
-		"chat":    {Applicable: chatApplicable(ticket), Available: available, Reason: nullable(reason)},
+		"chat":    {Applicable: chatApplicable(ticket), Available: canChat, Reason: nullable(chatReason)},
+		"edit":    {Applicable: editApplicable(ticket), Available: canEdit, Reason: nullable(editReason)},
 		"restart": actionValue(restartAvailable(ticket)),
 	}
 

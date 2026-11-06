@@ -164,3 +164,21 @@ func refuseEdit(ticket store.Ticket) error {
 	}
 	return fmt.Errorf("ticket %d is %s: only a ticket in the queue can be changed", ticket.ID, ticket.Status)
 }
+
+// editAvailable reports whether the status of a ticket lets edit run, and the
+// reason beside it for when it does not. The reason is the message edit itself
+// would print, so the two cannot drift apart.
+func editAvailable(ticket store.Ticket) (bool, string) {
+	if ticket.Status != store.Queued {
+		return false, refuseEdit(ticket).Error()
+	}
+	return true, ""
+}
+
+// editApplicable reports whether a ticket in this status is one a person could
+// still ask to change, which a refusal from editAvailable does not separate
+// from a ticket whose words are fixed for good. A done or a cancelled ticket is
+// closed and its prose is the record of work that has already happened.
+func editApplicable(ticket store.Ticket) bool {
+	return ticket.Status != store.Done && ticket.Status != store.Cancelled
+}

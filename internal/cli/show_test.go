@@ -144,6 +144,16 @@ func cancelErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// editErrorIn runs dg edit and returns the message it refuses with.
+func editErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
+	t.Helper()
+	if _, err := editIn(t, dataDir, workDir, id, "--title", "A changed title"); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg edit changed ticket %d", id)
+	return ""
+}
+
 // closedTicket builds a ticket and moves it to a closed status, leaving the
 // worktree and the run that the command closing it would take away.
 func closedTicket(t *testing.T, dataDir string, status store.TicketStatus) (id int64, repo string) {
@@ -1344,6 +1354,72 @@ func TestRunShowJSONGivesTheStatusReasonRestartWouldPrint(t *testing.T) {
 			}
 			if got := restartErrorIn(t, dataDir, repo, id); got != test.want {
 				t.Errorf("dg restart error = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// The desktop app reads the edit action before it offers its Edit button, and
+// a queued ticket is the one edit changes.
+func TestRunShowJSONGivesNoEditReasonForAQueuedTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+
+	assertAvailable(t, dataDir, repo, id, "edit")
+}
+
+// The status is edit's whole rule, and show gives the words that edit would
+// print for a ticket in any other one. A running ticket is pointed at chat
+// instead.
+func TestRunShowJSONGivesTheStatusReasonEditWouldPrint(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		want   string
+	}{
+		{store.Running, "ticket %[1]d is running: after the run, use dg ticket chat %[1]d to ask for changes"},
+		{store.Ready, "ticket %[1]d is ready: only a ticket in the queue can be changed"},
+		{store.Failed, "ticket %[1]d is failed: only a ticket in the queue can be changed"},
+		{store.Done, "ticket %[1]d is done: only a ticket in the queue can be changed"},
+		{store.Cancelled, "ticket %[1]d is cancelled: only a ticket in the queue can be changed"},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, test.status)
+			want := fmt.Sprintf(test.want, id)
+
+			if reason := refusalIn(t, dataDir, repo, id, "edit"); reason != want {
+				t.Errorf("actions.edit.reason = %q, want %q", reason, want)
+			}
+			if got := editErrorIn(t, dataDir, repo, id); got != want {
+				t.Errorf("dg edit error = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A consumer that draws one control per action needs to know which actions a
+// ticket has no subject for, and for edit that is not the same question as
+// whether edit can run: a running ticket refuses the edit and the person still
+// needs to be told to wait for the run and use chat.
+func TestRunShowJSONReportsWhetherEditAppliesToTheStatus(t *testing.T) {
+	for _, test := range []struct {
+		status store.TicketStatus
+		want   bool
+	}{
+		{store.Queued, true},
+		{store.Running, true},
+		{store.Ready, true},
+		{store.Failed, true},
+		{store.Done, false},
+		{store.Cancelled, false},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, test.status)
+
+			action := actionIn(t, dataDir, repo, id, "edit")
+			if action["applicable"] != test.want {
+				t.Errorf("actions.edit.applicable = %#v, want %v", action["applicable"], test.want)
 			}
 		})
 	}
