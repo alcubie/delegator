@@ -313,6 +313,70 @@ func TestTicketInARepositoryWithNoCommitWritesNothing(t *testing.T) {
 	}
 }
 
+func TestTicketForAnArchivedProjectWritesNothing(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	if _, err := ticketIn(t, dataDir, repo, "Remove staging infrastructure", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ticketIn(t, dataDir, repo, "Add rate limiting", "")
+
+	if !errors.Is(err, errProjectArchived) {
+		t.Fatalf("err = %v, want %v", err, errProjectArchived)
+	}
+	if code := ErrorCode(err); code != codeProjectArchived {
+		t.Errorf("error code = %d, want %d", code, codeProjectArchived)
+	}
+	if message := err.Error(); !strings.Contains(message, projectPath(t, repo)) ||
+		!strings.Contains(message, "dg project restore") {
+		t.Errorf("err = %q, want the path and dg project restore", message)
+	}
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 1 {
+		t.Errorf("the queue holds %d tickets, want the one from before the archive", len(queue))
+	}
+	if got := proseFiles(t, dataDir); len(got) != 1 {
+		t.Errorf("the files of prose are %v, want the one from before the archive", got)
+	}
+}
+
+func TestTicketForARestoredProjectJoinsTheQueue(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	if _, err := ticketIn(t, dataDir, repo, "Remove staging infrastructure", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "restore", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := ticketIn(t, dataDir, repo, "Add rate limiting", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	queue, err := testfix.OpenStore(t, dataDir).ListQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 2 {
+		t.Errorf("the queue holds %d tickets, want 2", len(queue))
+	}
+	if id != 2 {
+		t.Errorf("id = %d, want 2", id)
+	}
+}
+
 // The first ticket registers the project's default branch.
 func TestTicketWritesTheBranchOfTheRepository(t *testing.T) {
 	dataDir := t.TempDir()

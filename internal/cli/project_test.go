@@ -426,6 +426,49 @@ func TestProjectAddRejectsAnEmptyRepository(t *testing.T) {
 	}
 }
 
+func TestProjectAddRefusesAnArchivedProject(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	registerProjects(t, dataDir, projectPath(t, repo))
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "add", repo)
+
+	if !errors.Is(err, errProjectArchived) {
+		t.Fatalf("err = %v, want %v", err, errProjectArchived)
+	}
+	if code := ErrorCode(err); code != codeProjectArchived {
+		t.Errorf("error code = %d, want %d", code, codeProjectArchived)
+	}
+	if message := err.Error(); !strings.Contains(message, projectPath(t, repo)) ||
+		!strings.Contains(message, "dg project restore") {
+		t.Errorf("err = %q, want the path and dg project restore", message)
+	}
+	if got := archivedPaths(t, dataDir); !slices.Equal(got, []string{projectPath(t, repo)}) {
+		t.Errorf("archived projects = %v, want only %q", got, projectPath(t, repo))
+	}
+}
+
+func TestProjectAddRegistersTheProjectAgainAfterARestore(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	projects := registerProjects(t, dataDir, projectPath(t, repo))
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "restore", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	result := projectAddResult(t, dataDir, t.TempDir(), repo)
+
+	if result["id"] != float64(projects[0].ID) || result["archived"] != false {
+		t.Errorf("result = %#v, want the active project %d", result, projects[0].ID)
+	}
+}
+
 func TestRPCProjectAddRejectsAMissingPath(t *testing.T) {
 	dataDir := t.TempDir()
 

@@ -28,6 +28,10 @@ var errProjectNameLineBreak = errors.New("a project name is one line, and this o
 // errProjectNameAndClear rejects the two forms together.
 var errProjectNameAndClear = errors.New("dg project rename takes a name or --clear, and got both")
 
+// errProjectArchived refuses new work for an archived project rather than
+// restoring the project as a side effect of the work.
+var errProjectArchived = errors.New("the project is archived")
+
 type projectJSON struct {
 	ID            int64  `json:"id"`
 	Name          string `json:"name"`
@@ -125,13 +129,22 @@ func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cob
 
 // registerProject resolves dir to its repository root and registers it with
 // the store, creating the project row if needed. It refuses a repository
-// with no commit, since that leaves no branch to start a worktree from. It
+// with no commit, since that leaves no branch to start a worktree from, and
+// an archived project, which takes no new work until it is restored. It
 // returns the stored row, so a project registered earlier reports the branch
 // of that registration rather than the branch git reports today.
 func registerProject(s *store.Store, dir string) (store.Project, error) {
 	root, err := project.Root(dir)
 	if err != nil {
 		return store.Project{}, err
+	}
+	registered, err := s.ProjectByPath(root)
+	if err != nil && !errors.Is(err, store.ErrNoProject) {
+		return store.Project{}, err
+	}
+	if err == nil && !registered.ArchivedAt.IsZero() {
+		return store.Project{}, fmt.Errorf("%w: %s; restore it with dg project restore",
+			errProjectArchived, root)
 	}
 	if _, err := project.FirstCommit(root); err != nil {
 		return store.Project{}, err
