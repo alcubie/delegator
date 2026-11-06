@@ -873,20 +873,7 @@ func TestRPCDiscoverProjectRenameResultContract(t *testing.T) {
 		t.Fatalf("project.rename result does not satisfy the advertised schema: %v", err)
 	}
 
-	for _, field := range []string{"id", "name", "path", "default_branch", "archived"} {
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var copied map[string]any
-		if err := json.Unmarshal(encoded, &copied); err != nil {
-			t.Fatal(err)
-		}
-		delete(copied, field)
-		if err := validator.Validate(copied); err == nil {
-			t.Errorf("a result missing %q satisfies the schema", field)
-		}
-	}
+	requiredResultFields(t, validator, result, resultObject, projectResultFields...)
 }
 
 func TestRPCDiscoverPublishesProjectArchive(t *testing.T) {
