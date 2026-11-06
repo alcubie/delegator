@@ -64,44 +64,34 @@ func projectListResult(t *testing.T, dataDir, workDir string) []any {
 	return result
 }
 
-// projectAddResult reads the object that project.add returns through the
-// protocol for the repository at dir.
-func projectAddResult(t *testing.T, dataDir, workDir, dir string) map[string]any {
+// projectPathResult reads the object that an operation naming a project by its
+// directory returns through the protocol.
+func projectPathResult(t *testing.T, dataDir, workDir, method, dir string) map[string]any {
 	t.Helper()
-	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"project.add","params":{"args":[%q]},"id":1}`, dir)
+	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"params":{"args":[%q]},"id":1}`, method, dir)
 	out, err := rpcIn(t, dataDir, workDir, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	response := rpcObject(t, out)
 	if response["error"] != nil {
-		t.Fatalf("project.add response = %#v, want a result", response)
+		t.Fatalf("%s response = %#v, want a result", method, response)
 	}
 	result, ok := response["result"].(map[string]any)
 	if !ok {
-		t.Fatalf("project.add result = %#v, want an object", response["result"])
+		t.Fatalf("%s result = %#v, want an object", method, response["result"])
 	}
 	return result
 }
 
-// projectArchiveResult reads the object that project.archive returns through
-// the protocol for the project registered at dir.
+func projectAddResult(t *testing.T, dataDir, workDir, dir string) map[string]any {
+	t.Helper()
+	return projectPathResult(t, dataDir, workDir, "project.add", dir)
+}
+
 func projectArchiveResult(t *testing.T, dataDir, workDir, dir string) map[string]any {
 	t.Helper()
-	request := fmt.Sprintf(`{"jsonrpc":"2.0","method":"project.archive","params":{"args":[%q]},"id":1}`, dir)
-	out, err := rpcIn(t, dataDir, workDir, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := rpcObject(t, out)
-	if response["error"] != nil {
-		t.Fatalf("project.archive response = %#v, want a result", response)
-	}
-	result, ok := response["result"].(map[string]any)
-	if !ok {
-		t.Fatalf("project.archive result = %#v, want an object", response["result"])
-	}
-	return result
+	return projectPathResult(t, dataDir, workDir, "project.archive", dir)
 }
 
 // archivedPaths returns the path of every project that project.list reports as
