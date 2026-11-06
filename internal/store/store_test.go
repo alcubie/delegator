@@ -1342,6 +1342,87 @@ func TestProjectByPathReadsTheNameAndTheArchivalTime(t *testing.T) {
 	}
 }
 
+func TestArchiveProjectRecordsTheTimeAndReturnsTheRow(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(-time.Second)
+
+	project, err := s.ArchiveProject("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.ID != id || project.Path != "/projects/path" || project.DefaultBranch != "main" {
+		t.Errorf("project = %+v, want id %d at /projects/path on main", project, id)
+	}
+	if project.ArchivedAt.Before(before) || project.ArchivedAt.After(time.Now()) {
+		t.Errorf("archived at %v, want a time between %v and now", project.ArchivedAt, before)
+	}
+	stored, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.ArchivedAt.Equal(project.ArchivedAt) {
+		t.Errorf("the stored time is %v, want the returned %v", stored.ArchivedAt, project.ArchivedAt)
+	}
+}
+
+func TestArchiveProjectKeepsTheTimeOfTheFirstArchive(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.ProjectID("/projects/path", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	if _, err := s.db.Exec("UPDATE projects SET archived_at = ? WHERE id = ?",
+		rfc3339(first), id); err != nil {
+		t.Fatal(err)
+	}
+
+	project, err := s.ArchiveProject("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !project.ArchivedAt.Equal(first) {
+		t.Errorf("archived at %v, want the first archive %v", project.ArchivedAt, first)
+	}
+}
+
+func TestArchiveProjectRefusesAPathThatIsNotRegistered(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if _, err := s.ProjectID("/projects/path", "main"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.ArchiveProject("/projects/path/sub"); !errors.Is(err, ErrNoProject) {
+		t.Errorf("err = %v, want %v", err, ErrNoProject)
+	}
+	project, err := s.ProjectByPath("/projects/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !project.ArchivedAt.IsZero() {
+		t.Errorf("the registered project is archived at %v, want it active", project.ArchivedAt)
+	}
+}
+
 func TestSetProjectNameStoresTheNameAndReturnsTheRow(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -1560,6 +1641,41 @@ func TestOpenTicketsGivesTheTicketsOfEachProject(t *testing.T) {
 	}
 	if got := byTitle["two"]; got != "/projects/other" {
 		t.Errorf("the ticket two has the project %q, want /projects/other", got)
+	}
+}
+
+// The rows of the CLI name a project as the desktop app does, so an inbox
+// ticket carries the name beside the path.
+func TestOpenTicketsCarriesTheNameOfTheProject(t *testing.T) {
+	s, projectID := emptyStore(t)
+	unnamed, err := s.ProjectID("/projects/other", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("UPDATE projects SET name = ? WHERE id = ?",
+		"Widget", projectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(projectID, "one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTicket(unnamed, "two"); err != nil {
+		t.Fatal(err)
+	}
+
+	open, err := s.OpenTickets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byTitle := map[string]string{}
+	for _, ticket := range open {
+		byTitle[ticket.Title] = ticket.ProjectName
+	}
+	if got := byTitle["one"]; got != "Widget" {
+		t.Errorf("the ticket one has the project name %q, want Widget", got)
+	}
+	if got := byTitle["two"]; got != "" {
+		t.Errorf("the ticket two has the project name %q, want none", got)
 	}
 }
 

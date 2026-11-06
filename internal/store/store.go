@@ -278,6 +278,20 @@ func (s *Store) ProjectByPath(path string) (Project, error) {
 	return p, nil
 }
 
+// ArchiveProject marks the project registered at exactly path archived and
+// returns its row, or ErrNoProject when no project is registered there: the
+// update matches no row and the read back refuses the path. An archived
+// project keeps the time of its first archive, so a repeat call is not an
+// error. Nothing about the tickets of the project changes.
+func (s *Store) ArchiveProject(path string) (Project, error) {
+	if _, err := s.db.Exec(
+		"UPDATE projects SET archived_at = COALESCE(archived_at, ?) WHERE path = ?",
+		rfc3339(time.Now()), path); err != nil {
+		return Project{}, err
+	}
+	return s.ProjectByPath(path)
+}
+
 // ProjectID returns the project ID for path, creating the project if needed.
 // The first ticket sets its default branch; later tickets preserve that
 // choice.
@@ -536,14 +550,20 @@ func setPositions(tx *sql.Tx, l list, ids []int64) error {
 	return nil
 }
 
-// OpenTicket holds a ticket and its project path for inbox display. NULL
-// columns become zero values only where zero is not a valid stored value;
-// otherwise a nullable type is needed.
+// OpenTicket holds a ticket and the path and name of its project for inbox
+// display. NULL columns become zero values only where zero is not a valid
+// stored value; otherwise a nullable type is needed.
 type OpenTicket struct {
 	ID      int64
 	Project string
-	Title   string
-	Status  TicketStatus
+
+	// ProjectName is the given name of the project, or empty when it has
+	// none and the folder of the path stands in. The tag keeps it out of
+	// the JSON rows of dg list, which marshal an OpenTicket.
+	ProjectName string `json:"-"`
+
+	Title  string
+	Status TicketStatus
 
 	// Position is the ticket's queue or ready-list position, or zero for
 	// other statuses.
@@ -629,7 +649,8 @@ const inboxTicketQuery = `
 	       (SELECT started_at FROM runs
 	        WHERE runs.ticket_id = tickets.id ORDER BY runs.id DESC LIMIT 1),
 	       ` + lastChange + `,
-	       (SELECT COUNT(*) FROM runs WHERE runs.ticket_id = tickets.id)
+	       (SELECT COUNT(*) FROM runs WHERE runs.ticket_id = tickets.id),
+	       COALESCE(projects.name, '')
 	FROM tickets
 	JOIN projects ON projects.id = tickets.project_id
 	`
@@ -657,7 +678,7 @@ func (s *Store) inboxTickets(query string, args ...any) ([]OpenTicket, error) {
 			&t.ID, &t.Project, &t.Title, &t.Status, &t.Position,
 			timeColumn{&t.Created}, timeColumn{&t.Accepted},
 			timeColumn{&t.Started}, timeColumn{&t.Changed},
-			&t.Runs); err != nil {
+			&t.Runs, &t.ProjectName); err != nil {
 			return nil, err
 		}
 		t.DependsOn = append([]int64{}, unmet[t.ID]...)

@@ -36,16 +36,21 @@ type projectJSON struct {
 	Archived      bool   `json:"archived"`
 }
 
-// projectValue names a project after the folder of its path when it has no
-// given name, so that a client reads one field rather than a fallback.
-func projectValue(p store.Project) projectJSON {
-	name := p.Name
-	if name == "" {
-		name = filepath.Base(p.Path)
+// projectName names a project after the folder of its path when it has no
+// given name.
+func projectName(name, path string) string {
+	if name != "" {
+		return name
 	}
+	return filepath.Base(path)
+}
+
+// projectValue resolves the name, so that a client reads one field rather than
+// a fallback.
+func projectValue(p store.Project) projectJSON {
 	return projectJSON{
 		ID:            p.ID,
-		Name:          name,
+		Name:          projectName(p.Name, p.Path),
 		Path:          p.Path,
 		DefaultBranch: p.DefaultBranch,
 		Archived:      !p.ArchivedAt.IsZero(),
@@ -57,17 +62,19 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Work with the registered projects.",
-		Long: "Register a repository as a project, name a project, and show the repositories " +
-			"that this Delegator instance has registered.",
+		Long: "Register a repository as a project, name a project, archive one to hide it from " +
+			"the lists, and show the repositories that this Delegator instance has registered.",
 		Example: `  dg project add
   dg project list
-  dg project rename Backend`,
+  dg project rename Backend
+  dg project archive`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 	cmd.AddCommand(projectAddCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(projectArchiveCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
 	cmd.AddCommand(projectRenameCommand(dataDir, workDir, cfg))
 	return cmd
@@ -136,6 +143,44 @@ func registerProject(s *store.Store, dir string) (store.Project, error) {
 	return s.ProjectByPath(root)
 }
 
+// projectArchiveCommand hides a project from the lists without deleting it.
+// dir defaults to the current working directory.
+func projectArchiveCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	return rpcOperationCommand("project.archive", &cobra.Command{
+		Use:   "archive [dir]",
+		Short: "Archive a project so it leaves the lists.",
+		Long: "Archive the project registered at dir, or at the current working directory, so that it " +
+			"leaves the lists of the desktop app without being deleted from Delegator. dir has to match " +
+			"the registered path of a project exactly: it is not resolved through Git, and it does not " +
+			"have to exist, so a project whose repository was deleted can still be archived. The tickets " +
+			"of the project are untouched, and an open ticket keeps running and stays in the inbox. " +
+			"Archiving an archived project keeps the time of its first archive.",
+		Example: `  dg project archive
+  dg project archive ~/projects/widget`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var arg string
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			var value projectJSON
+			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				p, err := s.ArchiveProject(absoluteDir(workDir, arg))
+				if err != nil {
+					return err
+				}
+				value = projectValue(p)
+				return nil
+			}); err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+				fmt.Fprintf(out, "Archived %s\n", value.Path)
+			})
+		},
+	})
+}
+
 // projectListCommand writes every registered project, including those whose
 // tickets have all left the inbox.
 func projectListCommand(dataDir *string, cfg *config.Config) *cobra.Command {
@@ -194,7 +239,7 @@ func projectRenameCommand(dataDir *string, workDir string, cfg *config.Config) *
   dg project rename --clear`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := projectName(args, clear)
+			name, err := givenProjectName(args, clear)
 			if err != nil {
 				return err
 			}
@@ -222,9 +267,10 @@ func projectRenameCommand(dataDir *string, workDir string, cfg *config.Config) *
 	return rpcOperationCommand("project.rename", cmd)
 }
 
-// projectName reads the new name from the argument of dg project rename, and
-// gives the empty string for --clear.
-func projectName(args []string, clear bool) (string, error) {
+// givenProjectName reads the name from the argument of dg project rename. It
+// gives the empty string for --clear, which is the stored form that means the
+// project takes the folder name of its path.
+func givenProjectName(args []string, clear bool) (string, error) {
 	if clear {
 		if len(args) == 1 {
 			return "", errProjectNameAndClear
@@ -262,7 +308,7 @@ func writeProjects(out io.Writer, projects []projectJSON) {
 }
 
 // projectResultSchema describes the object that identifies a registered
-// project, as project.add returns it.
+// project, as project.add and project.archive return it.
 func projectResultSchema() map[string]any {
 	return map[string]any{
 		"type": "object",

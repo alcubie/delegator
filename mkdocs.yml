@@ -31,6 +31,7 @@ nav:
       - project:
           - Overview: reference/dg_project.md
           - add: reference/dg_project_add.md
+          - archive: reference/dg_project_archive.md
           - list: reference/dg_project_list.md
           - rename: reference/dg_project_rename.md
       - rpc: reference/dg_rpc.md
