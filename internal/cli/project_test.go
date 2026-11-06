@@ -451,6 +451,24 @@ func TestProjectAddRefusesAnArchivedProject(t *testing.T) {
 	}
 }
 
+func TestProjectAddRefusesAnArchivedProjectWithoutItsRepository(t *testing.T) {
+	dataDir := t.TempDir()
+	path := archivedGoneProject(t, dataDir)
+
+	_, err := runIn(t, dataDir, t.TempDir(), "project", "add", path)
+
+	if !errors.Is(err, errProjectArchived) {
+		t.Fatalf("err = %v, want %v", err, errProjectArchived)
+	}
+	if code := ErrorCode(err); code != codeProjectArchived {
+		t.Errorf("error code = %d, want %d", code, codeProjectArchived)
+	}
+	if message := err.Error(); !strings.Contains(message, path) ||
+		!strings.Contains(message, "dg project restore") {
+		t.Errorf("err = %q, want the path and dg project restore", message)
+	}
+}
+
 func TestProjectAddRegistersTheProjectAgainAfterARestore(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)

@@ -121,12 +121,12 @@ func projectAddCommand(dataDir *string, workDir string, cfg *config.Config) *cob
 			if len(args) == 1 {
 				arg = args[0]
 			}
-			dir, err := ticketProject(workDir, arg)
-			if err != nil {
-				return err
-			}
 			var value projectJSON
 			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				dir, err := ticketProjectDir(s, workDir, arg)
+				if err != nil {
+					return err
+				}
 				p, err := registerProject(s, dir)
 				if err != nil {
 					return err
