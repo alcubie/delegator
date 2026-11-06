@@ -60,6 +60,16 @@ func ticketArg(arg string) (int64, error) {
 	return id, nil
 }
 
+// absoluteDir resolves a directory given on the command line against the
+// working directory, without reading the filesystem. An empty dir gives the
+// working directory.
+func absoluteDir(workDir, dir string) string {
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
+	return filepath.Join(workDir, dir)
+}
+
 // ticketNames formats ticket references consistently for the inbox and dg
 // show.
 func ticketNames(ids []int64) string {
