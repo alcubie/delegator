@@ -160,6 +160,37 @@ func openRPCResultValidatorWithCompiler(t *testing.T, compiler *jsonschema.Compi
 	return validator
 }
 
+// requiredResultFields deletes each field in turn from a copy of a valid
+// result and fails when the validator still accepts it. row reaches the object
+// to delete from, so an object result and an array of objects share the check.
+func requiredResultFields(t *testing.T, validator *jsonschema.Schema, result any, row func(any) map[string]any, fields ...string) {
+	t.Helper()
+	for _, field := range fields {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var copied any
+		if err := json.Unmarshal(encoded, &copied); err != nil {
+			t.Fatal(err)
+		}
+		delete(row(copied), field)
+		if err := validator.Validate(copied); err == nil {
+			t.Errorf("a result missing %q satisfies the schema", field)
+		}
+	}
+}
+
+// resultObject reads a result that is one object.
+func resultObject(result any) map[string]any {
+	return result.(map[string]any)
+}
+
+// firstResultRow reads the first object of a result that is an array.
+func firstResultRow(result any) map[string]any {
+	return result.([]any)[0].(map[string]any)
+}
+
 func rpcNullResult(t *testing.T, validator *jsonschema.Schema, dataDir, workDir, method string, params map[string]any) {
 	t.Helper()
 	request, err := json.Marshal(map[string]any{

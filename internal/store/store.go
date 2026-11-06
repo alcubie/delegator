@@ -292,6 +292,18 @@ func (s *Store) ArchiveProject(path string) (Project, error) {
 	return s.ProjectByPath(path)
 }
 
+// RestoreProject clears the archival time of the project registered at exactly
+// path and returns its row, or ErrNoProject when no project is registered
+// there: the update matches no row and the read back refuses the path.
+// Restoring a project that is not archived is not an error. Nothing about the
+// tickets of the project changes.
+func (s *Store) RestoreProject(path string) (Project, error) {
+	if _, err := s.db.Exec("UPDATE projects SET archived_at = NULL WHERE path = ?", path); err != nil {
+		return Project{}, err
+	}
+	return s.ProjectByPath(path)
+}
+
 // ProjectID returns the project ID for path, creating the project if needed.
 // The first ticket sets its default branch; later tickets preserve that
 // choice.

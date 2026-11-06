@@ -63,11 +63,13 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 		Use:   "project",
 		Short: "Work with the registered projects.",
 		Long: "Register a repository as a project, name a project, archive one to hide it from " +
-			"the lists, and show the repositories that this Delegator instance has registered.",
+			"the lists, restore an archived one, and show the repositories that this Delegator " +
+			"instance has registered.",
 		Example: `  dg project add
   dg project list
   dg project rename Backend
-  dg project archive`,
+  dg project archive
+  dg project restore`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -77,6 +79,7 @@ func projectCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.
 	cmd.AddCommand(projectArchiveCommand(dataDir, workDir, cfg))
 	cmd.AddCommand(projectListCommand(dataDir, cfg))
 	cmd.AddCommand(projectRenameCommand(dataDir, workDir, cfg))
+	cmd.AddCommand(projectRestoreCommand(dataDir, workDir, cfg))
 	return cmd
 }
 
@@ -176,6 +179,43 @@ func projectArchiveCommand(dataDir *string, workDir string, cfg *config.Config) 
 			}
 			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
 				fmt.Fprintf(out, "Archived %s\n", value.Path)
+			})
+		},
+	})
+}
+
+// projectRestoreCommand brings an archived project back to the lists. dir
+// defaults to the current working directory.
+func projectRestoreCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Command {
+	return rpcOperationCommand("project.restore", &cobra.Command{
+		Use:   "restore [dir]",
+		Short: "Restore an archived project to the lists.",
+		Long: "Restore the project registered at dir, or at the current working directory, so that it " +
+			"returns to the lists of the desktop app. dir has to match the registered path of a project " +
+			"exactly: it is not resolved through Git, and it does not have to exist, so a project whose " +
+			"repository was deleted can still be restored. The tickets of the project are untouched. " +
+			"Restoring a project that is not archived changes nothing and is not an error.",
+		Example: `  dg project restore
+  dg project restore ~/projects/widget`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var arg string
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			var value projectJSON
+			if err := withStore(*dataDir, cfg, func(s *store.Store) error {
+				p, err := s.RestoreProject(absoluteDir(workDir, arg))
+				if err != nil {
+					return err
+				}
+				value = projectValue(p)
+				return nil
+			}); err != nil {
+				return err
+			}
+			return writeValue(cmd.OutOrStdout(), value, false, func(out io.Writer) {
+				fmt.Fprintf(out, "Restored %s\n", value.Path)
 			})
 		},
 	})
@@ -308,7 +348,7 @@ func writeProjects(out io.Writer, projects []projectJSON) {
 }
 
 // projectResultSchema describes the object that identifies a registered
-// project, as project.add and project.archive return it.
+// project, as project.add, project.archive and project.restore return it.
 func projectResultSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
