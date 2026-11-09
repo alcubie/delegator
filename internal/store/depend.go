@@ -24,6 +24,13 @@ var ErrNoDependency = errors.New("the ticket does not depend on that one")
 // Dependencies can only block queued work.
 var ErrNotQueued = errors.New("only a queued ticket can change what it depends on")
 
+// RefuseDependencyChange gives the error that a change of dependencies on a
+// ticket outside the queue gets, so that a caller which reports whether the
+// change can happen gives the words of the refusal itself.
+func RefuseDependencyChange(t Ticket) error {
+	return fmt.Errorf("%w: ticket %d is %s", ErrNotQueued, t.ID, t.Status)
+}
+
 // AddDependencies makes id depend on each ticket in dependsOn. Existing links
 // are unchanged. Only Done satisfies a dependency; a cancelled prerequisite
 // blocks work until its link is removed.
@@ -70,7 +77,7 @@ func (s *Store) changeDependencies(id int64, change func(*sql.Tx) error) error {
 		return err
 	}
 	if t.Status != Queued {
-		return fmt.Errorf("%w: ticket %d is %s", ErrNotQueued, id, t.Status)
+		return RefuseDependencyChange(t)
 	}
 
 	if err := change(tx); err != nil {

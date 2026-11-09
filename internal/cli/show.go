@@ -265,17 +265,10 @@ func actionValue(available bool, reason string) actionJSON {
 	return actionJSON{Applicable: available, Available: available, Reason: nullable(reason)}
 }
 
-// showResultSchema describes ticketJSON for RPC discovery. Nullable fields
-// remain required so consumers can distinguish a known missing value from an
-// older response that does not describe the field. Additional properties stay
-// valid because adding fields does not change jsonSchema.
-func showResultSchema() map[string]any {
-	nullableString := map[string]any{"type": []string{"string", "null"}}
-	timestamp := map[string]any{
-		"type":   []string{"string", "null"},
-		"format": "date-time",
-	}
-	action := map[string]any{
+// actionSchema describes actionJSON for RPC discovery. Every result that
+// reports actions describes an entry of them the same way.
+func actionSchema() map[string]any {
+	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"applicable": map[string]any{
@@ -299,6 +292,19 @@ func showResultSchema() map[string]any {
 		"required":             []string{"applicable", "available", "reason"},
 		"additionalProperties": true,
 	}
+}
+
+// showResultSchema describes ticketJSON for RPC discovery. Nullable fields
+// remain required so consumers can distinguish a known missing value from an
+// older response that does not describe the field. Additional properties stay
+// valid because adding fields does not change jsonSchema.
+func showResultSchema() map[string]any {
+	nullableString := map[string]any{"type": []string{"string", "null"}}
+	timestamp := map[string]any{
+		"type":   []string{"string", "null"},
+		"format": "date-time",
+	}
+	action := actionSchema()
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
