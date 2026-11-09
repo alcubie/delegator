@@ -13,6 +13,24 @@ import (
 	"github.com/alcubie/delegator/internal/store"
 )
 
+// dependAvailable reports whether the status of a ticket lets depend run, and
+// the reason beside it for when it does not. The reason is the message the
+// store refuses the change with, so the two cannot drift apart.
+func dependAvailable(ticket store.Ticket) (bool, string) {
+	if ticket.Status != store.Queued {
+		return false, store.RefuseDependencyChange(ticket).Error()
+	}
+	return true, ""
+}
+
+// dependApplicable reports whether a ticket in this status is one whose
+// dependencies a person could still change, which a refusal from
+// dependAvailable does not separate from a ticket whose dependencies are
+// settled for good. A done or a cancelled ticket waits for nothing any more.
+func dependApplicable(ticket store.Ticket) bool {
+	return ticket.Status != store.Done && ticket.Status != store.Cancelled
+}
+
 // dependCommand returns a fresh dependency command whose examples use
 // commandPath. It updates dependencies silently on success; the inbox and dg
 // show display them.

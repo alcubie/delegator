@@ -54,6 +54,55 @@ func rpcMapIn(t *testing.T, dataDir, repo string, id int64) mapJSON {
 	return value
 }
 
+// dependActions is the actions object that the map result gives a ticket in
+// one status, for a test whose subject is the rest of the row.
+func dependActions(id int64, status store.TicketStatus) map[string]actionJSON {
+	if status == store.Queued {
+		return map[string]actionJSON{"depend": {Applicable: true, Available: true}}
+	}
+	reason := fmt.Sprintf("only a queued ticket can change what it depends on: ticket %d is %s", id, status)
+	return map[string]actionJSON{"depend": {
+		Applicable: status != store.Done && status != store.Cancelled,
+		Reason:     &reason,
+	}}
+}
+
+// dependActionIn reads the depend entry of one ticket of its own map.
+func dependActionIn(t *testing.T, dataDir, repo string, id int64) actionJSON {
+	t.Helper()
+	for _, ticket := range rpcMapIn(t, dataDir, repo, id).Tickets {
+		if ticket.ID == id {
+			return ticket.Actions["depend"]
+		}
+	}
+	t.Fatalf("the map of ticket %d holds no row for it", id)
+	return actionJSON{}
+}
+
+// assertDependAction fails unless the map result reports want for the
+// dependencies of one ticket.
+func assertDependAction(t *testing.T, dataDir, repo string, id int64, want actionJSON) {
+	t.Helper()
+	if got := dependActionIn(t, dataDir, repo, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("actions.depend of ticket %d = %#v, want %#v", id, got, want)
+	}
+}
+
+// dependErrorIn runs dg depend on a prerequisite of its own and returns the
+// message it refuses with.
+func dependErrorIn(t *testing.T, dataDir, repo string, id int64) string {
+	t.Helper()
+	after, err := ticketIn(t, dataDir, repo, "The prerequisite", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runIn(t, dataDir, repo, "depend", fmt.Sprint(id), "--after", fmt.Sprint(after)); err != nil {
+		return err.Error()
+	}
+	t.Fatalf("dg depend changed what ticket %d depends on", id)
+	return ""
+}
+
 func TestMapAChain(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
@@ -427,9 +476,12 @@ func TestMapRPCResultHoldsTheWholeComponentInOrder(t *testing.T) {
 	claimIn(t, s, second)
 
 	want := mapJSON{Tickets: []mapTicketJSON{
-		{ID: first, Title: "Remove staging infrastructure", Status: "queued", Project: repo, DependsOn: []int64{}},
-		{ID: second, Title: "Add rate limiting", Status: "running", Project: repo, DependsOn: []int64{first}},
-		{ID: third, Title: "Deploy it", Status: "queued", Project: repo, DependsOn: []int64{first, second}},
+		{ID: first, Title: "Remove staging infrastructure", Status: "queued", Project: repo,
+			DependsOn: []int64{}, Actions: dependActions(first, store.Queued)},
+		{ID: second, Title: "Add rate limiting", Status: "running", Project: repo,
+			DependsOn: []int64{first}, Actions: dependActions(second, store.Running)},
+		{ID: third, Title: "Deploy it", Status: "queued", Project: repo,
+			DependsOn: []int64{first, second}, Actions: dependActions(third, store.Queued)},
 	}}
 	if got := rpcMapIn(t, dataDir, repo, third); !reflect.DeepEqual(got, want) {
 		t.Errorf("map result = %#v, want %#v", got, want)
@@ -455,11 +507,52 @@ func TestMapRPCResultHoldsADoneDependency(t *testing.T) {
 	}
 
 	want := mapJSON{Tickets: []mapTicketJSON{
-		{ID: first, Title: "Remove staging infrastructure", Status: "done", Project: repo, DependsOn: []int64{}},
-		{ID: second, Title: "Add rate limiting", Status: "queued", Project: repo, DependsOn: []int64{first}},
+		{ID: first, Title: "Remove staging infrastructure", Status: "done", Project: repo,
+			DependsOn: []int64{}, Actions: dependActions(first, store.Done)},
+		{ID: second, Title: "Add rate limiting", Status: "queued", Project: repo,
+			DependsOn: []int64{first}, Actions: dependActions(second, store.Queued)},
 	}}
 	if got := rpcMapIn(t, dataDir, repo, second); !reflect.DeepEqual(got, want) {
 		t.Errorf("map result = %#v, want %#v", got, want)
+	}
+}
+
+// The desktop app opens a dependency menu on every node of the map, so each
+// node of the result answers for itself and the app keeps no status rule.
+func TestMapReportsDependAvailableForAQueuedTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	id, repo := ticketWithStatus(t, dataDir, store.Queued)
+
+	assertDependAction(t, dataDir, repo, id, actionJSON{Applicable: true, Available: true})
+}
+
+// A ticket that has left the queue is still waiting on its prerequisites, so
+// the menu stays and the person reads why it refuses the change.
+func TestMapRefusesDependWithTheWordsOfTheCommand(t *testing.T) {
+	for _, status := range []store.TicketStatus{store.Running, store.Ready, store.Failed} {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+			refusal := dependErrorIn(t, dataDir, repo, id)
+
+			assertDependAction(t, dataDir, repo, id,
+				actionJSON{Applicable: true, Available: false, Reason: &refusal})
+		})
+	}
+}
+
+// A done or a cancelled ticket waits for nothing any more, so the app leaves
+// the menu out rather than offering a control that can never run.
+func TestMapReportsDependInapplicableForAClosedTicket(t *testing.T) {
+	for _, status := range []store.TicketStatus{store.Done, store.Cancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+			refusal := dependErrorIn(t, dataDir, repo, id)
+
+			assertDependAction(t, dataDir, repo, id,
+				actionJSON{Applicable: false, Available: false, Reason: &refusal})
+		})
 	}
 }
 
@@ -509,6 +602,17 @@ func TestRPCDiscoverMapResultContract(t *testing.T) {
 		}},
 		{"missing title", func(result map[string]any) {
 			delete(result["tickets"].([]any)[0].(map[string]any), "title")
+		}},
+		{"missing actions", func(result map[string]any) {
+			delete(result["tickets"].([]any)[0].(map[string]any), "actions")
+		}},
+		{"missing the depend action", func(result map[string]any) {
+			actions := result["tickets"].([]any)[0].(map[string]any)["actions"].(map[string]any)
+			delete(actions, "depend")
+		}},
+		{"depend without a reason", func(result map[string]any) {
+			actions := result["tickets"].([]any)[0].(map[string]any)["actions"].(map[string]any)
+			actions["depend"] = map[string]any{"applicable": true, "available": true}
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

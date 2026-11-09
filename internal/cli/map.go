@@ -26,12 +26,15 @@ type mappedTicket struct {
 
 // mapTicketJSON is one ticket of the structured map result. depends_on is
 // always an array and holds done dependencies too, as the text tree does.
+// actions holds the one command that a node of the map offers, keyed by its
+// operation name as the actions of the show result are.
 type mapTicketJSON struct {
-	ID        int64   `json:"id"`
-	Title     string  `json:"title"`
-	Status    string  `json:"status"`
-	Project   string  `json:"project"`
-	DependsOn []int64 `json:"depends_on"`
+	ID        int64                 `json:"id"`
+	Title     string                `json:"title"`
+	Status    string                `json:"status"`
+	Project   string                `json:"project"`
+	DependsOn []int64               `json:"depends_on"`
+	Actions   map[string]actionJSON `json:"actions"`
 }
 
 // mapJSON is the structured map result. tickets keeps the order that
@@ -43,12 +46,20 @@ type mapJSON struct {
 func mapValue(tickets []mappedTicket) mapJSON {
 	value := mapJSON{Tickets: make([]mapTicketJSON, 0, len(tickets))}
 	for _, ticket := range tickets {
+		canDepend, reason := dependAvailable(ticket.Ticket)
 		value.Tickets = append(value.Tickets, mapTicketJSON{
 			ID:        ticket.ID,
 			Title:     ticket.Title,
 			Status:    string(ticket.Status),
 			Project:   ticket.Project.Path,
 			DependsOn: append([]int64{}, ticket.DependsOn...),
+			Actions: map[string]actionJSON{
+				"depend": {
+					Applicable: dependApplicable(ticket.Ticket),
+					Available:  canDepend,
+					Reason:     nullable(reason),
+				},
+			},
 		})
 	}
 	return value
@@ -69,8 +80,16 @@ func mapResultSchema() map[string]any {
 				"type":        "array",
 				"items":       map[string]any{"type": "integer", "minimum": 1},
 			},
+			"actions": map[string]any{
+				"type": "object",
+				"description": "Whether the commands of this node of the map can run on it, " +
+					"keyed by the operation name of each command.",
+				"properties":           map[string]any{"depend": actionSchema()},
+				"required":             []string{"depend"},
+				"additionalProperties": true,
+			},
 		},
-		"required":             []string{"id", "title", "status", "project", "depends_on"},
+		"required":             []string{"id", "title", "status", "project", "depends_on", "actions"},
 		"additionalProperties": true,
 	}
 	return map[string]any{
