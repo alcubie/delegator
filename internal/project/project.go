@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -219,6 +220,16 @@ func CommitOnBranch(root, revision, branch string) (string, error) {
 		return "", fmt.Errorf("%w: %s is not on %s", ErrCommitNotOnBranch, full, branch)
 	}
 	return "", err
+}
+
+// CommitsAbove counts the commits that HEAD holds and base does not, which is
+// the number of commits above the merge base of the two.
+func CommitsAbove(root, base string) (int, error) {
+	out, err := gitOutput(root, "rev-list", "--count", base+"..HEAD")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(out)
 }
 
 // RequireBranchMerged checks that into contains branch, either by ancestry or
