@@ -132,7 +132,8 @@ func TestDiffRefusesATicketWithoutAWorktree(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
-	id := queuedIn(t, s, repo, "the ticket that has not run")
+	id := queuedIn(t, s, repo, "the ticket whose worktree a person removed")
+	finishIn(t, s, id)
 
 	_, err := runIn(t, dataDir, repo, "ticket", "diff", fmt.Sprint(id))
 	if err == nil {
@@ -141,6 +142,31 @@ func TestDiffRefusesATicketWithoutAWorktree(t *testing.T) {
 	for _, want := range []string{
 		fmt.Sprintf("the worktree of ticket %d is gone", id),
 		run.WorktreePath(dataDir, id),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+}
+
+// Ready is the one status whose change a person reviews, so a run that is
+// writing to the branch is refused on its status however much it has committed.
+func TestDiffRefusesARunningTicketWhoseBranchHoldsACommit(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket a chat sent back to work")
+	if err := s.ChangeStatus(id, store.Running); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runIn(t, dataDir, repo, "ticket", "diff", fmt.Sprint(id))
+	if err == nil {
+		t.Fatal("dg ticket diff opened the change of a running ticket")
+	}
+	for _, want := range []string{
+		fmt.Sprintf("ticket %d is %s", id, store.Running),
+		"only a ready ticket holds a change to review",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err, want)

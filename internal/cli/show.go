@@ -477,7 +477,7 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		"accept":  actionValue(acceptAvailable(ticket)),
 		"cancel":  actionValue(cancelAvailable(ticket)),
 		"chat":    {Applicable: chatApplicable(ticket), Available: canChat, Reason: nullable(chatReason)},
-		"diff":    {Applicable: true, Available: canDiff, Reason: nullable(diffReason)},
+		"diff":    {Applicable: diffApplicable(ticket), Available: canDiff, Reason: nullable(diffReason)},
 		"edit":    {Applicable: editApplicable(ticket), Available: canEdit, Reason: nullable(editReason)},
 		"restart": actionValue(restartAvailable(ticket)),
 	}
