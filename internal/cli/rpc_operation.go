@@ -28,8 +28,15 @@ func rpcOperation(command *cobra.Command) (string, bool) {
 // rpcRefusedOperations need a person's terminal, own the remote-call
 // transport, or need the environment of the dg ticket chat process that
 // started them. They retain identities so aliases inherit the same
-// treatment.
-var rpcRefusedOperations = map[string]bool{"chat": true, "init": true, "rerun": true, "rpc": true}
+// treatment. The tool of diff outlives the request, which the transport
+// cannot hold open.
+var rpcRefusedOperations = map[string]bool{
+	"chat":  true,
+	"diff":  true,
+	"init":  true,
+	"rerun": true,
+	"rpc":   true,
+}
 
 // projectPathOperations take the directory of a project as their one
 // positional argument.

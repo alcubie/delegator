@@ -186,7 +186,7 @@ func TestHelpAndCompletionDoNotOpenTheInstance(t *testing.T) {
 
 func TestCompletionListsCanonicalCommandGroups(t *testing.T) {
 	for group, want := range map[string][]string{
-		"ticket": {"accept", "cancel", "chat", "create", "depend", "edit", "finish", "list", "map", "move", "restart", "runs", "search", "show"},
+		"ticket": {"accept", "cancel", "chat", "create", "depend", "diff", "edit", "finish", "list", "map", "move", "restart", "runs", "search", "show"},
 		"queue":  {"pause", "start"},
 	} {
 		t.Run(group, func(t *testing.T) {

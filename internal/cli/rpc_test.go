@@ -121,7 +121,7 @@ func TestRPCRefusesTerminalAndPersonOnlyMethods(t *testing.T) {
 	dataDir := t.TempDir()
 	repo := testfix.Repo(t, repoBranch)
 
-	for _, method := range []string{"chat", "ticket.chat", "init", "rpc"} {
+	for _, method := range []string{"chat", "ticket.chat", "ticket.diff", "init", "rpc"} {
 		t.Run(method, func(t *testing.T) {
 			out, err := rpcIn(t, dataDir, repo, fmt.Sprintf(`{"jsonrpc":"2.0","method":%q,"id":1}`, method))
 			if err != nil {

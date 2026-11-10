@@ -46,6 +46,7 @@ dg ticket [flags]
 * [dg ticket chat](dg_ticket_chat.md)	 - Continue a ticket's agent session.
 * [dg ticket create](dg_ticket_create.md)	 - Add a ticket to a project queue.
 * [dg ticket depend](dg_ticket_depend.md)	 - Add or remove dependencies of a queued ticket.
+* [dg ticket diff](dg_ticket_diff.md)	 - Open the change of a ticket in your diff tool.
 * [dg ticket edit](dg_ticket_edit.md)	 - Change the title and the prose of a queued ticket.
 * [dg ticket finish](dg_ticket_finish.md)	 - Record the commit of a ticket and mark it Ready.
 * [dg ticket list](dg_ticket_list.md)	 - List every ticket, whatever its status

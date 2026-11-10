@@ -51,6 +51,7 @@ nav:
           - cancel: reference/dg_ticket_cancel.md
           - restart: reference/dg_ticket_restart.md
           - chat: reference/dg_ticket_chat.md
+          - diff: reference/dg_ticket_diff.md
           - runs: reference/dg_ticket_runs.md
       - queue:
           - Overview: reference/dg_queue.md

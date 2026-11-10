@@ -73,7 +73,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			// conversation, which may run indefinitely.
 			interactive := chat(argv, worktree)
 			interactive.Env = chatEnvironment(os.Environ(), cacheDir, os.Getpid())
-			return waitForChat(interactive)
+			return waitForExit(interactive)
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
@@ -92,6 +92,20 @@ func (r refusal) Error() string { return r.reason }
 // refuse builds one refusal.
 func refuse(format string, args ...any) error {
 	return refusal{reason: fmt.Sprintf(format, args...)}
+}
+
+// availability turns the error of a check into what a command reports beside
+// its name: a refusal gives its reason, and any other error is the fault that
+// it is.
+func availability(err error) (bool, string, error) {
+	var refused refusal
+	if errors.As(err, &refused) {
+		return false, refused.reason, nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
 }
 
 // resumption is what continuing a conversation needs: the session the agent
@@ -151,14 +165,7 @@ func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 // and the reason beside it for when it cannot.
 func chatAvailable(s *store.Store, dataDir string, id int64) (bool, string, error) {
 	_, err := resumable(s, dataDir, id)
-	var refused refusal
-	if errors.As(err, &refused) {
-		return false, refused.reason, nil
-	}
-	if err != nil {
-		return false, "", err
-	}
-	return true, "", nil
+	return availability(err)
 }
 
 // chatApplicable reports whether a ticket in this status has a conversation to
@@ -233,8 +240,8 @@ func withoutEnv(environ []string, key string) []string {
 	return result
 }
 
-// waitForChat waits for the interactive agent and propagates its exit status.
-func waitForChat(cmd *exec.Cmd) error {
+// waitForExit waits for an interactive command and propagates its exit status.
+func waitForExit(cmd *exec.Cmd) error {
 	err := cmd.Run()
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
