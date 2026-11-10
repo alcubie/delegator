@@ -94,6 +94,20 @@ func refuse(format string, args ...any) error {
 	return refusal{reason: fmt.Sprintf(format, args...)}
 }
 
+// availability turns the error of a check into what a command reports beside
+// its name: a refusal gives its reason, and any other error is the fault that
+// it is.
+func availability(err error) (bool, string, error) {
+	var refused refusal
+	if errors.As(err, &refused) {
+		return false, refused.reason, nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
+}
+
 // resumption is what continuing a conversation needs: the session the agent
 // reported, the worktree its run worked in, the command of the agent that
 // opens a session, and the project whose cache that command names.
@@ -151,14 +165,7 @@ func resumable(s *store.Store, dataDir string, id int64) (resumption, error) {
 // and the reason beside it for when it cannot.
 func chatAvailable(s *store.Store, dataDir string, id int64) (bool, string, error) {
 	_, err := resumable(s, dataDir, id)
-	var refused refusal
-	if errors.As(err, &refused) {
-		return false, refused.reason, nil
-	}
-	if err != nil {
-		return false, "", err
-	}
-	return true, "", nil
+	return availability(err)
 }
 
 // chatApplicable reports whether a ticket in this status has a conversation to
