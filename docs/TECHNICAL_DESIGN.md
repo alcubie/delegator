@@ -92,7 +92,7 @@ them. Section 4 gives that list.
 | 2 | The state `processing` had two meanings. A restart put chat work back into the queue, and started the first prompt again above live work. | A run is a first class entity, and it records its initiator. See §6.1. |
 | 3 | `CREATE TABLE IF NOT EXISTS` does not add new columns. A new column gave the error `no such column` on each database that existed. | A statement `CREATE TABLE IF NOT EXISTS` is not a migration. Delegator keeps a number in `PRAGMA user_version`, and applies each migration step at each start. See §7. |
 | 4 | The output of the agent went into the ticket. One ticket got 13378 characters. The short note for the person got 973 characters. | The report of a run is its commit message, which delegator does not write and does not limit. The output of the agent stays in the log. See §6.4. |
-| 5 | The command `git difftool` started a graphical tool, and the TUI went away until the tool stopped. | Delegator has no diff and no built-in tools. The person configures each command. See §9.2. |
+| 5 | The command `git difftool` started a graphical tool, and the TUI went away until the tool stopped. | Delegator has no diff and no built-in tools. The command `dg ticket diff` starts `git difftool` and waits, and the process that waits is its own. See §9.2. |
 | 6 | The command `queue status` used the directory of the person as a filter, and hid tickets from other projects. | One inbox contains all projects. A filter is always explicit. See principle 5. |
 | 7 | The command `queue down` released the lock while a run continued. A quick restart was able to start a second worker on the same worktree. | SQLite controls the queue. A lock from the operating system cannot become out of date. See §5. |
 | 8 | Only the claude adapter operated. The other three came from documentation, and no one operated them. | Version 1 has claude only. The package `adapters/` keeps the seam for later work. See §6.6. |
@@ -707,37 +707,22 @@ where it differs from the row of the inbox. Here the person is reading the one t
 asking what they linked it to, and a link that is already satisfied is still a link they
 can take away. A ticket with no link gives no row.
 
-### 9.2 Commands of the person
+### 9.2 The diff of a ticket
 
-Delegator starts no external tool of its own. The person declares each command, with the
-variables from §7:
+The command `dg ticket diff` opens the change of a ticket, from the default branch of its
+project to `HEAD` of its branch. It runs `git difftool -d <base>...HEAD` in the worktree of
+the ticket and waits for the tool to stop, because `git difftool -d` removes the two
+directories that it compares at that moment.
 
-```toml
-terminal = "ptyxis --new-window -d {worktree} --"
+Delegator names no tool. Git starts the one that `diff.tool` holds, so the choice is the
+one the person already made in their own Git config, and delegator reads no setting of its
+own for it. Delegator also keeps no list of commands of the person: this comparison is the
+one external tool it starts, and it starts it through Git.
 
-[commands.diff]
-run = "git difftool -d {base}...HEAD"
-window = true
-
-[commands.edit]
-run = "$EDITOR {ticket}"
-window = false
-```
-
-The variables are `{ticket}`, `{worktree}`, `{branch}`, `{base}`, `{session}` and
-`{project}`. The variable `{ticket}` gives the path of the prose, because the person
-changes the prose and not the fields. The command `dg open diff 4` starts the command with the name `diff` for
-ticket 4. A command with `window = true` opens in a new terminal window.
-
-This removes the detection of tools and of terminals from delegator. It also lets each
-person keep the tools that they have now. When the TUI comes, each command also gets a
-key.
-
-The continuation of a session is not one of these commands. `dg ticket chat [id]` in §9.3 is a
-command of delegator, because delegator knows which program made the session, which
-worktree it ran in, and whether a run is on it now, and the person knows none of the
-three at the moment they type. The variable `{session}` stays for a command of the
-person that reads a session, and no example here gives one that writes.
+`dg rpc` refuses the operation, because the tool lives longer than the request.
+delegator-desktop draws the same comparison on a button, so it builds the Git command
+itself and starts it, and it reads `actions.diff` of `ticket.show` to learn whether the
+ticket refuses the comparison and the reason to show when it does.
 
 ### 9.3 The CLI
 
@@ -968,7 +953,8 @@ Each milestone uses the fake agent, includes tests, and is usable at its end.
    with their limits.
 3. **Closure.** The command `accept`, best-effort removal of a worktree, and the
    commit of each run on the ticket.
-4. **Commands of the person.** The config, the variables, `dg open` and the new window.
+4. **The diff of a ticket.** The command `dg ticket diff`, its refusal in `dg rpc`, and the
+   `diff` entry of `actions` in `ticket.show`.
 5. **Installation.** goreleaser, the installer for Linux and macOS, and `dg doctor`.
 
 Milestone 1 and milestone 2 have the longest duration. Each milestone after them adds to
