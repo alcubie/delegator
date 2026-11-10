@@ -1135,7 +1135,7 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 	// Accept takes the worktree away and a closed ticket can be neither
 	// accepted, cancelled, edited nor restarted, so every entry of the accepted
 	// result carries a reason and the schema sees a string in each.
-	for _, operation := range []string{"accept", "cancel", "chat", "edit", "restart"} {
+	for _, operation := range []string{"accept", "cancel", "chat", "diff", "edit", "restart"} {
 		action := accepted["actions"].(map[string]any)[operation]
 		if _, ok := action.(map[string]any)["reason"].(string); !ok {
 			t.Fatalf("actions.%s = %#v for an accepted ticket, want a reason", operation, action)
@@ -1185,6 +1185,7 @@ func TestRPCDiscoverShowResultContract(t *testing.T) {
 		{"missing the accept action", func(result map[string]any) { result["actions"] = actionsWithout("accept") }},
 		{"missing the cancel action", func(result map[string]any) { result["actions"] = actionsWithout("cancel") }},
 		{"missing the chat action", func(result map[string]any) { result["actions"] = actionsWithout("chat") }},
+		{"missing the diff action", func(result map[string]any) { result["actions"] = actionsWithout("diff") }},
 		{"missing the edit action", func(result map[string]any) { result["actions"] = actionsWithout("edit") }},
 		{"missing the restart action", func(result map[string]any) { result["actions"] = actionsWithout("restart") }},
 		{"missing applicable", func(result map[string]any) {
