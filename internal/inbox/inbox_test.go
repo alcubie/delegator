@@ -198,18 +198,39 @@ func TestGetPutsQueuedInTheOrderOfPosition(t *testing.T) {
 }
 
 // RUNNING must sort by ID independently of source query order.
-func TestGetPutsRunningInTheOrderOfTheID(t *testing.T) {
+// Give the lowest ID the newest start, so an order by ID would reverse the
+// wanted one, and tie two starts so that the ID decides between them.
+func TestGetPutsRunningInTheOrderOfTheStartOfTheRun(t *testing.T) {
+	tie := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
 	source := &fakeSource{tickets: []store.OpenTicket{
-		{ID: 9, Status: store.Running},
-		{ID: 3, Status: store.Running},
-		{ID: 7, Status: store.Running},
+		{ID: 3, Status: store.Running, Started: time.Date(2026, 8, 28, 15, 0, 0, 0, time.UTC)},
+		{ID: 9, Status: store.Running, Started: tie},
+		{ID: 7, Status: store.Running, Started: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+		{ID: 5, Status: store.Running, Started: tie},
 	}}
 
 	got, err := get(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []int64{3, 7, 9}; !slices.Equal(ids(got.Running), want) {
+	if want := []int64{7, 5, 9, 3}; !slices.Equal(ids(got.Running), want) {
+		t.Errorf("RUNNING holds %v, want %v", ids(got.Running), want)
+	}
+}
+
+// Nothing says how long a ticket without a start time has run, so it must not
+// take the top of RUNNING that the longest-running ticket holds.
+func TestGetPutsRunningWithoutAStartLast(t *testing.T) {
+	source := &fakeSource{tickets: []store.OpenTicket{
+		{ID: 1, Status: store.Running},
+		{ID: 2, Status: store.Running, Started: time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)},
+	}}
+
+	got, err := get(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{2, 1}; !slices.Equal(ids(got.Running), want) {
 		t.Errorf("RUNNING holds %v, want %v", ids(got.Running), want)
 	}
 }

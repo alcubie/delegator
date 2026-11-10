@@ -69,7 +69,7 @@ func Get(source Source, since time.Time) (Inbox, error) {
 
 	slices.SortFunc(box.Done, byAcceptance)
 	slices.SortFunc(box.Ready, byPosition)
-	slices.SortFunc(box.Running, byID)
+	slices.SortFunc(box.Running, byStart)
 	slices.SortFunc(box.Failed, byChange)
 	slices.SortFunc(box.Queued, byPosition)
 	return box, nil
@@ -101,9 +101,20 @@ func byChange(a, b store.OpenTicket) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// byID sorts running tickets by ID, independently of the database query
-// order.
-func byID(a, b store.OpenTicket) int {
+// byStart sorts oldest run starts first, showing the longest-running ticket
+// first. IDs break ties because timestamps have one-second resolution. A
+// ticket without a start time goes last, since nothing says how long it has
+// run.
+func byStart(a, b store.OpenTicket) int {
+	if a.Started.IsZero() != b.Started.IsZero() {
+		if a.Started.IsZero() {
+			return 1
+		}
+		return -1
+	}
+	if by := a.Started.Compare(b.Started); by != 0 {
+		return by
+	}
 	return cmp.Compare(a.ID, b.ID)
 }
 
