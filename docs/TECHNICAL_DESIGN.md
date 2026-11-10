@@ -20,7 +20,6 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | agent | An external command line program that writes code. Version 1 has claude only. |
 | CLI | Command Line Interface. |
 | commit | The one commit that a run makes. Its message is the report of the run. |
-| config | The file that holds the selections of the person. |
 | database | The one SQLite file that holds each field, the queue and the counter. |
 | DONE | The group in the inbox that shows each ticket that the person accepted in the period that `done_hours` gives. |
 | FAILED | The group in the inbox that holds each ticket whose run stopped without a report. |
@@ -38,6 +37,7 @@ the table below. It uses each name for one thing only, in all of the text. Each 
 | RUNNING | The group in the inbox that contains the ticket with an active run. |
 | schema | The version number of the format of the database. |
 | session | One conversation with an agent, which the agent can continue later. |
+| setting | One selection of the person. The database holds each setting, and no file holds them. The command `dg config` shows one setting and changes one setting. |
 | state | The condition of a ticket. |
 | supervisor | The short program that operates one run and then stops. |
 | ticket | One item of work. Its fields are a row, and its prose is a file. |
@@ -145,7 +145,7 @@ earlier draft, and it removes lesson 1 and lesson 7 completely.
            └───────┬───────┘
                    ▼
            ┌───────────────┐
-           │ files on disk │   prose, worktrees, config, logs
+           │ files on disk │   prose, worktrees, logs
            └───────┬───────┘
                    ▼
            ┌────────────────────┐
@@ -198,14 +198,14 @@ not a special condition.
 
 ### 6.2 The limit on runs, and two orders
 
-The config gives the limit on runs. The key `runs` in §9.2 says how many tickets can be
-open at one time, and its value is 1 if the person writes no other value. A ticket in
-`running` holds one slot, because a supervisor operates on it. A ticket in `ready` holds
-one slot, because the person did not examine that work. A trigger starts one supervisor
-for each free slot, and each supervisor claims one ticket of the queue or stops.
+The setting `runs` gives the limit on runs. It says how many tickets can be open at one
+time, and §9.4 gives its value before the person changes it. A ticket in `running` holds
+one slot, because a supervisor operates on it. A ticket in `ready` holds one slot,
+because the person did not examine that work. A trigger starts one supervisor for each
+free slot, and each supervisor claims one ticket of the queue or stops.
 
-The key `max_runs_per_project` in §9.2 is a second limit, and it holds for each project
-on its own. It counts the tickets of one project in `running` and in `ready`, the way
+The setting `max_runs_per_project` is a second limit, and it holds for each project on
+its own. It counts the tickets of one project in `running` and in `ready`, the way
 `runs` counts the tickets of every project together. It names no project, so the person
 writes one value and each repository they add gets it. Its value is 0 if the person
 writes no other value, and 0 is no limit for each project: every project then takes
@@ -238,9 +238,9 @@ collects in a mail inbox. The count can be 1 or 100.
 
 ### 6.3 Limits on a run, and the restart
 
-Each run has a timeout. The default is 60 minutes, and the config holds the value. If the
-run goes above the timeout, the supervisor stops the agent, and the state becomes
-`failed`.
+Each run has a timeout. The setting `timeout_minutes` holds the value, and it is 60
+minutes before the person changes it. If the run goes above the timeout, the supervisor
+stops the agent, and the state becomes `failed`.
 
 An error can also come from outside. An example is an API that does not reply. The command
 `dg ticket restart <id>` therefore starts the run again. It continues the same session, in the
@@ -383,8 +383,6 @@ each ticket in a file. The person writes the prose with an editor, and an editor
 file and not a row.
 
 ```
-$XDG_CONFIG_HOME/delegator/config.toml
-
 $XDG_DATA_HOME/delegator/
   delegator.db                       the fields, the queue and the counter
   tickets/
@@ -399,9 +397,8 @@ $XDG_DATA_HOME/delegator/
       2026-08-17T09-30-00.log        the raw output of the agent
 ```
 
-On Windows, if `XDG_CONFIG_HOME` is not set, delegator keeps `config.toml` in
-`%APPDATA%\delegator`. On Windows, if `XDG_DATA_HOME` is not set, delegator
-keeps the files below it in `%LOCALAPPDATA%\delegator`.
+On Windows, if `XDG_DATA_HOME` is not set, delegator keeps the files below it in
+`%LOCALAPPDATA%\delegator`.
 
 **Why a database, after lesson 3.** Lesson 3 in §3 says that `CREATE TABLE IF NOT EXISTS`
 does not add a new column. That lesson is correct. Its cause was the absence of a
@@ -712,15 +709,11 @@ can take away. A ticket with no link gives no row.
 
 ### 9.2 Commands of the person
 
-Delegator starts no external tool of its own. The person declares each command in the
-config, with the variables from §7:
+Delegator starts no external tool of its own. The person declares each command, with the
+variables from §7:
 
 ```toml
 terminal = "ptyxis --new-window -d {worktree} --"
-timeout_minutes = 60
-runs = 1
-max_runs_per_project = 0
-done_hours = 24
 
 [commands.diff]
 run = "git difftool -d {base}...HEAD"
@@ -730,13 +723,6 @@ window = true
 run = "$EDITOR {ticket}"
 window = false
 ```
-
-The key `max_runs_per_project` gives the limit of one project, which §6.2 describes. The
-value is 0 if the config file does not give the key, and each project then takes `runs`.
-
-The key `done_hours` gives the period of DONE in hours. The value is 24 if the
-config file does not give the key, so DONE shows the work of one day. A value of
-0 makes DONE empty.
 
 The variables are `{ticket}`, `{worktree}`, `{branch}`, `{base}`, `{session}` and
 `{project}`. The variable `{ticket}` gives the path of the prose, because the person
@@ -779,8 +765,9 @@ Other former root commands and remote methods remain available as compatibility 
 | `dg ticket chat [id]` | Continue the session of a ticket in this terminal. Delegator starts the agent of the run in the worktree of the ticket, and waits for it; the status of `dg` is the status of the agent. With no id it takes the first ticket of READY of the project of the current directory, and the flag `--project <dir>` takes that project from another directory. It refuses a ticket in `running`, and names the process that holds the run. It also refuses a ticket that has no session, and one whose worktree is not on disk. If a run did not start a session, it gives the number of that run and the path of its log. |
 | `dg ticket accept <id>` | Close a ticket after its branch is merged into `HEAD` in the ticket's project, and remove its worktree. An equivalent squash merge also satisfies the check. An unmerged branch or a worktree with uncommitted changes leaves the ticket ready and the worktree present. `--force` bypasses both checks, removes the worktree, and loses its uncommitted changes. |
 | `dg ticket run [id]` | The supervisor. With no id, it claims the first ticket with room, and this is how delegator starts it. With an id, it claims that ticket, and this is how a person starts one run by hand. |
+| `dg config` | Show each setting, with its value and one line for it. `dg config list` does the same. `dg config get <name>` writes the value of one setting alone, and `dg config set <name> <value>` changes one setting. See §9.4. |
 | `dg project relink` | Connect a project again after a move. See §7. |
-| `dg doctor` | Do a check of git, of claude, of the config and of the permissions. |
+| `dg doctor` | Do a check of git, of claude, of the settings and of the permissions. |
 | `dg help` | Show each command and one line for it. `dg --help` and `dg <command> --help` do the same. |
 | `dg completion <shell>` | Write the script that completes each command for bash, zsh, fish or powershell. |
 | `dg version` | Show the version of the binary. Through `dg rpc`, its result is one object with `version` and `schema`. A build sets the version, and a build that sets none writes `dev`. |
@@ -844,6 +831,30 @@ One command removes that risk completely. The text that `dg ticket show` makes n
 for an agent: the prose goes out as the person wrote it, and each line of the ticket has
 two spaces in front of it, which an agent reads as well as a person does.
 
+### 9.4 The settings
+
+The database of §7 holds all of the settings in one row, and delegator reads no file for
+them. The table gives each setting that delegator has, and the value that the person gets
+before they change it.
+
+| Setting | What it gives | Value before a change |
+|---|---|---|
+| `runs` | The number of tickets that can be in `running`, `ready` or `failed` at one time. See §6.2. | 3 |
+| `timeout_minutes` | The time in minutes that a run can take before delegator stops it. See §6.3. | 60 |
+| `done_hours` | The time in hours that a ticket stays in DONE at the top of the inbox after `dg ticket accept` closes it. A value of 0 leaves DONE empty. | 24 |
+| `max_runs_per_project` | The number of tickets of one project that can be in `running`, `ready` or `failed` at one time. A value of 0 is ignored, and `runs` is then the limit. See §6.2. | 0 |
+| `default_agent` | The name of the agent that a new run uses. The value must be an agent that delegator holds, and §6.6 gives the seam for an agent. | None. The person selects an agent before the first run. |
+| `default_model` | The id of the model that a run asks the agent for. A value of `null` uses the model that the agent selects. | `null` |
+| `telemetry` | Delegator reports data about its use if the value is `true`. A value of `null` is also no, because the person did not answer. See §11. | `null` |
+
+The value 24 for `done_hours` shows the work of one day. The lowest value of `runs` and
+of `timeout_minutes` is 1, and the lowest value of `done_hours` and of
+`max_runs_per_project` is 0. Delegator refuses a lower value, and `dg rpc` publishes the
+same limits.
+
+A setting is not a command of the person. The settings come with delegator, and §9.2
+gives the commands that the person declares.
+
 ## 10. How to prevent errors
 
 You do not want a long sequence of new errors after each correction. This section shows
@@ -905,7 +916,7 @@ github.com/alcubie/delegator
     project/         git: the root, the default branch, the first commit
     run/             the supervisor, the timeout, the worktree
     adapters/        the interface for an agent, and claude
-    config/          the config and the commands of the person
+    config/          the definition of each setting, and its help text
     inbox/           the groups and their order. It gives data, and not text.
     cli/             the commands, and the text for a terminal
   test/              unit, golden, integration, complete system
