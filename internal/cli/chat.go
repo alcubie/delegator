@@ -73,7 +73,7 @@ func chatCommand(dataDir *string, workDir string, cfg *config.Config) *cobra.Com
 			// conversation, which may run indefinitely.
 			interactive := chat(argv, worktree)
 			interactive.Env = chatEnvironment(os.Environ(), cacheDir, os.Getpid())
-			return waitForChat(interactive)
+			return waitForExit(interactive)
 		},
 	}
 	cmd.Flags().StringVar(&projectDir, "project", "",
@@ -233,8 +233,8 @@ func withoutEnv(environ []string, key string) []string {
 	return result
 }
 
-// waitForChat waits for the interactive agent and propagates its exit status.
-func waitForChat(cmd *exec.Cmd) error {
+// waitForExit waits for an interactive command and propagates its exit status.
+func waitForExit(cmd *exec.Cmd) error {
 	err := cmd.Run()
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {

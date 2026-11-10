@@ -185,9 +185,9 @@ func Commit(root, hash string) (short, subject string, err error) {
 	return short, subject, nil
 }
 
-// resolveCommit returns the full hash of the commit named by revision. An
+// ResolveCommit returns the full hash of the commit named by revision. An
 // error means the repository does not hold a commit with that name.
-func resolveCommit(root, revision string) (string, error) {
+func ResolveCommit(root, revision string) (string, error) {
 	full, err := gitOutput(root, "rev-parse", "--verify", "--quiet", "--end-of-options", revision+"^{commit}")
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
@@ -206,7 +206,7 @@ func resolveCommit(root, revision string) (string, error) {
 // branch contains it. It returns ErrUnknownCommit when revision names no
 // commit, and ErrCommitNotOnBranch when the commit is outside branch.
 func CommitOnBranch(root, revision, branch string) (string, error) {
-	full, err := resolveCommit(root, revision)
+	full, err := ResolveCommit(root, revision)
 	if err != nil {
 		return "", err
 	}
