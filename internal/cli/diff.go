@@ -60,13 +60,19 @@ type comparison struct {
 }
 
 // diffable rejects tickets whose change cannot be opened and returns what the
-// tool needs for the rest. A ticket that has no change gives a refusal, and
-// any other error is a fault of the store or of Git. The checks have no side
-// effect, so a caller that only reports them leaves nothing behind.
+// tool needs for the rest. A ticket that is not ready, or that holds no
+// change, gives a refusal, and any other error is a fault of the store or of
+// Git. The status comes first, so a ticket that nothing can review costs no
+// Git process. The checks have no side effect, so a caller that only reports
+// them leaves nothing behind.
 func diffable(s *store.Store, dataDir string, id int64) (comparison, error) {
 	ticket, err := s.Ticket(id)
 	if err != nil {
 		return comparison{}, err
+	}
+	if !diffApplicable(ticket) {
+		return comparison{}, refuse("ticket %d is %s: only a ready ticket holds a change to review",
+			id, ticket.Status)
 	}
 	worktree := run.WorktreePath(dataDir, id)
 	if _, err := os.Stat(worktree); err != nil {
@@ -96,6 +102,16 @@ func diffable(s *store.Store, dataDir string, id int64) (comparison, error) {
 func diffAvailable(s *store.Store, dataDir string, id int64) (bool, string, error) {
 	_, err := diffable(s, dataDir, id)
 	return availability(err)
+}
+
+// diffApplicable reports whether a ticket in this status is one a person could
+// review, which a refusal from diffAvailable does not separate from a change
+// that exists and cannot be opened. Ready is the one status where a change
+// waits for a person to accept it: a queued ticket has not run, a running one
+// is still being written to, a failed one is restarted rather than reviewed,
+// and a done or a cancelled ticket is closed.
+func diffApplicable(ticket store.Ticket) bool {
+	return ticket.Status == store.Ready
 }
 
 // difftool builds the Git command that opens the change. The flag -d gives

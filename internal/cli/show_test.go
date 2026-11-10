@@ -101,6 +101,10 @@ func actionIn(t *testing.T, dataDir, workDir string, id int64, operation string)
 func assertAvailable(t *testing.T, dataDir, workDir string, id int64, operation string) {
 	t.Helper()
 	action := actionIn(t, dataDir, workDir, id, operation)
+	if action["applicable"] != true {
+		t.Errorf("actions.%s.applicable = %#v, want true beside an available command",
+			operation, action["applicable"])
+	}
 	if action["available"] != true {
 		t.Errorf("actions.%s.available = %#v, want true", operation, action["available"])
 	}
@@ -1471,11 +1475,14 @@ func TestRunShowJSONGivesNoDiffReasonForABranchWithACommit(t *testing.T) {
 	assertAvailable(t, dataDir, repo, id, "diff")
 }
 
-// A ticket that has not run has nothing to compare, and the reason names the
-// worktree the comparison wanted.
+// A ready ticket whose worktree a person removed has nothing to compare, and
+// the reason names the worktree the comparison wanted.
 func TestRunShowJSONRefusesDiffForATicketWithoutAWorktree(t *testing.T) {
 	dataDir := t.TempDir()
-	_, id, repo := queuedTicket(t, dataDir)
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "the ticket whose worktree a person removed")
+	finishIn(t, s, id)
 
 	reason := refusalIn(t, dataDir, repo, id, "diff")
 	for _, want := range []string{
@@ -1508,26 +1515,58 @@ func TestRunShowJSONGivesTheReasonDiffWouldPrint(t *testing.T) {
 }
 
 // The desktop reads ticket.show on each selection and each refresh, so the
-// diff entry of a ticket that cannot hold a change must cost no process.
+// diff entry of a ticket whose worktree is gone must cost no process: the
+// worktree is read before the base branch resolves.
 func TestRunShowJSONAnswersDiffWithoutGitForATicketWithoutAWorktree(t *testing.T) {
 	dataDir := t.TempDir()
-	_, id, repo := queuedTicket(t, dataDir)
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "the ticket whose worktree a person removed")
+	finishIn(t, s, id)
 	withoutGit(t)
 
 	refusalIn(t, dataDir, repo, id, "diff")
 }
 
-// A comparison applies to a ticket in every status, so a consumer draws one
-// control for it and greys that control out as it does for a refused chat.
-func TestRunShowJSONReportsDiffApplicableInEveryStatus(t *testing.T) {
+// Ready is the one status where a change waits for a person to accept it, so a
+// consumer draws its review control for a ready ticket and leaves the control
+// out of every other status.
+func TestRunShowJSONReportsDiffApplicableOnlyForAReadyTicket(t *testing.T) {
 	for _, status := range everyStatus {
 		t.Run(string(status), func(t *testing.T) {
 			dataDir := t.TempDir()
 			id, repo := ticketWithStatus(t, dataDir, status)
 
 			action := actionIn(t, dataDir, repo, id, "diff")
-			if action["applicable"] != true {
-				t.Errorf("actions.diff.applicable = %#v, want true", action["applicable"])
+			want := status == store.Ready
+			if action["applicable"] != want {
+				t.Errorf("actions.diff.applicable = %#v, want %t", action["applicable"], want)
+			}
+		})
+	}
+}
+
+// The entry refuses on the status before it reads the worktree, so a ticket
+// nobody reviews is answered from the store alone and the reason names the
+// status that holds the control back.
+func TestRunShowJSONRefusesDiffWithTheStatusOfATicketOutsideReady(t *testing.T) {
+	for _, status := range everyStatus {
+		if status == store.Ready {
+			continue
+		}
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+			withoutGit(t)
+
+			reason := refusalIn(t, dataDir, repo, id, "diff")
+			for _, want := range []string{
+				fmt.Sprintf("ticket %d is %s", id, status),
+				"only a ready ticket holds a change to review",
+			} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("actions.diff.reason = %q does not name %q", reason, want)
+				}
 			}
 		})
 	}
