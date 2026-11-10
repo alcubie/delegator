@@ -154,6 +154,13 @@ func editErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 	return ""
 }
 
+// withoutGit empties the PATH, so a command that starts git fails and one that
+// answers from the store and the directory alone does not.
+func withoutGit(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", t.TempDir())
+}
+
 // closedTicket builds a ticket and moves it to a closed status, leaving the
 // worktree and the run that the command closing it would take away.
 func closedTicket(t *testing.T, dataDir string, status store.TicketStatus) (id int64, repo string) {
@@ -1448,6 +1455,79 @@ func TestRunShowJSONReportsWhetherChatAppliesToTheStatus(t *testing.T) {
 			action := actionIn(t, dataDir, repo, id, "chat")
 			if action["applicable"] != test.want {
 				t.Errorf("actions.chat.applicable = %#v, want %v", action["applicable"], test.want)
+			}
+		})
+	}
+}
+
+// The desktop reads the diff action before it offers its review control, and a
+// branch that holds work above the default branch is the change diff opens.
+func TestRunShowJSONGivesNoDiffReasonForABranchWithACommit(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket with a change")
+
+	assertAvailable(t, dataDir, repo, id, "diff")
+}
+
+// A ticket that has not run has nothing to compare, and the reason names the
+// worktree the comparison wanted.
+func TestRunShowJSONRefusesDiffForATicketWithoutAWorktree(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+
+	reason := refusalIn(t, dataDir, repo, id, "diff")
+	for _, want := range []string{
+		fmt.Sprintf("the worktree of ticket %d is gone", id),
+		run.WorktreePath(dataDir, id),
+	} {
+		if !strings.Contains(reason, want) {
+			t.Errorf("actions.diff.reason = %q does not name %q", reason, want)
+		}
+	}
+}
+
+// The entry gives the words the command would print, so a person who reads one
+// of them cannot be told the other.
+func TestRunShowJSONGivesTheReasonDiffWouldPrint(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyWorktreeIn(t, s, dataDir, repo, "the ticket that committed nothing")
+
+	reason := refusalIn(t, dataDir, repo, id, "diff")
+
+	_, err := runIn(t, dataDir, repo, "ticket", "diff", fmt.Sprint(id))
+	if err == nil {
+		t.Fatal("dg ticket diff opened a branch that holds no commit")
+	}
+	if reason != err.Error() {
+		t.Errorf("actions.diff.reason = %q, want the error of the command %q", reason, err)
+	}
+}
+
+// The desktop reads ticket.show on each selection and each refresh, so the
+// diff entry of a ticket that cannot hold a change must cost no process.
+func TestRunShowJSONAnswersDiffWithoutGitForATicketWithoutAWorktree(t *testing.T) {
+	dataDir := t.TempDir()
+	_, id, repo := queuedTicket(t, dataDir)
+	withoutGit(t)
+
+	refusalIn(t, dataDir, repo, id, "diff")
+}
+
+// A comparison applies to a ticket in every status, so a consumer draws one
+// control for it and greys that control out as it does for a refused chat.
+func TestRunShowJSONReportsDiffApplicableInEveryStatus(t *testing.T) {
+	for _, status := range everyStatus {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+
+			action := actionIn(t, dataDir, repo, id, "diff")
+			if action["applicable"] != true {
+				t.Errorf("actions.diff.applicable = %#v, want true", action["applicable"])
 			}
 		})
 	}
