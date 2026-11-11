@@ -256,6 +256,34 @@ func RequireBranchMerged(root, branch, into string) error {
 	return fmt.Errorf("%w: %s is not in %s; use dg accept --force to accept it anyway", ErrBranchNotMerged, branch, into)
 }
 
+// MergesCleanly reports whether revision merges into the branch named by into
+// without a conflict. merge-tree writes the merged tree to the object database
+// and leaves the worktree, the index and every ref as they were. Every failure
+// of Git apart from the conflict stays an error, the way isAncestor keeps them
+// apart.
+func MergesCleanly(root, revision, into string) (bool, error) {
+	_, err := gitOutput(root, "merge-tree", "--write-tree", into, revision)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return false, ErrGitNotOnPath
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		// merge-tree gives status 1 both to a conflict and to an
+		// argument it cannot merge, so a revision Git could not read
+		// is told from a conflict here.
+		for _, name := range []string{into, revision} {
+			if _, err := ResolveCommit(root, name); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
+	}
+	return false, err
+}
+
 // RequireCleanWorktree checks tracked changes and all non-ignored untracked
 // files. Git reports inspection failures separately from a dirty result.
 func RequireCleanWorktree(path string) error {

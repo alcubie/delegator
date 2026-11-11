@@ -221,7 +221,19 @@ func restartErrorIn(t *testing.T, dataDir, workDir string, id int64) string {
 var jsonFields = []string{
 	"id", "title", "status", "project", "ticket", "worktree",
 	"branch", "session", "commit", "created", "accepted", "prose",
-	"depends_on", "blocks", "actions",
+	"depends_on", "blocks", "merges_cleanly", "actions",
+}
+
+// mergeAnswerIn reads the merge answer of the show result, which is a boolean
+// or null.
+func mergeAnswerIn(t *testing.T, dataDir, workDir string, id int64) any {
+	t.Helper()
+	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
+	answer, held := got["merges_cleanly"]
+	if !held {
+		t.Fatalf("show result holds no merges_cleanly: %#v", got)
+	}
+	return answer
 }
 
 func TestWrapBreaksAtASpace(t *testing.T) {
@@ -1567,6 +1579,125 @@ func TestRunShowJSONRefusesDiffWithTheStatusOfATicketOutsideReady(t *testing.T) 
 				if !strings.Contains(reason, want) {
 					t.Errorf("actions.diff.reason = %q does not name %q", reason, want)
 				}
+			}
+		})
+	}
+}
+
+// Tickets run in parallel, so the default branch moves while one is in work.
+// A ticket whose change still lands on top of it gives the answer that lets a
+// consumer leave it unmarked.
+func TestRunShowJSONReportsACleanMergeForAReadyTicket(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket that still lands")
+	commitFile(t, repo, "other.txt", "the change of another ticket\n", "another ticket landed")
+
+	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != true {
+		t.Errorf("merges_cleanly = %#v, want true", answer)
+	}
+}
+
+// The person finds a conflict when they merge the branch today. The answer
+// names it while the ticket waits for review instead.
+func TestRunShowJSONReportsAConflictWithTheDefaultBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
+	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+
+	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != false {
+		t.Errorf("merges_cleanly = %#v, want false", answer)
+	}
+}
+
+// Only a ready ticket holds a change waiting to be merged, so every other
+// status gives no answer rather than a false one a consumer would mark.
+func TestRunShowJSONGivesNoMergeAnswerOutsideReady(t *testing.T) {
+	for _, status := range everyStatus {
+		if status == store.Ready {
+			continue
+		}
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			id, repo := ticketWithStatus(t, dataDir, status)
+
+			if answer := mergeAnswerIn(t, dataDir, repo, id); answer != nil {
+				t.Errorf("merges_cleanly = %#v for a %s ticket, want null", answer, status)
+			}
+		})
+	}
+}
+
+// A run can reach ready without reporting a commit, and there is then nothing
+// to merge and no answer to give.
+func TestRunShowJSONGivesNoMergeAnswerForAReadyTicketWithNoCommit(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "the ticket that reported no commit")
+	finishIn(t, s, id)
+
+	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != nil {
+		t.Errorf("merges_cleanly = %#v for a ticket with no commit, want null", answer)
+	}
+}
+
+// The desktop reads ticket.show on each selection and each refresh, so a
+// ticket with nothing to merge must cost no process: the status is read before
+// the merge.
+func TestRunShowJSONAnswersTheMergeWithoutGitOutsideReady(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := queuedIn(t, s, repo, "the ticket in the queue")
+	withoutGit(t)
+
+	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != nil {
+		t.Errorf("merges_cleanly = %#v for a queued ticket, want null", answer)
+	}
+}
+
+// The person reads the text form, and the line tells them which branch the
+// change no longer lands on.
+func TestRunShowNamesTheBranchTheChangeConflictsWith(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
+	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+
+	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "conflicts with "+repoBranch) {
+		t.Errorf("dg show does not name the branch the change conflicts with:\n%s", out)
+	}
+}
+
+// A clean ticket is the ordinary one, and a line on every one of them would
+// bury the ticket that needs the person.
+func TestWriteTicketWritesNoMergeLineForACleanTicket(t *testing.T) {
+	ticket := store.Ticket{
+		ID:      4,
+		Project: store.Project{Path: "/projects/web-api", DefaultBranch: repoBranch},
+		Title:   "Remove the staging app",
+		Status:  store.Ready,
+	}
+	for name, answer := range map[string]*bool{"clean": new(true), "unknown": nil} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			writeTicket(&out, shown{
+				Ticket:        ticket,
+				ProseFile:     proseFile("/data", ticket.ID),
+				MergesCleanly: answer,
+			}, testNow)
+
+			if strings.Contains(out.String(), "conflicts") {
+				t.Errorf("dg show holds a conflict line for a %s ticket:\n%s", name, out.String())
 			}
 		})
 	}

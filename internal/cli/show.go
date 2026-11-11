@@ -139,14 +139,15 @@ func shortHash(hash string) string {
 // path; never-run tickets use the zero start time.
 type shown struct {
 	store.Ticket
-	ProseFile string
-	Prose     string
-	Worktree  string
-	DependsOn []int64
-	Blocks    []int64
-	Started   time.Time
-	Agent     string
-	Actions   map[string]actionJSON
+	ProseFile     string
+	Prose         string
+	Worktree      string
+	DependsOn     []int64
+	Blocks        []int64
+	Started       time.Time
+	Agent         string
+	Actions       map[string]actionJSON
+	MergesCleanly *bool
 }
 
 // writeHeading writes the title and the status, the time below the status, and
@@ -191,6 +192,9 @@ func writeFields(out io.Writer, s shown) {
 	if s.Branch != "" {
 		writeField(out, "branch", s.Branch)
 	}
+	if s.MergesCleanly != nil && !*s.MergesCleanly {
+		writeField(out, "merge", "conflicts with "+s.Project.DefaultBranch)
+	}
 	if s.Session != "" {
 		writeField(out, "session", s.Session)
 	}
@@ -230,21 +234,22 @@ func writeTicket(out io.Writer, s shown, now time.Time) {
 // dependency links are always arrays; actions holds one entry per command,
 // keyed by the operation name of that command.
 type ticketJSON struct {
-	ID        int64                 `json:"id"`
-	Title     string                `json:"title"`
-	Status    string                `json:"status"`
-	Project   string                `json:"project"`
-	Ticket    string                `json:"ticket"`
-	Worktree  *string               `json:"worktree"`
-	Branch    *string               `json:"branch"`
-	Session   *string               `json:"session"`
-	Commit    *string               `json:"commit"`
-	Created   *time.Time            `json:"created"`
-	Accepted  *time.Time            `json:"accepted"`
-	Prose     *string               `json:"prose"`
-	DependsOn []int64               `json:"depends_on"`
-	Blocks    []int64               `json:"blocks"`
-	Actions   map[string]actionJSON `json:"actions"`
+	ID            int64                 `json:"id"`
+	Title         string                `json:"title"`
+	Status        string                `json:"status"`
+	Project       string                `json:"project"`
+	Ticket        string                `json:"ticket"`
+	Worktree      *string               `json:"worktree"`
+	Branch        *string               `json:"branch"`
+	Session       *string               `json:"session"`
+	Commit        *string               `json:"commit"`
+	Created       *time.Time            `json:"created"`
+	Accepted      *time.Time            `json:"accepted"`
+	Prose         *string               `json:"prose"`
+	DependsOn     []int64               `json:"depends_on"`
+	Blocks        []int64               `json:"blocks"`
+	MergesCleanly *bool                 `json:"merges_cleanly"`
+	Actions       map[string]actionJSON `json:"actions"`
 
 	shown shown
 }
@@ -334,6 +339,12 @@ func showResultSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"type": "integer", "minimum": 1},
 			},
+			"merges_cleanly": map[string]any{
+				"type": []string{"boolean", "null"},
+				"description": "Whether the commit of the ticket merges into the default branch " +
+					"of its project without conflicts, or null for a ticket that holds no " +
+					"commit waiting to be merged.",
+			},
 			"actions": map[string]any{
 				"type": "object",
 				"description": "Whether the ticket's commands can run on it, keyed by the " +
@@ -353,7 +364,7 @@ func showResultSchema() map[string]any {
 		"required": []string{
 			"id", "title", "status", "project", "ticket", "worktree",
 			"branch", "session", "commit", "created", "accepted", "prose",
-			"depends_on", "blocks", "actions",
+			"depends_on", "blocks", "merges_cleanly", "actions",
 		},
 		"additionalProperties": true,
 	}
@@ -379,22 +390,23 @@ func nullableTime(at time.Time) *time.Time {
 // kept with it for the text renderer, and the exported fields are its JSON.
 func ticketValue(s shown) ticketJSON {
 	return ticketJSON{
-		ID:        s.ID,
-		Title:     s.Title,
-		Status:    string(s.Status),
-		Project:   s.Project.Path,
-		Ticket:    s.ProseFile,
-		Worktree:  nullable(s.Worktree),
-		Branch:    nullable(s.Branch),
-		Session:   nullable(s.Session),
-		Commit:    nullable(s.Commit),
-		Created:   nullableTime(s.Created),
-		Accepted:  nullableTime(s.Accepted),
-		Prose:     nullable(strings.TrimRight(s.Prose, "\n")),
-		DependsOn: append([]int64{}, s.DependsOn...),
-		Blocks:    append([]int64{}, s.Blocks...),
-		Actions:   s.Actions,
-		shown:     s,
+		ID:            s.ID,
+		Title:         s.Title,
+		Status:        string(s.Status),
+		Project:       s.Project.Path,
+		Ticket:        s.ProseFile,
+		Worktree:      nullable(s.Worktree),
+		Branch:        nullable(s.Branch),
+		Session:       nullable(s.Session),
+		Commit:        nullable(s.Commit),
+		Created:       nullableTime(s.Created),
+		Accepted:      nullableTime(s.Accepted),
+		Prose:         nullable(strings.TrimRight(s.Prose, "\n")),
+		DependsOn:     append([]int64{}, s.DependsOn...),
+		Blocks:        append([]int64{}, s.Blocks...),
+		MergesCleanly: s.MergesCleanly,
+		Actions:       s.Actions,
+		shown:         s,
 	}
 }
 
@@ -432,6 +444,21 @@ func writeOnly(out io.Writer, s shown, only onlyField) {
 		return
 	}
 	fmt.Fprintln(out, value)
+}
+
+// mergesCleanly reports whether the commit of a ticket still merges into the
+// default branch of its project, which moves while the ticket is in work.
+// Only a ready ticket that reported a commit has an answer, and the status is
+// read first, so a ticket that holds nothing to merge costs no Git process.
+func mergesCleanly(ticket store.Ticket) (*bool, error) {
+	if ticket.Status != store.Ready || ticket.Commit == "" {
+		return nil, nil
+	}
+	clean, err := project.MergesCleanly(ticket.Project.Path, ticket.Commit, ticket.Project.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	return &clean, nil
 }
 
 // showTicket loads metadata from the supplied store and description text from
@@ -480,6 +507,11 @@ func showTicket(s *store.Store, id int64) (ticketJSON, error) {
 		"diff":    {Applicable: diffApplicable(ticket), Available: canDiff, Reason: nullable(diffReason)},
 		"edit":    {Applicable: editApplicable(ticket), Available: canEdit, Reason: nullable(editReason)},
 		"restart": actionValue(restartAvailable(ticket)),
+	}
+
+	t.MergesCleanly, err = mergesCleanly(ticket)
+	if err != nil {
+		return ticketJSON{}, err
 	}
 
 	t.DependsOn, err = s.Dependencies(id)
