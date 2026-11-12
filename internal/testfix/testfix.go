@@ -59,6 +59,17 @@ func CommitIn(t *testing.T, dir, message string) {
 	GitAs(t, dir, "commit", "--allow-empty", "-q", "-m", message)
 }
 
+// CommitFileIn writes one file in a repository or a worktree and commits it on
+// the branch that is checked out there.
+func CommitFileIn(t *testing.T, dir, name, content, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	GitIn(t, dir, "add", name)
+	CommitIn(t, dir, message)
+}
+
 // Repo creates a repository with one commit on an explicit initial branch,
 // independent of the user's Git configuration. A ticket needs a commit to
 // start a worktree from, so the usable fixture has one.
