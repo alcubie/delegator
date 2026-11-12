@@ -260,6 +260,14 @@ disposable and are not removed with this worktree.
    what you did and why, and name anything that did not go as the
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
+   If you saw something outside the ticket that the person should
+   decide, such as a bug in code you did not touch or a default branch
+   that does not build, add a Finding: trailer for it to the footer of
+   the message, beside the ticket line. Write one trailer for each
+   finding, and indent a continuation line when a finding needs more
+   than one line. A finding is not a note about the work of the ticket,
+   which belongs in the body, and it is not a request for permission:
+   finish your ticket either way.
 5. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
    It refuses a commit that conflicts with %[4]s.
 
