@@ -1034,8 +1034,7 @@ func TestRPCDiscoverTicketIDResultContract(t *testing.T) {
 	acceptDataDir := t.TempDir()
 	s, id, acceptRepo := readyTicket(t, acceptDataDir)
 	accepted := commitReadyWork(t, s, acceptDataDir, id)
-	testfix.GitIn(t, acceptRepo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
-		"merge", "-q", "--no-ff", "-m", "merge ticket", accepted.Branch)
+	testfix.GitAs(t, acceptRepo, "merge", "-q", "--no-ff", "-m", "merge ticket", accepted.Branch)
 	acceptResult := rpcDocument(t, acceptDataDir, acceptRepo, "accept", fmt.Sprint(id))
 	if err := acceptValidator.Validate(acceptResult); err != nil {
 		t.Fatalf("accept handler result does not satisfy the advertised schema: %v", err)

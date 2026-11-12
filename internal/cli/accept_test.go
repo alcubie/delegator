@@ -89,8 +89,7 @@ func TestAcceptClosesATicketAfterItsBranchIsMerged(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
 	ticket := commitReadyWork(t, s, dataDir, ticketID)
-	testfix.GitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
-		"merge", "-q", "--no-ff", "-m", "merge ticket", ticket.Branch)
+	testfix.GitAs(t, repo, "merge", "-q", "--no-ff", "-m", "merge ticket", ticket.Branch)
 
 	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
