@@ -288,6 +288,25 @@ func TestTheACPRunnerFailsWhenItsConfiguredModelCannotBeSelected(t *testing.T) {
 	}
 }
 
+// The agent has to merge the branch this project calls its default, so the
+// prompt carries that name and not a fixed one.
+func TestTheACPRunnerNamesTheDefaultBranchOfTheProjectInThePrompt(t *testing.T) {
+	dataDir, id := queuedTicketOn(t, "Add the thing", "trunk")
+	record := filepath.Join(t.TempDir(), "prompt")
+	cfg := acpConfig(t, dataDir, "prompt "+record, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+	if err := Start(s, id, cfg); err != nil {
+		t.Fatal(err)
+	}
+	sent, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(sent), "Merge trunk into this branch"; !strings.Contains(got, want) {
+		t.Errorf("the prompt the agent received does not hold %q:\n%s", want, got)
+	}
+}
+
 // Use the ACP session ID rather than parsing agent output.
 func TestTheACPRunnerPutsTheSessionOfTheAgentOnTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
