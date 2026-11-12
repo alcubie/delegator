@@ -10,6 +10,7 @@ import (
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/inbox"
+	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
 
@@ -103,20 +104,27 @@ func (a mergeAnswers) note(id int64) string {
 // mergeAnswersFor asks Git whether the commit of each ready ticket still
 // merges into the default branch of its project. The default branch moves
 // while a ticket waits for review, and this marker is the only sign of the
-// conflict when no automatic run started for it. A Git failure leaves that
-// ticket without an answer rather than refusing the whole inbox.
-func mergeAnswersFor(s *store.Store, ready []store.OpenTicket) (mergeAnswers, error) {
-	answers := make(mergeAnswers, len(ready))
-	for _, row := range ready {
-		ticket, err := s.Ticket(row.ID)
-		if err != nil {
-			return nil, err
+// conflict when no automatic run started for it. ReadyMerges already leaves
+// out a ticket without a commit and a ticket of an archived project, so a
+// ready ticket of one reports no answer rather than costing a Git process;
+// the automatic check behind dg ticket conflicting already leaves those
+// projects alone. A Git failure leaves that ticket without an answer rather
+// than refusing the whole inbox.
+func mergeAnswersFor(s *store.Store) (mergeAnswers, error) {
+	ready, err := s.ReadyMerges()
+	if err != nil {
+		return nil, err
+	}
+
+	answers := make(mergeAnswers)
+	for _, p := range ready {
+		for _, t := range p.Tickets {
+			clean, err := project.MergesCleanly(p.Project.Path, t.Commit, p.Project.DefaultBranch)
+			if err != nil {
+				continue
+			}
+			answers[t.ID] = &clean
 		}
-		clean, err := mergesCleanly(ticket)
-		if err != nil {
-			continue
-		}
-		answers[row.ID] = clean
 	}
 	return answers, nil
 }
@@ -181,7 +189,7 @@ func showInbox(dataDir string, cfg *config.Config) (inboxJSON, error) {
 		if err != nil {
 			return err
 		}
-		merges, err := mergeAnswersFor(s, box.Ready)
+		merges, err := mergeAnswersFor(s)
 		if err != nil {
 			return err
 		}
