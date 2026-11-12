@@ -1,12 +1,16 @@
 package store
 
+import "database/sql"
+
 // ReadyMerge is a ready ticket that reported a commit, with the commit of the
 // default branch at its last conflict check. An empty CheckedBase means that
-// the ticket has not been checked.
+// the ticket has not been checked. MergesCleanly is the verdict of that check,
+// and is nil for a ticket without one.
 type ReadyMerge struct {
-	ID          int64
-	Commit      string
-	CheckedBase string
+	ID            int64
+	Commit        string
+	CheckedBase   string
+	MergesCleanly *bool
 }
 
 type ReadyProject struct {
@@ -26,7 +30,8 @@ func (s *Store) ReadyMerges() ([]ReadyProject, error) {
 		SELECT projects.id, projects.path, projects.default_branch,
 		       COALESCE(projects.name, ''), projects.archived_at,
 		       tickets.id, tickets.commit_id,
-		       COALESCE(tickets.checked_base_commit, '')
+		       COALESCE(tickets.checked_base_commit, ''),
+		       tickets.checked_merges_cleanly
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.status = ? AND projects.archived_at IS NULL
@@ -41,10 +46,14 @@ func (s *Store) ReadyMerges() ([]ReadyProject, error) {
 	for rows.Next() {
 		var p Project
 		var m ReadyMerge
+		var verdict sql.NullBool
 		if err := rows.Scan(
 			&p.ID, &p.Path, &p.DefaultBranch, &p.Name, timeColumn{&p.ArchivedAt},
-			&m.ID, &m.Commit, &m.CheckedBase); err != nil {
+			&m.ID, &m.Commit, &m.CheckedBase, &verdict); err != nil {
 			return nil, err
+		}
+		if verdict.Valid {
+			m.MergesCleanly = &verdict.Bool
 		}
 		if len(ready) == 0 || ready[len(ready)-1].Project.ID != p.ID {
 			ready = append(ready, ReadyProject{Project: p})
@@ -55,10 +64,12 @@ func (s *Store) ReadyMerges() ([]ReadyProject, error) {
 	return ready, rows.Err()
 }
 
-// SetCheckedBase records the commit of the default branch that the ticket was
-// checked against, so the next check of that ticket waits for the branch to
-// move.
-func (s *Store) SetCheckedBase(id int64, commit string) error {
-	_, err := s.db.Exec("UPDATE tickets SET checked_base_commit = ? WHERE id = ?", commit, id)
+// SetConflictCheck records the commit of the default branch that the ticket was
+// checked against and whether the ticket merged cleanly into it, so the next
+// check of that ticket waits for the branch to move.
+func (s *Store) SetConflictCheck(id int64, base string, mergesCleanly bool) error {
+	_, err := s.db.Exec(
+		"UPDATE tickets SET checked_base_commit = ?, checked_merges_cleanly = ? WHERE id = ?",
+		base, mergesCleanly, id)
 	return err
 }

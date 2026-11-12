@@ -182,6 +182,31 @@ func checkedBase(t *testing.T, s *store.Store, id int64) string {
 	return ""
 }
 
+// storedVerdict reads the verdict stored for one ticket, nil when none is.
+func storedVerdict(t *testing.T, s *store.Store, id int64) *bool {
+	t.Helper()
+	ready, err := s.ReadyMerges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range ready {
+		for _, ticket := range p.Tickets {
+			if ticket.ID == id {
+				return ticket.MergesCleanly
+			}
+		}
+	}
+	t.Fatalf("ticket %d is not among the ready tickets that hold a commit", id)
+	return nil
+}
+
+func wantVerdict(t *testing.T, got *bool, want bool) {
+	t.Helper()
+	if got == nil || *got != want {
+		t.Errorf("the stored verdict is %v, want %v", got, want)
+	}
+}
+
 // The person finds the conflict today when they merge the branch of the
 // ticket. The check finds it while the ticket waits for review instead.
 func TestConflictingFindsTheTicketTheDefaultBranchOvertook(t *testing.T) {
@@ -667,5 +692,49 @@ func TestConflictRefusesATicketThatIsNotReady(t *testing.T) {
 
 	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
 		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
+	}
+}
+
+func TestConflictingStoresFalseForAConflictingTicket(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	if _, err := Conflicting(s); err != nil {
+		t.Fatal(err)
+	}
+	wantVerdict(t, storedVerdict(t, s, id), false)
+}
+
+func TestConflictingStoresTrueForACleanTicket(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket that still lands")
+	testfix.CommitFileIn(t, repo, "other.txt", "the change of another ticket\n", "another ticket landed")
+	if _, err := Conflicting(s); err != nil {
+		t.Fatal(err)
+	}
+	wantVerdict(t, storedVerdict(t, s, id), true)
+}
+
+func TestReadyMergesReportsNoVerdictForAnUncheckedTicket(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket nothing checked")
+	if got := storedVerdict(t, s, id); got != nil {
+		t.Errorf("the stored verdict is %v, want none", *got)
+	}
+}
+
+func TestFinishTicketClearsTheStoredVerdict(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket that reports again")
+	overtake(t, repo)
+	if _, err := Conflicting(s); err != nil {
+		t.Fatal(err)
+	}
+	commit := testfix.GitOut(t, repo, "rev-parse", branch(id, "a title"))
+	if err := s.FinishTicket(id, commit, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := storedVerdict(t, s, id); got != nil {
+		t.Errorf("the stored verdict is %v after a new commit, want none", *got)
 	}
 }

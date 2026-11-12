@@ -75,7 +75,7 @@ func Conflicting(s *store.Store) ([]int64, error) {
 			if err != nil {
 				break
 			}
-			if err := s.SetCheckedBase(t.ID, base); err != nil {
+			if err := s.SetConflictCheck(t.ID, base, clean); err != nil {
 				return nil, err
 			}
 			if !clean {

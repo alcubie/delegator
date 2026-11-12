@@ -15,7 +15,14 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema, projectNameArchivedSchema, runErrorSchema, checkedBaseSchema, resolveConflictsSchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema, projectNameArchivedSchema, runErrorSchema, checkedBaseSchema, resolveConflictsSchema, checkedMergesCleanlySchema}
+
+// A null value means that the ticket has not been checked, which is not the
+// verdict of a clean ticket.
+const checkedMergesCleanlySchema = `
+ALTER TABLE tickets ADD COLUMN checked_merges_cleanly INTEGER
+  CHECK (checked_merges_cleanly IN (0, 1));
+`
 
 // The conflict runs are on before the person changes the setting, so the
 // instance that already has a database gets the behaviour it had before this
