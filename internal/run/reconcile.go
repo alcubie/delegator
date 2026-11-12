@@ -15,7 +15,8 @@ import (
 // capacity limits.
 //
 // It also starts the runs that correct the conflicts the default branch of a
-// project brought, which conflict launches for one named ticket.
+// project brought, which conflict launches for one named ticket, unless the
+// setting resolve_conflicts turns those runs off.
 func Reconcile(s *store.Store, launch func() *exec.Cmd, conflict func(int64) *exec.Cmd, cfg config.Config) error {
 	boot, err := bootTime()
 	if err != nil {
@@ -32,7 +33,7 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, conflict func(int64) *ex
 			return err
 		}
 	}
-	return correctConflicts(s, conflict)
+	return correctConflicts(s, conflict, cfg)
 }
 
 // running checks the supervisor PID, boot time, and run timeout. A run is

@@ -112,7 +112,7 @@ func TestReconcileFailsATicketWhoseRunIsOver(t *testing.T) {
 	testfix.AgeRun(t, dataDir, id, 2*time.Minute)
 
 	launch, record := testfix.RecordingLaunch(t)
-	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 1}); err != nil {
+	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 1, ResolveConflicts: true}); err != nil {
 		t.Fatal(err)
 	}
 	testfix.WaitForStarts(t, record, 0)
@@ -137,7 +137,7 @@ func TestReconcileLeavesATicketWhoseRunIsGoing(t *testing.T) {
 	}
 
 	launch, record := testfix.RecordingLaunch(t)
-	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
+	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 60, ResolveConflicts: true}); err != nil {
 		t.Fatal(err)
 	}
 	testfix.WaitForStarts(t, record, 0)
@@ -159,7 +159,7 @@ func TestReconcileStartsTheNextTicketAfterItMarksARun(t *testing.T) {
 	testfix.AgeRun(t, dataDir, first, 2*time.Minute)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 2, TimeoutMinutes: 1}); err != nil {
+	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 2, TimeoutMinutes: 1, ResolveConflicts: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,7 +173,7 @@ func TestReconcileThatMarksNothingStartsNothing(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 60}); err != nil {
+	if err := Reconcile(s, launch, noConflicts(t), config.Config{Runs: 1, TimeoutMinutes: 60, ResolveConflicts: true}); err != nil {
 		t.Fatal(err)
 	}
 

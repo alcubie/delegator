@@ -1241,10 +1241,11 @@ func (s *Store) Settings() (config.Config, error) {
 	var cfg config.Config
 	err := s.db.QueryRow(`SELECT settings.runs, settings.timeout_minutes,
 settings.done_hours, settings.max_runs_per_project, COALESCE(agents.name, ''), settings.telemetry,
-COALESCE(settings.default_model, '')
+COALESCE(settings.default_model, ''), settings.resolve_conflicts
 FROM settings LEFT JOIN agents ON agents.id = settings.default_agent_id
 WHERE settings.id = 1`).Scan(&cfg.Runs, &cfg.TimeoutMinutes, &cfg.DoneHours,
-		&cfg.MaxRunsPerProject, &cfg.DefaultAgent, &cfg.Telemetry, &cfg.DefaultModel)
+		&cfg.MaxRunsPerProject, &cfg.DefaultAgent, &cfg.Telemetry, &cfg.DefaultModel,
+		&cfg.ResolveConflicts)
 	if err != nil {
 		return config.Config{}, err
 	}
@@ -1295,6 +1296,14 @@ func (s *Store) SetSetting(name, value string) error {
 			return err
 		}
 		return s.setTelemetry(on, time.Now)
+	}
+	if name == "resolve_conflicts" {
+		on, err := parseSettingBool(name, value)
+		if err != nil {
+			return err
+		}
+		_, err = s.db.Exec("UPDATE settings SET resolve_conflicts = ? WHERE id = 1", on)
+		return err
 	}
 	if name == "default_agent" {
 		return s.SetDefaultAgent(value)

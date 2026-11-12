@@ -119,6 +119,7 @@ func settingJSONTypes(name string) []string {
 	populated := config.Config{
 		Runs: 1, TimeoutMinutes: 1, DoneHours: 1, MaxRunsPerProject: 1,
 		DefaultAgent: "agent", DefaultModel: "model", Telemetry: &enabled,
+		ResolveConflicts: true,
 	}
 	types := []string{}
 	for _, cfg := range []config.Config{{}, populated} {
@@ -434,6 +435,8 @@ func settingValue(cfg config.Config, name string) any {
 			return nil
 		}
 		return *cfg.Telemetry
+	case "resolve_conflicts":
+		return cfg.ResolveConflicts
 	case "runs":
 		return strconv.Itoa(cfg.Runs)
 	case "timeout_minutes":

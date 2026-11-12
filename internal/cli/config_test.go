@@ -90,7 +90,7 @@ func TestConfigListMatchesBareConfigAndKeepsDefinitionOrder(t *testing.T) {
 	position := -1
 	for _, name := range []string{
 		"runs", "timeout_minutes", "done_hours", "max_runs_per_project",
-		"default_agent", "default_model", "telemetry",
+		"default_agent", "default_model", "resolve_conflicts", "telemetry",
 	} {
 		next := strings.Index(listed, "│ "+name)
 		if next <= position {
@@ -166,6 +166,34 @@ func TestConfigGetShowsOneDatabaseSetting(t *testing.T) {
 	}
 	if out != "6\n" {
 		t.Errorf("dg config get wrote %q, want %q", out, "6\\n")
+	}
+}
+
+// The runs that correct a conflict are the behaviour a new instance gets, so
+// the person who wants them has nothing to set.
+func TestConfigShowsResolveConflictsOnANewInstance(t *testing.T) {
+	out, err := runIn(t, t.TempDir(), t.TempDir(), "config", "get", "resolve_conflicts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "true\n" {
+		t.Errorf("resolve_conflicts on a new instance = %q, want %q", out, "true\\n")
+	}
+}
+
+func TestConfigSetsResolveConflictsBothWays(t *testing.T) {
+	dataDir := t.TempDir()
+	for _, value := range []string{"false", "true"} {
+		if _, err := runIn(t, dataDir, t.TempDir(), "config", "set", "resolve_conflicts", value); err != nil {
+			t.Fatal(err)
+		}
+		got, err := runIn(t, dataDir, t.TempDir(), "config", "get", "resolve_conflicts")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != value+"\n" {
+			t.Errorf("after setting %q: got %q, want %q", value, got, value+"\\n")
+		}
 	}
 }
 
@@ -269,6 +297,7 @@ func TestConfigCommandsGiveUsefulErrors(t *testing.T) {
 		{[]string{"config", "set", "runs", "many"}, "setting runs must be an integer"},
 		{[]string{"config", "set", "runs", "0"}, "setting runs must be 1 or more"},
 		{[]string{"config", "set", "timeout_minutes", "0"}, "setting timeout_minutes must be 1 or more"},
+		{[]string{"config", "set", "resolve_conflicts", "1"}, "setting resolve_conflicts must be true or false"},
 	} {
 		_, err := runIn(t, dataDir, t.TempDir(), tc.args...)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
