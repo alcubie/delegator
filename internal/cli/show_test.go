@@ -1592,7 +1592,7 @@ func TestRunShowJSONReportsACleanMergeForAReadyTicket(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket that still lands")
-	commitFile(t, repo, "other.txt", "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, "other.txt", "the change of another ticket\n", "another ticket landed")
 
 	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != true {
 		t.Errorf("merges_cleanly = %#v, want true", answer)
@@ -1606,7 +1606,7 @@ func TestRunShowJSONReportsAConflictWithTheDefaultBranch(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
 
 	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != false {
 		t.Errorf("merges_cleanly = %#v, want false", answer)
@@ -1667,7 +1667,7 @@ func TestRunShowNamesTheBranchTheChangeConflictsWith(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
 
 	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
 	if err != nil {
