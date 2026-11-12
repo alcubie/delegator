@@ -13,7 +13,10 @@ import (
 // restarts. If it frees capacity, it triggers eligible queued work; otherwise
 // it leaves scheduling to existing supervisors. cfg supplies the timeout and
 // capacity limits.
-func Reconcile(s *store.Store, launch func() *exec.Cmd, cfg config.Config) error {
+//
+// It also starts the runs that correct the conflicts the default branch of a
+// project brought, which conflict launches for one named ticket.
+func Reconcile(s *store.Store, launch func() *exec.Cmd, conflict func(int64) *exec.Cmd, cfg config.Config) error {
 	boot, err := bootTime()
 	if err != nil {
 		return err
@@ -24,10 +27,12 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, cfg config.Config) error
 	if err != nil {
 		return err
 	}
-	if marked == 0 {
-		return nil
+	if marked > 0 {
+		if err := Next(s, cfg, launch); err != nil {
+			return err
+		}
 	}
-	return Next(s, cfg, launch)
+	return correctConflicts(s, conflict)
 }
 
 // running checks the supervisor PID, boot time, and run timeout. A run is

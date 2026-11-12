@@ -21,6 +21,11 @@ var launch = dgRun
 // from launch because a restarted ticket bypasses the queue.
 var restartLaunch = dgRestart
 
+// conflictLaunch returns the supervisor that corrects the conflicts of one
+// ready ticket. It is separate from launch because that ticket is not in the
+// queue.
+var conflictLaunch = dgConflict
+
 // dgRun uses the current executable, which may not be on PATH. It leaves
 // ticket selection to the supervisor's atomic claim; dgRestart instead names
 // the failed ticket to resume.
@@ -34,6 +39,10 @@ func dgRestart(id int64, model string) *exec.Cmd {
 		args = append(args, "--model", model)
 	}
 	return dgRunArgs(args...)
+}
+
+func dgConflict(id int64) *exec.Cmd {
+	return dgRunArgs("--conflict", strconv.FormatInt(id, 10))
 }
 
 func dgRunArgs(args ...string) *exec.Cmd {
@@ -56,10 +65,14 @@ func launchFrom(dataDir string, next func() *exec.Cmd) func() *exec.Cmd {
 	return func() *exec.Cmd { return launchIn(dataDir, next()) }
 }
 
+func conflictFrom(dataDir string, next func(int64) *exec.Cmd) func(int64) *exec.Cmd {
+	return func(id int64) *exec.Cmd { return launchIn(dataDir, next(id)) }
+}
+
 // runCommand provides the hidden supervisor entry point. Delegator launches
 // it automatically, but it can also be invoked manually.
 func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
-	var restart bool
+	var restart, conflict bool
 	var model string
 	cmd := &cobra.Command{
 		Use:    "run [id]",
@@ -78,6 +91,9 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 			if restart && len(args) != 1 {
 				return fmt.Errorf("%s --restart needs a ticket id", cmd.CommandPath())
 			}
+			if conflict && len(args) != 1 {
+				return fmt.Errorf("%s --conflict needs a ticket id", cmd.CommandPath())
+			}
 			// Automatic starts claim the next eligible ticket; an
 			// explicit ID selects one ticket.
 			start := func(s *store.Store) (bool, error) { return run.StartNext(s, *cfg) }
@@ -87,8 +103,11 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 				start = func(s *store.Store) (bool, error) { return true, run.Start(s, id, *cfg) }
-				if restart {
+				switch {
+				case restart:
 					start = func(s *store.Store) (bool, error) { return true, run.Restart(s, id, *cfg, model) }
+				case conflict:
+					start = func(s *store.Store) (bool, error) { return true, run.Conflict(s, id, *cfg) }
 				}
 			}
 			// Only a supervisor that claimed and successfully ran
@@ -109,6 +128,8 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&restart, "restart", false, "resume a failed ticket")
+	cmd.Flags().BoolVar(&conflict, "conflict", false, "correct the conflicts of a ready ticket")
 	cmd.Flags().StringVar(&model, "model", "", "model ID for the restarted run")
+	cmd.MarkFlagsMutuallyExclusive("restart", "conflict")
 	return rpcOperationCommand("run", cmd)
 }

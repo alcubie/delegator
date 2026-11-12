@@ -1,9 +1,39 @@
 package run
 
 import (
+	"os/exec"
+
 	"github.com/alcubie/delegator/internal/project"
 	"github.com/alcubie/delegator/internal/store"
 )
+
+// correctConflicts starts a supervisor for each ready ticket that the default
+// branch of its project broke, so its agent merges the branch and corrects the
+// conflicts without a command from the person.
+//
+// A paused queue starts nothing and checks nothing: the check stores the
+// commit it checked against, so a check while paused would be the only one for
+// that commit and the run would never happen. The queue state is read before
+// Conflicting for that reason.
+//
+// A run that fails leaves the ticket failed, as any other run does, and the
+// ticket is no longer ready for a second try.
+func correctConflicts(s *store.Store, launch func(int64) *exec.Cmd) error {
+	running, err := s.IsQueueRunning()
+	if err != nil || !running {
+		return err
+	}
+	conflicting, err := Conflicting(s)
+	if err != nil {
+		return err
+	}
+	for _, id := range conflicting {
+		if err := Detach(launch(id)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Conflicting returns the ids of the ready tickets whose commit no longer
 // merges into the default branch of their project. The branch moves without

@@ -18,7 +18,7 @@ import (
 // A completed turn records exit code zero; other outcomes record failure
 // details. The supervisor context cancels the turn on timeout, alongside
 // process-group termination.
-func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket store.Ticket, runID int64, worktree, cacheDir, model string, log io.Writer) (err error) {
+func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket store.Ticket, runID int64, worktree, cacheDir, model string, text firstPrompt, log io.Writer) (err error) {
 	// Always close the claimed run. Use noExitCode unless the turn
 	// completes normally, and record the error that ended it.
 	code := noExitCode
@@ -43,7 +43,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 		return reportSetupFailure(log, err)
 	}
 
-	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir, ticket.Project.DefaultBranch)), log)
+	last, streamErr := stream(session.Prompt(ctx, text(id, s.DataDir(), cacheDir, ticket.Project.DefaultBranch)), log)
 	usageErr := recordUsage(s, runID, session.Usage())
 	if err := errors.Join(streamErr, usageErr); err != nil {
 		return err

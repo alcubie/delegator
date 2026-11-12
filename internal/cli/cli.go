@@ -44,7 +44,7 @@ func writeValue(out io.Writer, value any, asJSON bool, writeText func(io.Writer)
 // after command construction.
 func withStore(dataDir string, cfg *config.Config, fn func(*store.Store) error) error {
 	return store.With(dataDir, func(s *store.Store) error {
-		if err := run.Reconcile(s, launchFrom(dataDir, launch), *cfg); err != nil {
+		if err := run.Reconcile(s, launchFrom(dataDir, launch), conflictFrom(dataDir, conflictLaunch), *cfg); err != nil {
 			return err
 		}
 		return fn(s)

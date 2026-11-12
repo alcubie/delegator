@@ -33,7 +33,29 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel)
+	return supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt)
+}
+
+// sessionAgent returns the agent and the model of a run that continues the
+// work of a ticket. A stored session keeps the agent and the recorded model of
+// the run that saved it, even where the defaults have changed, and an unknown
+// prior model leaves the loaded session unchanged. A ticket without a session
+// has none to continue, so a new session starts in the existing worktree with
+// the current defaults.
+func sessionAgent(s *store.Store, ticket store.Ticket, cfg config.Config) (store.Agent, string, sql.Null[int64], error) {
+	if ticket.Session == "" {
+		agent, err := s.Agent(cfg.DefaultAgent)
+		return agent, cfg.DefaultModel, sql.Null[int64]{}, err
+	}
+	prior, err := s.Run(ticket.ID)
+	if err != nil {
+		return store.Agent{}, "", sql.Null[int64]{}, err
+	}
+	agent, err := s.AgentByID(prior.AgentID)
+	if err != nil {
+		return store.Agent{}, "", sql.Null[int64]{}, err
+	}
+	return agent, prior.Model, prior.ModelID, nil
 }
 
 // Restart starts a failed ticket again. Restart writes the running state and
@@ -45,29 +67,9 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 	if err != nil {
 		return err
 	}
-	var agent store.Agent
-	var modelID sql.Null[int64]
-	var model string
-	if ticket.Session != "" {
-		prior, err := s.Run(id)
-		if err != nil {
-			return err
-		}
-		agent, err = s.AgentByID(prior.AgentID)
-		if err != nil {
-			return err
-		}
-		// An unknown prior model leaves the loaded session unchanged.
-		model = prior.Model
-		modelID = prior.ModelID
-	} else {
-		// The previous attempt failed before saving a session, so start a
-		// new session with the current defaults in the existing worktree.
-		model = cfg.DefaultModel
-		agent, err = s.Agent(cfg.DefaultAgent)
-		if err != nil {
-			return err
-		}
+	agent, model, modelID, err := sessionAgent(s, ticket, cfg)
+	if err != nil {
+		return err
 	}
 	var runID int64
 	if modelOverride != "" {
@@ -79,7 +81,32 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent, model)
+	return supervise(s, cfg, ticket, runID, agent, model, prompt)
+}
+
+// Conflict runs a ready ticket again to merge the default branch of its
+// project and correct the conflicts that the branch brought, so the person
+// does not have to open a chat and ask for the merge. It continues the session
+// that reported the commit, which already holds the work being corrected.
+//
+// The transition is the one dg ticket rerun uses, written here rather than by
+// the command that found the conflict so that the run records the PID of this
+// supervisor. A ready ticket already holds its place in the capacity count, so
+// the run needs no free slot.
+func Conflict(s *store.Store, id int64, cfg config.Config) error {
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		return err
+	}
+	agent, model, _, err := sessionAgent(s, ticket, cfg)
+	if err != nil {
+		return err
+	}
+	runID, err := s.Rerun(id, agent.ID, os.Getpid())
+	if err != nil {
+		return err
+	}
+	return supervise(s, cfg, ticket, runID, agent, model, conflictPrompt)
 }
 
 // StartNext claims and runs the first eligible queued ticket under cfg
@@ -108,7 +135,7 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel)
+	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt)
 }
 
 // noExitCode marks a run without a reported exit code, matching os/exec for a
@@ -160,7 +187,7 @@ func (t *supervisorTimer) Close() error {
 // use the claimed runID, since a restart may create a newer run. Setup
 // failures close the run and mark the ticket failed so it does not keep
 // occupying capacity.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent, model string) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent, model string, text firstPrompt) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// Any return without dg finish must fail the claimed ticket.
@@ -186,7 +213,7 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	}
 	defer log.Close()
 
-	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, model, log)
+	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, model, text, log)
 }
 
 // logTime uses RFC 3339 with filename-safe separators and millisecond
@@ -204,6 +231,10 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 	name := time.Now().UTC().Format(logTime) + ".log"
 	return os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 }
+
+// firstPrompt builds the prompt that opens a run. The supervisor takes it from
+// its caller, which chooses the prompt that suits the run it starts.
+type firstPrompt func(id int64, dataDir, cacheDir, defaultBranch string) string
 
 // prompt tells the agent to read its ticket with dg ticket show and report its
 // commit with dg ticket finish, and to mark the ticket running again with dg
@@ -255,4 +286,22 @@ How to read the repository:
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
 `, id, dataDir, cacheDir, defaultBranch)
+}
+
+// conflictPrompt tells the agent that the commit it reported no longer merges
+// into the default branch, and asks for the merge, the correction and a new
+// commit. It is short because it goes to the session that did the work: it
+// names no cache directory and repeats none of the reading rules.
+func conflictPrompt(id int64, dataDir, _, defaultBranch string) string {
+	return fmt.Sprintf(`The commit you reported for delegator ticket %[1]d no longer merges into
+%[2]s. New commits of %[2]s conflict with this branch.
+
+1. Merge %[2]s into this branch. Merge it; do not rebase.
+2. Correct each conflict.
+3. Do the checks of the project again.
+4. Commit the correction. Add a new commit on top of the one you reported;
+   do not amend it, so that the reviewer sees what changed.
+5. Run dg ticket finish %[1]d <hash> --data-dir %[3]q with the hash of the new
+   commit.
+`, id, defaultBranch, dataDir)
 }
