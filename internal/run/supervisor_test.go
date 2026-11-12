@@ -294,6 +294,22 @@ func TestPromptSaysHowToRead(t *testing.T) {
 	}
 }
 
+func TestPromptAsksForFindingsAsTrailers(t *testing.T) {
+	got := strings.Join(strings.Fields(prompt(42, t.TempDir(), t.TempDir(), "main")), " ")
+	for _, want := range []string{
+		"name anything that did not go as the ticket said",
+		"Finding: trailer",
+		"outside the ticket",
+		"one trailer for each finding",
+		"indent a continuation line",
+		"not a request for permission",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestPromptExplainsTheSharedDisposableProjectCache(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
 	got := prompt(42, t.TempDir(), cacheDir, "main")
