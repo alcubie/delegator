@@ -14,30 +14,37 @@ import (
 	"github.com/alcubie/delegator/internal/testfix"
 )
 
-// fakeGit puts a git on the PATH that answers difftool by recording the call
-// and runs the real git for every other command, so the checks dg makes before
-// the tool still reach git. It returns the path of the record.
-func fakeGit(t *testing.T) string {
+// gitOnPath puts a git of one shell script ahead of the real one on the PATH.
+// The script runs with the path of the real git in $real, so it can hand a
+// command dg must really run to it.
+func gitOnPath(t *testing.T, script string) {
 	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := filepath.Join(t.TempDir(), "difftool")
 	bin := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-for arg in "$@"; do
+	body := fmt.Sprintf("#!/bin/sh\nreal=%q\n%s", real, script)
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// fakeGit puts a git on the PATH that answers difftool by recording the call
+// and runs the real git for every other command, so the checks dg makes before
+// the tool still reach git. It returns the path of the record.
+func fakeGit(t *testing.T) string {
+	t.Helper()
+	record := filepath.Join(t.TempDir(), "difftool")
+	gitOnPath(t, fmt.Sprintf(`for arg in "$@"; do
 	if [ "$arg" = difftool ]; then
 		{ pwd -P; printf '%%s\n' "$@"; } > %q
 		exit 0
 	fi
 done
-exec %q "$@"
-`, record, real)
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+exec "$real" "$@"
+`, record))
 	return record
 }
 
