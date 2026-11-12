@@ -22,7 +22,7 @@ var jsonGroups = []string{"done", "ready", "running", "failed", "queued"}
 // jsonInboxFields is every key that one ticket of RPC inbox result holds.
 var jsonInboxFields = []string{
 	"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "runs",
-	"created", "accepted", "started",
+	"created", "accepted", "started", "merges_cleanly",
 }
 
 // inboxOnlyFields is every key of an inbox row that the show result lacks.
@@ -255,6 +255,19 @@ func one(t *testing.T, got map[string]any, name string) map[string]any {
 	return tickets[0]
 }
 
+// jsonRow returns the ticket of one group that holds an id, so a test of a
+// group with more than one ticket does not depend on their order.
+func jsonRow(t *testing.T, got map[string]any, name string, id int64) map[string]any {
+	t.Helper()
+	for _, ticket := range jsonGroup(t, got, name) {
+		if ticket["id"] == float64(id) {
+			return ticket
+		}
+	}
+	t.Fatalf("the group %q holds no ticket %d: %v", name, id, got[name])
+	return nil
+}
+
 // wantRFC3339 reads one key as a time of RFC 3339.
 func wantRFC3339(t *testing.T, ticket map[string]any, key string) time.Time {
 	t.Helper()
@@ -416,6 +429,64 @@ func TestRunJSONGivesTheFullPathOfTheProject(t *testing.T) {
 	}
 	if !filepath.IsAbs(path) || strings.Contains(path, "~") {
 		t.Errorf("project = %q, want a full path with no tilde", path)
+	}
+}
+
+// A client that draws its own rows marks the conflict from the field. Only a
+// ready ticket holds a change waiting to be merged, so every other one gives
+// no answer rather than a false one a client would mark.
+func TestRunJSONReportsWhetherAReadyTicketMerges(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	conflicted := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
+	clean := readyWorktreeIn(t, s, dataDir, repo, "the ticket that still merges")
+	commitReadyFile(t, s, dataDir, clean, "another-file.txt")
+	running := queuedIn(t, s, repo, "the ticket in work")
+	if _, err := s.Claim(running, "delegator/running", testAgentID); err != nil {
+		t.Fatal(err)
+	}
+	landConflictingChange(t, repo)
+
+	got := readInboxJSON(t, dataDir, repo)
+
+	for _, test := range []struct {
+		group string
+		id    int64
+		want  any
+	}{
+		{"ready", conflicted, false},
+		{"ready", clean, true},
+		{"running", running, nil},
+	} {
+		answer := mergeAnswerOf(t, jsonRow(t, got, test.group, test.id))
+		if answer != test.want {
+			t.Errorf("merges_cleanly = %#v for ticket %d of %q, want %#v",
+				answer, test.id, test.group, test.want)
+		}
+	}
+}
+
+// A project the person moved or removed leaves Git with no answer to give, and
+// the inbox is the one place that must still show every ticket.
+func TestRunJSONGivesNoMergeAnswerForAProjectThatIsGone(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	gone := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	here := readyChangeIn(t, s, dataDir, repo, "the ticket of the project that is here")
+	lost := readyChangeIn(t, s, dataDir, gone, "the ticket of the project that is gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readInboxJSON(t, dataDir, repo)
+
+	if answer := mergeAnswerOf(t, jsonRow(t, got, "ready", lost)); answer != nil {
+		t.Errorf("merges_cleanly = %#v for a project that is gone, want null", answer)
+	}
+	if answer := mergeAnswerOf(t, jsonRow(t, got, "ready", here)); answer != true {
+		t.Errorf("merges_cleanly = %#v for the ticket of the project that is here, want true", answer)
 	}
 }
 

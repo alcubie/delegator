@@ -1270,6 +1270,16 @@ func TestRPCDiscoverInboxResultContract(t *testing.T) {
 			delete(row, "accepted")
 			result["queued"] = []any{row}
 		}},
+		{"missing merges_cleanly", func(result map[string]any) {
+			row := maps.Clone(queued)
+			delete(row, "merges_cleanly")
+			result["queued"] = []any{row}
+		}},
+		{"merges_cleanly is not a boolean", func(result map[string]any) {
+			row := maps.Clone(queued)
+			row["merges_cleanly"] = "false"
+			result["queued"] = []any{row}
+		}},
 		{"missing dependencies", func(result map[string]any) {
 			row := maps.Clone(queued)
 			delete(row, "depends_on")

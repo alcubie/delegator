@@ -128,7 +128,7 @@ func Root(workDir string) *cobra.Command {
 				return err
 			}
 			return writeValue(cmd.OutOrStdout(), box, false, func(out io.Writer) {
-				writeInbox(out, box.box, mode, box.now, box.done)
+				writeInbox(out, box.box, mode, box.now, box.done, box.merges)
 			})
 		},
 	}

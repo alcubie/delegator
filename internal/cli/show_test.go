@@ -228,10 +228,16 @@ var jsonFields = []string{
 // or null.
 func mergeAnswerIn(t *testing.T, dataDir, workDir string, id int64) any {
 	t.Helper()
-	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
+	return mergeAnswerOf(t, showJSON(t, dataDir, workDir, fmt.Sprint(id)))
+}
+
+// mergeAnswerOf reads the merge answer of a result or of one row of a result,
+// which is a boolean or null.
+func mergeAnswerOf(t *testing.T, got map[string]any) any {
+	t.Helper()
 	answer, held := got["merges_cleanly"]
 	if !held {
-		t.Fatalf("show result holds no merges_cleanly: %#v", got)
+		t.Fatalf("the result holds no merges_cleanly: %#v", got)
 	}
 	return answer
 }
@@ -1606,7 +1612,7 @@ func TestRunShowJSONReportsAConflictWithTheDefaultBranch(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	landConflictingChange(t, repo)
 
 	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != false {
 		t.Errorf("merges_cleanly = %#v, want false", answer)
@@ -1667,7 +1673,7 @@ func TestRunShowNamesTheBranchTheChangeConflictsWith(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	landConflictingChange(t, repo)
 
 	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
 	if err != nil {

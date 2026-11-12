@@ -3,8 +3,11 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -29,8 +32,14 @@ const (
 // render writes one inbox at testNow and returns each line of it.
 func render(t *testing.T, box inbox.Inbox) []string {
 	t.Helper()
+	return renderMerges(t, box, nil)
+}
+
+// renderMerges writes one inbox whose ready tickets carry merge answers.
+func renderMerges(t *testing.T, box inbox.Inbox, merges mergeAnswers) []string {
+	t.Helper()
 	var out bytes.Buffer
-	writeInbox(&out, box, colourAuto, testNow, testDone)
+	writeInbox(&out, box, colourAuto, testNow, testDone, merges)
 	return strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 }
 
@@ -50,6 +59,32 @@ func rows(t *testing.T, lines []string, heading string) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+// recordGit puts a git on the PATH that appends the arguments of each call to
+// one file and then runs the real git, so a test can tell which commands the
+// inbox starts. It returns the path of the record.
+func recordGit(t *testing.T) string {
+	t.Helper()
+	record := filepath.Join(t.TempDir(), "calls")
+	gitOnPath(t, fmt.Sprintf(`printf '%%s\n' "$*" >> %q
+exec "$real" "$@"
+`, record))
+	return record
+}
+
+// gitCalls reads the arguments of each call the recording git made. A record
+// that is absent means that nothing started git.
+func gitCalls(t *testing.T, record string) []string {
+	t.Helper()
+	data, err := os.ReadFile(record)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 }
 
 // wantLines compares an inbox with the lines it must hold.
@@ -195,6 +230,39 @@ func TestWriteInboxPutsTheNoteAndTheDurationInOneColumn(t *testing.T) {
 	})
 }
 
+// The marker tells the person a merge is necessary before they open the
+// review. A clean ticket is the ordinary one and a ticket Git gave no answer
+// for says nothing, so neither carries a note.
+func TestWriteInboxMarksTheReadyTicketThatConflicts(t *testing.T) {
+	box := inbox.Inbox{
+		QueueRunning: true,
+		Ready: []store.OpenTicket{{
+			ID: 4, Project: "/projects/web-api", Title: "Take the retry out of the client",
+			Status: store.Ready,
+		}, {
+			ID: 7, Project: "/projects/web-api", Title: "Add a limit on the rate",
+			Status: store.Ready,
+		}, {
+			ID: 14, Project: "/projects/web-api", Title: "Move to a new version of Go",
+			Status: store.Ready,
+		}},
+	}
+
+	wantLines(t, renderMerges(t, box, mergeAnswers{4: new(false), 7: new(true)}), []string{
+		statusRunning,
+		doneGroup,
+		"  none",
+		"READY",
+		"  4 web-api  Take the retry out of the client              conflict",
+		"  7 web-api  Add a limit on the rate",
+		" 14 web-api  Move to a new version of Go",
+		"RUNNING",
+		"  none",
+		"QUEUED",
+		"  none",
+	})
+}
+
 // A wide PTY verifies that both note types follow terminal width.
 func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
 	// A real terminal wins over a COLUMNS inherited from an outer terminal.
@@ -220,7 +288,7 @@ func TestWriteInboxEndsNotesAtTheTerminalEdge(t *testing.T) {
 			Status: store.Queued, DependsOn: []int64{4, 7},
 		}},
 	}
-	writeInbox(terminal, box, colourNever, testNow, testDone)
+	writeInbox(terminal, box, colourNever, testNow, testDone, nil)
 
 	reader := bufio.NewReader(output)
 	found := make(map[string]bool)
@@ -422,7 +490,7 @@ func TestWriteInboxStartsWithTheStateOfTheQueue(t *testing.T) {
 		"paused with none":     {inbox.Inbox{}, statusPaused},
 	} {
 		var out bytes.Buffer
-		writeInbox(&out, c.box, colourAuto, testNow, testDone)
+		writeInbox(&out, c.box, colourAuto, testNow, testDone, nil)
 		if !strings.HasPrefix(out.String(), c.want+"\n") {
 			t.Errorf("%s: the inbox does not start with %q:\n%s", name, c.want, out.String())
 		}
@@ -563,7 +631,7 @@ func TestWriteInboxSaysTheWindowOfDone(t *testing.T) {
 	box := inbox.Inbox{Queued: []store.OpenTicket{{ID: 1, Project: "/projects/one", Title: "a title"}}}
 
 	var out bytes.Buffer
-	writeInbox(&out, box, colourAuto, testNow, 6*time.Hour)
+	writeInbox(&out, box, colourAuto, testNow, 6*time.Hour, nil)
 
 	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	if want := "DONE (last 6h)"; !slices.Contains(got, want) {
@@ -642,6 +710,48 @@ func TestRunShowsAFailedTicketInFailed(t *testing.T) {
 	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title$`)
 	if len(got) != 1 || !want.MatchString(got[0]) {
 		t.Errorf("FAILED holds %v, want the row of ticket %d:\n%s", got, id, out)
+	}
+}
+
+// Exercise the conflict through storage, Git and terminal rendering. The
+// marker is the only sign of it when automatic runs for conflicts are off.
+func TestRunMarksTheReadyTicketThatConflicts(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "ticket title")
+	landConflictingChange(t, repo)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rows(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), "READY")
+	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title +` + conflictNote + `$`)
+	if len(got) != 1 || !want.MatchString(got[0]) {
+		t.Errorf("READY holds %v, want the row of ticket %d marked %q:\n%s", got, id, conflictNote, out)
+	}
+}
+
+// Only a ready ticket holds a change waiting to be merged. The inbox of a
+// person who runs dg all day asks Git for those tickets alone, and an accepted
+// ticket holds a commit, so the status and not the commit decides.
+func TestRunAsksGitForNoTicketThatIsNotReady(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket that was accepted")
+	if err := s.ChangeStatus(id, store.Done); err != nil {
+		t.Fatal(err)
+	}
+	record := recordGit(t)
+
+	if _, err := runIn(t, dataDir, repo); err != nil {
+		t.Fatal(err)
+	}
+
+	if calls := gitCalls(t, record); len(calls) > 0 {
+		t.Errorf("the inbox started git for a ticket that is not ready: %v", calls)
 	}
 }
 

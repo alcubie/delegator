@@ -36,12 +36,20 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 const ticketWorkFile = "ticket-work.txt"
 
 // commitReadyWork advances the branch of a ready ticket and records that
-// commit as its report. The primary checkout stays on trunk, as it does while
-// a person reviews the worktree of a real run.
+// commit as its report.
 func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int64) store.Ticket {
 	t.Helper()
+	return commitReadyFile(t, s, dataDir, ticketID, ticketWorkFile)
+}
+
+// commitReadyFile commits the change of a ready ticket in one named file, so
+// that a test can give two tickets changes that do and do not meet the change
+// another branch holds. The primary checkout stays on trunk, as it does while
+// a person reviews the worktree of a real run.
+func commitReadyFile(t *testing.T, s *store.Store, dataDir string, ticketID int64, name string) store.Ticket {
+	t.Helper()
 	worktree := run.WorktreePath(dataDir, ticketID)
-	testfix.CommitFileIn(t, worktree, ticketWorkFile, "the ticket change\n", "ticket work")
+	testfix.CommitFileIn(t, worktree, name, "the ticket change\n", "ticket work")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
