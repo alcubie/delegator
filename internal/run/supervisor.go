@@ -246,11 +246,7 @@ func prompt(id int64, dataDir, cacheDir, defaultBranch string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
 
-A project-scoped cache directory shared by concurrent tickets is writable at
-%[3]q. If useful, use it only for caches that support concurrent access; keep
-ticket-specific temporary artifacts in this worktree. Its contents are
-disposable and are not removed with this worktree.
-
+%[5]s
 1. Run dg ticket show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.
 3. Merge %[4]s into this branch when %[4]s has new commits. Merge it;
@@ -271,10 +267,25 @@ disposable and are not removed with this worktree.
 5. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
    It refuses a commit that conflicts with %[4]s.
 
-If the person continues this session later and asks for changes:
+%[6]s`, id, dataDir, cacheDir, defaultBranch, cacheNote(cacheDir), laterChanges(id, dataDir, defaultBranch))
+}
+
+// cacheNote tells the agent where the project cache is and what may go in it.
+func cacheNote(cacheDir string) string {
+	return fmt.Sprintf(`A project-scoped cache directory shared by concurrent tickets is writable at
+%q. If useful, use it only for caches that support concurrent access; keep
+ticket-specific temporary artifacts in this worktree. Its contents are
+disposable and are not removed with this worktree.
+`, cacheDir)
+}
+
+// laterChanges gives the steps for a change request in the same session, and
+// the limits on repository reads.
+func laterChanges(id int64, dataDir, defaultBranch string) string {
+	return fmt.Sprintf(`If the person continues this session later and asks for changes:
 
 1. Run dg ticket rerun %[1]d --data-dir %[2]q before you change anything.
-2. Merge %[4]s into this branch again when %[4]s has new commits, by the same
+2. Merge %[3]s into this branch again when %[3]s has new commits, by the same
    rule: merge it, do not rebase, correct each conflict.
 3. Make the changes and commit them. Add a new commit on top of the one you
    reported before; do not amend it, so that the reviewer sees what changed
@@ -293,7 +304,7 @@ How to read the repository:
   over 100 lines whole. Read the part you came for.
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
-`, id, dataDir, cacheDir, defaultBranch)
+`, id, dataDir, defaultBranch)
 }
 
 // conflictPrompt tells the agent that the commit it reported no longer merges
