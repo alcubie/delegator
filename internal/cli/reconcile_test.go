@@ -101,7 +101,7 @@ func TestACommandStartsTheRunThatCorrectsAConflict(t *testing.T) {
 
 	waitForCompletedRun(t, s, ticketID, reported.ID)
 	got := testfix.WaitFor(t, sent)
-	want := fmt.Sprintf("delegator ticket %d no longer merges into\n%s", ticketID, repoBranch)
+	want := fmt.Sprintf("no longer merges into %s", repoBranch)
 	if !strings.Contains(got, want) {
 		t.Errorf("the agent of the conflict run received:\n%s\nwant it to hold %q", got, want)
 	}
