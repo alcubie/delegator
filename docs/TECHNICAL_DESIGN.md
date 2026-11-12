@@ -830,6 +830,7 @@ before they change it.
 | `max_runs_per_project` | The number of tickets of one project that can be in `running`, `ready` or `failed` at one time. A value of 0 is ignored, and `runs` is then the limit. See §6.2. | 0 |
 | `default_agent` | The name of the agent that a new run uses. The value must be an agent that delegator holds, and §6.6 gives the seam for an agent. | None. The person selects an agent before the first run. |
 | `default_model` | The id of the model that a run asks the agent for. A value of `null` uses the model that the agent selects. | `null` |
+| `resolve_conflicts` | Delegator starts a run that merges the default branch into a ready ticket, if a move of that branch gave the ticket a conflict. If the value is `false`, the person does that merge. | `true` |
 | `telemetry` | Delegator reports data about its use if the value is `true`. A value of `null` is also no, because the person did not answer. See §11. | `null` |
 
 The value 24 for `done_hours` shows the work of one day. The lowest value of `runs` and

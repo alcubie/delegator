@@ -21,7 +21,15 @@ import (
 const workFile = "ticket-work.txt"
 
 // conflictConfig leaves the runs of the tests alone and has room for one more.
-var conflictConfig = config.Config{Runs: 1, TimeoutMinutes: 60}
+var conflictConfig = config.Config{Runs: 1, TimeoutMinutes: 60, ResolveConflicts: true}
+
+// withoutConflictRuns is conflictConfig with the setting that turns the
+// conflict runs off.
+func withoutConflictRuns() config.Config {
+	cfg := conflictConfig
+	cfg.ResolveConflicts = false
+	return cfg
+}
 
 // noStarts is the queue launcher of a Reconcile that must start nothing.
 func noStarts(t *testing.T) func() *exec.Cmd {
@@ -517,6 +525,39 @@ func TestReconcileStartsNoRunWhileTheQueueIsPaused(t *testing.T) {
 	}
 	if got := started(); !slices.Equal(got, []int64{id}) {
 		t.Errorf("the conflict runs started for %v after the queue started again, want %v", got, []int64{id})
+	}
+}
+
+// Each conflict run spends tokens, and a person who would rather merge the
+// branch themselves turns them off with resolve_conflicts. The check is then
+// worth nothing to them, so it must not start a Git process either, and it
+// must not store the commit it would have checked against: the run has to
+// start the moment they turn the setting back on.
+func TestReconcileStartsNoRunWhileResolveConflictsIsOff(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	launch, started := recordingConflicts()
+	calls := countingGit(t)
+
+	if err := Reconcile(s, noStarts(t), launch, withoutConflictRuns()); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); len(got) != 0 {
+		t.Errorf("the conflict runs started for %v while the setting was off, want none", got)
+	}
+	if got, err := s.Ticket(id); err != nil || got.Status != store.Ready {
+		t.Errorf("the ticket is %q, %v; want %q", got.Status, err, store.Ready)
+	}
+	if got := calls("rev-parse"); got != 0 {
+		t.Errorf("the check ran %d rev-parse calls while the setting was off, want 0", got)
+	}
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v after the setting went on, want %v", got, []int64{id})
 	}
 }
 

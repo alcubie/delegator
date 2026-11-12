@@ -25,6 +25,10 @@ type Config struct {
 	DefaultModel string
 	// Telemetry is nil until answered. Only an explicit true permits reporting.
 	Telemetry *bool
+	// ResolveConflicts permits the runs that merge the default branch of a
+	// project into a ready ticket the branch broke. False leaves that merge
+	// to the person.
+	ResolveConflicts bool
 }
 
 // Definition describes a setting and its help text. Definitions belong to the
@@ -42,6 +46,7 @@ var Definitions = []Definition{
 	{"max_runs_per_project", "the number of tickets of one project that can be Running, Ready or Failed at a time. A value of 0 is ignored and runs is used as the limit."},
 	{"default_agent", "the registered agent used for new runs."},
 	{"default_model", "the ACP model ID used for runs. null uses the agent's default model."},
+	{"resolve_conflicts", "start a run that merges the default branch into a ready ticket the branch broke. Each such run spends tokens, so set false to do that merge yourself instead."},
 	{"telemetry", "share usage statistics; null means disabled because unanswered. Set true or false to choose."},
 }
 

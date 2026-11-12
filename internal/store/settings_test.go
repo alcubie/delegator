@@ -16,7 +16,7 @@ func TestSettingsMigrationSeedsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Config{Runs: 3, TimeoutMinutes: 60, DoneHours: 24}
+	want := config.Config{Runs: 3, TimeoutMinutes: 60, DoneHours: 24, ResolveConflicts: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings = %+v, want defaults %+v", got, want)
 	}
@@ -104,7 +104,8 @@ func TestSettingUpdatesPersistAcrossOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Config{Runs: 3, TimeoutMinutes: 90, DoneHours: 72, MaxRunsPerProject: 2, DefaultAgent: "gemini", DefaultModel: "provider/model-v1"}
+	want := config.Config{Runs: 3, TimeoutMinutes: 90, DoneHours: 72, MaxRunsPerProject: 2,
+		DefaultAgent: "gemini", DefaultModel: "provider/model-v1", ResolveConflicts: false}
 	for _, set := range []func() error{
 		func() error { return s.SetSetting("runs", "3") },
 		func() error { return s.SetSetting("timeout_minutes", "90") },
@@ -112,6 +113,7 @@ func TestSettingUpdatesPersistAcrossOpen(t *testing.T) {
 		func() error { return s.SetSetting("max_runs_per_project", "2") },
 		func() error { return s.SetSetting("default_agent", "gemini") },
 		func() error { return s.SetSetting("default_model", "provider/model-v1") },
+		func() error { return s.SetSetting("resolve_conflicts", "false") },
 	} {
 		if err := set(); err != nil {
 			t.Fatal(err)

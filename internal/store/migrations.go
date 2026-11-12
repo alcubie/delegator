@@ -15,7 +15,15 @@ var ErrNewerDatabase = errors.New("the database comes from a later version of de
 // migrations holds one step for each version of the database, starting at 1.
 // The pre-release migrations were squashed into initialSchema. Future changes
 // must append a step rather than change one that has already shipped.
-var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema, projectNameArchivedSchema, runErrorSchema, checkedBaseSchema}
+var migrations = []string{initialSchema, telemetryConsentSchema, defaultModelSchema, runModelSchema, telemetryDeliverySchema, projectCacheResumeSchema, workspaceWriteResumeSchema, projectNameArchivedSchema, runErrorSchema, checkedBaseSchema, resolveConflictsSchema}
+
+// The conflict runs are on before the person changes the setting, so the
+// instance that already has a database gets the behaviour it had before this
+// column existed.
+const resolveConflictsSchema = `
+ALTER TABLE settings ADD COLUMN resolve_conflicts INTEGER NOT NULL DEFAULT 1
+  CHECK (resolve_conflicts IN (0, 1));
+`
 
 // The conflict check of a ready ticket is keyed by the commit of the default
 // branch it ran against, so the branch has to move before the ticket costs
