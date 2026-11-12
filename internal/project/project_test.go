@@ -474,6 +474,83 @@ func TestRequireBranchMergedRefusesTheChangeBundledWithOtherWork(t *testing.T) {
 	}
 }
 
+// Tickets run in parallel, so the default branch takes the work of other
+// tickets while one is in work. A change of another file is the ordinary case
+// and lands on top of it.
+func TestMergesCleanlyWithAChangeOfAnotherFile(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	commitFile(t, dir, "other.txt", "the work of another ticket\n", "other ticket work")
+
+	clean, err := MergesCleanly(dir, branch, "trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clean {
+		t.Error("the branch does not merge although it changes another file")
+	}
+}
+
+func TestMergesCleanlyWithAChangeOfTheSameLine(t *testing.T) {
+	dir, branch := mergedBranch(t)
+	commitFile(t, dir, "ticket.txt", "the work of another ticket\n", "other ticket work")
+
+	clean, err := MergesCleanly(dir, branch, "trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clean {
+		t.Error("the branch merges although it changes the line that trunk changed")
+	}
+}
+
+// The branch is ahead of a default branch that nothing moved, which merges as
+// a fast-forward.
+func TestMergesCleanlyWhenTheDefaultBranchDidNotMove(t *testing.T) {
+	dir, branch := mergedBranch(t)
+
+	clean, err := MergesCleanly(dir, branch, "trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clean {
+		t.Error("the branch does not merge into a trunk that did not move")
+	}
+}
+
+// merge-tree gives a revision it cannot read the status it gives a conflict,
+// so a name that Git does not know must not be reported as work that fails to
+// merge.
+func TestMergesCleanlyWithARevisionGitCannotFind(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+
+	clean, err := MergesCleanly(dir, "missing", "trunk")
+	if clean {
+		t.Error("a revision that Git cannot find merges")
+	}
+	if !errors.Is(err, ErrUnknownCommit) {
+		t.Fatalf("err = %v, want ErrUnknownCommit", err)
+	}
+}
+
+// Unrelated histories are a refusal of Git rather than a conflict of the work,
+// and the caller must be able to tell the two apart.
+func TestMergesCleanlyPreservesOtherGitFailures(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	gitIn(t, dir, "checkout", "-q", "--orphan", "unrelated")
+	commitFile(t, dir, "unrelated.txt", "the work of another history\n", "unrelated work")
+
+	clean, err := MergesCleanly(dir, "unrelated", "trunk")
+	if clean {
+		t.Error("a branch of an unrelated history merges")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 128 {
+		t.Fatalf("err = %v, want Git exit status 128", err)
+	}
+}
+
 // Exit status 1 from --is-ancestor means only that the branch is not an
 // ancestor. Every other Git failure must stay distinguishable from that normal
 // negative answer.

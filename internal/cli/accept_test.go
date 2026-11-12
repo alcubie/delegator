@@ -32,18 +32,27 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 	return s, ticketID, repo
 }
 
+// ticketWorkFile is the file that the work of a ticket changes.
+const ticketWorkFile = "ticket-work.txt"
+
+// commitFile writes one file in a repository or a worktree and commits it on
+// the branch that is checked out there.
+func commitFile(t *testing.T, dir, name, content, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testfix.GitIn(t, dir, "add", name)
+	testfix.CommitIn(t, dir, message)
+}
+
 // commitReadyWork advances the branch of a ready ticket and records that
 // commit as its report. The primary checkout stays on trunk, as it does while
 // a person reviews the worktree of a real run.
 func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int64) store.Ticket {
 	t.Helper()
 	worktree := run.WorktreePath(dataDir, ticketID)
-	name := "ticket-work.txt"
-	if err := os.WriteFile(filepath.Join(worktree, name), []byte("the ticket change\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	testfix.GitIn(t, worktree, "add", name)
-	testfix.CommitIn(t, worktree, "ticket work")
+	commitFile(t, worktree, ticketWorkFile, "the ticket change\n", "ticket work")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
@@ -189,13 +198,13 @@ func TestAcceptRemovesTheWorktree(t *testing.T) {
 func TestAcceptRefusesDirtyWorktrees(t *testing.T) {
 	tests := map[string]func(*testing.T, string){
 		"staged": func(t *testing.T, worktree string) {
-			if err := os.WriteFile(filepath.Join(worktree, "ticket-work.txt"), []byte("staged\n"), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(worktree, ticketWorkFile), []byte("staged\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			testfix.GitIn(t, worktree, "add", "ticket-work.txt")
+			testfix.GitIn(t, worktree, "add", ticketWorkFile)
 		},
 		"unstaged": func(t *testing.T, worktree string) {
-			if err := os.WriteFile(filepath.Join(worktree, "ticket-work.txt"), []byte("unstaged\n"), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(worktree, ticketWorkFile), []byte("unstaged\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -232,11 +241,7 @@ func TestAcceptIgnoresIgnoredArtifacts(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
 	worktree := run.WorktreePath(dataDir, ticketID)
-	if err := os.WriteFile(filepath.Join(worktree, ".gitignore"), []byte("artifact.log\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	testfix.GitIn(t, worktree, "add", ".gitignore")
-	testfix.CommitIn(t, worktree, "ignore build artifact")
+	commitFile(t, worktree, ".gitignore", "artifact.log\n", "ignore build artifact")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
