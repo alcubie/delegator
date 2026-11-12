@@ -6,7 +6,7 @@ Record the commit of a ticket and mark it Ready.
 
 ### Synopsis
 
-Record the ticket branch commit that contains the completed work and mark the ticket ready for review. The commit must belong to the ticket's branch.
+Record the ticket branch commit that contains the completed work and mark the ticket ready for review. The commit must belong to the ticket's branch and must still merge into the project's default branch without conflicts. When it conflicts, merge the default branch into the ticket branch, correct the conflicts, commit, and finish with the new commit.
 
 ```
 dg ticket finish <id> <commit> [flags]

@@ -446,7 +446,7 @@ func TestRunJSONReportsWhetherAReadyTicketMerges(t *testing.T) {
 	if _, err := s.Claim(running, "delegator/running", testAgentID); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
 
 	got := readInboxJSON(t, dataDir, repo)
 

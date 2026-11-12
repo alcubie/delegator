@@ -45,12 +45,29 @@ func GitOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// GitAs runs Git in dir with an explicit identity, independent of the user's
+// Git configuration, for a command that writes a commit.
+func GitAs(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	GitIn(t, dir, append([]string{"-c", "user.email=test@example.com", "-c", "user.name=Test"}, args...)...)
+}
+
 // CommitIn creates an empty commit with an explicit identity, independent of
 // the user's Git configuration.
 func CommitIn(t *testing.T, dir, message string) {
 	t.Helper()
-	GitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=Test",
-		"commit", "--allow-empty", "-q", "-m", message)
+	GitAs(t, dir, "commit", "--allow-empty", "-q", "-m", message)
+}
+
+// CommitFileIn writes one file in a repository or a worktree and commits it on
+// the branch that is checked out there.
+func CommitFileIn(t *testing.T, dir, name, content, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	GitIn(t, dir, "add", name)
+	CommitIn(t, dir, message)
 }
 
 // Repo creates a repository with one commit on an explicit initial branch,

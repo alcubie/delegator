@@ -35,17 +35,6 @@ func readyTicket(t *testing.T, dataDir string) (*store.Store, int64, string) {
 // ticketWorkFile is the file that the work of a ticket changes.
 const ticketWorkFile = "ticket-work.txt"
 
-// commitFile writes one file in a repository or a worktree and commits it on
-// the branch that is checked out there.
-func commitFile(t *testing.T, dir, name, content, message string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	testfix.GitIn(t, dir, "add", name)
-	testfix.CommitIn(t, dir, message)
-}
-
 // commitReadyWork advances the branch of a ready ticket and records that
 // commit as its report.
 func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int64) store.Ticket {
@@ -60,7 +49,7 @@ func commitReadyWork(t *testing.T, s *store.Store, dataDir string, ticketID int6
 func commitReadyFile(t *testing.T, s *store.Store, dataDir string, ticketID int64, name string) store.Ticket {
 	t.Helper()
 	worktree := run.WorktreePath(dataDir, ticketID)
-	commitFile(t, worktree, name, "the ticket change\n", "ticket work")
+	testfix.CommitFileIn(t, worktree, name, "the ticket change\n", "ticket work")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)
@@ -97,8 +86,7 @@ func TestAcceptClosesATicketAfterItsBranchIsMerged(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
 	ticket := commitReadyWork(t, s, dataDir, ticketID)
-	testfix.GitIn(t, repo, "-c", "user.email=test@example.com", "-c", "user.name=Test",
-		"merge", "-q", "--no-ff", "-m", "merge ticket", ticket.Branch)
+	testfix.GitAs(t, repo, "merge", "-q", "--no-ff", "-m", "merge ticket", ticket.Branch)
 
 	if _, err := runIn(t, dataDir, repo, "accept", fmt.Sprint(ticketID)); err != nil {
 		t.Fatal(err)
@@ -249,7 +237,7 @@ func TestAcceptIgnoresIgnoredArtifacts(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo := readyTicket(t, dataDir)
 	worktree := run.WorktreePath(dataDir, ticketID)
-	commitFile(t, worktree, ".gitignore", "artifact.log\n", "ignore build artifact")
+	testfix.CommitFileIn(t, worktree, ".gitignore", "artifact.log\n", "ignore build artifact")
 	commit := testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 	if err := s.FinishTicket(ticketID, commit, ""); err != nil {
 		t.Fatal(err)

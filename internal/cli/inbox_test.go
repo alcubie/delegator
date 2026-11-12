@@ -720,7 +720,7 @@ func TestRunMarksTheReadyTicketThatConflicts(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "ticket title")
-	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
 
 	out, err := runIn(t, dataDir, repo)
 	if err != nil {
