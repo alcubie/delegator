@@ -821,3 +821,53 @@ func TestRunSaysTheWindowOfDoneFromTheConfig(t *testing.T) {
 		t.Errorf("the inbox does not hold the heading %q:\n%s", want, out)
 	}
 }
+
+func TestRunMarksAStoredConflictWithoutMergeTree(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	readyChangeIn(t, s, dataDir, repo, "ticket title")
+	landConflictingChange(t, repo)
+	if _, err := runIn(t, dataDir, repo); err != nil {
+		t.Fatal(err)
+	}
+	record := recordGit(t)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out, conflictNote) {
+		t.Errorf("the inbox carries no conflict marker:\n%s", out)
+	}
+	for _, call := range gitCalls(t, record) {
+		if strings.Contains(call, "merge-tree") {
+			t.Errorf("the inbox checked a stored verdict with git: %q", call)
+		}
+	}
+}
+
+func TestRunChecksAndStoresTheAnswerOfATicketWhoseBaseMoved(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	readyChangeIn(t, s, dataDir, repo, "ticket title")
+	landConflictingChange(t, repo)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out, conflictNote) {
+		t.Errorf("the inbox carries no conflict marker:\n%s", out)
+	}
+	ready, err := s.ReadyMerges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := ready[0].Tickets[0].MergesCleanly; v == nil || *v {
+		t.Errorf("the stored verdict is %v, want false", v)
+	}
+}
