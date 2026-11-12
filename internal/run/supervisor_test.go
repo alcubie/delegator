@@ -25,10 +25,15 @@ func TestMain(m *testing.M) {
 
 func queuedTicket(t *testing.T, title string) (string, int64) {
 	t.Helper()
-	repo := testfix.Repo(t, "main")
+	return queuedTicketOn(t, title, "main")
+}
+
+func queuedTicketOn(t *testing.T, title, defaultBranch string) (string, int64) {
+	t.Helper()
+	repo := testfix.Repo(t, defaultBranch)
 	dataDir := t.TempDir()
 	s := testfix.OpenStore(t, dataDir)
-	projectID, err := s.ProjectID(repo, "main")
+	projectID, err := s.ProjectID(repo, defaultBranch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,20 +240,20 @@ func logOf(t *testing.T, dataDir string, id int64) string {
 func TestPromptNamesBothCommands(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "selected instance")
 	cacheDir := filepath.Join(dataDir, "cache", "projects", "7")
-	got := prompt(42, dataDir, cacheDir)
+	got := prompt(42, dataDir, cacheDir, "main")
 	for _, want := range []string{"dg ticket show 42", "dg ticket finish 42"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
 		}
 	}
 	if got, want := strings.Count(got, "--data-dir "+strconv.Quote(dataDir)), 4; got != want {
-		t.Errorf("the prompt names the selected data directory %d times, want %d:\n%s", got, want, prompt(42, dataDir, cacheDir))
+		t.Errorf("the prompt names the selected data directory %d times, want %d:\n%s", got, want, prompt(42, dataDir, cacheDir, "main"))
 	}
 }
 
 func TestPromptSaysToRerunBeforeARevision(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "selected instance")
-	got := prompt(42, dataDir, t.TempDir())
+	got := prompt(42, dataDir, t.TempDir(), "main")
 	for _, want := range []string{
 		"dg ticket rerun 42 --data-dir " + strconv.Quote(dataDir),
 		"before you change anything",
@@ -262,8 +267,26 @@ func TestPromptSaysToRerunBeforeARevision(t *testing.T) {
 	}
 }
 
+func TestPromptSaysToMergeTheDefaultBranchBeforeTheCommit(t *testing.T) {
+	got := prompt(42, t.TempDir(), t.TempDir(), "trunk")
+	for _, want := range []string{
+		"Merge trunk into this branch when trunk has new commits",
+		"do not rebase",
+		"Correct each conflict",
+		"do the checks of the project",
+		"It refuses a commit that conflicts with trunk",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not hold %q:\n%s", want, got)
+		}
+	}
+	if got, want := strings.Count(got, "do not rebase"), 2; got != want {
+		t.Errorf("the prompt rules out a rebase %d times, want %d: once for the first run and once for a revision", got, want)
+	}
+}
+
 func TestPromptSaysHowToRead(t *testing.T) {
-	got := prompt(42, t.TempDir(), t.TempDir())
+	got := prompt(42, t.TempDir(), t.TempDir(), "main")
 	for _, want := range []string{"grep", "200 lines", "100 lines"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not hold %q:\n%s", want, got)
@@ -273,7 +296,7 @@ func TestPromptSaysHowToRead(t *testing.T) {
 
 func TestPromptExplainsTheSharedDisposableProjectCache(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "cache", "projects", "7")
-	got := prompt(42, t.TempDir(), cacheDir)
+	got := prompt(42, t.TempDir(), cacheDir, "main")
 	for _, want := range []string{
 		cacheDir,
 		"shared by concurrent tickets",

@@ -43,7 +43,7 @@ func superviseACP(ctx context.Context, s *store.Store, agent store.Agent, ticket
 		return reportSetupFailure(log, err)
 	}
 
-	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir)), log)
+	last, streamErr := stream(session.Prompt(ctx, prompt(id, s.DataDir(), cacheDir, ticket.Project.DefaultBranch)), log)
 	usageErr := recordUsage(s, runID, session.Usage())
 	if err := errors.Join(streamErr, usageErr); err != nil {
 		return err

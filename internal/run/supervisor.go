@@ -208,9 +208,10 @@ func openLog(dataDir string, id int64) (*os.File, error) {
 // prompt tells the agent to read its ticket with dg ticket show and report its
 // commit with dg ticket finish, and to mark the ticket running again with dg
 // ticket rerun when the person asks for changes later in the same session. It
-// also gives concrete limits on repository reads to keep unnecessary files out
-// of the agent's context.
-func prompt(id int64, dataDir, cacheDir string) string {
+// names the default branch so that the agent merges it before finish refuses a
+// commit that conflicts with it. It also gives concrete limits on repository
+// reads to keep unnecessary files out of the agent's context.
+func prompt(id int64, dataDir, cacheDir, defaultBranch string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
 
@@ -221,19 +222,25 @@ disposable and are not removed with this worktree.
 
 1. Run dg ticket show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.
-3. Commit your work with git. The commit message is your report: say
+3. Merge %[4]s into this branch when %[4]s has new commits. Merge it;
+   do not rebase. Correct each conflict and do the checks of the project
+   again.
+4. Commit your work with git. The commit message is your report: say
    what you did and why, and name anything that did not go as the
    ticket said. If you changed nothing, commit with --allow-empty and
    say why in the message.
-4. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
+5. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
+   It refuses a commit that conflicts with %[4]s.
 
 If the person continues this session later and asks for changes:
 
 1. Run dg ticket rerun %[1]d --data-dir %[2]q before you change anything.
-2. Make the changes and commit them. Add a new commit on top of the one you
+2. Merge %[4]s into this branch again when %[4]s has new commits, by the same
+   rule: merge it, do not rebase, correct each conflict.
+3. Make the changes and commit them. Add a new commit on top of the one you
    reported before; do not amend it, so that the reviewer sees what changed
    since the last review.
-3. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the new
+4. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the new
    commit.
 
 Do not run rerun when the person only asks questions and does not ask for a
@@ -247,5 +254,5 @@ How to read the repository:
   over 100 lines whole. Read the part you came for.
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
-`, id, dataDir, cacheDir)
+`, id, dataDir, cacheDir, defaultBranch)
 }
