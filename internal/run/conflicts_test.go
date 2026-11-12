@@ -246,6 +246,35 @@ func TestConflictingChecksTheTicketAgainAfterTheDefaultBranchMoves(t *testing.T)
 	}
 }
 
+// A ticket rerun under the same session can report a new commit while the
+// default branch stands still. FinishTicket must clear the stored base, or
+// the cache that keeps one check per move of the branch would read as
+// "already checked" for a commit nothing checked.
+func TestConflictingChecksTheTicketAgainAfterANewCommitWhileTheBaseStands(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket that reports again")
+	overtake(t, repo)
+	if _, err := Conflicting(s); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.GitIn(t, repo, "checkout", "-q", branch(id, "a title"))
+	testfix.CommitFileIn(t, repo, workFile, fmt.Sprintf("the corrected work of ticket %d\n", id), "ticket work, again")
+	commit := testfix.GitOut(t, repo, "rev-parse", "HEAD")
+	testfix.GitIn(t, repo, "checkout", "-q", "main")
+	if err := s.FinishTicket(id, commit, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Conflicting(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []int64{id}) {
+		t.Errorf("Conflicting = %v, want %v", got, []int64{id})
+	}
+}
+
 // The ordinary ticket still lands on top of the branch, and storing the commit
 // it was checked against is what keeps the next command from checking it
 // again.
