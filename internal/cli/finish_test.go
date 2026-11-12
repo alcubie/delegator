@@ -69,7 +69,7 @@ func runningChange(t *testing.T, dataDir string) (*store.Store, int64, string, s
 	}
 	worktree := run.WorktreePath(dataDir, ticketID)
 	testfix.GitIn(t, repo, "worktree", "add", worktree, ticket.Branch)
-	commitFile(t, worktree, ticketWorkFile, "the change of the ticket\n", "ticket work")
+	testfix.CommitFileIn(t, worktree, ticketWorkFile, "the change of the ticket\n", "ticket work")
 	return s, ticketID, repo, testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 }
 
@@ -77,7 +77,7 @@ func runningChange(t *testing.T, dataDir string) (*store.Store, int64, string, s
 // the default branch, which the primary repository holds checked out.
 func landConflictingChange(t *testing.T, repo string) {
 	t.Helper()
-	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
 }
 
 // mergeDefaultBranch merges the default branch into the ticket branch in its
@@ -321,7 +321,7 @@ func TestFinishAcceptsTheCommitOfTheMergeOfTheDefaultBranch(t *testing.T) {
 func TestFinishAcceptsACommitTheDefaultBranchDoesNotConflictWith(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, commit := runningChange(t, dataDir)
-	commitFile(t, repo, "another-file.txt", "the change of another ticket\n", "another ticket landed")
+	testfix.CommitFileIn(t, repo, "another-file.txt", "the change of another ticket\n", "another ticket landed")
 
 	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
 		t.Fatal(err)
