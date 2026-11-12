@@ -1261,6 +1261,18 @@ var integerSettingColumns = map[string]string{
 	"max_runs_per_project": "max_runs_per_project",
 }
 
+// parseSettingBool reads the two words that a boolean setting accepts. The
+// forms that strconv.ParseBool also takes, such as 1 and f, are refused: the
+// value a person reads back from dg config is true or false, and a client that
+// sends anything else learns it here rather than storing a value dg never
+// writes.
+func parseSettingBool(name, value string) (bool, error) {
+	if value != "true" && value != "false" {
+		return false, fmt.Errorf("setting %s must be true or false", name)
+	}
+	return value == "true", nil
+}
+
 // SetSetting parses and atomically updates one named setting. default_agent
 // is special because its public value is a registry name while SQLite stores
 // the referenced agent id.
@@ -1278,10 +1290,11 @@ func (s *Store) SetSetting(name, value string) error {
 		return err
 	}
 	if name == "telemetry" {
-		if value != "true" && value != "false" {
-			return errors.New("setting telemetry must be true or false")
+		on, err := parseSettingBool(name, value)
+		if err != nil {
+			return err
 		}
-		return s.setTelemetry(value == "true", time.Now)
+		return s.setTelemetry(on, time.Now)
 	}
 	if name == "default_agent" {
 		return s.SetDefaultAgent(value)
