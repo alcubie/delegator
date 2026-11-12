@@ -84,6 +84,31 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 	return supervise(s, cfg, ticket, runID, agent, model, prompt)
 }
 
+// Conflict runs a ready ticket again to merge the default branch of its
+// project and correct the conflicts that the branch brought, so the person
+// does not have to open a chat and ask for the merge. It continues the session
+// that reported the commit, which already holds the work being corrected.
+//
+// The transition is the one dg ticket rerun uses, written here rather than by
+// the command that found the conflict so that the run records the PID of this
+// supervisor. A ready ticket already holds its place in the capacity count, so
+// the run needs no free slot.
+func Conflict(s *store.Store, id int64, cfg config.Config) error {
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		return err
+	}
+	agent, model, _, err := sessionAgent(s, ticket, cfg)
+	if err != nil {
+		return err
+	}
+	runID, err := s.Rerun(id, agent.ID, os.Getpid())
+	if err != nil {
+		return err
+	}
+	return supervise(s, cfg, ticket, runID, agent, model, conflictPrompt)
+}
+
 // StartNext claims and runs the first eligible queued ticket under cfg
 // limits. Selection and claim are atomic, so concurrent supervisors cannot
 // claim the same ticket.
@@ -261,4 +286,22 @@ How to read the repository:
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
 `, id, dataDir, cacheDir, defaultBranch)
+}
+
+// conflictPrompt tells the agent that the commit it reported no longer merges
+// into the default branch, and asks for the merge, the correction and a new
+// commit. It is short because it goes to the session that did the work: it
+// names no cache directory and repeats none of the reading rules.
+func conflictPrompt(id int64, dataDir, _, defaultBranch string) string {
+	return fmt.Sprintf(`The commit you reported for delegator ticket %[1]d no longer merges into
+%[2]s. New commits of %[2]s conflict with this branch.
+
+1. Merge %[2]s into this branch. Merge it; do not rebase.
+2. Correct each conflict.
+3. Do the checks of the project again.
+4. Commit the correction. Add a new commit on top of the one you reported;
+   do not amend it, so that the reviewer sees what changed.
+5. Run dg ticket finish %[1]d <hash> --data-dir %[3]q with the hash of the new
+   commit.
+`, id, defaultBranch, dataDir)
 }

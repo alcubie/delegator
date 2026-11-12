@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -18,6 +19,45 @@ import (
 // workFile is the file that the work of a ticket changes, and the file the
 // default branch changes to overtake it.
 const workFile = "ticket-work.txt"
+
+// conflictConfig leaves the runs of the tests alone and has room for one more.
+var conflictConfig = config.Config{Runs: 1, TimeoutMinutes: 60}
+
+// noStarts is the queue launcher of a Reconcile that must start nothing.
+func noStarts(t *testing.T) func() *exec.Cmd {
+	t.Helper()
+	return func() *exec.Cmd {
+		t.Error("a queued ticket started, want none")
+		return exec.Command("true")
+	}
+}
+
+// recordingConflicts gives the conflict launcher of a Reconcile and the ids it
+// was asked to start, in order.
+func recordingConflicts() (func(int64) *exec.Cmd, func() []int64) {
+	var started []int64
+	return func(id int64) *exec.Cmd {
+		started = append(started, id)
+		return exec.Command("true")
+	}, func() []int64 { return started }
+}
+
+// readyAfterARun leaves a ticket as a run of agent leaves it: ready, holding a
+// session of that agent and the commit it reported.
+func readyAfterARun(t *testing.T, s *store.Store, dataDir string, id int64, agent, session, commit string) {
+	t.Helper()
+	agentID, err := s.AgentID(agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(id, branch(id, "a title"), agentID); err != nil {
+		t.Fatal(err)
+	}
+	testfix.SetSession(t, dataDir, id, session)
+	if err := s.FinishTicket(id, commit, ""); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // countingGit puts a git on the PATH that records each call and runs the real
 // git, so the checks that reached Git are countable. It returns the number of
@@ -387,5 +427,175 @@ func TestConflictingSkipsAProjectWhoseTicketCommitIsGone(t *testing.T) {
 	}
 	if got := checkedBase(t, s, unreadable); got != "" {
 		t.Errorf("the ticket whose commit is gone stored %q, want no commit", got)
+	}
+}
+
+// Today the person opens a chat with the agent and asks for the merge. The
+// next command of any kind starts that run instead.
+func TestReconcileStartsARunForTheOvertakenTicket(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	launch, started := recordingConflicts()
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v, want %v", got, []int64{id})
+	}
+}
+
+// A branch that is only behind the default branch holds no work for the agent,
+// and the person can accept it as it is.
+func TestReconcileLeavesTheTicketThatStillMerges(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket that still lands")
+	testfix.CommitFileIn(t, repo, "other.txt", "the change of another ticket\n", "another ticket landed")
+	launch, started := recordingConflicts()
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := started(); len(got) != 0 {
+		t.Errorf("the conflict runs started for %v, want none", got)
+	}
+	if got, err := s.Ticket(id); err != nil || got.Status != store.Ready {
+		t.Errorf("the ticket is %q, %v; want %q", got.Status, err, store.Ready)
+	}
+}
+
+// Every command runs the check, and the supervisor it starts reaches the
+// transition a moment later. Two commands in that moment must not give one
+// ticket two runs.
+func TestReconcileStartsOneRunForOneCommitOfTheDefaultBranch(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	launch, started := recordingConflicts()
+
+	for range 2 {
+		if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v, want %v", got, []int64{id})
+	}
+}
+
+// A paused queue starts no agent. The check must also store nothing while
+// paused, or the commit it checked against would be the only one for which the
+// run never happens.
+func TestReconcileStartsNoRunWhileTheQueueIsPaused(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	launch, started := recordingConflicts()
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); len(got) != 0 {
+		t.Errorf("the conflict runs started for %v while the queue was paused, want none", got)
+	}
+	if got, err := s.Ticket(id); err != nil || got.Status != store.Ready {
+		t.Errorf("the paused ticket is %q, %v; want %q", got.Status, err, store.Ready)
+	}
+
+	if err := s.ResumeQueue(); err != nil {
+		t.Fatal(err)
+	}
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v after the queue started again, want %v", got, []int64{id})
+	}
+}
+
+// The agent of a conflict run continues the session that reported the commit,
+// so it still holds the work it is correcting. Replaying the history is what
+// the fake agent does for a loaded session and not for a new one.
+func TestConflictPromptsTheLoadedSessionOfTheTicket(t *testing.T) {
+	dataDir, id := queuedTicket(t, "a title")
+	sent := filepath.Join(t.TempDir(), "prompt")
+	replayed := filepath.Join(t.TempDir(), "replayed")
+	cfg := acpConfig(t, dataDir, "prompt "+sent, "stop end_turn",
+		"history:", "write "+replayed+" replayed")
+	s := testfix.OpenStore(t, dataDir)
+	readyAfterARun(t, s, dataDir, id, "fake", "fake-7", "")
+	first, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Conflict(s, id, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.WaitFor(t, replayed); got != "replayed" {
+		t.Errorf("the load marker = %q, want %q", got, "replayed")
+	}
+	got := testfix.WaitFor(t, sent)
+	for _, want := range []string{
+		fmt.Sprintf("delegator ticket %d no longer merges into\nmain", id),
+		"Merge main into this branch. Merge it; do not rebase.",
+		"do not amend it",
+		fmt.Sprintf("dg ticket finish %d <hash> --data-dir %q", id, dataDir),
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt the agent received does not hold %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "dg ticket show") {
+		t.Errorf("the conflict prompt repeats the start prompt:\n%s", got)
+	}
+	second, err := s.Run(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first.ID {
+		t.Error("the conflict run reused the run that reported the commit")
+	}
+	if second.PID != os.Getpid() {
+		t.Errorf("the conflict run records PID %d, want this supervisor at %d", second.PID, os.Getpid())
+	}
+}
+
+// Only dg ticket finish makes work ready. A conflict run that ends without it
+// leaves the ticket failed, as any other run does, and a failed ticket is out
+// of the check, so nothing tries again on its own.
+func TestConflictLeavesTheTicketFailedWhenTheRunReportsNothing(t *testing.T) {
+	dataDir, id := queuedTicket(t, "a title")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+	readyAfterARun(t, s, dataDir, id, "fake", "fake-7", "")
+
+	if err := Conflict(s, id, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := testfix.ReadTicket(t, dataDir, id).Status; got != store.Failed {
+		t.Errorf("the ticket is %q, want %q", got, store.Failed)
+	}
+}
+
+// Only a ready ticket has a commit waiting for review to correct.
+func TestConflictRefusesATicketThatIsNotReady(t *testing.T) {
+	dataDir, id := queuedTicket(t, "a title")
+	cfg := acpConfig(t, dataDir, "stop end_turn")
+	s := testfix.OpenStore(t, dataDir)
+
+	err := Conflict(s, id, cfg)
+
+	if !errors.Is(err, store.ErrInvalidTicketStateChange) {
+		t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
 	}
 }

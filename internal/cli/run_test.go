@@ -20,6 +20,7 @@ func TestMain(m *testing.M) {
 	// Disable real launches: under go test the current executable is the
 	// test binary, which would recursively spawn this suite.
 	launch = func() *exec.Cmd { return exec.Command("true") }
+	conflictLaunch = func(int64) *exec.Cmd { return exec.Command("true") }
 	launchTelemetry = func(string) *exec.Cmd { return exec.Command("true") }
 	sendTelemetry = func(*store.Store, time.Time, string) error { return nil }
 	// Disable interactive agent launches; tests install observable
@@ -48,6 +49,26 @@ func useLaunch(t *testing.T, l func() *exec.Cmd) {
 		launch = saved
 		restartLaunch = savedRestart
 	})
+}
+
+// useConflictLaunch replaces the launcher of conflict corrections until test
+// cleanup.
+func useConflictLaunch(t *testing.T, l func(int64) *exec.Cmd) {
+	t.Helper()
+	saved := conflictLaunch
+	conflictLaunch = l
+	t.Cleanup(func() { conflictLaunch = saved })
+}
+
+// The conflict correction of one ready ticket is not a claim from the queue,
+// so the supervisor is told which ticket to run.
+func TestTheConflictSupervisorIsGivenTheTicket(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "selected")
+	cmd := launchIn(dir, dgConflict(42))
+	want := []string{"ticket", "run", "--conflict", "42", "--data-dir", dir}
+	if got := cmd.Args[1:]; !slices.Equal(got, want) {
+		t.Errorf("the conflict supervisor runs %v, want %v", got, want)
+	}
 }
 
 func TestSupervisorLaunchCarriesTheSelectedDataDirectory(t *testing.T) {
@@ -189,6 +210,19 @@ func TestRunWithNoIDStartsTheFirstTicketOfTheQueue(t *testing.T) {
 	}
 	if got, err := s.Ticket(second); err != nil || got.Status != store.Queued {
 		t.Errorf("the second ticket is %q (err %v), want %q", got.Status, err, store.Queued)
+	}
+}
+
+// A conflict correction belongs to one named ticket, so the flag without one
+// must refuse rather than claim whatever the queue offers.
+func TestRunRefusesTheConflictFlagWithoutATicket(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+
+	_, err := runIn(t, dataDir, repo, "run", "--conflict")
+
+	if err == nil || !strings.Contains(err.Error(), "--conflict needs a ticket id") {
+		t.Errorf("err = %v, want a refusal of the flag without a ticket", err)
 	}
 }
 

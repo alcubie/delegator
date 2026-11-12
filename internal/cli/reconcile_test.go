@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +74,36 @@ func TestFinishCanCompleteTheTicketTheReconcileJustFailed(t *testing.T) {
 
 	if got := testfix.ReadTicket(t, dataDir, stale); got.Status != store.Ready {
 		t.Errorf("ticket %d is %q, want %q", stale, got.Status, store.Ready)
+	}
+}
+
+// The person types an ordinary command and the conflict goes back to the agent
+// that wrote the work. Today they have to notice it and open a chat to ask for
+// the merge.
+func TestACommandStartsTheRunThatCorrectsAConflict(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo := readyTicket(t, dataDir)
+	commitReadyWork(t, s, dataDir, ticketID)
+	landConflictingChange(t, repo)
+	sent := filepath.Join(t.TempDir(), "prompt")
+	useFakeAgent(t, dataDir, "prompt "+sent, "stop end_turn")
+	useConflictLaunch(t, func(id int64) *exec.Cmd {
+		return exec.Command(testfix.DG(t), "ticket", "run", "--conflict", fmt.Sprint(id))
+	})
+	reported, err := s.Run(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runIn(t, dataDir, repo, "list"); err != nil {
+		t.Fatal(err)
+	}
+
+	waitForCompletedRun(t, s, ticketID, reported.ID)
+	got := testfix.WaitFor(t, sent)
+	want := fmt.Sprintf("delegator ticket %d no longer merges into\n%s", ticketID, repoBranch)
+	if !strings.Contains(got, want) {
+		t.Errorf("the agent of the conflict run received:\n%s\nwant it to hold %q", got, want)
 	}
 }
 
