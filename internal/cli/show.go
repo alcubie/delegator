@@ -299,6 +299,17 @@ func actionSchema() map[string]any {
 	}
 }
 
+// mergesCleanlySchema describes the merge answer for RPC discovery. Every
+// result that reports it describes it the same way.
+func mergesCleanlySchema() map[string]any {
+	return map[string]any{
+		"type": []string{"boolean", "null"},
+		"description": "Whether the commit of the ticket merges into the default branch " +
+			"of its project without conflicts, or null for a ticket that holds no " +
+			"commit waiting to be merged.",
+	}
+}
+
 // showResultSchema describes ticketJSON for RPC discovery. Nullable fields
 // remain required so consumers can distinguish a known missing value from an
 // older response that does not describe the field. Additional properties stay
@@ -339,12 +350,7 @@ func showResultSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"type": "integer", "minimum": 1},
 			},
-			"merges_cleanly": map[string]any{
-				"type": []string{"boolean", "null"},
-				"description": "Whether the commit of the ticket merges into the default branch " +
-					"of its project without conflicts, or null for a ticket that holds no " +
-					"commit waiting to be merged.",
-			},
+			"merges_cleanly": mergesCleanlySchema(),
 			"actions": map[string]any{
 				"type": "object",
 				"description": "Whether the ticket's commands can run on it, keyed by the " +
