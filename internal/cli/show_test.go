@@ -228,10 +228,16 @@ var jsonFields = []string{
 // or null.
 func mergeAnswerIn(t *testing.T, dataDir, workDir string, id int64) any {
 	t.Helper()
-	got := showJSON(t, dataDir, workDir, fmt.Sprint(id))
+	return mergeAnswerOf(t, showJSON(t, dataDir, workDir, fmt.Sprint(id)))
+}
+
+// mergeAnswerOf reads the merge answer of a result or of one row of a result,
+// which is a boolean or null.
+func mergeAnswerOf(t *testing.T, got map[string]any) any {
+	t.Helper()
 	answer, held := got["merges_cleanly"]
 	if !held {
-		t.Fatalf("show result holds no merges_cleanly: %#v", got)
+		t.Fatalf("the result holds no merges_cleanly: %#v", got)
 	}
 	return answer
 }

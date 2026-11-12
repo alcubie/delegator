@@ -26,22 +26,24 @@ type inboxJSON struct {
 	Failed    []inboxTicketJSON `json:"failed"`
 	Queued    []inboxTicketJSON `json:"queued"`
 
-	box  inbox.Inbox
-	now  time.Time
-	done time.Duration
+	box    inbox.Inbox
+	now    time.Time
+	done   time.Duration
+	merges mergeAnswers
 }
 
 // inboxTicketJSON represents one inbox row. Fields shared with the show result
 // use the same names.
 type inboxTicketJSON struct {
-	ID           int64   `json:"id"`
-	Title        string  `json:"title"`
-	Status       string  `json:"status"`
-	Project      string  `json:"project"`
-	DependsOn    []int64 `json:"depends_on"`
-	AllDependsOn []int64 `json:"all_depends_on"`
-	Blocks       []int64 `json:"blocks"`
-	Runs         int     `json:"runs"`
+	ID            int64   `json:"id"`
+	Title         string  `json:"title"`
+	Status        string  `json:"status"`
+	Project       string  `json:"project"`
+	DependsOn     []int64 `json:"depends_on"`
+	AllDependsOn  []int64 `json:"all_depends_on"`
+	Blocks        []int64 `json:"blocks"`
+	Runs          int     `json:"runs"`
+	MergesCleanly *bool   `json:"merges_cleanly"`
 
 	// Timestamps use RFC 3339; absent times are null. Started is the
 	// latest run start, allowing clients to update elapsed time without
@@ -77,8 +79,9 @@ func inboxResultSchema() map[string]any {
 			"created":        timestamp,
 			"accepted":       timestamp,
 			"started":        timestamp,
+			"merges_cleanly": mergesCleanlySchema(),
 		},
-		"required":             []string{"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "runs", "created", "accepted", "started"},
+		"required":             []string{"id", "title", "status", "project", "depends_on", "all_depends_on", "blocks", "runs", "created", "accepted", "started", "merges_cleanly"},
 		"additionalProperties": true,
 	}
 	groups := map[string]any{}
@@ -100,22 +103,24 @@ func inboxResultSchema() map[string]any {
 }
 
 // inboxTickets converts a group to JSON rows. Empty groups use [] rather than
-// null.
-func inboxTickets(tickets []store.OpenTicket) []inboxTicketJSON {
+// null. merges holds answers for the ready group alone, so every other row
+// reports null.
+func inboxTickets(tickets []store.OpenTicket, merges mergeAnswers) []inboxTicketJSON {
 	rows := make([]inboxTicketJSON, 0, len(tickets))
 	for _, t := range tickets {
 		rows = append(rows, inboxTicketJSON{
-			ID:           t.ID,
-			Title:        t.Title,
-			Status:       string(t.Status),
-			Project:      t.Project,
-			DependsOn:    append([]int64{}, t.DependsOn...),
-			AllDependsOn: append([]int64{}, t.AllDependsOn...),
-			Blocks:       append([]int64{}, t.Blocks...),
-			Runs:         t.Runs,
-			Created:      nullableTime(t.Created),
-			Accepted:     nullableTime(t.Accepted),
-			Started:      nullableTime(t.Started),
+			ID:            t.ID,
+			Title:         t.Title,
+			Status:        string(t.Status),
+			Project:       t.Project,
+			DependsOn:     append([]int64{}, t.DependsOn...),
+			AllDependsOn:  append([]int64{}, t.AllDependsOn...),
+			Blocks:        append([]int64{}, t.Blocks...),
+			Runs:          t.Runs,
+			Created:       nullableTime(t.Created),
+			Accepted:      nullableTime(t.Accepted),
+			Started:       nullableTime(t.Started),
+			MergesCleanly: merges[t.ID],
 		})
 	}
 	return rows
@@ -131,17 +136,18 @@ func queueState(running bool) string {
 
 // inboxValue turns the inbox into the value that dg writes. Its unexported
 // fields hold the values the text renderer needs alongside the JSON form.
-func inboxValue(box inbox.Inbox, now time.Time, done time.Duration) inboxJSON {
+func inboxValue(box inbox.Inbox, now time.Time, done time.Duration, merges mergeAnswers) inboxJSON {
 	return inboxJSON{
 		Queue:     queueState(box.QueueRunning),
 		DoneHours: int(done / time.Hour),
-		Done:      inboxTickets(box.Done),
-		Ready:     inboxTickets(box.Ready),
-		Running:   inboxTickets(box.Running),
-		Failed:    inboxTickets(box.Failed),
-		Queued:    inboxTickets(box.Queued),
+		Done:      inboxTickets(box.Done, merges),
+		Ready:     inboxTickets(box.Ready, merges),
+		Running:   inboxTickets(box.Running, merges),
+		Failed:    inboxTickets(box.Failed, merges),
+		Queued:    inboxTickets(box.Queued, merges),
 		box:       box,
 		now:       now,
 		done:      done,
+		merges:    merges,
 	}
 }

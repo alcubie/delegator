@@ -82,15 +82,56 @@ func empty(gs []group) bool {
 	return true
 }
 
-// rowNote shows elapsed time for running tickets and blockers for queued
-// tickets. Other rows have no note; ready tickets must not keep counting
-// their completed runs.
-func rowNote(t store.OpenTicket, now time.Time) string {
+// conflictNote marks a ready ticket whose change no longer merges into the
+// default branch of its project. dg ticket show names the branch.
+const conflictNote = "conflict"
+
+// mergeAnswers holds the merge answer of each ready ticket, keyed by ticket.
+// A ticket without an entry has no answer: it is not ready, it holds no
+// commit, or Git failed to answer for it.
+type mergeAnswers map[int64]*bool
+
+// note returns the marker of one row, which is empty for every ticket but one
+// whose change conflicts.
+func (a mergeAnswers) note(id int64) string {
+	if clean := a[id]; clean != nil && !*clean {
+		return conflictNote
+	}
+	return ""
+}
+
+// mergeAnswersFor asks Git whether the commit of each ready ticket still
+// merges into the default branch of its project. The default branch moves
+// while a ticket waits for review, and this marker is the only sign of the
+// conflict when no automatic run started for it. A Git failure leaves that
+// ticket without an answer rather than refusing the whole inbox.
+func mergeAnswersFor(s *store.Store, ready []store.OpenTicket) (mergeAnswers, error) {
+	answers := make(mergeAnswers, len(ready))
+	for _, row := range ready {
+		ticket, err := s.Ticket(row.ID)
+		if err != nil {
+			return nil, err
+		}
+		clean, err := mergesCleanly(ticket)
+		if err != nil {
+			continue
+		}
+		answers[row.ID] = clean
+	}
+	return answers, nil
+}
+
+// rowNote shows elapsed time for running tickets, blockers for queued
+// tickets, and a conflict with the default branch for ready ones. Other rows
+// have no note; ready tickets must not keep counting their completed runs.
+func rowNote(t store.OpenTicket, now time.Time, merges mergeAnswers) string {
 	switch t.Status {
 	case store.Running:
 		return elapsed(t.Started, now)
 	case store.Queued:
 		return dependsOnText(t.DependsOn)
+	case store.Ready:
+		return merges.note(t.ID)
 	}
 	return ""
 }
@@ -105,8 +146,9 @@ func dependsOnText(ids []int64) string {
 }
 
 // writeInbox renders using the supplied time for repeatable elapsed values.
-// done supplies the acceptance window shown in the heading.
-func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, done time.Duration) {
+// done supplies the acceptance window shown in the heading, and merges the
+// answer that marks a ready ticket in conflict.
+func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, done time.Duration, merges mergeAnswers) {
 	gs := groups(box, done)
 	fmt.Fprintln(out, statusLine(out, box, mode))
 	if empty(gs) {
@@ -123,7 +165,7 @@ func writeInbox(out io.Writer, box inbox.Inbox, mode colourMode, now time.Time, 
 			continue
 		}
 		for _, t := range g.tickets {
-			fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowWidth, rowNote(t, now)))
+			fmt.Fprintln(out, ticketRow(t, idWidth, projectWidth, rowWidth, rowNote(t, now, merges)))
 		}
 	}
 }
@@ -139,7 +181,11 @@ func showInbox(dataDir string, cfg *config.Config) (inboxJSON, error) {
 		if err != nil {
 			return err
 		}
-		value = inboxValue(box, now, done)
+		merges, err := mergeAnswersFor(s, box.Ready)
+		if err != nil {
+			return err
+		}
+		value = inboxValue(box, now, done, merges)
 		return nil
 	})
 	return value, err
