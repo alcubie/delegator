@@ -79,6 +79,22 @@ func sessionOf(t *testing.T, s *store.Store, ticketID int64) string {
 	return ticket.Session
 }
 
+// assertTicketState fails the test unless the ticket holds status and commit,
+// which is what finish writes and what a refusal of finish leaves alone.
+func assertTicketState(t *testing.T, s *store.Store, ticketID int64, status store.TicketStatus, commit string) {
+	t.Helper()
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Status != status {
+		t.Errorf("status = %s, want %s", ticket.Status, status)
+	}
+	if ticket.Commit != commit {
+		t.Errorf("commit_id = %q, want %q", ticket.Commit, commit)
+	}
+}
+
 func TestFinishReadyTicket(t *testing.T) {
 	dataDir := t.TempDir()
 	s, ticketID, repo, commit := runningTicket(t, dataDir)
@@ -91,16 +107,7 @@ func TestFinishReadyTicket(t *testing.T) {
 		t.Errorf("dg finish wrote %q, want nothing", out)
 	}
 
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != store.Ready {
-		t.Errorf("status = %s, want = ready", ticket.Status)
-	}
-	if ticket.Commit != commit {
-		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
-	}
+	assertTicketState(t, s, ticketID, store.Ready, commit)
 }
 
 func TestFinishFailedTicket(t *testing.T) {
@@ -114,16 +121,7 @@ func TestFinishFailedTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != store.Ready {
-		t.Errorf("status = %s, want ready", ticket.Status)
-	}
-	if ticket.Commit != commit {
-		t.Errorf("commit_id = %s, want %s", ticket.Commit, commit)
-	}
+	assertTicketState(t, s, ticketID, store.Ready, commit)
 }
 
 func TestFinishRefusesQueuedDoneAndCancelledTicketsBeforeConsultingGit(t *testing.T) {
@@ -158,16 +156,7 @@ func TestFinishRefusesQueuedDoneAndCancelledTicketsBeforeConsultingGit(t *testin
 				t.Errorf("err = %v, want ErrInvalidTicketStateChange", err)
 			}
 
-			after, err := s.Ticket(ticketID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if after.Status != status {
-				t.Errorf("status = %s, want %s", after.Status, status)
-			}
-			if after.Commit != before.Commit {
-				t.Errorf("commit_id = %q, want unchanged %q", after.Commit, before.Commit)
-			}
+			assertTicketState(t, s, ticketID, status, before.Commit)
 		})
 	}
 }
@@ -182,16 +171,7 @@ func TestFinishRefusesACommitGitDoesNotKnow(t *testing.T) {
 		t.Errorf("err = %v, want ErrUnknownCommit", err)
 	}
 
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != store.Running {
-		t.Errorf("status = %s, want running", ticket.Status)
-	}
-	if ticket.Commit != "" {
-		t.Errorf("commit_id = %q, want none", ticket.Commit)
-	}
+	assertTicketState(t, s, ticketID, store.Running, "")
 }
 
 func TestFinishRefusesACommitTheTicketBranchDoesNotHold(t *testing.T) {
@@ -205,16 +185,7 @@ func TestFinishRefusesACommitTheTicketBranchDoesNotHold(t *testing.T) {
 		t.Errorf("err = %v, want ErrCommitNotOnBranch", err)
 	}
 
-	ticket, err := s.Ticket(ticketID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ticket.Status != store.Running {
-		t.Errorf("status = %s, want running", ticket.Status)
-	}
-	if ticket.Commit != "" {
-		t.Errorf("commit_id = %q, want none", ticket.Commit)
-	}
+	assertTicketState(t, s, ticketID, store.Running, "")
 }
 
 func TestFinishWritesTheFullHashWhenGivenAShortHash(t *testing.T) {
