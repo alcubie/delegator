@@ -1598,6 +1598,9 @@ func (s *Store) Cancel(id, runID int64) error {
 // For an already Ready ticket, only the commit changes, preserving its
 // position and status timestamp after an amend or rebase. Other statuses
 // return ErrInvalidTicketStateChange.
+//
+// The new commit clears checked_base_commit, so a conflict check that ran
+// against the previous commit does not skip the new one as already checked.
 func (s *Store) FinishTicket(id int64, commit, session string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1615,7 +1618,7 @@ func (s *Store) FinishTicket(id int64, commit, session string) error {
 		}
 	}
 	if _, err := tx.Exec(
-		"UPDATE tickets SET commit_id = ? WHERE id = ?", commit, id,
+		"UPDATE tickets SET commit_id = ?, checked_base_commit = NULL WHERE id = ?", commit, id,
 	); err != nil {
 		return err
 	}
