@@ -733,6 +733,35 @@ func TestRunMarksTheReadyTicketThatConflicts(t *testing.T) {
 	}
 }
 
+// An archived project costs no Git process, the way the automatic check of
+// Conflicting already leaves it alone, so the inbox marks no ticket of one
+// even though it still lists the ticket.
+func TestRunLeavesTheReadyTicketOfAnArchivedProjectUnmarked(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "ticket title")
+	landConflictingChange(t, repo)
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+	record := recordGit(t)
+
+	out, err := runIn(t, dataDir, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := rows(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), "READY")
+	want := regexp.MustCompile(`^ +` + strconv.FormatInt(id, 10) + ` \S+  ticket title$`)
+	if len(got) != 1 || !want.MatchString(got[0]) {
+		t.Errorf("READY holds %v, want the row of ticket %d with no marker:\n%s", got, id, out)
+	}
+	if calls := gitCalls(t, record); len(calls) > 0 {
+		t.Errorf("the inbox started git for a ticket of an archived project: %v", calls)
+	}
+}
+
 // Only a ready ticket holds a change waiting to be merged. The inbox of a
 // person who runs dg all day asks Git for those tickets alone, and an accepted
 // ticket holds a commit, so the status and not the commit decides.

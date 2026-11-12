@@ -490,6 +490,26 @@ func TestRunJSONGivesNoMergeAnswerForAProjectThatIsGone(t *testing.T) {
 	}
 }
 
+// ReadyMerges leaves out an archived project, the way the automatic check of
+// Conflicting already does, so a ready ticket of one reports no answer rather
+// than costing a Git process.
+func TestRunJSONGivesNoMergeAnswerForAnArchivedProject(t *testing.T) {
+	dataDir := t.TempDir()
+	repo := testfix.Repo(t, repoBranch)
+	s := testfix.OpenStore(t, dataDir)
+	id := readyChangeIn(t, s, dataDir, repo, "the ticket of the archived project")
+	landConflictingChange(t, repo)
+	if _, err := runIn(t, dataDir, t.TempDir(), "project", "archive", projectPath(t, repo)); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readInboxJSON(t, dataDir, repo)
+
+	if answer := mergeAnswerOf(t, jsonRow(t, got, "ready", id)); answer != nil {
+		t.Errorf("merges_cleanly = %#v for a ready ticket of an archived project, want null", answer)
+	}
+}
+
 // Shared fields must match the show result; the rest are inbox-specific.
 func TestRunJSONNamesEachFieldAsShowDoes(t *testing.T) {
 	dataDir := t.TempDir()
