@@ -16,6 +16,19 @@ import (
 // ID, and exports that one.
 const claudeSessionEnv = "CLAUDE_CODE_SESSION_ID"
 
+// errCommitConflicts refuses a commit that no longer merges into the default
+// branch. The agent is still in its session when it runs finish, so the
+// message is the one that tells it what to do about the conflict.
+var errCommitConflicts = errors.New("the commit conflicts with the default branch")
+
+func refuseConflict(ticket store.Ticket) error {
+	into := ticket.Project.DefaultBranch
+	return fmt.Errorf("%w %s: merge %s into %s, correct the conflicts, run the checks of the project again, "+
+		"commit, and run finish with the new commit; do not rebase, because a rebase changes commits the "+
+		"person has possibly reviewed",
+		errCommitConflicts, into, into, ticket.Branch)
+}
+
 // callingSession returns the session of the Claude Code session that is
 // running finish, when the ticket's latest run is a claude run. It returns the
 // empty string otherwise, which leaves the stored session alone: a person
@@ -45,7 +58,9 @@ func finishCommand(dataDir *string, cfg *config.Config, commandPath string) *cob
 		Use:   "finish <id> <commit>",
 		Short: "Record the commit of a ticket and mark it Ready.",
 		Long: "Record the ticket branch commit that contains the completed work and mark the " +
-			"ticket ready for review. The commit must belong to the ticket's branch.",
+			"ticket ready for review. The commit must belong to the ticket's branch and must still merge " +
+			"into the project's default branch without conflicts. When it conflicts, merge the default " +
+			"branch into the ticket branch, correct the conflicts, commit, and finish with the new commit.",
 		Example: fmt.Sprintf("  %s 42 4f3c2b1", commandPath),
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,6 +82,13 @@ func finishCommand(dataDir *string, cfg *config.Config, commandPath string) *cob
 				commit, err := project.CommitOnBranch(ticket.Project.Path, args[1], ticket.Branch)
 				if err != nil {
 					return err
+				}
+				clean, err := project.MergesCleanly(ticket.Project.Path, commit, ticket.Project.DefaultBranch)
+				if err != nil {
+					return err
+				}
+				if !clean {
+					return refuseConflict(ticket)
 				}
 				session, err := callingSession(s, ticket)
 				if err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alcubie/delegator/internal/project"
+	"github.com/alcubie/delegator/internal/run"
 	"github.com/alcubie/delegator/internal/store"
 	"github.com/alcubie/delegator/internal/testfix"
 )
@@ -54,6 +55,38 @@ func runningTicketWithAgent(t *testing.T, dataDir, agent string) (*store.Store, 
 		t.Fatal(err)
 	}
 	return s, ticketID, repo, testfix.GitOut(t, repo, "rev-parse", branch)
+}
+
+// runningChange makes a running ticket whose branch holds one commit above the
+// default branch, in a worktree of its own, as a run of an agent leaves it. It
+// returns the store, the id of the ticket, the repository and that commit.
+func runningChange(t *testing.T, dataDir string) (*store.Store, int64, string, string) {
+	t.Helper()
+	s, ticketID, repo, _ := runningTicket(t, dataDir)
+	ticket, err := s.Ticket(ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := run.WorktreePath(dataDir, ticketID)
+	testfix.GitIn(t, repo, "worktree", "add", worktree, ticket.Branch)
+	commitFile(t, worktree, ticketWorkFile, "the change of the ticket\n", "ticket work")
+	return s, ticketID, repo, testfix.GitOut(t, worktree, "rev-parse", "HEAD")
+}
+
+// landConflictingChange changes the file that the work of the ticket changes on
+// the default branch, which the primary repository holds checked out.
+func landConflictingChange(t *testing.T, repo string) {
+	t.Helper()
+	commitFile(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+}
+
+// mergeDefaultBranch merges the default branch into the ticket branch in its
+// worktree and keeps the change of the ticket where the two conflict, which is
+// what the refusal of finish asks the agent to do. It returns the merge commit.
+func mergeDefaultBranch(t *testing.T, worktree string) string {
+	t.Helper()
+	testfix.GitAs(t, worktree, "merge", "-q", "--no-edit", "-X", "ours", repoBranch)
+	return testfix.GitOut(t, worktree, "rev-parse", "HEAD")
 }
 
 // recordSession stores a session on the ticket's latest run, as the setup of
@@ -186,6 +219,115 @@ func TestFinishRefusesACommitTheTicketBranchDoesNotHold(t *testing.T) {
 	}
 
 	assertTicketState(t, s, ticketID, store.Running, "")
+}
+
+// The agent is still in its session when it runs finish, so a refusal is the
+// moment it can merge the default branch itself. A ticket becomes ready only
+// when its change merges at that moment.
+func TestFinishRefusesACommitThatConflictsWithTheDefaultBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningChange(t, dataDir)
+	landConflictingChange(t, repo)
+
+	_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit)
+	if !errors.Is(err, errCommitConflicts) {
+		t.Errorf("err = %v, want errCommitConflicts", err)
+	}
+
+	assertTicketState(t, s, ticketID, store.Running, "")
+}
+
+// The message is for the agent, which needs the branch to merge.
+func TestFinishNamesTheDefaultBranchTheCommitConflictsWith(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ticketID, repo, commit := runningChange(t, dataDir)
+	landConflictingChange(t, repo)
+
+	_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit)
+	if err == nil {
+		t.Fatal("finish accepted a commit that conflicts with the default branch")
+	}
+	if !strings.Contains(err.Error(), repoBranch) {
+		t.Errorf("the refusal does not name the default branch %s: %v", repoBranch, err)
+	}
+}
+
+// dg finish and dg ticket finish are two registrations of one command, and the
+// refusal belongs to both.
+func TestTicketFinishRefusesACommitThatConflictsWithTheDefaultBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningChange(t, dataDir)
+	landConflictingChange(t, repo)
+
+	_, err := runIn(t, dataDir, repo, "ticket", "finish", fmt.Sprint(ticketID), commit)
+	if !errors.Is(err, errCommitConflicts) {
+		t.Errorf("err = %v, want errCommitConflicts", err)
+	}
+
+	assertTicketState(t, s, ticketID, store.Running, "")
+}
+
+// Finish accepts a running, a failed and a ready ticket, and a conflict refuses
+// each of the three.
+func TestFinishRefusesAConflictInEveryStatusItAccepts(t *testing.T) {
+	for _, status := range []store.TicketStatus{store.Running, store.Failed, store.Ready} {
+		t.Run(string(status), func(t *testing.T) {
+			dataDir := t.TempDir()
+			s, ticketID, repo, commit := runningChange(t, dataDir)
+			reported := ""
+			switch status {
+			case store.Failed:
+				if err := s.ChangeStatus(ticketID, store.Failed); err != nil {
+					t.Fatal(err)
+				}
+			case store.Ready:
+				if err := s.FinishTicket(ticketID, commit, ""); err != nil {
+					t.Fatal(err)
+				}
+				reported = commit
+			}
+			landConflictingChange(t, repo)
+
+			_, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit)
+			if !errors.Is(err, errCommitConflicts) {
+				t.Errorf("err = %v, want errCommitConflicts", err)
+			}
+
+			assertTicketState(t, s, ticketID, status, reported)
+		})
+	}
+}
+
+// The way out of the refusal is the merge it asks for, so finish takes the
+// commit that holds it.
+func TestFinishAcceptsTheCommitOfTheMergeOfTheDefaultBranch(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningChange(t, dataDir)
+	landConflictingChange(t, repo)
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err == nil {
+		t.Fatal("finish accepted a commit that conflicts with the default branch")
+	}
+	merged := mergeDefaultBranch(t, run.WorktreePath(dataDir, ticketID))
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), merged); err != nil {
+		t.Fatal(err)
+	}
+
+	assertTicketState(t, s, ticketID, store.Ready, merged)
+}
+
+// The default branch moves while a ticket is in work, and a change of another
+// file is no reason to refuse the report.
+func TestFinishAcceptsACommitTheDefaultBranchDoesNotConflictWith(t *testing.T) {
+	dataDir := t.TempDir()
+	s, ticketID, repo, commit := runningChange(t, dataDir)
+	commitFile(t, repo, "another-file.txt", "the change of another ticket\n", "another ticket landed")
+
+	if _, err := runIn(t, dataDir, repo, "finish", fmt.Sprint(ticketID), commit); err != nil {
+		t.Fatal(err)
+	}
+
+	assertTicketState(t, s, ticketID, store.Ready, commit)
 }
 
 func TestFinishWritesTheFullHashWhenGivenAShortHash(t *testing.T) {
