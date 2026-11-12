@@ -243,8 +243,8 @@ func TestConflictingChecksATicketOnceForOneCommitOfTheDefaultBranch(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second) != 0 {
-		t.Errorf("the second Conflicting = %v, want no ticket", second)
+	if !slices.Equal(second, []int64{id}) {
+		t.Errorf("the second Conflicting = %v, want %v from the stored verdict", second, []int64{id})
 	}
 	if got := calls("merge-tree"); got != 1 {
 		t.Errorf("the check ran %d merge-tree calls, want 1", got)
@@ -736,5 +736,58 @@ func TestFinishTicketClearsTheStoredVerdict(t *testing.T) {
 	}
 	if got := storedVerdict(t, s, id); got != nil {
 		t.Errorf("the stored verdict is %v after a new commit, want none", *got)
+	}
+}
+
+func TestConflictingReturnsTheStoredConflictWithoutAGitCheck(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	if _, err := Conflicting(s); err != nil {
+		t.Fatal(err)
+	}
+	calls := countingGit(t)
+
+	got, err := Conflicting(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Equal(got, []int64{id}) {
+		t.Errorf("Conflicting = %v, want %v", got, []int64{id})
+	}
+	if n := calls("merge-tree"); n != 0 {
+		t.Errorf("the stored verdict cost %d merge-tree calls, want 0", n)
+	}
+}
+
+func TestMergeAnswersChecksATicketWhoseBaseMovedAndStoresTheAnswer(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+
+	got, err := MergeAnswers(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantVerdict(t, got[id], false)
+	wantVerdict(t, storedVerdict(t, s, id), false)
+}
+
+func TestMergeAnswersGivesNilForAProjectWhosePathIsGone(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket of the lost project")
+	if err := os.RemoveAll(repo); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := MergeAnswers(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if answer, ok := got[id]; !ok || answer != nil {
+		t.Errorf("the answer is %v, present %v; want nil", answer, ok)
 	}
 }
