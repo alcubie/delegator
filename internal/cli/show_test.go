@@ -1612,7 +1612,7 @@ func TestRunShowJSONReportsAConflictWithTheDefaultBranch(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	landConflictingChange(t, repo)
 
 	if answer := mergeAnswerIn(t, dataDir, repo, id); answer != false {
 		t.Errorf("merges_cleanly = %#v, want false", answer)
@@ -1673,7 +1673,7 @@ func TestRunShowNamesTheBranchTheChangeConflictsWith(t *testing.T) {
 	repo := testfix.Repo(t, repoBranch)
 	s := testfix.OpenStore(t, dataDir)
 	id := readyChangeIn(t, s, dataDir, repo, "the ticket the default branch overtook")
-	testfix.CommitFileIn(t, repo, ticketWorkFile, "the change of another ticket\n", "another ticket landed")
+	landConflictingChange(t, repo)
 
 	out, err := runIn(t, dataDir, repo, "show", fmt.Sprint(id))
 	if err != nil {
