@@ -25,6 +25,7 @@ const (
 	codeProjectNameLineBreak
 	codeProjectNameAndClear
 	codeProjectArchived
+	codeCommitConflicts
 )
 
 const (
@@ -70,6 +71,7 @@ var errorCodes = map[error]int{
 	errProjectNameLineBreak:           codeProjectNameLineBreak,
 	errProjectNameAndClear:            codeProjectNameAndClear,
 	errProjectArchived:                codeProjectArchived,
+	errCommitConflicts:                codeCommitConflicts,
 	project.ErrGitNotOnPath:           codeGitNotOnPath,
 	project.ErrNoCommit:               codeNoCommit,
 	project.ErrUnknownCommit:          codeUnknownCommit,

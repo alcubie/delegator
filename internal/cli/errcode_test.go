@@ -37,6 +37,7 @@ var namedErrors = map[string]error{
 	"errProjectNameLineBreak":     errProjectNameLineBreak,
 	"errProjectNameAndClear":      errProjectNameAndClear,
 	"errProjectArchived":          errProjectArchived,
+	"errCommitConflicts":          errCommitConflicts,
 	"ErrGitNotOnPath":             project.ErrGitNotOnPath,
 	"ErrNoCommit":                 project.ErrNoCommit,
 	"ErrUnknownCommit":            project.ErrUnknownCommit,
