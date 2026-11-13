@@ -33,7 +33,7 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt)
+	return supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt, "")
 }
 
 // sessionAgent returns the agent and the model of a run that continues the
@@ -58,6 +58,12 @@ func sessionAgent(s *store.Store, ticket store.Ticket, cfg config.Config) (store
 	return agent, prior.Model, prior.ModelID, nil
 }
 
+// cacheLifetime is how long after its last use Claude keeps the prompt cache
+// of a session, less five minutes of margin.
+const cacheLifetime = 55 * time.Minute
+
+var now = time.Now
+
 // Restart starts a failed ticket again. Restart writes the running state and
 // the run row in the transaction that gives this supervisor the ticket, so a
 // restarted ticket never waits behind the queue. A nonempty modelOverride
@@ -71,6 +77,20 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 	if err != nil {
 		return err
 	}
+	text, note := prompt, ""
+	if ticket.Session != "" {
+		prior, err := s.Run(id)
+		if err != nil {
+			return err
+		}
+		if idle := now().Sub(prior.EndedAt); !prior.EndedAt.IsZero() && idle > cacheLifetime {
+			ticket.Session = ""
+			text = restartPrompt(prior.Error)
+			note = fmt.Sprintf("last run ended %s ago, new session", idle.Round(time.Minute))
+		} else {
+			note = fmt.Sprintf("last run ended %s ago, loaded session", idle.Round(time.Minute))
+		}
+	}
 	var runID int64
 	if modelOverride != "" {
 		model = modelOverride
@@ -81,7 +101,7 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 	if err != nil {
 		return err
 	}
-	return supervise(s, cfg, ticket, runID, agent, model, prompt)
+	return supervise(s, cfg, ticket, runID, agent, model, text, note)
 }
 
 // Conflict runs a ready ticket again to merge the default branch of its
@@ -108,7 +128,7 @@ func Conflict(s *store.Store, id int64, cfg config.Config) error {
 		return err
 	}
 	ticket.Session = ""
-	return supervise(s, cfg, ticket, runID, agent, model, conflictPrompt)
+	return supervise(s, cfg, ticket, runID, agent, model, conflictPrompt, "")
 }
 
 // StartNext claims and runs the first eligible queued ticket under cfg
@@ -137,7 +157,7 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt)
+	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt, "")
 }
 
 // noExitCode marks a run without a reported exit code, matching os/exec for a
@@ -189,7 +209,7 @@ func (t *supervisorTimer) Close() error {
 // use the claimed runID, since a restart may create a newer run. Setup
 // failures close the run and mark the ticket failed so it does not keep
 // occupying capacity.
-func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent, model string, text firstPrompt) (err error) {
+func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int64, agent store.Agent, model string, text firstPrompt, note string) (err error) {
 	dataDir := s.DataDir()
 	id := ticket.ID
 	// Any return without dg finish must fail the claimed ticket.
@@ -214,6 +234,11 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 		return err
 	}
 	defer log.Close()
+	if note != "" {
+		if _, err := fmt.Fprintf(log, "delegator: %s\n", note); err != nil {
+			return err
+		}
+	}
 
 	return superviseACP(ctx, s, agent, ticket, runID, worktree, cacheDir, model, text, log)
 }
@@ -332,4 +357,22 @@ of %[2]s conflict with this branch.
    commit.
 
 %[5]s`, id, defaultBranch, dataDir, cacheNote(cacheDir), laterChanges(id, dataDir, defaultBranch))
+}
+
+// restartPrompt opens a new session for a run that restarts a failed ticket
+// after the cache of its old session expired. The session has not seen the
+// work, so the prompt gives the error of the failed run and sends the agent to
+// the commits and the state of the branch.
+func restartPrompt(failure string) firstPrompt {
+	return func(id int64, dataDir, cacheDir, defaultBranch string) string {
+		return prompt(id, dataDir, cacheDir, defaultBranch) + fmt.Sprintf(`
+The branch holds the work of an earlier run of this ticket that failed. The
+error of that run was:
+
+%s
+
+Before you change anything, run git log %s..HEAD and git status to see what
+that run did.
+`, failure, defaultBranch)
+	}
 }
