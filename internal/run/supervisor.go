@@ -58,8 +58,9 @@ func sessionAgent(s *store.Store, ticket store.Ticket, cfg config.Config) (store
 	return agent, prior.Model, prior.ModelID, nil
 }
 
-// cacheLifetime is how long after its last use Claude keeps the prompt cache
-// of a session, less five minutes of margin.
+// cacheLifetime is how long after its last use a session is assumed to keep
+// its prompt cache. The value fits Claude, which keeps the cache for one hour,
+// less five minutes of margin. Other agents can keep it for a different time.
 const cacheLifetime = 55 * time.Minute
 
 var now = time.Now
