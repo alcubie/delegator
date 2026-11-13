@@ -615,10 +615,10 @@ func TestReconcileStartsNoRunWhileResolveConflictsIsOff(t *testing.T) {
 	}
 }
 
-// The agent of a conflict run continues the session that reported the commit,
-// so it still holds the work it is correcting. Replaying the history is what
-// the fake agent does for a loaded session and not for a new one.
-func TestConflictPromptsTheLoadedSessionOfTheTicket(t *testing.T) {
+// A conflict run starts a new session, because the session that reported the
+// commit can hold a very large context. The fake agent replays history for a
+// loaded session and not for a new one, and a new session gets a new ID.
+func TestConflictStartsANewSessionForTheTicket(t *testing.T) {
 	dataDir, id := queuedTicket(t, "a title")
 	sent := filepath.Join(t.TempDir(), "prompt")
 	replayed := filepath.Join(t.TempDir(), "replayed")
@@ -635,22 +635,32 @@ func TestConflictPromptsTheLoadedSessionOfTheTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := testfix.WaitFor(t, replayed); got != "replayed" {
-		t.Errorf("the load marker = %q, want %q", got, "replayed")
-	}
 	got := testfix.WaitFor(t, sent)
+	if _, err := os.Stat(replayed); err == nil {
+		t.Error("the conflict run loaded the session of the ticket")
+	}
+	ticket, err := s.Ticket(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Session == "" || ticket.Session == "fake-7" {
+		t.Errorf("the session of the ticket is %q, want a new session", ticket.Session)
+	}
 	for _, want := range []string{
-		fmt.Sprintf("delegator ticket %d no longer merges into\nmain", id),
+		fmt.Sprintf("delegator ticket %d,", id),
+		"no longer merges into main",
+		fmt.Sprintf("dg ticket show %d --data-dir %q", id, dataDir),
+		"git log main..HEAD",
 		"Merge main into this branch. Merge it; do not rebase.",
 		"do not amend it",
 		fmt.Sprintf("dg ticket finish %d <hash> --data-dir %q", id, dataDir),
+		"cache directory",
+		"How to read the repository:",
+		fmt.Sprintf("dg ticket rerun %d", id),
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt the agent received does not hold %q:\n%s", want, got)
 		}
-	}
-	if strings.Contains(got, "dg ticket show") {
-		t.Errorf("the conflict prompt repeats the start prompt:\n%s", got)
 	}
 	second, err := s.Run(id)
 	if err != nil {

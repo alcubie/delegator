@@ -86,8 +86,9 @@ func Restart(s *store.Store, id int64, cfg config.Config, modelOverride string) 
 
 // Conflict runs a ready ticket again to merge the default branch of its
 // project and correct the conflicts that the branch brought, so the person
-// does not have to open a chat and ask for the merge. It continues the session
-// that reported the commit, which already holds the work being corrected.
+// does not have to open a chat and ask for the merge. It starts a new session
+// in the existing worktree and not the session that reported the commit, which
+// can hold a very large context; the commits of the branch hold the work.
 //
 // The transition is the one dg ticket rerun uses, written here rather than by
 // the command that found the conflict so that the run records the PID of this
@@ -106,6 +107,7 @@ func Conflict(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
+	ticket.Session = ""
 	return supervise(s, cfg, ticket, runID, agent, model, conflictPrompt)
 }
 
@@ -246,11 +248,7 @@ func prompt(id int64, dataDir, cacheDir, defaultBranch string) string {
 	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
 git worktree on a branch of its own.
 
-A project-scoped cache directory shared by concurrent tickets is writable at
-%[3]q. If useful, use it only for caches that support concurrent access; keep
-ticket-specific temporary artifacts in this worktree. Its contents are
-disposable and are not removed with this worktree.
-
+%[5]s
 1. Run dg ticket show %[1]d --data-dir %[2]q to read the ticket.
 2. Do what the ticket asks.
 3. Merge %[4]s into this branch when %[4]s has new commits. Merge it;
@@ -271,10 +269,25 @@ disposable and are not removed with this worktree.
 5. Run dg ticket finish %[1]d <hash> --data-dir %[2]q with the hash of the commit you made.
    It refuses a commit that conflicts with %[4]s.
 
-If the person continues this session later and asks for changes:
+%[6]s`, id, dataDir, cacheDir, defaultBranch, cacheNote(cacheDir), laterChanges(id, dataDir, defaultBranch))
+}
+
+// cacheNote tells the agent where the project cache is and what may go in it.
+func cacheNote(cacheDir string) string {
+	return fmt.Sprintf(`A project-scoped cache directory shared by concurrent tickets is writable at
+%q. If useful, use it only for caches that support concurrent access; keep
+ticket-specific temporary artifacts in this worktree. Its contents are
+disposable and are not removed with this worktree.
+`, cacheDir)
+}
+
+// laterChanges gives the steps for a change request in the same session, and
+// the limits on repository reads.
+func laterChanges(id int64, dataDir, defaultBranch string) string {
+	return fmt.Sprintf(`If the person continues this session later and asks for changes:
 
 1. Run dg ticket rerun %[1]d --data-dir %[2]q before you change anything.
-2. Merge %[4]s into this branch again when %[4]s has new commits, by the same
+2. Merge %[3]s into this branch again when %[3]s has new commits, by the same
    rule: merge it, do not rebase, correct each conflict.
 3. Make the changes and commit them. Add a new commit on top of the one you
    reported before; do not amend it, so that the reviewer sees what changed
@@ -293,23 +306,30 @@ How to read the repository:
   over 100 lines whole. Read the part you came for.
 - Read a document only when the ticket needs a decision that the code
   does not hold. For what the code does, read the code.
-`, id, dataDir, cacheDir, defaultBranch)
+`, id, dataDir, defaultBranch)
 }
 
-// conflictPrompt tells the agent that the commit it reported no longer merges
-// into the default branch, and asks for the merge, the correction and a new
-// commit. It is short because it goes to the session that did the work: it
-// names no cache directory and repeats none of the reading rules.
-func conflictPrompt(id int64, dataDir, _, defaultBranch string) string {
-	return fmt.Sprintf(`The commit you reported for delegator ticket %[1]d no longer merges into
-%[2]s. New commits of %[2]s conflict with this branch.
+// conflictPrompt opens a new session for a run that merges the default branch
+// into a branch whose reported commit no longer merges. The session has not
+// seen the work, so the prompt sends the agent to the ticket and to the
+// commits of the branch.
+func conflictPrompt(id int64, dataDir, cacheDir, defaultBranch string) string {
+	return fmt.Sprintf(`You are working on delegator ticket %[1]d, in this directory. It is a
+git worktree on a branch of its own. The branch holds the work on the ticket.
+The commit that was reported for it no longer merges into %[2]s: new commits
+of %[2]s conflict with this branch.
 
-1. Merge %[2]s into this branch. Merge it; do not rebase.
-2. Correct each conflict.
-3. Do the checks of the project again.
-4. Commit the correction. Add a new commit on top of the one you reported;
-   do not amend it, so that the reviewer sees what changed.
-5. Run dg ticket finish %[1]d <hash> --data-dir %[3]q with the hash of the new
+%[4]s
+1. Run dg ticket show %[1]d --data-dir %[3]q to read the ticket.
+2. Run git log %[2]s..HEAD to read the commits of the branch before the merge.
+3. Merge %[2]s into this branch. Merge it; do not rebase.
+4. Correct each conflict. Keep the work of the ticket and the work that
+   landed on %[2]s.
+5. Do the checks of the project again.
+6. Commit the correction. Add a new commit on top of the one that was
+   reported; do not amend it, so that the reviewer sees what changed.
+7. Run dg ticket finish %[1]d <hash> --data-dir %[3]q with the hash of the new
    commit.
-`, id, defaultBranch, dataDir)
+
+%[5]s`, id, defaultBranch, dataDir, cacheNote(cacheDir), laterChanges(id, dataDir, defaultBranch))
 }
