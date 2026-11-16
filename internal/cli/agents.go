@@ -19,6 +19,14 @@ type agentJSON struct {
 	Name  string   `json:"name"`
 	Argv  []string `json:"argv"`
 	Found bool     `json:"found"`
+	// Adapter is present only when the command is missing and dg init would
+	// still offer the agent.
+	Adapter *adapterJSON `json:"adapter,omitempty"`
+}
+
+type adapterJSON struct {
+	Command string `json:"command"`
+	Package string `json:"package"`
 }
 
 // agentsCommand lists the agent programs that delegator knows and owns the
@@ -62,7 +70,11 @@ func agentValues(agents []store.Agent) []agentJSON {
 	values := make([]agentJSON, 0, len(agents))
 	for _, agent := range agents {
 		_, err := agentExecutable(agent)
-		values = append(values, agentJSON{Name: agent.Name, Argv: agent.Argv, Found: err == nil})
+		value := agentJSON{Name: agent.Name, Argv: agent.Argv, Found: err == nil}
+		if spec, installable := installableAdapter(agent); installable {
+			value.Adapter = &adapterJSON{Command: spec.Executable, Package: spec.Package}
+		}
+		values = append(values, value)
 	}
 	return values
 }
@@ -82,6 +94,15 @@ func agentsResultSchema() map[string]any {
 					"minItems": 1,
 				},
 				"found": map[string]any{"type": "boolean"},
+				"adapter": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"command": map[string]any{"type": "string"},
+						"package": map[string]any{"type": "string"},
+					},
+					"required":             []string{"command", "package"},
+					"additionalProperties": true,
+				},
 			},
 			"required":             []string{"name", "argv", "found"},
 			"additionalProperties": true,

@@ -166,6 +166,41 @@ func TestAgentsResultHoldsEveryRegisteredAgentAndWhetherItIsFound(t *testing.T) 
 	}
 }
 
+func TestAgentsResultNamesTheMissingAdapterOfAnInstalledCLI(t *testing.T) {
+	bin := t.TempDir()
+	executable(t, bin, "claude")
+	t.Setenv("PATH", bin)
+
+	byName := map[string]map[string]any{}
+	for _, value := range agentsResult(t, t.TempDir(), t.TempDir(), "{}") {
+		row := value.(map[string]any)
+		byName[row["name"].(string)] = row
+	}
+	want := map[string]any{"command": "claude-agent-acp", "package": "@agentclientprotocol/claude-agent-acp"}
+	if got := byName["claude"]["adapter"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("claude adapter = %#v, want %#v", got, want)
+	}
+	for _, name := range []string{"codex", "gemini"} {
+		if got, present := byName[name]["adapter"]; present {
+			t.Errorf("%s adapter = %#v, want none", name, got)
+		}
+	}
+}
+
+func TestAgentsResultOmitsTheAdapterOfAFoundCommand(t *testing.T) {
+	bin := t.TempDir()
+	executable(t, bin, "claude")
+	executable(t, bin, "claude-agent-acp")
+	t.Setenv("PATH", bin)
+
+	for _, value := range agentsResult(t, t.TempDir(), t.TempDir(), "{}") {
+		row := value.(map[string]any)
+		if _, present := row["adapter"]; present && row["name"] == "claude" {
+			t.Errorf("claude row = %#v, want no adapter", row)
+		}
+	}
+}
+
 func TestAgentsResultKeepsMissingAgentsWithAndWithoutAll(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
