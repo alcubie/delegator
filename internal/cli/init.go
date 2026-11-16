@@ -117,15 +117,27 @@ func discoverInitAgents(agents []store.Agent) []initAgentChoice {
 			choices = append(choices, initAgentChoice{Agent: agent})
 			continue
 		}
-		spec, knownAdapter := adapterSpecs[agent.Name]
-		if !knownAdapter {
-			continue
-		}
-		if _, err := exec.LookPath(spec.CLI); err == nil {
+		if spec, installable := installableAdapter(agent); installable {
 			choices = append(choices, initAgentChoice{Agent: agent, Adapter: spec, NeedsAdapter: true})
 		}
 	}
 	return choices
+}
+
+// installableAdapter reports the adapter that a missing agent command needs
+// when the agent's own CLI is installed, which is when dg init offers it.
+func installableAdapter(agent store.Agent) (adapterSpec, bool) {
+	spec, known := adapterSpecs[agent.Name]
+	if !known {
+		return adapterSpec{}, false
+	}
+	if _, err := agentExecutable(agent); err == nil {
+		return adapterSpec{}, false
+	}
+	if _, err := exec.LookPath(spec.CLI); err != nil {
+		return adapterSpec{}, false
+	}
+	return spec, true
 }
 
 func displayAgentName(name string) string {
