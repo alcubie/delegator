@@ -20,6 +20,7 @@ these:
 
 | Technical name | What it is in this document |
 |---|---|
+| control group | The group of processes that the service manager keeps for one unit. On Linux it is a cgroup. A child process stays in the control group of its parent, also when it starts a session of its own. |
 | daemon | A program that starts at login or at boot, and lives until the computer stops. It is the long-life program of section 3.2 of the run control document. |
 | event | A thing that occurs with no command from the person. Examples: a run ends, a timer expires, a message arrives from the network. |
 | gap | The time in which no program of delegator is alive. The person is away, and no run is active. |
@@ -170,6 +171,32 @@ The one condition that a unit cannot answer is the push of section 3.5. A push n
 program that listens at the moment of the message. A timer starts a program at a moment
 that the timer selects, and the two moments are not the same.
 
+### 3.8 A unit can stop the supervisors of its command
+
+The answers of sections 3.1, 3.3 and 3.6 use a unit that runs a short `dg` command.
+On 2026-11-17, a timer ran `dg queue start` from a systemd unit, and the answer failed.
+
+`dg queue start` calls `run.Next`, and `run.Next` starts a supervisor with `detach`.
+`detach` puts the supervisor in a session of its own, but systemd does not use the
+session. systemd keeps each process of a unit in the control group of that unit. When
+the main process of a `Type=oneshot` unit stops, systemd stops each process in that
+control group. This is the behaviour of `KillMode=control-group`, which is the
+value that systemd uses if the unit does not set one.
+
+The command stopped 3 ms after it started the supervisor. The supervisor stopped
+before it claimed the ticket. The ticket stayed `queued`, with no run and no log. The
+queue continued at the next command of the person, more than one hour after the timer.
+
+| Item | What it is |
+|---|---|
+| Without a change to delegator | The unit sets `KillMode=process`. systemd then stops only the main process, and the supervisor continues. The supervisor stays in the control group of the unit until its run ends. |
+| What it costs | One more value in each unit. A person who writes the unit by hand must know about this value. |
+| A change to delegator | Two answers are possible. `dg queue start --wait` stops only after each supervisor claimed its ticket or stopped, so the unit is alive while the supervisor needs it. Or delegator starts the supervisor with `systemd-run --user --scope`, which gives it a control group of its own. The second answer works with no value in the unit, but it is for Linux only, and it needs a user manager. |
+| The effect on a daemon | The same. A daemon that a unit starts keeps each supervisor in the control group of that unit. When the unit stops, systemd stops each supervisor and each run. Rule 1 of section 5 and the row "The stop" of section 6 are then incorrect, unless the unit sets `KillMode=process`. |
+| The signal for a change | Ticket 844 writes each start of a supervisor to a log. A start without a claim in the log shows a supervisor that a service manager stopped. |
+
+This document did not examine launchd for this problem.
+
 ## 4. What a daemon costs
 
 Section 3.2 of the run control document gives the costs, and this section repeats them
@@ -202,7 +229,8 @@ thing that a daemon must not hold.
 
 1. **A run.** The daemon does not start the agent, and it is not the parent of a
    supervisor. It calls `run.Next`, which starts a supervisor with `detach`, in a
-   session of its own. The supervisor lives after the daemon stops.
+   session of its own. The supervisor lives after the daemon stops. Under systemd, this
+   is true only if the unit sets `KillMode=process`. Section 3.8 gives the reason.
 2. **A lock.** The daemon holds no lock on the queue and no lock on a worktree. The
    database controls each write, as it does for a command.
 3. **A connection.** The daemon opens the store for each event with `store.With`, does
