@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -46,6 +49,29 @@ func TestStartStartsARunWhenNothingIsRunning(t *testing.T) {
 	}
 
 	testfix.WaitForStarts(t, record, 1)
+}
+
+func TestQueueStartWritesALaunchLineToTheQueueLog(t *testing.T) {
+	dataDir := testfix.XDGDataDir(t)
+	s, _, repo := queuedTicket(t, dataDir)
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	l, record := testfix.RecordingLaunch(t)
+	useLaunch(t, l)
+
+	if _, err := runIn(t, dataDir, repo, "queue", "start"); err != nil {
+		t.Fatal(err)
+	}
+
+	testfix.WaitForStarts(t, record, 1)
+	log, err := os.ReadFile(filepath.Join(dataDir, "queue.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^\S+ launch pid=\d+ from="queue start" claimable=1\n$`).Match(log) {
+		t.Errorf("queue.log = %q, want one launch line from `queue start` with claimable=1", log)
+	}
 }
 
 // Supervisor count must use capacity from stored settings.

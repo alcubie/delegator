@@ -75,5 +75,5 @@ func cancelTicket(s *store.Store, cfg *config.Config, id int64) error {
 		return err
 	}
 	// Replace the stopped supervisor's scheduling trigger.
-	return run.Next(s, *cfg, launchFrom(s.DataDir(), launch))
+	return run.Next(s, *cfg, "ticket cancel", launchFrom(s.DataDir(), launch))
 }

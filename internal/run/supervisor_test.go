@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,15 @@ import (
 )
 
 const testAgentID int64 = 1
+
+func readQueueLog(t *testing.T, dataDir string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dataDir, "queue.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
 
 func TestMain(m *testing.M) {
 	code := m.Run()
@@ -168,6 +178,21 @@ func TestStartNextWithNothingToClaimStopsWithNoError(t *testing.T) {
 	}
 	if _, err := os.Stat(WorktreePath(dataDir, id)); err == nil {
 		t.Error("a supervisor with nothing to claim made a worktree")
+	}
+	want := fmt.Sprintf("noroom pid=%d\n", os.Getpid())
+	if got := readQueueLog(t, dataDir); !strings.HasSuffix(got, want) {
+		t.Errorf("queue.log = %q, want it to end with %q", got, want)
+	}
+}
+
+func TestStartNextWritesAClaimLineWithItsPID(t *testing.T) {
+	dataDir, id := queuedTicket(t, "Add the thing")
+	if _, err := StartNext(testfix.OpenStore(t, dataDir), acpConfig(t, dataDir, "stop end_turn")); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf(" claim pid=%d ticket=%d run=", os.Getpid(), id)
+	if got := readQueueLog(t, dataDir); !strings.Contains(got, want) {
+		t.Errorf("queue.log = %q, want a line with %q", got, want)
 	}
 }
 

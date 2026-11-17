@@ -67,7 +67,7 @@ func TestNextWithAnEmptyQueueStartsNothing(t *testing.T) {
 	s := testfix.OpenStore(t, dataDir)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,7 +82,7 @@ func TestNextWithAPausedQueueStartsNothing(t *testing.T) {
 	}
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 1}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,7 +95,7 @@ func TestNextStartsASupervisorForEachFreeSlot(t *testing.T) {
 	dataDir, _ := queueOf(t, 3)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +107,7 @@ func TestNextStartsNoMoreSupervisorsThanTheQueueHasTickets(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 3}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,7 +122,7 @@ func TestNextWithARunActiveStartsOneForEachSlotItLeaves(t *testing.T) {
 	}
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 3}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 3}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,7 +143,7 @@ func TestNextWithEverySlotHeldStartsNothing(t *testing.T) {
 	}
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 2}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 2}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,7 +168,7 @@ func TestNextAfterARunEndsStartsOneForTheSlotItFreed(t *testing.T) {
 	}
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 2}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 2}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +186,7 @@ func TestNextWithEveryProjectAtItsLimitStartsNothing(t *testing.T) {
 	}
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(s, config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+	if err := Next(s, config.Config{Runs: 4, MaxRunsPerProject: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -198,7 +198,7 @@ func TestNextWithEveryTicketWaitingOnALinkStartsNothing(t *testing.T) {
 	dataDir := dependentQueue(t)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,7 +211,7 @@ func TestNextStartsOneSupervisorForAProjectWithOnePlace(t *testing.T) {
 	dataDir, _ := queueOf(t, 2)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -222,7 +222,7 @@ func TestNextStartsOneSupervisorForEachProjectWithAPlace(t *testing.T) {
 	dataDir := twoProjectQueue(t)
 	launch, record := testfix.RecordingLaunch(t)
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 4, MaxRunsPerProject: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +238,7 @@ func TestNextStartsTheProgramInItsOwnSession(t *testing.T) {
 		return exec.Command("sh", "-c", `ps -o pgid= -p $$ > "$1"`, "--", marker)
 	}
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 1}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 
@@ -258,7 +258,7 @@ func TestNextGivesTheProgramNoneOfItsOwnStreams(t *testing.T) {
 		return started
 	}
 
-	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 1}, launch); err != nil {
+	if err := Next(testfix.OpenStore(t, dataDir), config.Config{Runs: 1}, "test", launch); err != nil {
 		t.Fatal(err)
 	}
 

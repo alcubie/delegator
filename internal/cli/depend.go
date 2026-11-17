@@ -56,7 +56,7 @@ func dependCommand(dataDir *string, cfg *config.Config, commandPath string) *cob
 					if err := s.RemoveDependencies(id, after...); err != nil {
 						return err
 					}
-					return run.Next(s, *cfg, launchFrom(*dataDir, launch))
+					return run.Next(s, *cfg, "ticket depend", launchFrom(*dataDir, launch))
 				}
 				return s.AddDependencies(id, after...)
 			})

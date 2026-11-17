@@ -145,19 +145,24 @@ func StartNext(s *store.Store, cfg config.Config) (bool, error) {
 		return false, err
 	}
 	if claimable == 0 {
+		queueLog(s.DataDir(), "noroom pid=%d", os.Getpid())
 		return false, nil
 	}
 	agent, err := s.Agent(cfg.DefaultAgent)
 	if err != nil {
 		return false, err
 	}
+	stopWatch := logSignalBeforeClaim(s.DataDir())
 	ticket, runID, err := s.ClaimNext(cfg, func(t store.Ticket) string { return branch(t.ID, t.Title) }, agent.ID)
+	stopWatch()
 	if errors.Is(err, store.ErrNoRoom) {
+		queueLog(s.DataDir(), "noroom pid=%d", os.Getpid())
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
+	queueLog(s.DataDir(), "claim pid=%d ticket=%d run=%d", os.Getpid(), ticket.ID, runID)
 	return true, supervise(s, cfg, ticket, runID, agent, cfg.DefaultModel, prompt, "")
 }
 

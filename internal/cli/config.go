@@ -218,7 +218,7 @@ func configCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 					return err
 				}
 				*cfg = updated
-				if err := run.Next(s, updated, launchFrom(*dataDir, launch)); err != nil {
+				if err := run.Next(s, updated, "config set", launchFrom(*dataDir, launch)); err != nil {
 					return err
 				}
 				var value any
