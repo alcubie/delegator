@@ -360,6 +360,12 @@ func (s *Store) SetProjectName(path, name string) (Project, error) {
 	return s.ProjectByPath(path)
 }
 
+// SetBranch records the branch a ticket works on.
+func (s *Store) SetBranch(id int64, branch string) error {
+	_, err := s.db.Exec("UPDATE tickets SET branch = ? WHERE id = ?", branch, id)
+	return err
+}
+
 // Projects returns each project, in the order of its path.
 func (s *Store) Projects() ([]Project, error) {
 	rows, err := s.db.Query("SELECT " + projectColumns + " FROM projects ORDER BY path")

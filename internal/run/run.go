@@ -2,6 +2,7 @@
 package run
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,21 +84,38 @@ func ProjectCache(dataDir string, projectID int64) (string, error) {
 	return path, nil
 }
 
+// maxBranchSuffix is the last numeric suffix Worktree tries on a branch name.
+const maxBranchSuffix = 20
+
 // Worktree creates the worktree for one run at <dataDir>/worktrees/<id>, on a
-// new branch cut from the project's default branch, and returns its path.
+// new branch cut from the project's default branch, and returns its path and
+// the name of the branch.
 //
-// An existing worktree is returned unchanged: a restart works in the one the
-// earlier run created.
-func Worktree(dataDir string, ticket store.Ticket) (string, error) {
-	path := WorktreePath(dataDir, ticket.ID)
+// The branch starts as ticket.Branch. When the project already has that name,
+// Worktree adds the suffix -2, then -3, and so on.
+//
+// An existing worktree is returned unchanged with ticket.Branch: a restart
+// works in the one the earlier run created.
+func Worktree(dataDir string, ticket store.Ticket) (path, branchName string, err error) {
+	path = WorktreePath(dataDir, ticket.ID)
 	if _, err := os.Stat(path); err == nil {
-		return path, nil
+		return path, ticket.Branch, nil
 	}
-	name := branch(ticket.ID, ticket.Title)
-	if err := project.AddWorktree(ticket.Project.Path, path, name, ticket.Project.DefaultBranch); err != nil {
-		return "", err
+	for n := 1; n <= maxBranchSuffix; n++ {
+		branchName = ticket.Branch
+		if n > 1 {
+			branchName = fmt.Sprintf("%s-%d", ticket.Branch, n)
+		}
+		err := project.AddWorktree(ticket.Project.Path, path, branchName, ticket.Project.DefaultBranch)
+		if err == nil {
+			return path, branchName, nil
+		}
+		if !errors.Is(err, project.ErrBranchExists) {
+			return "", "", err
+		}
 	}
-	return path, nil
+	return "", "", fmt.Errorf("every branch from %s to %s-%d is taken in %s; they probably come from another data directory or an earlier ticket",
+		ticket.Branch, ticket.Branch, maxBranchSuffix, ticket.Project.Path)
 }
 
 // AcceptanceWorktree describes what acceptance found at a ticket's worktree

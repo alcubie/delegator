@@ -55,6 +55,7 @@ const (
 	codeTicketTwice
 	codeMoveBeforeItself
 	codeOneTicketUpOrDown
+	codeBranchExists
 )
 
 // errorCodes maps CLI, project, and store errors to stable machine-readable
@@ -77,6 +78,7 @@ var errorCodes = map[error]int{
 	project.ErrUnknownCommit:          codeUnknownCommit,
 	project.ErrCommitNotOnBranch:      codeCommitNotOnBranch,
 	project.ErrBranchNotMerged:        codeBranchNotMerged,
+	project.ErrBranchExists:           codeBranchExists,
 	project.ErrWorktreeDirty:          codeWorktreeDirty,
 	project.ErrNotARepository:         codeNotARepository,
 	store.ErrNewerDatabase:            codeNewerDatabase,

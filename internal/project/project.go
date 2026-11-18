@@ -25,6 +25,10 @@ var ErrNoCommit = errors.New("the repository has no commit")
 // repository.
 var ErrUnknownCommit = errors.New("git does not know the commit")
 
+// ErrBranchExists shows that AddWorktree could not create its branch because
+// the repository already has one with that name.
+var ErrBranchExists = errors.New("the branch already exists")
+
 // ErrCommitNotOnBranch shows that a branch does not contain the commit.
 var ErrCommitNotOnBranch = errors.New("the ticket branch does not hold the commit")
 
@@ -170,8 +174,15 @@ func FirstCommit(root string) (string, error) {
 }
 
 // AddWorktree creates a worktree at path and a new branch starting at from.
+// It returns ErrBranchExists when the branch is already there.
 func AddWorktree(root, path, branch, from string) error {
 	_, err := gitOutput(root, "worktree", "add", "-b", branch, path, from)
+	if err == nil {
+		return nil
+	}
+	if _, verifyErr := gitOutput(root, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); verifyErr == nil {
+		return fmt.Errorf("%w: %s", ErrBranchExists, branch)
+	}
 	return err
 }
 
