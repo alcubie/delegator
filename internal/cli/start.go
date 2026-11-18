@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/alcubie/delegator/internal/config"
 	"github.com/alcubie/delegator/internal/run"
@@ -33,7 +34,7 @@ func startCommand(dataDir *string, cfg *config.Config, commandPath string) *cobr
 				}); err != nil {
 					return err
 				}
-				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
+				return run.Next(s, *cfg, strings.TrimPrefix(commandPath, "dg "), launchFrom(*dataDir, launch))
 			})
 		},
 	})

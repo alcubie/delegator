@@ -123,7 +123,7 @@ func runCommand(dataDir *string, cfg *config.Config) *cobra.Command {
 				if !claimed {
 					return nil
 				}
-				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
+				return run.Next(s, *cfg, "run", launchFrom(*dataDir, launch))
 			})
 		},
 	}

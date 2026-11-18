@@ -29,7 +29,7 @@ func Reconcile(s *store.Store, launch func() *exec.Cmd, conflict func(int64) *ex
 		return err
 	}
 	if marked > 0 {
-		if err := Next(s, cfg, launch); err != nil {
+		if err := Next(s, cfg, "reconcile", launch); err != nil {
 			return err
 		}
 	}

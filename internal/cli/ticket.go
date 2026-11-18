@@ -156,7 +156,7 @@ func ticketCreateCommand(dataDir *string, workDir string, cfg *config.Config) *c
 				}); err != nil {
 					return err
 				}
-				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
+				return run.Next(s, *cfg, "ticket create", launchFrom(*dataDir, launch))
 			})
 		},
 	}

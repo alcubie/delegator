@@ -7,10 +7,16 @@ import "os/exec"
 // pipelines do not wait for the entire run; the supervisor opens its own log.
 // The process handle is released because the caller will not wait for it.
 func Detach(cmd *exec.Cmd) error {
+	_, err := detach(cmd)
+	return err
+}
+
+func detach(cmd *exec.Cmd) (int, error) {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	cmd.SysProcAttr = detachAttr()
 	if err := cmd.Start(); err != nil {
-		return err
+		return 0, err
 	}
-	return cmd.Process.Release()
+	pid := cmd.Process.Pid
+	return pid, cmd.Process.Release()
 }

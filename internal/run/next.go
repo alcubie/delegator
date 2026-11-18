@@ -15,17 +15,21 @@ import (
 // global capacity. Counting empty slots alone could repeatedly launch
 // supervisors that find no eligible work.
 //
+// from names the command that asks for the launch, for the queue log.
+//
 // launch builds the supervisor command: dg uses its own executable with run;
 // tests can substitute an observable command.
-func Next(s *store.Store, cfg config.Config, launch func() *exec.Cmd) error {
+func Next(s *store.Store, cfg config.Config, from string, launch func() *exec.Cmd) error {
 	claimable, err := s.ClaimableCount(cfg)
 	if err != nil {
 		return err
 	}
 	for range claimable {
-		if err := Detach(launch()); err != nil {
+		pid, err := detach(launch())
+		if err != nil {
 			return err
 		}
+		queueLog(s.DataDir(), "launch pid=%d from=%q claimable=%d", pid, from, claimable)
 	}
 	return nil
 }

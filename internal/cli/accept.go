@@ -87,7 +87,7 @@ func acceptCommand(dataDir *string, workDir string, cfg *config.Config, commandP
 				}); err != nil {
 					return err
 				}
-				return run.Next(s, *cfg, launchFrom(*dataDir, launch))
+				return run.Next(s, *cfg, "ticket accept", launchFrom(*dataDir, launch))
 			})
 		},
 	}
