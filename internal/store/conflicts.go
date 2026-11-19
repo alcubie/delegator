@@ -11,6 +11,10 @@ type ReadyMerge struct {
 	Commit        string
 	CheckedBase   string
 	MergesCleanly *bool
+
+	// ConflictRunBase is the commit of the default branch for which a conflict
+	// run started. It is empty for a ticket without one.
+	ConflictRunBase string
 }
 
 type ReadyProject struct {
@@ -31,7 +35,8 @@ func (s *Store) ReadyMerges() ([]ReadyProject, error) {
 		       COALESCE(projects.name, ''), projects.archived_at,
 		       tickets.id, tickets.commit_id,
 		       COALESCE(tickets.checked_base_commit, ''),
-		       tickets.checked_merges_cleanly
+		       tickets.checked_merges_cleanly,
+		       COALESCE(tickets.conflict_run_base, '')
 		FROM tickets
 		JOIN projects ON projects.id = tickets.project_id
 		WHERE tickets.status = ? AND projects.archived_at IS NULL
@@ -49,7 +54,7 @@ func (s *Store) ReadyMerges() ([]ReadyProject, error) {
 		var verdict sql.NullBool
 		if err := rows.Scan(
 			&p.ID, &p.Path, &p.DefaultBranch, &p.Name, timeColumn{&p.ArchivedAt},
-			&m.ID, &m.Commit, &m.CheckedBase, &verdict); err != nil {
+			&m.ID, &m.Commit, &m.CheckedBase, &verdict, &m.ConflictRunBase); err != nil {
 			return nil, err
 		}
 		if verdict.Valid {
@@ -71,5 +76,12 @@ func (s *Store) SetConflictCheck(id int64, base string, mergesCleanly bool) erro
 	_, err := s.db.Exec(
 		"UPDATE tickets SET checked_base_commit = ?, checked_merges_cleanly = ? WHERE id = ?",
 		base, mergesCleanly, id)
+	return err
+}
+
+// SetConflictRunBase records the commit of the default branch for which a
+// conflict run started, so the next command doesn't start a second run for it.
+func (s *Store) SetConflictRunBase(id int64, base string) error {
+	_, err := s.db.Exec("UPDATE tickets SET conflict_run_base = ? WHERE id = ?", base, id)
 	return err
 }
