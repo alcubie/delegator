@@ -12,18 +12,16 @@ import (
 // branch of its project broke, so its agent merges the branch and corrects the
 // conflicts without a command from the person.
 //
-// Only a conflict that this call found starts a run, so two commands in a row
-// give a ticket one run and not two.
+// A conflict starts a run once for each commit of the default branch: the
+// ticket records that commit before the launch, so two commands in a row give
+// it one run and not two. Whoever stored the verdict, this call or an inbox
+// render, the run still starts.
 //
 // The setting resolve_conflicts turns these runs off for a person who prefers
 // to merge the branch themselves. It is read before anything else: the check
-// must not start a Git process, and must not spend the one chance that the
-// stored commit of a ticket gives it.
+// must not start a Git process.
 //
-// A paused queue starts nothing and checks nothing, for the same reason: the
-// check stores the commit it checked against, so a check while paused would be
-// the only one for that commit and the run would never happen. The queue state
-// is read before Conflicting for that reason.
+// A paused queue starts nothing and checks nothing, for the same reason.
 //
 // A run that fails leaves the ticket failed, as any other run does, and the
 // ticket is no longer ready for a second try.
@@ -40,7 +38,10 @@ func correctConflicts(s *store.Store, launch func(int64) *exec.Cmd, cfg config.C
 		return err
 	}
 	for _, a := range answers {
-		if a.checked && a.clean != nil && !*a.clean {
+		if a.clean != nil && !*a.clean && a.conflictRunBase != a.base {
+			if err := s.SetConflictRunBase(a.id, a.base); err != nil {
+				return err
+			}
 			if err := Detach(launch(a.id)); err != nil {
 				return err
 			}
@@ -92,9 +93,10 @@ func MergeAnswers(s *store.Store) (map[int64]*bool, error) {
 }
 
 type mergeAnswer struct {
-	id      int64
-	clean   *bool
-	checked bool
+	id              int64
+	clean           *bool
+	base            string
+	conflictRunBase string
 }
 
 func answerMerges(s *store.Store) ([]mergeAnswer, error) {
@@ -112,7 +114,7 @@ func answerMerges(s *store.Store) ([]mergeAnswer, error) {
 				continue
 			}
 			if t.CheckedBase == base && t.MergesCleanly != nil {
-				answers = append(answers, mergeAnswer{id: t.ID, clean: t.MergesCleanly})
+				answers = append(answers, mergeAnswer{id: t.ID, clean: t.MergesCleanly, base: base, conflictRunBase: t.ConflictRunBase})
 				continue
 			}
 			clean, err := project.MergesCleanly(p.Project.Path, t.Commit, base)
@@ -123,7 +125,7 @@ func answerMerges(s *store.Store) ([]mergeAnswer, error) {
 			if err := s.SetConflictCheck(t.ID, base, clean); err != nil {
 				return nil, err
 			}
-			answers = append(answers, mergeAnswer{id: t.ID, clean: &clean, checked: true})
+			answers = append(answers, mergeAnswer{id: t.ID, clean: &clean, base: base, conflictRunBase: t.ConflictRunBase})
 		}
 	}
 	return answers, nil

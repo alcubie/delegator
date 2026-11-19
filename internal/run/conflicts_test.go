@@ -615,6 +615,71 @@ func TestReconcileStartsNoRunWhileResolveConflictsIsOff(t *testing.T) {
 	}
 }
 
+func TestReconcileStartsARunForAConflictTheInboxCheckedWhileTheQueueWasPaused(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	if err := s.PauseQueue(); err != nil {
+		t.Fatal(err)
+	}
+	overtake(t, repo)
+	if _, err := MergeAnswers(s); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ResumeQueue(); err != nil {
+		t.Fatal(err)
+	}
+	launch, started := recordingConflicts()
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v, want %v", got, []int64{id})
+	}
+}
+
+func TestReconcileStartsARunForAConflictTheInboxCheckedWhileResolveConflictsWasOff(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	launch, started := recordingConflicts()
+	if err := Reconcile(s, noStarts(t), launch, withoutConflictRuns()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MergeAnswers(s); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v, want %v", got, []int64{id})
+	}
+}
+
+func TestReconcileStartsOneRunForAConflictTheInboxCheckedFirst(t *testing.T) {
+	s, repo := readyStore(t)
+	id := readyIn(t, s, repo, "the ticket the default branch overtook")
+	overtake(t, repo)
+	if _, err := MergeAnswers(s); err != nil {
+		t.Fatal(err)
+	}
+	launch, started := recordingConflicts()
+
+	for range 2 {
+		if err := Reconcile(s, noStarts(t), launch, conflictConfig); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := started(); !slices.Equal(got, []int64{id}) {
+		t.Errorf("the conflict runs started for %v, want %v", got, []int64{id})
+	}
+}
+
 // A conflict run starts a new session, because the session that reported the
 // commit can hold a very large context. The fake agent replays history for a
 // loaded session and not for a new one, and a new session gets a new ID.
