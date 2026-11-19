@@ -41,22 +41,22 @@ func output(t *testing.T, name string, args ...string) string {
 	return string(out)
 }
 
-// repoRoot locates the Makefile from the package directory used by go test.
+// repoRoot locates the justfile from the package directory used by go test.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	return strings.TrimSpace(output(t, "git", "rev-parse", "--show-toplevel"))
 }
 
-// gitDescribe is the version that the Makefile gives a build of this tree.
+// gitDescribe is the version that the justfile gives a build of this tree.
 func gitDescribe(t *testing.T, root string) string {
 	t.Helper()
 	return strings.TrimSpace(output(t, "git", "-C", root, "describe", "--tags", "--always", "--dirty"))
 }
 
-// makeIn runs one target of the Makefile and returns what it wrote.
-func makeIn(t *testing.T, root string, args ...string) string {
+// justIn runs one recipe of the justfile and returns what it wrote.
+func justIn(t *testing.T, root string, args ...string) string {
 	t.Helper()
-	return output(t, "make", append([]string{"-C", root}, args...)...)
+	return output(t, "just", append([]string{"--justfile", filepath.Join(root, "justfile"), "--working-directory", root}, args...)...)
 }
 
 func TestVersionOfABuildWithNoValue(t *testing.T) {
@@ -142,10 +142,10 @@ func TestVersionMakesNoDataDirectory(t *testing.T) {
 }
 
 // Build into a temporary BIN path and verify its embedded version.
-func TestMakeBuildSetsTheVersion(t *testing.T) {
+func TestJustBuildSetsTheVersion(t *testing.T) {
 	root := repoRoot(t)
 	bin := filepath.Join(t.TempDir(), "dg")
-	makeIn(t, root, "build", "BIN="+bin)
+	justIn(t, root, "BIN="+bin, "build")
 
 	out, err := exec.Command(bin, "version").Output()
 	if err != nil {
@@ -153,17 +153,23 @@ func TestMakeBuildSetsTheVersion(t *testing.T) {
 	}
 	want := "dg " + gitDescribe(t, root) + "\n"
 	if string(out) != want {
-		t.Errorf("the binary of make build wrote %q, want %q", out, want)
+		t.Errorf("the binary of just build wrote %q, want %q", out, want)
 	}
 }
 
-// Use make -n to inspect installation without replacing the user's dg binary.
-func TestMakeInstallSetsTheVersion(t *testing.T) {
+// Install into a temporary GOBIN so the user's dg binary stays in place.
+func TestJustInstallSetsTheVersion(t *testing.T) {
 	root := repoRoot(t)
-	out := makeIn(t, root, "-n", "install")
+	gobin := t.TempDir()
+	t.Setenv("GOBIN", gobin)
+	justIn(t, root, "install")
 
-	want := "-X github.com/alcubie/delegator/internal/cli.Version=" + gitDescribe(t, root)
-	if !strings.Contains(out, want) {
-		t.Errorf("make install does not hold %q:\n%s", want, out)
+	out, err := exec.Command(filepath.Join(gobin, "dg"), "version").Output()
+	if err != nil {
+		t.Fatalf("installed dg version: %v", err)
+	}
+	want := "dg " + gitDescribe(t, root) + "\n"
+	if string(out) != want {
+		t.Errorf("the binary of just install wrote %q, want %q", out, want)
 	}
 }

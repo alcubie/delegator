@@ -69,8 +69,8 @@ cleanup failures report the remaining paths.
 
 ## Installer validation
 
-With Go and Make installed, run `make install-test-windows` for PowerShell 7 or
-`make install-test-windows POWERSHELL=powershell` for Windows PowerShell 5.1.
+With Go and just installed, run `just install-test-windows` for PowerShell 7 or
+`just POWERSHELL=powershell install-test-windows` for Windows PowerShell 5.1.
 Both shells run in the Windows validation and release workflows. Linux Go tests
 do not require PowerShell.
 

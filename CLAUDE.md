@@ -24,10 +24,10 @@ derive the shape of the repository by reading it.
 - `internal/config` describes the instance settings stored in SQLite.
 - `internal/testfix` holds the fixtures that more than one package's tests need.
 
-`make check` runs the formatter, vet, staticcheck and the coverage floor, and
-the pre-commit hook runs it. `make test` alone is faster while you work.
-`make integration` drives a real agent and costs money, so it is not in
-`make check`.
+`just check` runs the formatter, vet, staticcheck and the coverage floor, and
+the pre-commit hook runs it. `just test` alone is faster while you work.
+`just integration` drives a real agent and costs money, so it is not in
+`just check`.
 
 Keep this section at the level of a directory. A section that named files
 would be wrong the first time a file was added, and an agent that trusts a
@@ -51,9 +51,9 @@ the wrong place, that is the signal to correct this.
   mutation run, read `git status` before staging, and stage the paths you
   changed rather than everything.
 
-- **Run `make integration` after changing the agent path.** The tests behind
+- **Run `just integration` after changing the agent path.** The tests behind
   the build tag `integration` drive a real agent; they cost money, so
-  `make check` only compiles them and `make release` runs them. `go test` will
+  `just check` only compiles them and `just release` runs them. `go test` will
   not list them and nothing runs them for you. Run them when you change the
   prompt in `internal/run/supervisor.go` or how `run.Start` captures output,
   and say in the commit message that they passed.
@@ -65,7 +65,7 @@ the wrong place, that is the signal to correct this.
   sat at 100% until they burned out. `TestMain` sets `launch` to a no-op for
   the package; a new package-level launcher needs the same.
 
-- **Run the real binary.** `make install` puts `dg` on the PATH. Two faults this
+- **Run the real binary.** `just install` puts `dg` on the PATH. Two faults this
   session passed each test and appeared at the first real run: `dg ticket show` wrapped
   prose that already held the line breaks of the person, and the text of a field
   went past the rule below the title. A test holds the data that its writer

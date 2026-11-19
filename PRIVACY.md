@@ -199,9 +199,9 @@ and may have its own sync or extension behavior.
 Cloning, pulling, opening an issue or pull request, or downloading source on
 GitHub is governed by GitHub's privacy statement. Building or testing from source
 can cause Go or npm tooling to contact configured package services. Tests with the
-`integration` build tag, including `make integration` and `make release`, start
+`integration` build tag, including `just integration` and `just release`, start
 installed, authenticated agents and submit synthetic prompts and repository
-content. Ordinary `go test` and `make check` do not run those paid integration
+content. Ordinary `go test` and `just check` do not run those paid integration
 tests.
 
 ### Installer, releases, and updates

@@ -83,10 +83,10 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "dg.md").write_text("stale reference\n")
             stale = subprocess.run(
-                ["make", "docs-check", f"DOCS_REFERENCE={directory}", "MKDOCS=true"],
+                ["just", f"DOCS_REFERENCE={directory}", "MKDOCS=true", "docs-check"],
                 cwd=ROOT, capture_output=True)
             self.assertNotEqual(stale.returncode, 0)
-        site = subprocess.run(["make", "docs-check", "MKDOCS=false"],
+        site = subprocess.run(["just", "MKDOCS=false", "docs-check"],
                               cwd=ROOT, capture_output=True)
         self.assertNotEqual(site.returncode, 0)
 
@@ -165,7 +165,7 @@ if args[:2] == ['release', 'download']:
                        SHELL_SHA256=hashlib.sha256((ROOT / "install.sh").read_bytes()).hexdigest(),
                        POWERSHELL_SHA256=hashlib.sha256((ROOT / "install.ps1").read_bytes()).hexdigest())
             script = WORKFLOW["jobs"]["publish"]["steps"][-1]["run"]
-            command = (["make", "-f", str(ROOT / "Makefile"), "release-latest", tag] if manual
+            command = (["just", "--justfile", str(ROOT / "justfile"), "release-latest", tag] if manual
                        else ["bash", "-c", script])
             result = subprocess.run(command, cwd=ROOT if manual else root, env=env, capture_output=True)
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""

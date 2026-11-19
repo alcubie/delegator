@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      - uses: extractions/setup-just@v3
       - name: Validate release tag
         id: version
         env:
@@ -48,16 +49,16 @@ jobs:
       - name: Normal checks, committed CLI reference, and documentation site
         run: |
           python3 scripts/test-release.py
-          make check
+          just check
       - name: Build and validate all release targets
         env:
           EVENT: ${{ github.event_name }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           if [[ "$EVENT" == push ]]; then
-            make release-build
+            just release-build
           else
-            make release-validate VALIDATION_VERSION=0.0.0-rc.${{ github.run_number }}
+            just VALIDATION_VERSION=0.0.0-rc.${{ github.run_number }} release-validate
           fi
           test -z "$(git status --porcelain --untracked-files=normal)"
       - name: Retain exact installer bytes from the checked source

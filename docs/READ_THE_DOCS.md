@@ -15,20 +15,20 @@ python3 -m venv .venv
 Regenerate the Cobra reference after changing command help or structure:
 
 ```sh
-make docs
+just docs
 ```
 
 Build the site, preview it at `http://127.0.0.1:8000`, or run the same check
 used by CI:
 
 ```sh
-make docs-build MKDOCS=.venv/bin/mkdocs
-make docs-serve MKDOCS=.venv/bin/mkdocs
-make docs-check MKDOCS=.venv/bin/mkdocs
+just MKDOCS=.venv/bin/mkdocs docs-build
+just MKDOCS=.venv/bin/mkdocs docs-serve
+just MKDOCS=.venv/bin/mkdocs docs-check
 ```
 
-`make docs-check` fails if the committed reference differs from `cli.Root` or
-if MkDocs reports a build warning or error. `make check` includes it.
+`just docs-check` fails if the committed reference differs from `cli.Root` or
+if MkDocs reports a build warning or error. `just check` includes it.
 
 ## One-time Read the Docs setup
 

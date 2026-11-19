@@ -52,7 +52,7 @@ func waitForStatus(t *testing.T, s *store.Store, id int64) store.Ticket {
 
 // TestIntegrationClaudeRunsOneTicket exercises dg ticket create, the detached agent
 // run, and the agent's dg finish. It is a paid integration test excluded from
-// make check. XDG_DATA_HOME and PATH direct agent commands to this test's
+// just check. XDG_DATA_HOME and PATH direct agent commands to this test's
 // database and binary.
 func TestIntegrationClaudeRunsOneTicket(t *testing.T) {
 	t.Setenv("PATH", filepath.Dir(testfix.DG(t))+string(os.PathListSeparator)+os.Getenv("PATH"))
