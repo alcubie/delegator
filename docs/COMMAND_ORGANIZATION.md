@@ -124,7 +124,7 @@ The envelope identifies the ticket even when `runs` is empty and allows future a
 
 An existing ticket with no runs returns an empty array. An unknown ticket returns an error. Preserve nulls: absence of an exit code does not prove success, and an absent end time alone is not a new persisted run status. Do not reconstruct per-run commits, sessions, or worktrees from current ticket fields.
 
-Terminal output shows the same recorded history in a compact table, with an explicit empty-history message and readable missing values. Discovery publishes the result schema, and `make docs` generates the command reference.
+Terminal output shows the same recorded history in a compact table, with an explicit empty-history message and readable missing values. Discovery publishes the result schema, and `just docs` generates the command reference.
 
 ### Delivered runs command and creation follow-up
 

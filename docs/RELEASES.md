@@ -1,10 +1,10 @@
 # Making a release
 
 Pushing a version tag publishes a release through GitHub Actions without marking
-it **Latest**. Run `make release-latest` after publication to verify the assets and
+it **Latest**. Run `just release-latest` after publication to verify the assets and
 select the release for default installation. A stable version
 tag has no prerelease suffix, for example `v1.4.0` rather than `v1.4.0-rc.1`.
-`make release` only runs local checks and builds artifacts; it does not publish.
+`just release` only runs local checks and builds artifacts; it does not publish.
 
 ## One-time setup
 
@@ -37,12 +37,12 @@ for the settings above.
 
 ## Release checklist
 
-1. Run `make release-prepare`. If it changes the CLI reference, review and commit
+1. Run `just release-prepare`. If it changes the CLI reference, review and commit
    those changes, then rerun it. Confirm the privacy notice describes the shipped
    telemetry behavior before distributing a telemetry-capable binary; generated
    release notes link the notice and state that telemetry requires an explicit
    choice.
-2. Run `make check`. For the full local gate, use `make release` instead: it also
+2. Run `just check`. For the full local gate, use `just release` instead: it also
    runs [live-agent integration tests](INTEGRATION_TESTS.md) and validates release
    artifacts. Those tests require authenticated agents and can incur charges;
    GitHub Actions does not run them.
@@ -51,7 +51,7 @@ for the settings above.
    prerelease. From the clean, checked commit, create and push an annotated tag:
 
    ```sh
-   make release-tag v1.4.0  # Replace with the version you are releasing.
+   just release-tag v1.4.0  # Replace with the version you are releasing.
    ```
 
 4. Open **Actions → Release**. After Linux/macOS checks, builds, and Windows
@@ -66,7 +66,7 @@ for the settings above.
    command (replace `v1.4.0` with the release tag):
 
    ```sh
-   make release-latest v1.4.0
+   just release-latest v1.4.0
    ```
 
    This requires Python 3 and an authenticated GitHub CLI with release write access. It rejects
@@ -88,7 +88,7 @@ To remove the approval step for a single maintainer, remove **Required reviewers
 under **Settings → Environments → release**. Keep the `v*` deployment restriction
 and tag rulesets above. This makes an authorized tag push sufficient to publish
 once automated checks pass. Verification and promotion to **Latest** remain
-a single manual step with `make release-latest`.
+a single manual step with `just release-latest`.
 
 ## Public installer URLs
 
@@ -97,7 +97,7 @@ The website's `public/_redirects` maps
 `https://github.com/alcubie/delegator/releases/latest/download/install.sh`.
 The release workflow attaches the tested `install.sh` and `install.ps1` from
 the tagged source and compares both downloaded copies before publishing. No
-website deployment is needed for each subsequent release. `make release-latest`
+website deployment is needed for each subsequent release. `just release-latest`
 verifies the assets and selects the stable release served by this URL.
 
 The Windows public URL is `https://alcubi.ai/delegator/install.ps1`,
@@ -114,7 +114,7 @@ contains `install.sh`, add it from that exact local tag (replace the example tag
 as needed):
 
 ```sh
-make release-upload-installer v0.0.3
+just release-upload-installer v0.0.3
 ```
 
 This requires GitHub release write access. It uploads only `install.sh`, refuses
@@ -149,11 +149,11 @@ publication script with controlled assets and failures.
 Locally, run:
 
 ```sh
-make check && make release-validate
+just check && just release-validate
 ```
 
-Artifacts go in `dist/`. For narrower checks, `make release-check` validates only
-GoReleaser configuration, and `make release-snapshot` builds snapshot artifacts.
+Artifacts go in `dist/`. For narrower checks, `just release-check` validates only
+GoReleaser configuration, and `just release-snapshot` builds snapshot artifacts.
 None of these commands publish.
 
 ## If a release fails
@@ -188,6 +188,6 @@ separately by comparing their bytes before and after upload.
 
 Download URLs follow
 `https://github.com/alcubie/delegator/releases/download/<tag>/<filename>`.
-Build and validation details live in the [Makefile](../Makefile),
+Build and validation details live in the [justfile](../justfile),
 [GoReleaser config](../.goreleaser.yaml), and
 [release workflow](../.github/workflows/release.yml).

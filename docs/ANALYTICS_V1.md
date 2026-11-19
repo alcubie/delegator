@@ -154,7 +154,7 @@ installation retries cannot recreate deleted data. Document that retention.
 `retry-expanded.json` repeats those IDs plus September 28 after a lost reply.
 The partial consent day (25) and current day (29) are not reported.
 
-Run `make analytics-contract-check` for the small example check: parse JSON,
+Run `just analytics-contract-check` for the small example check: parse JSON,
 verify UUID derivation, and replay it into an in-memory SQLite table with a unique
 report ID. This is not a schema validator or substitute for production tests.
 Downstream tests must cover consent, day/cursor boundaries, 15-minute retry

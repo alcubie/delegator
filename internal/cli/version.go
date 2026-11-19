@@ -11,7 +11,7 @@ import (
 )
 
 // Version is set at build time with -ldflags -X
-// github.com/alcubie/delegator/internal/cli.Version=<value>. The Makefile
+// github.com/alcubie/delegator/internal/cli.Version=<value>. The justfile
 // uses git describe; unset builds report dev.
 var Version = "dev"
 

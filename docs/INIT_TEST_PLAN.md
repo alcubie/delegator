@@ -7,7 +7,7 @@ repository root in an interactive terminal.
 ## Prepare an isolated preview
 
 ```bash
-make install
+just install
 DG_TEST_DG=$(goenv which dg)
 DG_TEST_ROOT=$(mktemp -d)
 

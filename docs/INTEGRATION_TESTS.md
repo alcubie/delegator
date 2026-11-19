@@ -4,8 +4,8 @@ These tests are for maintainers. They are not prerequisites for a person who
 uses `dg`. They start authenticated third-party agents, can send synthetic
 repository content to agent providers, and can consume paid tokens.
 
-`make check` compiles the tests behind the `integration` build tag but does not
-run them. Use `make integration` to run them. `make release` runs them and then
+`just check` compiles the tests behind the `integration` build tag but does not
+run them. Use `just integration` to run them. `just release` runs them and then
 builds publication-free release artifacts.
 
 ## Agent commands exercised
@@ -60,7 +60,7 @@ dg agents --all
 ## Run and interpret the tests
 
 ```sh
-make integration
+just integration
 ```
 
 The runner requires Python 3. It streams test and subtest starts/results, prints
@@ -74,7 +74,7 @@ Every invocation runs fresh tests instead of using Go's cached results.
 To rerun one agent with the same output format:
 
 ```sh
-make integration INTEGRATION_ARGS='--run ^TestIntegrationCodex ./internal/handler'
+just INTEGRATION_ARGS='--run ^TestIntegrationCodex ./internal/handler' integration
 ```
 
 The handler tests create a temporary Git repository, start a real ACP session,
