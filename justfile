@@ -73,6 +73,42 @@ release-tag tag: (_check-tag-argument "release-tag" tag)
     git tag -a "{{ tag }}" -m "Alcubi Delegator {{ tag }}"
     git push origin "{{ tag }}"
 
+# Publish a release from main: just release-publish v1.4.0
+[script("sh")]
+release-publish tag: (_check-tag-argument "release-publish" tag)
+    set -eu
+    test -z "$(git status --porcelain)" || \
+        { echo 'Commit or stash changes before publishing a release.' >&2; exit 1; }
+    branch=$(git branch --show-current)
+    test "$branch" = main || \
+        { echo "Releases are made from main, and the current branch is '$branch'." >&2; exit 1; }
+    git fetch origin
+    test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || \
+        { echo 'HEAD must equal origin/main. Pull or push before publishing a release.' >&2; exit 1; }
+    sha=$(git rev-parse HEAD)
+    just release-prepare
+    just check
+    just release-tag "{{ tag }}"
+    echo "Looking for the Release workflow run of {{ tag }}."
+    run=
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        run=$(gh run list --repo alcubie/delegator --workflow release.yml \
+            --event push --branch "{{ tag }}" --limit 20 \
+            --json databaseId,headSha --jq "map(select(.headSha == \"$sha\")) | .[0].databaseId // empty")
+        test -z "$run" || break
+        sleep 5
+    done
+    test -n "$run" || \
+        { echo 'No Release workflow run found for {{ tag }}. Check Actions, then run just release-latest by hand.' >&2; exit 1; }
+    echo "Waiting for run $run. It can wait for an approval of the release environment: approve it in Actions if a reviewer is required."
+    gh run watch "$run" --repo alcubie/delegator --exit-status
+    core="{{ tag }}"
+    core="${core%%+*}"
+    case "$core" in
+        *-*) echo "{{ tag }} is a prerelease, so release-latest is skipped." ;;
+        *) just release-latest "{{ tag }}" ;;
+    esac
+
 # Verify published assets and select the stable release for default installation.
 release-latest tag: (_check-tag-argument "release-latest" tag)
     python3 scripts/release-latest.py "{{ tag }}" --repo alcubie/delegator
