@@ -14,9 +14,8 @@ binaries. See the [trademark policy](../TRADEMARKS.md) for naming and branding.
 Before the first public release:
 
 1. Review the repository and Git history, then make the repository public.
-2. In **Settings → Environments**, create `release`. Add yourself as a required
-   reviewer, leave **Prevent self-review** off while you are the only maintainer,
-   and disable administrator bypass. Under **Deployment branches and tags**,
+2. In **Settings → Environments**, create `release`. Do not add
+   required reviewers while there is only one maintainer. Under **Deployment branches and tags**,
    select **Selected branches and tags** and allow only **Tag → `v*`**.
 3. In **Settings → Rules → Rulesets**, create these two **active tag rulesets**:
 
@@ -54,8 +53,8 @@ for the settings above.
    just release-tag v1.4.0  # Replace with the version you are releasing.
    ```
 
-4. Open **Actions → Release**. After Linux/macOS checks, builds, and Windows
-   installer checks pass, review and approve the `release` environment deployment. The workflow uploads a draft, downloads
+4. Open **Actions → Release** to monitor the run. After Linux/macOS checks, builds, and Windows
+   installer checks pass, the workflow publishes without an approval. It uploads a draft, downloads
    its assets to verify the seven archive checksums and compare both installers
    byte for byte, then publishes it with generated release notes and leaves
    **Latest** unchanged. Windows checks
@@ -84,11 +83,13 @@ for the settings above.
 
 Never move or reuse a version tag, or replace published assets.
 
-To remove the approval step for a single maintainer, remove **Required reviewers**
-under **Settings → Environments → release**. Keep the `v*` deployment restriction
-and tag rulesets above. This makes an authorized tag push sufficient to publish
-once automated checks pass. Verification and promotion to **Latest** remain
-a single manual step with `just release-latest`.
+The `release` environment does not have required reviewers. Thus an authorized tag
+push is sufficient to publish after the automated checks pass. Verification and
+promotion to **Latest** remain a single manual step with `just release-latest`.
+
+To add an approval step when there is more than one maintainer, add **Required
+reviewers** under **Settings → Environments → release**. Keep the `v*` deployment
+restriction and the tag rulesets above.
 
 ## Public installer URLs
 
