@@ -1,8 +1,9 @@
 # Making a release
 
-Pushing a version tag publishes a release through GitHub Actions without marking
-it **Latest**. Run `just release-latest` after publication to verify the assets and
-select the release for default installation. A stable version
+Releases are made from `main`. Pushing a version tag publishes a release through
+GitHub Actions without marking it **Latest**. `just release-publish` runs the
+whole checklist below as one command, including `just release-latest` for a
+stable tag. A stable version
 tag has no prerelease suffix, for example `v1.4.0` rather than `v1.4.0-rc.1`.
 `just release` only runs local checks and builds artifacts; it does not publish.
 
@@ -36,6 +37,32 @@ and [ruleset instructions](https://docs.github.com/en/repositories/configuring-b
 for the settings above.
 
 ## Release checklist
+
+Run `just release-publish` from a clean checkout of `main` whose `HEAD` equals
+`origin/main`:
+
+```sh
+just release-publish v1.4.0  # Replace with the version you are releasing.
+```
+
+The recipe stops at the first failure. It does these steps in order:
+
+1. It refuses unless the checkout is clean, the branch is `main`, and `HEAD`
+   equals `origin/main` after `git fetch origin`.
+2. It runs `just release-prepare`, then `just check`.
+3. It runs `just release-tag` with the tag.
+4. It finds the Release workflow run for the tag and waits for it. If the
+   `release` environment needs an approval, approve the deployment in
+   **Actions → Release** while the recipe waits.
+5. For a stable tag, it runs `just release-latest`. For a prerelease tag, it
+   skips this step, because a prerelease cannot be promoted.
+
+If the recipe stops after it pushed the tag, do not run it again with the same
+tag. Use the manual path below from the step that failed.
+
+### Manual path
+
+Use these steps for a failed or partial release, or to run a step on its own.
 
 1. Run `just release-prepare`. If it changes the CLI reference, review and commit
    those changes, then rerun it. Confirm the privacy notice describes the shipped
