@@ -109,6 +109,21 @@ func TestStartMakesTheWorktreeAndClaimsTheTicket(t *testing.T) {
 	}
 }
 
+func TestStartStoresTheSuffixedBranchOfATakenName(t *testing.T) {
+	dataDir, id := queuedTicket(t, "test")
+	repo := testfix.ReadTicket(t, dataDir, id).Project.Path
+	testfix.GitIn(t, repo, "branch", branch(id, "test"))
+
+	if err := Start(testfix.OpenStore(t, dataDir), id, acpConfig(t, dataDir, "stop end_turn")); err != nil {
+		t.Fatal(err)
+	}
+
+	want := branch(id, "test") + "-2"
+	if got := testfix.ReadTicket(t, dataDir, id).Branch; got != want {
+		t.Errorf("stored branch = %q, want %q", got, want)
+	}
+}
+
 func TestStartGivesOneTicketToOneRun(t *testing.T) {
 	dataDir, id := queuedTicket(t, "Add the thing")
 	cfg := acpConfig(t, dataDir, "stop end_turn")

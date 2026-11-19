@@ -29,7 +29,8 @@ func Start(s *store.Store, id int64, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	runID, err := s.Claim(id, branch(id, ticket.Title), agent.ID)
+	ticket.Branch = branch(id, ticket.Title)
+	runID, err := s.Claim(id, ticket.Branch, agent.ID)
 	if err != nil {
 		return err
 	}
@@ -226,9 +227,15 @@ func supervise(s *store.Store, cfg config.Config, ticket store.Ticket, runID int
 	watch := startSupervisorTimer(s, runID, os.Getpid(), runTimeout(cfg), cancel)
 	defer func() { err = errors.Join(err, watch.Close()) }()
 
-	worktree, err := Worktree(dataDir, ticket)
+	worktree, branchName, err := Worktree(dataDir, ticket)
 	if err != nil {
 		return errors.Join(err, s.ChangeStatus(id, store.Failed), s.EndRun(runID, noExitCode, err))
+	}
+	if branchName != ticket.Branch {
+		if err := s.SetBranch(id, branchName); err != nil {
+			return err
+		}
+		ticket.Branch = branchName
 	}
 	cacheDir, err := ProjectCache(dataDir, ticket.Project.ID)
 	if err != nil {

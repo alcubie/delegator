@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/alcubie/delegator/internal/store"
@@ -137,8 +138,9 @@ func TestProjectCacheSurvivesWorktreeRemoval(t *testing.T) {
 		ID:      7,
 		Project: store.Project{ID: 17, Path: testfix.Repo(t, "main"), DefaultBranch: "main"},
 		Title:   "Add the thing",
+		Branch:  "delegator/7-add-the-thing",
 	}
-	worktree, err := Worktree(dataDir, ticket)
+	worktree, _, err := Worktree(dataDir, ticket)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,10 +170,11 @@ func TestWorktreeMakesTheWorktreeOnItsBranch(t *testing.T) {
 	testfix.CommitIn(t, repo, "second")
 	dataDir := t.TempDir()
 
-	path, err := Worktree(dataDir, store.Ticket{
+	path, _, err := Worktree(dataDir, store.Ticket{
 		ID:      7,
 		Project: store.Project{Path: repo, DefaultBranch: "main"},
 		Title:   "Add the thing",
+		Branch:  "delegator/7-add-the-thing",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -193,24 +196,91 @@ func TestWorktreeThatIsThereAlready(t *testing.T) {
 	repo := testfix.Repo(t, "main")
 	dataDir := t.TempDir()
 
-	first, err := Worktree(dataDir, store.Ticket{
+	first, _, err := Worktree(dataDir, store.Ticket{
 		ID:      7,
 		Project: store.Project{Path: repo, DefaultBranch: "main"},
 		Title:   "Add the thing",
+		Branch:  "delegator/7-add-the-thing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := Worktree(dataDir, store.Ticket{
+	second, _, err := Worktree(dataDir, store.Ticket{
 		ID:      7,
 		Project: store.Project{Path: repo, DefaultBranch: "main"},
 		Title:   "Add the thing",
+		Branch:  "delegator/7-add-the-thing",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second != first {
 		t.Errorf("second = %s, want %s", second, first)
+	}
+}
+
+func TestWorktreeAddsASuffixToABranchThatIsTaken(t *testing.T) {
+	repo := testfix.Repo(t, "main")
+	testfix.GitIn(t, repo, "branch", "delegator/1-test")
+	testfix.GitIn(t, repo, "branch", "delegator/1-test-2")
+	ticket := store.Ticket{
+		ID:      1,
+		Project: store.Project{Path: repo, DefaultBranch: "main"},
+		Title:   "test",
+		Branch:  "delegator/1-test",
+	}
+
+	path, name, err := Worktree(t.TempDir(), ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if name != "delegator/1-test-3" {
+		t.Errorf("branch = %q, want delegator/1-test-3", name)
+	}
+	if got := testfix.GitOut(t, path, "rev-parse", "--abbrev-ref", "HEAD"); got != name {
+		t.Errorf("the worktree is on %q, want %q", got, name)
+	}
+}
+
+func TestWorktreeKeepsTheNameOfABranchThatIsFree(t *testing.T) {
+	ticket := store.Ticket{
+		ID:      1,
+		Project: store.Project{Path: testfix.Repo(t, "main"), DefaultBranch: "main"},
+		Branch:  "delegator/1-test",
+	}
+
+	_, name, err := Worktree(t.TempDir(), ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if name != "delegator/1-test" {
+		t.Errorf("branch = %q, want delegator/1-test", name)
+	}
+}
+
+func TestWorktreeNamesTheBranchAndProjectWhenEverySuffixIsTaken(t *testing.T) {
+	repo := testfix.Repo(t, "main")
+	testfix.GitIn(t, repo, "branch", "delegator/1-test")
+	for n := 2; n <= maxBranchSuffix; n++ {
+		testfix.GitIn(t, repo, "branch", fmt.Sprintf("delegator/1-test-%d", n))
+	}
+	ticket := store.Ticket{
+		ID:      1,
+		Project: store.Project{Path: repo, DefaultBranch: "main"},
+		Branch:  "delegator/1-test",
+	}
+
+	_, _, err := Worktree(t.TempDir(), ticket)
+
+	if err == nil {
+		t.Fatal("Worktree succeeded with every branch taken")
+	}
+	for _, want := range []string{"delegator/1-test", repo} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q doesn't name %q", err, want)
+		}
 	}
 }

@@ -567,3 +567,26 @@ func TestRequireBranchMergedPreservesOtherGitFailures(t *testing.T) {
 		t.Fatalf("err = %v, want Git exit status 128", err)
 	}
 }
+
+func TestAddWorktreeReturnsErrBranchExistsForATakenBranch(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+	gitIn(t, dir, "branch", "taken")
+
+	err := AddWorktree(dir, filepath.Join(t.TempDir(), "wt"), "taken", "trunk")
+
+	if !errors.Is(err, ErrBranchExists) {
+		t.Errorf("err = %v, want ErrBranchExists", err)
+	}
+}
+
+func TestAddWorktreeFromABadRevisionIsNotErrBranchExists(t *testing.T) {
+	dir := trunkRepo(t)
+	commitIn(t, dir)
+
+	err := AddWorktree(dir, filepath.Join(t.TempDir(), "wt"), "fresh", "nope")
+
+	if err == nil || errors.Is(err, ErrBranchExists) {
+		t.Errorf("err = %v, want an error other than ErrBranchExists", err)
+	}
+}
