@@ -385,7 +385,7 @@ func resumeAndRecallInPTY(t *testing.T, name, repo, id, confirm string, promptAr
 // TestIntegrationClaudeTakesASessionFromStartToTheTerminal was verified with
 // claude-agent-acp 0.77.0 and Claude Code 2.1.273. It uses the registry
 // resume command with -p to recall a word stored only in the session. This
-// paid test runs under make integration, not make check.
+// paid test runs under just integration, not just check.
 func TestIntegrationClaudeTakesASessionFromStartToTheTerminal(t *testing.T) {
 	verifyAgent(t, "claude", func(t *testing.T, events []Event) {
 		if !allowed(events) {
