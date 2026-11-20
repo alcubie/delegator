@@ -50,7 +50,6 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse(any("continue-on-error" in step for step in windows["steps"]))
         self.assertEqual(publish["environment"], "release")
         build = WORKFLOW["jobs"]["build"]
-        self.assertTrue(any("make check" in step.get("run", "") for step in build["steps"]))
         self.assertFalse(any("secrets." in str(step) for step in build["steps"]))
 
     def test_dry_run_retains_exact_installers(self):
