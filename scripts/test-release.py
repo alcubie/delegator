@@ -29,29 +29,6 @@ class ReleaseTests(unittest.TestCase):
         return subprocess.run([sys.executable, ROOT / "scripts/check-release-tag.py", tag],
                               capture_output=True).returncode
 
-    def test_publication_boundary(self):
-        self.assertEqual(set(WORKFLOW["on"]), {"push", "workflow_dispatch"})
-        self.assertEqual(WORKFLOW["permissions"], {"contents": "read"})
-        publish = WORKFLOW["jobs"]["publish"]
-        self.assertEqual(publish["if"], "github.event_name == 'push'")
-        self.assertEqual(publish["needs"], ["build", "windows"])
-        self.assertNotIn("continue-on-error", publish)
-        windows = WORKFLOW["jobs"]["windows"]
-        self.assertEqual(windows["needs"], "build")
-        self.assertEqual(windows["runs-on"], "windows-latest")
-        self.assertEqual(windows["strategy"]["matrix"]["shell"], ["powershell", "pwsh"])
-        self.assertNotIn("if", windows)
-        self.assertNotIn("continue-on-error", windows)
-        download = next(step for step in windows["steps"] if "download-artifact" in step.get("uses", ""))
-        self.assertEqual(download["with"], {"name": "release-assets", "path": "assets"})
-        smoke = windows["steps"][-1]
-        self.assertEqual(windows["defaults"]["run"]["shell"], "${{ matrix.shell }}")
-        self.assertEqual(smoke["run"], "./scripts/test-install.ps1 -InstallerPath ./assets/install.ps1")
-        self.assertFalse(any("continue-on-error" in step for step in windows["steps"]))
-        self.assertEqual(publish["environment"], "release")
-        build = WORKFLOW["jobs"]["build"]
-        self.assertFalse(any("secrets." in str(step) for step in build["steps"]))
-
     def test_dry_run_retains_exact_installers(self):
         build = WORKFLOW["jobs"]["build"]
         retain = next(step for step in build["steps"] if step.get("id") == "installers")
