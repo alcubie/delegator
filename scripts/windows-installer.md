@@ -68,8 +68,8 @@ They build real binaries for two versions and check:
 All downloads and registry writes use isolated fixtures; no real agent or user
 configuration is used. ARM64 asset selection and extraction are checked on x64;
 **native ARM64 execution is not tested**. The tests do not contact mutable releases
-or verify live hosting. Run `make install-test-windows` for PowerShell 7 or
-`make install-test-windows POWERSHELL=powershell` for Windows PowerShell 5.1.
+or verify live hosting. Run `just install-test-windows` for PowerShell 7 or
+`just POWERSHELL=powershell install-test-windows` for Windows PowerShell 5.1.
 The ConPTY test harness requires Windows 10 version 1809 or later.
 Linux Go tests do not require either shell.
 
